@@ -1,4 +1,4 @@
-﻿import { prisma } from "../config/db.js";
+import { prisma } from "../config/db.js";
 
 const roles = [
   {
@@ -15,9 +15,9 @@ const roles = [
     description: "Priest account for parish oversight and request review.",
   },
   {
-    roleName: "VICARIATE_ADMIN",
+    roleName: "DIOCESE_COORDINATOR",
     description:
-      "Vicariate administrator account for TESTIMONIUM system administration.",
+      "Diocese coordinator account for TESTIMONIUM system administration.",
   },
 ];
 

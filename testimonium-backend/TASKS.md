@@ -29,7 +29,7 @@
 ## ðŸŸ¦ Phase 2: Authentication & User Profiles
 - [x] Build Firebase ID token middleware parsing Bearer tokens from incoming headers
 - [x] Define PostgreSQL-backed application role model after base Prisma models are approved
-- [x] Implement role-based authorization blocks checking permissions (PARISHIONER, SECRETARY, PRIEST, VICARIATE_ADMIN)
+- [x] Implement role-based authorization blocks checking permissions (PARISHIONER, SECRETARY, PRIEST, DIOCESE_COORDINATOR)
 - [x] Attach authenticated Firebase users to persisted TESTIMONIUM user profiles
 - [x] Create idempotent seed data for roles and Vicariate of Canlaon parish records
 - [x] Run first Prisma migration: `npx prisma migrate dev --name init_testimonium_relational_schema`

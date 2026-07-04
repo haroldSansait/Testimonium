@@ -10,7 +10,7 @@ enum RoleName {
   PARISHIONER
   SECRETARY
   PRIEST
-  VICARIATE_ADMIN
+  DIOCESE_COORDINATOR
 }
 
 enum UserStatus {

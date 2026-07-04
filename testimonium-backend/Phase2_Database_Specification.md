@@ -20,7 +20,7 @@ Use enum:
 - PARISHIONER
 - SECRETARY
 - PRIEST
-- VICARIATE_ADMIN
+- DIOCESE_COORDINATOR
 
 ### Document Request Status
 Use enum:
