@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleName {
+  PARISHIONER
+  SECRETARY
+  PRIEST
+  VICARIATE_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ParishType {
+  PARISH
+  QUASI_PARISH
+  MISSION_STATION
+}
+
+enum DocumentType {
+  BAPTISMAL_CERTIFICATE
+  CONFIRMATION_CERTIFICATE
+  MARRIAGE_CERTIFICATE
+  FIRST_COMMUNION_CERTIFICATE
+}
+
+enum DocumentRequestStatus {
+  PENDING
+  UNDER_REVIEW
+  PAYMENT_PENDING
+  PAYMENT_VERIFIED
+  PROCESSING
+  READY_FOR_PICKUP
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PROOF_SUBMITTED
+  CONFIRMED
+}
+
+enum ScheduleEventType {
+  WEDDING
+  BAPTISM
+  CONFIRMATION
+  PRIVATE_MASS
+  MASS_INTENTION
+}
+
+enum ScheduleStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum NotificationType {
+  PUSH
+  IN_APP
+  EMAIL
+}
+
+model Role {
+  id          Int      @id @default(autoincrement()) @map("role_id")
+  roleName    RoleName @unique @map("role_name")
+  description String?  @db.Text
+  users       User[]
+
+  @@map("roles")
+}
+
+model Parish {
+  id               Int               @id @default(autoincrement()) @map("parish_id")
+  parishName       String            @unique @map("parish_name") @db.VarChar(150)
+  type             ParishType
+  address          String?           @db.Text
+  municipalityCity String            @map("municipality_city") @db.VarChar(100)
+  province         String            @db.VarChar(100)
+  contactNumber    String?           @map("contact_number") @db.VarChar(20)
+  isActive         Boolean           @default(true) @map("is_active")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  users            User[]
+  documentRequests DocumentRequest[]
+  schedules        Schedule[]
+
+  @@index([type])
+  @@index([isActive])
+  @@index([municipalityCity])
+  @@map("parishes")
+}
+
+model User {
+  id                        Int                @id @default(autoincrement()) @map("user_id")
+  firebaseUid               String             @unique @map("firebase_uid") @db.VarChar(128)
+  fullName                  String             @map("full_name") @db.VarChar(150)
+  email                     String             @unique @db.VarChar(150)
+  contactNumber             String?            @map("contact_number") @db.VarChar(20)
+  roleId                    Int                @map("role_id")
+  parishId                  Int?               @map("parish_id")
+  isVerified                Boolean            @default(false) @map("is_verified")
+  status                    UserStatus         @default(ACTIVE)
+  createdAt                 DateTime           @default(now()) @map("created_at")
+  updatedAt                 DateTime           @updatedAt @map("updated_at")
+  role                      Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  parish                    Parish?            @relation(fields: [parishId], references: [id], onDelete: SetNull)
+  documentRequests          DocumentRequest[]  @relation("DocumentRequestSubmitter")
+  processedDocumentRequests DocumentRequest[]  @relation("DocumentRequestProcessor")
+  schedules                 Schedule[]         @relation("ScheduleRequester")
+  processedSchedules        Schedule[]         @relation("ScheduleProcessor")
+  notifications             Notification[]
+  updatedFaqEntries         FaqKnowledgeBase[] @relation("FaqUpdater")
+  chatbotLogs               ChatbotLog[]
+  activityLogs              ActivityLog[]
+
+  @@index([roleId])
+  @@index([parishId])
+  @@index([status])
+  @@map("users")
+}
+
+model DocumentRequest {
+  id                    Int                   @id @default(autoincrement()) @map("request_id")
+  userId                Int                   @map("user_id")
+  parishId              Int                   @map("parish_id")
+  documentType          DocumentType          @map("document_type")
+  purpose               String?               @db.Text
+  status                DocumentRequestStatus @default(PENDING)
+  paymentStatus         PaymentStatus         @default(UNPAID) @map("payment_status")
+  paymentProofObjectKey String?               @map("payment_proof_object_key") @db.VarChar(255)
+  paymentQrReference    String?               @map("payment_qr_reference") @db.VarChar(100)
+  processedById         Int?                  @map("processed_by")
+  remarks               String?               @db.Text
+  dateRequested         DateTime              @default(now()) @map("date_requested")
+  dateProcessed         DateTime?             @map("date_processed")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  user                  User                  @relation("DocumentRequestSubmitter", fields: [userId], references: [id], onDelete: Restrict)
+  parish                Parish                @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  processedBy           User?                 @relation("DocumentRequestProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  requirements          Requirement[]
+
+  @@index([userId])
+  @@index([parishId])
+  @@index([processedById])
+  @@index([documentType])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([dateRequested])
+  @@map("document_requests")
+}
+
+model Requirement {
+  id          Int             @id @default(autoincrement()) @map("requirement_id")
+  requestId   Int             @map("request_id")
+  fileName    String          @map("file_name") @db.VarChar(255)
+  r2ObjectKey String          @map("r2_object_key") @db.VarChar(255)
+  fileType    String?         @map("file_type") @db.VarChar(50)
+  fileSize    Int?            @map("file_size")
+  uploadedAt  DateTime        @default(now()) @map("uploaded_at")
+  request     DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("requirements")
+}
+
+model Schedule {
+  id            Int               @id @default(autoincrement()) @map("schedule_id")
+  userId        Int               @map("user_id")
+  parishId      Int               @map("parish_id")
+  eventType     ScheduleEventType @map("event_type")
+  requestedDate DateTime          @map("requested_date") @db.Date
+  startDatetime DateTime?         @map("start_datetime")
+  endDatetime   DateTime?         @map("end_datetime")
+  status        ScheduleStatus    @default(PENDING)
+  conflictFlag  Boolean           @default(false) @map("conflict_flag")
+  remarks       String?           @db.Text
+  processedById Int?              @map("processed_by")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  user          User              @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)
+  parish        Parish            @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  processedBy   User?             @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([parishId])
+  @@index([processedById])
+  @@index([eventType])
+  @@index([status])
+  @@index([requestedDate])
+  @@index([parishId, requestedDate])
+  @@map("schedules")
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement()) @map("notification_id")
+  userId    Int              @map("user_id")
+  title     String           @db.VarChar(150)
+  message   String           @db.Text
+  type      NotificationType
+  isRead    Boolean          @default(false) @map("is_read")
+  readAt    DateTime?        @map("read_at")
+  dateSent  DateTime         @default(now()) @map("date_sent")
+  createdAt DateTime         @default(now()) @map("created_at")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([dateSent])
+  @@map("notifications")
+}
+
+model FaqKnowledgeBase {
+  id          Int      @id @default(autoincrement()) @map("faq_id")
+  question    String   @db.Text
+  answer      String   @db.Text
+  category    String?  @db.VarChar(100)
+  isActive    Boolean  @default(true) @map("is_active")
+  updatedById Int?     @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedBy   User?    @relation("FaqUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@index([isActive])
+  @@index([category])
+  @@map("faq_knowledge_base")
+}
+
+model ChatbotLog {
+  id        Int      @id @default(autoincrement()) @map("chatbot_log_id")
+  userId    Int?     @map("user_id")
+  sessionId String?  @map("session_id") @db.VarChar(100)
+  question  String   @db.Text
+  response  String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("chatbot_logs")
+}
+
+model ActivityLog {
+  id               Int      @id @default(autoincrement()) @map("log_id")
+  userId           Int?     @map("user_id")
+  action           String   @db.VarChar(255)
+  affectedTable    String?  @map("affected_table") @db.VarChar(100)
+  affectedRecordId Int?     @map("affected_record_id")
+  ipAddress        String?  @map("ip_address") @db.VarChar(45)
+  userAgent        String?  @map("user_agent") @db.VarChar(255)
+  createdAt        DateTime @default(now()) @map("created_at")
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([affectedTable])
+  @@index([createdAt])
+  @@map("activity_logs")
+}

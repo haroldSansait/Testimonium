@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "900241750208",
+    "project_id": "testimonium-b46b0",
+    "storage_bucket": "testimonium-b46b0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:900241750208:android:b525978224f7319254d525",
+        "android_client_info": {
+          "package_name": "com.testimonium.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMtXSISxGRiLyFOMKymSCmYJy665G0WrE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

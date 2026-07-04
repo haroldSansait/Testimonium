@@ -1,37 +1,45 @@
-# Dependencies
-node_modules/
-jspm_packages/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# ==============================================================================
+# TESTIMONIUM UNIFIED MONOREPO SYSTEM SAFEGUARDS
+# ==============================================================================
 
-# Environment Variables & Secrets (CRITICAL)
-.env
-.env.local
-.env.*.local
-.env.development.local
-.env.production.local
+# Bulky Project Dependencies (Applies recursively to all client/server dirs)
+**/node_modules/
+**/jspm_packages/
+**/dist/
+**/.expo/
+**/.next/
+**/out/
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
 
-# Prisma specific exclusions
-/prisma/migrations/**/*.sql
-# If you ever test with a local sqlite file copy
-*.db
-*.db-journal
+# Global Environment Variables & Cloud Infrastructure Keys (CRITICAL SAFETY)
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.production.local
+**/.env.*.local
+**/.env.*
 
-# Operating System files
-.DS_Store
-Thumbs.db
-Thumbs.db:encryptable
+# Prisma Client Database Specific Exclusions (Fixed subfolder tracking)
+**/prisma/migrations/**/*.sql
+**/prisma/*.db
+**/prisma/*.db-journal
 
-# IDE & Editor caches
-.vscode/
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
+# Operating System Temporary Files
+**/.DS_Store
+**/Thumbs.db
+**/Thumbs.db:encryptable
 
-# Agentic / Build Tool temporary locks
-.agents/skills/*log
-.agents/skills/*lock
+# Local Editor Caches & IDE Configurations
+**/.vscode/
+**/.idea/
+**/*.suo
+**/*.ntvs*
+**/*.njsproj
+**/*.sln
+**/*.swp
+
+# AI Agent / Standalone Build Tool Execution Locks (Fixed subfolder tracking)
+**/.agents/skills/*log
+**/.agents/skills/*lock
