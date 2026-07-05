@@ -99,6 +99,68 @@ const seed = async () => {
       create: parish,
     });
   }
+
+  const staffUsers = [
+    {
+      email: "coordinator@testimonium.org",
+      fullName: "Diocese Coordinator",
+      roleName: "DIOCESE_COORDINATOR",
+      parishName: null,
+      status: "ACTIVE",
+    },
+    {
+      email: "secretary.stjoseph@testimonium.org",
+      fullName: "St. Joseph Parish Secretary",
+      roleName: "SECRETARY",
+      parishName: "St. Joseph Parish",
+      status: "ACTIVE",
+    },
+    {
+      email: "priest.stjoseph@testimonium.org",
+      fullName: "St. Joseph Parish Priest",
+      roleName: "PRIEST",
+      parishName: "St. Joseph Parish",
+      status: "ACTIVE",
+    },
+  ];
+
+  for (const staff of staffUsers) {
+    const role = await prisma.role.findUnique({
+      where: { roleName: staff.roleName },
+    });
+    if (!role) {
+      throw new Error(`Role ${staff.roleName} not found when seeding staff.`);
+    }
+
+    let parishId = null;
+    if (staff.parishName) {
+      const parish = await prisma.parish.findUnique({
+        where: { parishName: staff.parishName },
+      });
+      if (!parish) {
+        throw new Error(`Parish ${staff.parishName} not found when seeding staff.`);
+      }
+      parishId = parish.id;
+    }
+
+    await prisma.user.upsert({
+      where: { email: staff.email },
+      update: {
+        fullName: staff.fullName,
+        roleId: role.id,
+        parishId: parishId,
+        status: staff.status,
+      },
+      create: {
+        email: staff.email,
+        fullName: staff.fullName,
+        roleId: role.id,
+        parishId: parishId,
+        status: staff.status,
+        firebaseUid: null,
+      },
+    });
+  }
 };
 
 seed()

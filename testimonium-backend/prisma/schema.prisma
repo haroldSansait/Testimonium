@@ -101,7 +101,7 @@ model Parish {
 
 model User {
   id                        Int                @id @default(autoincrement()) @map("user_id")
-  firebaseUid               String             @unique @map("firebase_uid") @db.VarChar(128)
+  firebaseUid               String?            @unique @map("firebase_uid") @db.VarChar(128)
   fullName                  String             @map("full_name") @db.VarChar(150)
   email                     String             @unique @db.VarChar(150)
   contactNumber             String?            @map("contact_number") @db.VarChar(20)
