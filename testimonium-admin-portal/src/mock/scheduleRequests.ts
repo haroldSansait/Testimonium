@@ -1,0 +1,61 @@
+import type { ScheduleRequest } from '@/types';
+
+export const scheduleRequests: ScheduleRequest[] = [
+  {
+    id: 'sched-req-1',
+    referenceNo: 'REQ-2023-0891',
+    parishionerName: 'Maria Dela Cruz',
+    initials: 'MD',
+    avatarColor: '#6B7280',
+    eventType: 'Baptism',
+    preferredDate: 'Oct 15, 2023',
+    preferredTime: '10:00 AM',
+    status: 'Pending',
+  },
+  {
+    id: 'sched-req-2',
+    referenceNo: 'REQ-2023-0888',
+    parishionerName: 'Juan Perez & Family',
+    initials: 'JP',
+    avatarColor: '#6B7280',
+    eventType: 'Wedding',
+    preferredDate: 'Dec 08, 2023',
+    preferredTime: '2:30 PM',
+    status: 'Under Review',
+  },
+  {
+    id: 'sched-req-3',
+    referenceNo: 'REQ-2023-0875',
+    parishionerName: 'San Gabriel Choir',
+    initials: 'SG',
+    avatarColor: '#9CA3AF',
+    eventType: 'Venue Use',
+    preferredDate: 'Sep 24, 2023',
+    preferredTime: '6:00 PM',
+    status: 'Tentative',
+  },
+  {
+    id: 'sched-req-4',
+    referenceNo: 'REQ-2023-0850',
+    parishionerName: 'Ana Reyes',
+    initials: 'AR',
+    avatarColor: '#6B7280',
+    eventType: 'Mass Intention',
+    preferredDate: 'Sep 20, 2023',
+    preferredTime: '6:00 AM',
+    status: 'Confirmed',
+  },
+  {
+    id: 'sched-req-5',
+    referenceNo: 'REQ-2023-0895',
+    parishionerName: 'Leonor Magno',
+    initials: 'LM',
+    avatarColor: '#6B7280',
+    eventType: 'House Blessing',
+    preferredDate: 'Oct 22, 2023',
+    preferredTime: '3:00 PM',
+    status: 'Pending',
+  },
+];
+
+export const totalScheduleRequests = 24;

@@ -13,15 +13,27 @@ const requiredKeys = [
 const getDatabaseUrl = () =>
   process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL;
 
+const parsePrivateKey = (key) => {
+  if (!key) return undefined;
+  let clean = key.trim();
+  while (
+    (clean.startsWith('"') && clean.endsWith('"')) ||
+    (clean.startsWith("'") && clean.endsWith("'"))
+  ) {
+    clean = clean.slice(1, -1).trim();
+  }
+  return clean.replace(/\\n/g, "\n");
+};
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 5000),
   databaseUrl: getDatabaseUrl(),
-  corsOrigins: ["http://localhost:3000", "http://localhost:3001"],
+  corsOrigins: ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    privateKey: parsePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
   },
   r2: {
     accountId: process.env.R2_ACCOUNT_ID,

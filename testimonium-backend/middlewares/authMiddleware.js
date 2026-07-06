@@ -14,14 +14,21 @@ export const authenticateFirebaseToken = async (req, res, next) => {
     }
 
     const token = authorizationHeader.slice("Bearer ".length).trim();
+
     const decodedToken = await getFirebaseAuth().verifyIdToken(token);
+
     const applicationUser =
       await authService.getOrCreateApplicationUser(decodedToken);
 
     req.firebaseUser = decodedToken;
     req.user = applicationUser;
+
     return next();
-  } catch {
+  } catch (error) {
+    console.error("========== FIREBASE AUTH ERROR ==========");
+    console.error(error);
+    console.error("=========================================");
+
     return res.status(401).json({
       message: "Authentication token is invalid or expired.",
     });

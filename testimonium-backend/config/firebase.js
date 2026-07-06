@@ -1,4 +1,5 @@
-import admin from "firebase-admin";
+import { initializeApp, getApp, getApps, cert } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { env, getMissingFirebaseConfig } from "./env.js";
 
 let firebaseApp;
@@ -13,11 +14,12 @@ export const getFirebaseApp = () => {
     throw new Error("Firebase Admin configuration is incomplete.");
   }
 
+  const apps = getApps();
   firebaseApp =
-    admin.apps.length > 0
-      ? admin.app()
-      : admin.initializeApp({
-          credential: admin.credential.cert({
+    apps.length > 0
+      ? getApp()
+      : initializeApp({
+          credential: cert({
             projectId: env.firebase.projectId,
             clientEmail: env.firebase.clientEmail,
             privateKey: env.firebase.privateKey,
@@ -27,4 +29,4 @@ export const getFirebaseApp = () => {
   return firebaseApp;
 };
 
-export const getFirebaseAuth = () => getFirebaseApp().auth();
+export const getFirebaseAuth = () => getAuth(getFirebaseApp());
