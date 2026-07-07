@@ -10,6 +10,10 @@ const routeTitles: Record<string, string> = {
   '/calendar': 'Parish Management System',
   '/notifications': 'Parish Management System',
   '/activity-log': 'Activity Log',
+  // Diocese Coordinator routes (Phase 5B pages)
+  '/analytics': 'Analytics',
+  '/parish-management': 'Parish Management',
+  '/user-management': 'User Management',
 };
 
 interface NavbarProps {
