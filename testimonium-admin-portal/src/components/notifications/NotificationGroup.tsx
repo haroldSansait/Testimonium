@@ -4,9 +4,10 @@ import { NotificationCard } from './NotificationCard';
 interface NotificationGroupProps {
   group: GroupType;
   notifications: Notification[];
+  onAction?: (notif: Notification) => void;
 }
 
-export function NotificationGroup({ group, notifications }: NotificationGroupProps) {
+export function NotificationGroup({ group, notifications, onAction }: NotificationGroupProps) {
   if (notifications.length === 0) return null;
 
   return (
@@ -17,7 +18,7 @@ export function NotificationGroup({ group, notifications }: NotificationGroupPro
       </div>
       <div className="space-y-3">
         {notifications.map((notif) => (
-          <NotificationCard key={notif.id} notification={notif} />
+          <NotificationCard key={notif.id} notification={notif} onAction={onAction} />
         ))}
       </div>
     </div>

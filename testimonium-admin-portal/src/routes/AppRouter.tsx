@@ -10,6 +10,9 @@ import { CalendarPage } from '@/pages/CalendarPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { ActivityLogPage } from '@/pages/ActivityLogPage';
 import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
+import { AnalyticsPage } from '@/pages/AnalyticsPage';
+import { ParishManagementPage } from '@/pages/ParishManagementPage';
+import { UserManagementPage } from '@/pages/UserManagementPage';
 import { PERMISSIONS } from '@/permissions/permissions';
 
 export function AppRouter() {
@@ -44,26 +47,21 @@ export function AppRouter() {
         </Route>
       </Route>
 
-      {/* Phase 5B routes — permission gates are wired now so the sidebar
-          can safely link to them. Pages will be implemented in 5B. */}
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.VIEW_ANALYTICS} />}>
         <Route element={<AdminLayout />}>
-          {/* AnalyticsPage will replace this Navigate in Phase 5B */}
-          <Route path="/analytics" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
         </Route>
       </Route>
 
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_PARISHES} />}>
         <Route element={<AdminLayout />}>
-          {/* ParishManagementPage will replace this Navigate in Phase 5B */}
-          <Route path="/parish-management" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/parish-management" element={<ParishManagementPage />} />
         </Route>
       </Route>
 
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_USERS} />}>
         <Route element={<AdminLayout />}>
-          {/* UserManagementPage will replace this Navigate in Phase 5B */}
-          <Route path="/user-management" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/user-management" element={<UserManagementPage />} />
         </Route>
       </Route>
 

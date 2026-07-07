@@ -7,7 +7,7 @@ export const notifications: Notification[] = [
     group: 'TODAY',
     title: 'Schedule Conflict Detected',
     description:
-      "Double booking detected for the Main Sanctuary. 'Wedding: Reyes-Cruz' and 'Choir Rehearsal' are both scheduled for Saturday, Oct 28 at 2:00 PM. Immediate resolution required.",
+      "Double booking detected for the Main Sanctuary. 'Wedding: Reyes-Cruz' and 'Choir Rehearsal' are both scheduled for Saturday of this week at 2:00 PM. Immediate resolution required.",
     timestamp: '10:45 AM',
     isRead: false,
     urgency: 'urgent',

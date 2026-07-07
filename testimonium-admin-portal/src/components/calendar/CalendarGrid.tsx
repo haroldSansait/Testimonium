@@ -9,9 +9,10 @@ interface CalendarGridProps {
   month: number; // 0-indexed
   events: CalendarEvent[];
   today?: number; // day of month to highlight as today
+  onEventClick?: (evt: CalendarEvent) => void;
 }
 
-export function CalendarGrid({ year, month, events, today }: CalendarGridProps) {
+export function CalendarGrid({ year, month, events, today, onEventClick }: CalendarGridProps) {
   const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
@@ -81,7 +82,7 @@ export function CalendarGrid({ year, month, events, today }: CalendarGridProps) 
                     </div>
                     <div className="space-y-0.5">
                       {dayEvents.slice(0, 3).map((evt) => (
-                        <CalendarEventChip key={evt.id} event={evt} />
+                        <CalendarEventChip key={evt.id} event={evt} onClick={() => onEventClick?.(evt)} />
                       ))}
                       {dayEvents.length > 3 && (
                         <p className="text-[10px] text-gray-400 pl-1">+{dayEvents.length - 3} more</p>

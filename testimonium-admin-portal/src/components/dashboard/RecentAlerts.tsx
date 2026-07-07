@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Info, FileWarning } from 'lucide-react';
 import type { RecentAlert } from '@/types';
 import { cn } from '@/utils/cn';
@@ -25,9 +26,24 @@ const alertConfig = {
 };
 
 function AlertItem({ alert }: AlertItemProps) {
+  const navigate = useNavigate();
   const config = alertConfig[alert.type];
+
+  const handleClick = () => {
+    if (alert.type === 'document') {
+      navigate('/document-requests');
+    } else if (alert.title.toLowerCase().includes('schedule') || alert.description.toLowerCase().includes('schedule') || alert.description.toLowerCase().includes('friday')) {
+      navigate('/schedule-requests');
+    } else {
+      navigate('/notifications');
+    }
+  };
+
   return (
-    <div className={cn('flex gap-3 p-3 rounded-lg border', config.bgColor, config.borderColor)}>
+    <div
+      onClick={handleClick}
+      className={cn('flex gap-3 p-3 rounded-lg border cursor-pointer hover:bg-gray-50/10 transition-colors', config.bgColor, config.borderColor)}
+    >
       <div className="flex-shrink-0 mt-0.5">{config.icon}</div>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-gray-900">{alert.title}</p>

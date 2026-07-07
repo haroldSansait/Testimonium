@@ -5,9 +5,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 
 interface ActivityLogTableProps {
   entries: ActivityLogEntry[];
+  onRowClick?: (entry: ActivityLogEntry) => void;
 }
 
-export function ActivityLogTable({ entries }: ActivityLogTableProps) {
+export function ActivityLogTable({ entries, onRowClick }: ActivityLogTableProps) {
   if (entries.length === 0) {
     return <EmptyState title="No activity records" description="Try adjusting your filters." />;
   }
@@ -26,7 +27,11 @@ export function ActivityLogTable({ entries }: ActivityLogTableProps) {
         </thead>
         <tbody>
           {entries.map((entry) => (
-            <tr key={entry.id}>
+            <tr
+              key={entry.id}
+              onClick={() => onRowClick?.(entry)}
+              className="cursor-pointer hover:bg-gray-50/50 transition-colors"
+            >
               <td className="whitespace-pre text-gray-600 text-xs leading-relaxed">{entry.dateTime}</td>
               <td>
                 <div className="flex items-center gap-2.5">

@@ -10,11 +10,16 @@ const categoryStyles: Record<CalendarEventCategory, string> = {
 
 interface CalendarEventChipProps {
   event: CalendarEvent;
+  onClick?: () => void;
 }
 
-export function CalendarEventChip({ event }: CalendarEventChipProps) {
+export function CalendarEventChip({ event, onClick }: CalendarEventChipProps) {
   return (
     <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
+      }}
       className={cn(
         'text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity',
         categoryStyles[event.category]

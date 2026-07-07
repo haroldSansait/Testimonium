@@ -4,9 +4,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 
 interface DocumentRequestTableProps {
   requests: DocumentRequest[];
+  onViewDetails?: (req: DocumentRequest) => void;
 }
 
-export function DocumentRequestTable({ requests }: DocumentRequestTableProps) {
+export function DocumentRequestTable({ requests, onViewDetails }: DocumentRequestTableProps) {
   if (requests.length === 0) {
     return <EmptyState title="No document requests" description="No requests match your current search or filter." />;
   }
@@ -36,6 +37,7 @@ export function DocumentRequestTable({ requests }: DocumentRequestTableProps) {
               </td>
               <td>
                 <button
+                  onClick={() => onViewDetails?.(req)}
                   className="text-sm font-medium text-crimson-700 hover:text-crimson-800 hover:underline transition-colors whitespace-nowrap"
                   id={`view-doc-${req.id}`}
                   aria-label={`View details for ${req.referenceNo}`}

@@ -1,9 +1,13 @@
 import type { ActivityLogEntry } from '@/types';
 
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = now.toLocaleString(undefined, { month: 'short' });
+
 export const activityLog: ActivityLogEntry[] = [
   {
     id: 'log-1',
-    dateTime: 'Oct 24, 2023\n14:30 PM',
+    dateTime: `${currentMonth} 07, ${currentYear}\n14:30 PM`,
     personnel: 'Father Michael',
     avatar: { initials: 'FM', bgColor: '#7B1C2A' },
     actionDescription: 'Verified baptismal register details',
@@ -12,7 +16,7 @@ export const activityLog: ActivityLogEntry[] = [
   },
   {
     id: 'log-2',
-    dateTime: 'Oct 24, 2023\n11:15 AM',
+    dateTime: `${currentMonth} 06, ${currentYear}\n11:15 AM`,
     personnel: 'Sister Theresa',
     avatar: { initials: 'ST', bgColor: '#B45309' },
     actionDescription: 'Updated wedding schedule conflicts',
@@ -21,7 +25,7 @@ export const activityLog: ActivityLogEntry[] = [
   },
   {
     id: 'log-3',
-    dateTime: 'Oct 23, 2023\n09:45 AM',
+    dateTime: `${currentMonth} 05, ${currentYear}\n09:45 AM`,
     personnel: 'John Doe',
     avatar: { initials: 'JD', bgColor: '#6B7280' },
     actionDescription: 'Declined incomplete confirmation certificate request',
@@ -30,7 +34,7 @@ export const activityLog: ActivityLogEntry[] = [
   },
   {
     id: 'log-4',
-    dateTime: 'Oct 22, 2023\n16:00 PM',
+    dateTime: `${currentMonth} 04, ${currentYear}\n16:00 PM`,
     personnel: 'Father Michael',
     avatar: { initials: 'FM', bgColor: '#7B1C2A' },
     actionDescription: 'Approved mass intention scheduling',

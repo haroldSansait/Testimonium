@@ -42,7 +42,7 @@ export const todaySchedule: TodayScheduleItem[] = [
     period: 'AM',
     title: 'Baptism: Maria Santos',
     location: 'Main Church',
-    priest: 'Fr. Reyes',
+    priest: 'Rev. Fr. Julius L. Montaño',
     status: 'Confirmed',
   },
   {
@@ -51,7 +51,7 @@ export const todaySchedule: TodayScheduleItem[] = [
     period: 'AM',
     title: 'Wedding: Dela Cruz - Lim',
     location: 'Main Church',
-    priest: 'Fr. Garcia',
+    priest: 'Rev. Fr. Faustino G. Cedeño, Jr.',
     status: 'In Progress',
   },
   {
@@ -60,7 +60,7 @@ export const todaySchedule: TodayScheduleItem[] = [
     period: 'PM',
     title: 'Counseling Session',
     location: 'Office 2',
-    priest: 'Fr. Reyes',
+    priest: 'Rev. Fr. Julius L. Montaño',
     status: 'Pending',
   },
 ];

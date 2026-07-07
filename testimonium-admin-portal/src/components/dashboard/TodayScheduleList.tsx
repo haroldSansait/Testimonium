@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Loader, Clock } from 'lucide-react';
 import type { TodayScheduleItem } from '@/types';
 import { cn } from '@/utils/cn';
@@ -26,9 +26,13 @@ const statusConfig = {
 };
 
 function ScheduleItem({ item }: ScheduleItemProps) {
+  const navigate = useNavigate();
   const config = statusConfig[item.status];
   return (
-    <div className="flex items-center gap-4 py-4 border-b border-gray-100 last:border-b-0">
+    <div
+      onClick={() => navigate('/calendar', { state: { eventId: item.id } })}
+      className="flex items-center gap-4 py-4 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50/70 px-2 rounded-lg transition-colors"
+    >
       {/* Time */}
       <div className="text-center w-14 flex-shrink-0">
         <p className="text-sm font-semibold text-gray-900">{item.time}</p>

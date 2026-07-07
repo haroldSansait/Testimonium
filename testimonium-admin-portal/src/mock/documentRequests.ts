@@ -1,68 +1,72 @@
 import type { DocumentRequest } from '@/types';
 
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = now.toLocaleString(undefined, { month: 'short' });
+
 export const documentRequests: DocumentRequest[] = [
   {
     id: 'doc-1',
-    referenceNo: 'REQ-2023-0892',
+    referenceNo: `REQ-${currentYear}-0892`,
     parishionerName: 'Maria Clara Santos',
     documentType: 'Baptismal Certificate',
-    dateSubmitted: 'Oct 24, 2023',
+    dateSubmitted: `${currentMonth} 07, ${currentYear}`,
     status: 'Pending Review',
   },
   {
     id: 'doc-2',
-    referenceNo: 'REQ-2023-0891',
+    referenceNo: `REQ-${currentYear}-0891`,
     parishionerName: 'Juan Dela Cruz',
     documentType: 'Marriage Certificate',
-    dateSubmitted: 'Oct 23, 2023',
+    dateSubmitted: `${currentMonth} 06, ${currentYear}`,
     status: 'Processing',
   },
   {
     id: 'doc-3',
-    referenceNo: 'REQ-2023-0888',
+    referenceNo: `REQ-${currentYear}-0888`,
     parishionerName: 'Elena Reyes',
     documentType: 'Confirmation Certificate',
-    dateSubmitted: 'Oct 20, 2023',
+    dateSubmitted: `${currentMonth} 04, ${currentYear}`,
     status: 'Ready for Pickup',
   },
   {
     id: 'doc-4',
-    referenceNo: 'REQ-2023-0885',
+    referenceNo: `REQ-${currentYear}-0885`,
     parishionerName: 'Carlos Mendoza',
     documentType: 'Good Moral Character',
-    dateSubmitted: 'Oct 18, 2023',
+    dateSubmitted: `${currentMonth} 03, ${currentYear}`,
     status: 'Released',
   },
   {
     id: 'doc-5',
-    referenceNo: 'REQ-2023-0882',
+    referenceNo: `REQ-${currentYear}-0882`,
     parishionerName: 'Jose Garcia',
     documentType: 'Baptismal Certificate',
-    dateSubmitted: 'Oct 15, 2023',
+    dateSubmitted: `${currentMonth} 02, ${currentYear}`,
     status: 'Rejected',
   },
   {
     id: 'doc-6',
-    referenceNo: 'REQ-2023-0880',
+    referenceNo: `REQ-${currentYear}-0880`,
     parishionerName: 'Ana Reyes',
     documentType: 'Marriage Certificate',
-    dateSubmitted: 'Oct 12, 2023',
+    dateSubmitted: `${currentMonth} 01, ${currentYear}`,
     status: 'Needs Correction',
   },
   {
     id: 'doc-7',
-    referenceNo: 'REQ-2023-0877',
+    referenceNo: `REQ-${currentYear}-0877`,
     parishionerName: 'Roberto Santos',
     documentType: 'Baptismal Certificate',
-    dateSubmitted: 'Oct 10, 2023',
+    dateSubmitted: `${currentMonth} 01, ${currentYear}`,
     status: 'Processing',
   },
   {
     id: 'doc-8',
-    referenceNo: 'REQ-2023-0875',
+    referenceNo: `REQ-${currentYear}-0875`,
     parishionerName: 'Lourdes Magno',
     documentType: 'Confirmation Certificate',
-    dateSubmitted: 'Oct 8, 2023',
+    dateSubmitted: `${currentMonth} 01, ${currentYear}`,
     status: 'Pending Review',
   },
 ];

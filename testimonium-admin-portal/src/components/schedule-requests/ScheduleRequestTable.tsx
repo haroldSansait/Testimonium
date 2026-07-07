@@ -23,9 +23,10 @@ const eventTypeIcons: Record<EventType, React.ReactNode> = {
 
 interface ScheduleRequestTableProps {
   requests: ScheduleRequest[];
+  onViewDetails?: (req: ScheduleRequest) => void;
 }
 
-export function ScheduleRequestTable({ requests }: ScheduleRequestTableProps) {
+export function ScheduleRequestTable({ requests, onViewDetails }: ScheduleRequestTableProps) {
   if (requests.length === 0) {
     return (
       <EmptyState
@@ -78,6 +79,7 @@ export function ScheduleRequestTable({ requests }: ScheduleRequestTableProps) {
               </td>
               <td>
                 <button
+                  onClick={() => onViewDetails?.(req)}
                   className="text-sm font-medium text-crimson-700 hover:text-crimson-800 hover:underline transition-colors"
                   id={`view-sched-${req.id}`}
                   aria-label={`View schedule ${req.referenceNo}`}

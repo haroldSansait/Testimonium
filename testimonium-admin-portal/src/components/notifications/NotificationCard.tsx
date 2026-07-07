@@ -39,9 +39,10 @@ const urgencyLabels: Record<string, string> = {
 
 interface NotificationCardProps {
   notification: Notification;
+  onAction?: (notif: Notification) => void;
 }
 
-export function NotificationCard({ notification }: NotificationCardProps) {
+export function NotificationCard({ notification, onAction }: NotificationCardProps) {
   const iconBg = iconBgStyles[notification.type] ?? 'bg-gray-100 text-gray-600';
   const icon = notifIcons[notification.type] ?? notifIcons['system-update'];
 
@@ -51,9 +52,9 @@ export function NotificationCard({ notification }: NotificationCardProps) {
   return (
     <div
       className={cn(
-        'flex gap-4 p-5 bg-white border border-gray-100 border-l-4 rounded-r-lg',
+        'flex gap-4 p-5 bg-white border border-gray-100 border-l-4 rounded-r-lg shadow-sm',
         notification.leftBorderColor,
-        !notification.isRead && 'bg-white'
+        !notification.isRead && 'bg-gray-50/40'
       )}
     >
       {/* Icon */}
@@ -80,7 +81,7 @@ export function NotificationCard({ notification }: NotificationCardProps) {
             {actionTag && (
               <span
                 className={cn(
-                  'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium',
+                  'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider',
                   urgencyTagStyles[notification.urgency] ?? urgencyTagStyles.info
                 )}
               >
@@ -88,7 +89,10 @@ export function NotificationCard({ notification }: NotificationCardProps) {
               </span>
             )}
             {actionLink && (
-              <button className="text-sm font-semibold text-gray-800 hover:text-crimson-700 transition-colors underline-offset-2 hover:underline">
+              <button
+                onClick={() => onAction?.(notification)}
+                className="text-sm font-semibold text-gray-800 hover:text-crimson-700 transition-colors underline underline-offset-2 hover:no-underline"
+              >
                 {actionLink.label}
               </button>
             )}

@@ -1,7 +1,10 @@
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Bell, HelpCircle, Settings } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/utils/cn';
+import { DATA_PROVIDER } from '@/config/demo';
+import { NotificationService } from '@/services/NotificationService';
+import { useState, useEffect, useCallback } from 'react';
 
 const routeTitles: Record<string, string> = {
   '/dashboard': 'Overview',
@@ -16,16 +19,57 @@ const routeTitles: Record<string, string> = {
   '/user-management': 'User Management',
 };
 
+const modeConfig = {
+  api: {
+    label: 'API Mode',
+    sub: 'Connected to Backend',
+    bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
+    dot: 'bg-emerald-500'
+  },
+  hybrid: {
+    label: 'Hybrid Mode',
+    sub: 'Mixed Data Sources',
+    bg: 'bg-amber-50 text-amber-700 border-amber-200/60',
+    dot: 'bg-amber-500'
+  },
+  demo: {
+    label: 'Demo Mode',
+    sub: 'Using Mock Data',
+    bg: 'bg-indigo-50 text-indigo-700 border-indigo-200/60',
+    dot: 'bg-indigo-500'
+  }
+};
+
 interface NavbarProps {
   className?: string;
 }
 
 export function Navbar({ className }: NavbarProps) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const title = routeTitles[pathname] ?? 'TESTIMONIUM';
 
   const showSearchBar = pathname === '/notifications';
   const showSearchIcon = !showSearchBar && pathname !== '/calendar' && pathname !== '/notifications';
+
+  const mode = (DATA_PROVIDER || 'demo') as 'demo' | 'api' | 'hybrid';
+  const cfg = modeConfig[mode] || modeConfig.demo;
+
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const fetchUnread = useCallback(() => {
+    NotificationService.getNotifications()
+      .then((list) => {
+        setUnreadCount(list.filter((n) => !n.isRead).length);
+      })
+      .catch((err) => console.error('Failed to get notifications:', err));
+  }, []);
+
+  useEffect(() => {
+    fetchUnread();
+    window.addEventListener('notifications-updated', fetchUnread);
+    return () => window.removeEventListener('notifications-updated', fetchUnread);
+  }, [fetchUnread, pathname]);
 
   return (
     <header
@@ -34,13 +78,23 @@ export function Navbar({ className }: NavbarProps) {
         className
       )}
     >
-      {/* Page title */}
-      <h2
-        className="text-xl font-semibold text-crimson-700"
-        style={{ fontFamily: 'Playfair Display, serif' }}
-      >
-        {title}
-      </h2>
+      {/* Title & Mode Indicator */}
+      <div className="flex items-center gap-3">
+        <h2
+          className="text-xl font-semibold text-crimson-700"
+          style={{ fontFamily: 'Playfair Display, serif' }}
+        >
+          {title}
+        </h2>
+        <div className={cn(
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm",
+          cfg.bg
+        )}>
+          <span className={cn("w-2 h-2 rounded-full animate-pulse", cfg.dot)} />
+          <span className="font-semibold">{cfg.label}</span>
+          <span className="hidden sm:inline-block text-[10px] opacity-75 border-l pl-1.5 border-current/25">{cfg.sub}</span>
+        </div>
+      </div>
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
@@ -69,9 +123,12 @@ export function Navbar({ className }: NavbarProps) {
           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative"
           aria-label="Notifications"
           id="navbar-notifications"
+          onClick={() => navigate('/notifications')}
         >
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+          {unreadCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+          )}
         </button>
 
         <button

@@ -23,6 +23,10 @@ export interface DocumentRequest {
   documentType: DocumentType;
   dateSubmitted: string;
   status: DocumentStatus;
+  purpose?: string;
+  paymentStatus?: string;
+  requirements?: string[];
+  timeline?: { status: string; date: string; note?: string }[];
 }
 
 // ─── Schedule Requests ─────────────────────────────────────────────────────────
@@ -53,6 +57,11 @@ export interface ScheduleRequest {
   preferredDate: string;
   preferredTime: string;
   status: ScheduleStatus;
+  assignedPriest?: string;
+  parish?: string;
+  contactInfo?: string;
+  notes?: string;
+  timeline?: { status: string; date: string; note?: string }[];
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
@@ -131,6 +140,11 @@ export interface CalendarEvent {
   time: string;
   title: string;
   category: CalendarEventCategory;
+  parish?: string;
+  priest?: string;
+  requestor?: string;
+  status?: string;
+  description?: string;
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
@@ -167,4 +181,96 @@ export interface AdminUser {
   parish: string;
   avatarInitials: string;
   avatarColor: string;
+}
+
+// ─── Diocese Dashboard ────────────────────────────────────────────────────────
+
+export interface DioceseStat {
+  id: string;
+  label: string;
+  value: number;
+  icon: string; // lucide icon name
+  iconColor: string;
+  bgColor: string;
+}
+
+export interface DioceseActivity {
+  id: string;
+  actor: string;
+  actorInitials: string;
+  actorColor: string;
+  action: string;
+  parish: string;
+  timeAgo: string;
+}
+
+export interface DioceseNotification {
+  id: string;
+  type: 'info' | 'warning' | 'success';
+  title: string;
+  body: string;
+  timeAgo: string;
+}
+
+// ─── Parish Management ────────────────────────────────────────────────────────
+
+export type ParishType = 'Parish' | 'Quasi-Parish' | 'Mission Station';
+export type ParishStatus = 'Active' | 'Inactive' | 'Archived';
+
+export interface Parish {
+  id: string;
+  name: string;
+  type: ParishType;
+  vicariate: string;
+  priest: string;
+  secretary: string;
+  status: ParishStatus;
+  patronSaint?: string;
+  address?: string;
+  contactNumber?: string;
+  email?: string;
+}
+
+// ─── User Management ──────────────────────────────────────────────────────────
+
+export type ManagedUserRole = 'DIOCESE_COORDINATOR' | 'SECRETARY' | 'PRIEST';
+export type ManagedUserStatus = 'Active' | 'Inactive' | 'Disabled';
+
+export interface ManagedUser {
+  id: string;
+  name: string;
+  email: string;
+  role: ManagedUserRole;
+  parish: string;
+  status: ManagedUserStatus;
+  avatarInitials: string;
+  avatarColor: string;
+}
+
+// ─── Analytics ───────────────────────────────────────────────────────────────
+
+export interface SacramentStat {
+  type: 'Baptisms' | 'Confirmations' | 'Weddings' | 'Funerals';
+  count: number;
+  trend: number; // percentage change vs last period
+}
+
+export interface DocumentAnalyticsStat {
+  documentType: string;
+  requestCount: number;
+  completionRate: number; // 0-100
+  avgProcessingDays: number;
+}
+
+export interface ParishAnalyticsStat {
+  parish: string;
+  requestCount: number;
+  activeParishioners: number;
+  newRegistrations: number;
+}
+
+export interface FinancialStat {
+  label: string;
+  value: string; // formatted display string e.g. "₱12,500"
+  note: string;
 }
