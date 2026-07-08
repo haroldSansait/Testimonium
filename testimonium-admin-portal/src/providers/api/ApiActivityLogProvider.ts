@@ -16,7 +16,12 @@ interface BackendActivityLogDTO {
     id: number;
     fullName: string;
     email: string;
+    role?: string;
   } | null;
+  archivedAt?: string | null;
+  archivedBy?: number | null;
+  archivedByName?: string | null;
+  isSystem?: boolean;
 }
 
 const formatActionDescription = (action: string): string => {
@@ -34,15 +39,16 @@ export const ApiActivityLogProvider: ActivityLogProvider = {
   async getActivityLog(
     filters: ActivityLogFilters = {}
   ): Promise<PaginatedResponse<ActivityLogEntry>> {
-    const { page = 1, pageSize = 4, personnel, actionType, dateRange } = filters;
+    const { page = 1, pageSize = 4, role, actionType, dateRange, status = 'Active' } = filters;
 
     const response = await api.get<BackendPaginatedResponse<BackendActivityLogDTO>>('/activity-log', {
       params: {
         page,
         limit: pageSize,
-        ...(personnel && personnel !== 'All Personnel' ? { personnel } : {}),
+        ...(role && role !== 'All Roles' ? { role } : {}),
         ...(actionType && actionType !== 'All Actions' ? { action: actionType } : {}),
         ...(dateRange ? { dateRange } : {}),
+        status,
       },
     });
 
@@ -76,14 +82,42 @@ export const ApiActivityLogProvider: ActivityLogProvider = {
 
       const prefix = dbItem.affectedTable === 'schedules' ? 'SCH' : 'DOC';
 
+      let roleDisplay = 'Unknown';
+      if (dbItem.user) {
+        const roleObj = dbItem.user.role;
+        let userRoleName: string | undefined = undefined;
+
+        if (roleObj) {
+          if (typeof roleObj === 'object') {
+            userRoleName = (roleObj as any).roleName;
+          } else if (typeof roleObj === 'string') {
+            userRoleName = roleObj;
+          }
+        }
+
+        if (userRoleName) {
+          if (userRoleName === 'DIOCESE_COORDINATOR') roleDisplay = 'Diocese Coordinator';
+          else if (userRoleName === 'PRIEST') roleDisplay = 'Priest';
+          else if (userRoleName === 'SECRETARY') roleDisplay = 'Secretary';
+          else roleDisplay = userRoleName;
+        }
+      } else if (dbItem.isSystem) {
+        roleDisplay = 'System';
+      }
+
       return {
         id: String(dbItem.id),
         dateTime: dateTimeStr,
         personnel: name,
+        role: roleDisplay,
         avatar: { initials, bgColor: avatarBg },
         actionDescription: formatActionDescription(dbItem.action || ''),
         referenceId: dbItem.affectedRecordId ? `${prefix}-${dbItem.affectedRecordId}` : 'N/A',
         statusUpdate,
+        archivedAt: dbItem.archivedAt,
+        archivedBy: dbItem.archivedBy,
+        archivedByName: dbItem.archivedByName,
+        isSystem: dbItem.isSystem,
       };
     });
 
@@ -93,6 +127,30 @@ export const ApiActivityLogProvider: ActivityLogProvider = {
       page: response.data.pagination?.page || page,
       pageSize: response.data.pagination?.limit || pageSize,
       totalPages: response.data.pagination?.totalPages || 1,
+      active: response.data.active || 0,
+      archived: response.data.archived || 0,
     };
+  },
+
+  async archiveSelected(ids: string[]): Promise<void> {
+    const numericIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    await api.post('/activity-log/archive', { ids: numericIds });
+  },
+
+  async archiveAll(): Promise<void> {
+    await api.post('/activity-log/archive-all');
+  },
+
+  async restoreSelected(ids: string[]): Promise<void> {
+    const numericIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    await api.post('/activity-log/restore', { ids: numericIds });
+  },
+
+  async restoreAll(): Promise<void> {
+    await api.post('/activity-log/restore-all');
+  },
+
+  async purgeArchived(): Promise<void> {
+    await api.post('/activity-log/purge');
   }
 };

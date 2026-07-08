@@ -6,19 +6,6 @@ import { DATA_PROVIDER } from '@/config/demo';
 import { NotificationService } from '@/services/NotificationService';
 import { useState, useEffect, useCallback } from 'react';
 
-const routeTitles: Record<string, string> = {
-  '/dashboard': 'Overview',
-  '/document-requests': 'Document Requests',
-  '/schedule-requests': 'Schedule Requests',
-  '/calendar': 'Parish Management System',
-  '/notifications': 'Parish Management System',
-  '/activity-log': 'Activity Log',
-  // Diocese Coordinator routes (Phase 5B pages)
-  '/analytics': 'Analytics',
-  '/parish-management': 'Parish Management',
-  '/user-management': 'User Management',
-};
-
 const modeConfig = {
   api: {
     label: 'API Mode',
@@ -47,7 +34,6 @@ interface NavbarProps {
 export function Navbar({ className }: NavbarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const title = routeTitles[pathname] ?? 'TESTIMONIUM';
 
   const showSearchBar = pathname === '/notifications';
   const showSearchIcon = !showSearchBar && pathname !== '/calendar' && pathname !== '/notifications';
@@ -80,12 +66,6 @@ export function Navbar({ className }: NavbarProps) {
     >
       {/* Title & Mode Indicator */}
       <div className="flex items-center gap-3">
-        <h2
-          className="text-xl font-semibold text-crimson-700"
-          style={{ fontFamily: 'Playfair Display, serif' }}
-        >
-          {title}
-        </h2>
         <div className={cn(
           "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm",
           cfg.bg

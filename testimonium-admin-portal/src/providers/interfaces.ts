@@ -41,9 +41,10 @@ export interface ScheduleRequestFilters {
 export interface ActivityLogFilters {
   page?: number;
   pageSize?: number;
-  personnel?: string;
+  role?: string;
   actionType?: string;
   dateRange?: string;
+  status?: 'All' | 'Active' | 'Archived';
 }
 
 export interface ParishFilters {
@@ -56,6 +57,7 @@ export interface UserFilters {
   search?: string;
   role?: string;
   status?: string;
+  assignableForParishId?: string;
 }
 
 export interface AddUserPayload {
@@ -96,6 +98,11 @@ export interface CalendarProvider {
 
 export interface ActivityLogProvider {
   getActivityLog(filters: ActivityLogFilters): Promise<PaginatedResponse<ActivityLogEntry>>;
+  archiveSelected(ids: string[]): Promise<void>;
+  archiveAll(): Promise<void>;
+  restoreSelected(ids: string[]): Promise<void>;
+  restoreAll(): Promise<void>;
+  purgeArchived(): Promise<void>;
 }
 
 export interface DioceseDashboardProvider {
@@ -105,6 +112,7 @@ export interface DioceseDashboardProvider {
 }
 
 export interface AnalyticsProvider {
+  getOverviewStats(): Promise<any>;
   getSacramentStats(): Promise<SacramentStat[]>;
   getDocumentStats(): Promise<DocumentAnalyticsStat[]>;
   getParishStats(): Promise<ParishAnalyticsStat[]>;
@@ -120,9 +128,9 @@ export interface ParishProvider {
 
 export interface UserProvider {
   getUsers(filters: UserFilters): Promise<ManagedUser[]>;
-  addUser(payload: AddUserPayload): Promise<ManagedUser>;
+  addUser(payload: AddUserPayload): Promise<{ user: ManagedUser; setupLink?: string }>;
   editUser(id: string, data: Partial<ManagedUser>): Promise<ManagedUser>;
   disableUser(id: string): Promise<void>;
   enableUser(id: string): Promise<void>;
-  resetPassword(id: string): Promise<void>;
+  resetPassword(id: string): Promise<string>;
 }

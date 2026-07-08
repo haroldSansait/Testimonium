@@ -4,7 +4,8 @@ const dashboardService = new DashboardService();
 
 export const getStats = async (req, res, next) => {
   try {
-    const data = await dashboardService.getStats();
+    const parishId = req.user?.role !== "DIOCESE_COORDINATOR" ? req.user?.parish?.id : undefined;
+    const data = await dashboardService.getStats(parishId);
     return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);
@@ -13,7 +14,8 @@ export const getStats = async (req, res, next) => {
 
 export const getSchedule = async (req, res, next) => {
   try {
-    const data = await dashboardService.getSchedule();
+    const parishId = req.user?.role !== "DIOCESE_COORDINATOR" ? req.user?.parish?.id : undefined;
+    const data = await dashboardService.getSchedule(parishId);
     return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);

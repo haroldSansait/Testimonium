@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, ChevronDown, Pencil, UserX, KeyRound, X, Check, UserPlus } from 'lucide-react';
+import { Plus, ChevronDown, Pencil, UserX, KeyRound, X, Check, UserPlus, Copy, ExternalLink } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import { UserManagementService, type AddUserPayload } from '@/services/UserManagementService';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { cn } from '@/utils/cn';
@@ -409,6 +411,109 @@ function ResetPasswordModal({
   );
 }
 
+// ─── Link Success Modal ───────────────────────────────────────────────────────
+
+function LinkSuccessModal({
+  name,
+  email,
+  link,
+  isNewUser,
+  onClose,
+}: {
+  name: string;
+  email: string;
+  link: string;
+  isNewUser: boolean;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center animate-in fade-in zoom-in-95 duration-150">
+        <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+          <Check className="w-6 h-6 text-emerald-600" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
+          {isNewUser ? 'Account Provisioned' : 'Password Reset Link'}
+        </h3>
+        <p className="text-xs text-gray-400 mb-4">
+          {isNewUser
+            ? 'The account has been created in both PostgreSQL and Firebase Auth. Send the setup link below to the user.'
+            : 'A new password reset link has been generated. Send the link below to the user.'}
+        </p>
+
+        {/* User Info card */}
+        <div className="bg-gray-50 border border-gray-150 rounded-lg p-3 text-left mb-4">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">User Details</div>
+          <div className="text-sm font-bold text-gray-800 mt-1">{name}</div>
+          <div className="text-xs text-gray-500">{email}</div>
+        </div>
+
+        {/* Link container */}
+        <div className="text-left mb-6">
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+            Setup / Reset Link
+          </label>
+          <div className="relative">
+            <textarea
+              readOnly
+              value={link}
+              className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-xs font-mono text-gray-600 bg-gray-50 h-20 resize-none focus:outline-none"
+            />
+            <button
+              onClick={handleCopy}
+              className="absolute right-2 top-2 p-1.5 bg-white border border-gray-100 text-gray-500 hover:text-gray-800 rounded-md shadow-sm transition-colors"
+              title="Copy to clipboard"
+            >
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-green-600" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+          {copied && (
+            <div className="text-[10px] text-green-600 font-semibold mt-1">
+              Copied to clipboard!
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            Close
+          </button>
+          <button
+            onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}
+            className="flex items-center gap-1.5 px-4 py-2 bg-crimson-700 text-white text-sm font-semibold rounded-lg hover:bg-crimson-800 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Open Link
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Toast notification ───────────────────────────────────────────────────────
 
 function Toast({ message, type }: { message: string; type: 'success' | 'error' }) {
@@ -433,7 +538,8 @@ type ModalState =
   | { type: 'edit'; user: ManagedUser }
   | { type: 'disable'; user: ManagedUser }
   | { type: 'enable'; user: ManagedUser }
-  | { type: 'resetPwd'; user: ManagedUser };
+  | { type: 'resetPwd'; user: ManagedUser }
+  | { type: 'linkSuccess'; name: string; email: string; link: string; isNewUser: boolean };
 
 interface ToastState {
   message: string;
@@ -448,6 +554,8 @@ export function UserManagementPage() {
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Auto-dismiss toast after 3 s
   useEffect(() => {
@@ -460,8 +568,17 @@ export function UserManagementPage() {
     setToast({ message, type });
 
   const fetchUsers = useCallback(async () => {
-    const result = await UserManagementService.getUsers({ search, role, status });
-    setUsers(result);
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await UserManagementService.getUsers({ search, role, status });
+      setUsers(result);
+    } catch (err: any) {
+      console.error('Failed to load users:', err);
+      setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [search, role, status]);
 
   useEffect(() => {
@@ -473,9 +590,19 @@ export function UserManagementPage() {
   const handleAddSave = async (form: UserFormData) => {
     setIsSaving(true);
     try {
-      await UserManagementService.addUser(form as AddUserPayload);
+      const result = await UserManagementService.addUser(form as AddUserPayload);
       setModal({ type: 'none' });
-      showToast('User added successfully.');
+      if (result.setupLink) {
+        setModal({
+          type: 'linkSuccess',
+          name: result.user.name,
+          email: result.user.email,
+          link: result.setupLink,
+          isNewUser: true,
+        });
+      } else {
+        showToast('User added successfully.');
+      }
       void fetchUsers();
     } catch {
       showToast('Failed to add user.', 'error');
@@ -542,9 +669,20 @@ export function UserManagementPage() {
   const handleResetConfirm = async (userId: string) => {
     setIsSaving(true);
     try {
-      await UserManagementService.resetPassword(userId);
+      const resetLink = await UserManagementService.resetPassword(userId);
+      const user = users.find((u) => u.id === userId);
       setModal({ type: 'none' });
-      showToast('Password reset link sent.');
+      if (resetLink && user) {
+        setModal({
+          type: 'linkSuccess',
+          name: user.name,
+          email: user.email,
+          link: resetLink,
+          isNewUser: false,
+        });
+      } else {
+        showToast('Password reset link sent.');
+      }
     } catch {
       showToast('Failed to send reset link.', 'error');
     } finally {
@@ -614,12 +752,17 @@ export function UserManagementPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {users.length === 0 ? (
-          <EmptyState title="No users found" description="Try adjusting your search or filter criteria." />
-        ) : (
-          <div className="overflow-x-auto">
+      {/* Content */}
+      {isLoading ? (
+        <LoadingState message="Loading users..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={fetchUsers} />
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {users.length === 0 ? (
+            <EmptyState title="No users found" description="Try adjusting your search or filter criteria." />
+          ) : (
+            <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
@@ -696,6 +839,7 @@ export function UserManagementPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Modals ── */}
 
@@ -741,6 +885,16 @@ export function UserManagementPage() {
           onConfirm={() => handleResetConfirm(modal.user.id)}
           onClose={() => setModal({ type: 'none' })}
           isSaving={isSaving}
+        />
+      )}
+
+      {modal.type === 'linkSuccess' && (
+        <LinkSuccessModal
+          name={modal.name}
+          email={modal.email}
+          link={modal.link}
+          isNewUser={modal.isNewUser}
+          onClose={() => setModal({ type: 'none' })}
         />
       )}
 

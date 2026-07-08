@@ -22,10 +22,14 @@ export class DocumentRequestRepository {
    * @param {string|undefined} opts.status   - DocumentRequestStatus enum value
    * @param {string|undefined} opts.documentType - DocumentType enum value
    */
-  async findMany({ page = 1, limit = 10, search, status, documentType } = {}) {
+  async findMany({ page = 1, limit = 10, search, status, documentType, parishId } = {}) {
     const skip = (page - 1) * limit;
 
     const where = {};
+
+    if (parishId) {
+      where.parishId = parseInt(parishId, 10);
+    }
 
     if (status) {
       where.status = status;
@@ -58,11 +62,20 @@ export class DocumentRequestRepository {
 
   /**
    * Returns dashboard stat counts across all document requests.
+   * @param {number|undefined} parishId
    */
-  async countStats() {
+  async countStats(parishId) {
+    const pendingWhere = { status: "PENDING" };
+    const pickupWhere = { status: "READY_FOR_PICKUP" };
+
+    if (parishId) {
+      pendingWhere.parishId = parseInt(parishId, 10);
+      pickupWhere.parishId = parseInt(parishId, 10);
+    }
+
     const [pending, readyForPickup] = await Promise.all([
-      prisma.documentRequest.count({ where: { status: "PENDING" } }),
-      prisma.documentRequest.count({ where: { status: "READY_FOR_PICKUP" } }),
+      prisma.documentRequest.count({ where: pendingWhere }),
+      prisma.documentRequest.count({ where: pickupWhere }),
     ]);
 
     return { pending, readyForPickup };

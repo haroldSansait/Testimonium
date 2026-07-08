@@ -27,6 +27,7 @@ const parsePrivateKey = (key) => {
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
+  enableDevAuth: process.env.ENABLE_DEV_AUTH === "true",
   port: Number(process.env.PORT ?? 5000),
   databaseUrl: getDatabaseUrl(),
   corsOrigins: ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],

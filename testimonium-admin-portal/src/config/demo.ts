@@ -9,8 +9,9 @@ export const HYBRID_CONFIG: Record<string, ProviderMode> = {
   schedules: 'api',
   calendar: 'api',
   activityLog: 'api',
-  dioceseDashboard: 'demo',
-  analytics: 'demo',
-  parishes: 'demo',
-  users: 'demo',
+  dioceseDashboard: 'api',
+  analytics: 'api',
+  parishes: 'api',
+  users: 'api',
+  financialAnalytics: 'demo',
 };

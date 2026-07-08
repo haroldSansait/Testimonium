@@ -1,35 +1,36 @@
+import api from '@/api/api';
 import type { UserProvider, UserFilters, AddUserPayload } from '../interfaces';
 import type { ManagedUser } from '@/types';
-import { DemoUserProvider } from '../demo/DemoUserProvider';
+import type { ApiResponseEnvelope } from '@/types/api';
 
 export const ApiUserProvider: UserProvider = {
   async getUsers(filters: UserFilters = {}): Promise<ManagedUser[]> {
-    console.warn('[ApiUserProvider] getUsers is not yet implemented on the backend. Falling back to Demo provider.');
-    return DemoUserProvider.getUsers(filters);
+    const response = await api.get<ApiResponseEnvelope<ManagedUser[]>>('/users', {
+      params: filters,
+    });
+    return response.data.data;
   },
 
-  async addUser(payload: AddUserPayload): Promise<ManagedUser> {
-    console.warn('[ApiUserProvider] addUser is not yet implemented on the backend. Falling back to Demo provider.');
-    return DemoUserProvider.addUser(payload);
+  async addUser(payload: AddUserPayload): Promise<{ user: ManagedUser; setupLink?: string }> {
+    const response = await api.post<ApiResponseEnvelope<{ user: ManagedUser; setupLink?: string }>>('/users', payload);
+    return response.data.data;
   },
 
   async editUser(id: string, data: Partial<ManagedUser>): Promise<ManagedUser> {
-    console.warn('[ApiUserProvider] editUser is not yet implemented on the backend. Falling back to Demo provider.');
-    return DemoUserProvider.editUser(id, data);
+    const response = await api.put<ApiResponseEnvelope<ManagedUser>>(`/users/${id}`, data);
+    return response.data.data;
   },
 
   async disableUser(id: string): Promise<void> {
-    console.warn('[ApiUserProvider] disableUser is not yet implemented on the backend. Falling back to Demo provider.');
-    return DemoUserProvider.disableUser(id);
+    await api.post(`/users/${id}/disable`);
   },
 
   async enableUser(id: string): Promise<void> {
-    console.warn('[ApiUserProvider] enableUser is not yet implemented on the backend. Falling back to Demo provider.');
-    return DemoUserProvider.enableUser(id);
+    await api.post(`/users/${id}/enable`);
   },
 
-  async resetPassword(id: string): Promise<void> {
-    console.warn('[ApiUserProvider] resetPassword is not yet implemented on the backend. Falling back to Demo provider.');
-    return DemoUserProvider.resetPassword(id);
+  async resetPassword(id: string): Promise<string> {
+    const response = await api.post<ApiResponseEnvelope<{ resetLink: string }>>(`/users/${id}/reset-password`);
+    return response.data.data.resetLink;
   },
 };

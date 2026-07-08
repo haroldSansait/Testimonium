@@ -19,11 +19,15 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
   totalPages: number;
+  active?: number;
+  archived?: number;
 }
 
 export interface BackendPaginatedResponse<T> {
   success: boolean;
   data: T[];
+  active?: number;
+  archived?: number;
   pagination: {
     page: number;
     limit: number;

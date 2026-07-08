@@ -5,12 +5,14 @@ const scheduleService = new ScheduleService();
 export const list = async (req, res, next) => {
   try {
     const { page, limit, search, status } = req.query;
+    const parishId = req.user.role !== "DIOCESE_COORDINATOR" ? req.user.parish?.id : undefined;
 
     const { data, total } = await scheduleService.list({
       page,
       limit,
       search,
       status,
+      parishId,
     });
 
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);

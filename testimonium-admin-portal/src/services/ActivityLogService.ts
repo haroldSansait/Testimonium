@@ -5,9 +5,10 @@ import type { PaginatedResponse } from '@/types/api';
 export interface ActivityLogFilters {
   page?: number;
   pageSize?: number;
-  personnel?: string;
+  role?: string;
   actionType?: string;
   dateRange?: string;
+  status?: 'All' | 'Active' | 'Archived';
 }
 
 export const ActivityLogService = {
@@ -16,4 +17,24 @@ export const ActivityLogService = {
   ): Promise<PaginatedResponse<ActivityLogEntry>> {
     return providerFactory.getActivityLogProvider().getActivityLog(filters);
   },
+
+  async archiveSelected(ids: string[]): Promise<void> {
+    return providerFactory.getActivityLogProvider().archiveSelected(ids);
+  },
+
+  async archiveAll(): Promise<void> {
+    return providerFactory.getActivityLogProvider().archiveAll();
+  },
+
+  async restoreSelected(ids: string[]): Promise<void> {
+    return providerFactory.getActivityLogProvider().restoreSelected(ids);
+  },
+
+  async restoreAll(): Promise<void> {
+    return providerFactory.getActivityLogProvider().restoreAll();
+  },
+
+  async purgeArchived(): Promise<void> {
+    return providerFactory.getActivityLogProvider().purgeArchived();
+  }
 };

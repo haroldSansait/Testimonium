@@ -3,9 +3,12 @@ import { Plus, ChevronDown, Pencil, Archive, X, Check, Church } from 'lucide-rea
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import { NewParishWizard, type WizardData } from '@/components/parish-management/NewParishWizard';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { UserManagementService } from '@/services/UserManagementService';
+import { SearchableDropdown, type DropdownOption } from '@/components/ui/SearchableDropdown';
 import { cn } from '@/utils/cn';
 import type { Parish, ParishType, ParishStatus } from '@/types';
 
@@ -105,7 +108,9 @@ interface EditParishFormData {
   type: ParishType | '';
   vicariate: string;
   priest: string;
+  priestId: string | null;
   secretary: string;
+  secretaryId: string | null;
   status: ParishStatus;
   patronSaint: string;
   address: string;
@@ -126,7 +131,9 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
     type: parish.type,
     vicariate: parish.vicariate,
     priest: parish.priest,
+    priestId: parish.priestId ?? null,
     secretary: parish.secretary,
+    secretaryId: parish.secretaryId ?? null,
     status: parish.status,
     patronSaint: parish.patronSaint ?? '',
     address: parish.address ?? '',
@@ -134,12 +141,81 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
     email: parish.email ?? '',
   });
 
+  const [priests, setPriests] = useState<DropdownOption[]>([]);
+  const [secretaries, setSecretaries] = useState<DropdownOption[]>([]);
+  const [isLoadingStaff, setIsLoadingStaff] = useState(true);
+  const [staffError, setStaffError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadStaff() {
+      setIsLoadingStaff(true);
+      setStaffError(null);
+      try {
+        const [priestsList, secretariesList] = await Promise.all([
+          UserManagementService.getUsers({ role: 'PRIEST', assignableForParishId: parish.id }),
+          UserManagementService.getUsers({ role: 'SECRETARY', assignableForParishId: parish.id }),
+        ]);
+
+        if (!active) return;
+
+        const priestOptions: DropdownOption[] = priestsList.map((u) => ({
+          id: u.id,
+          name: u.name,
+          secondaryText: u.email,
+          badge: u.status !== 'Active' ? `(${u.status})` : undefined,
+        }));
+
+        const secretaryOptions: DropdownOption[] = secretariesList.map((u) => ({
+          id: u.id,
+          name: u.name,
+          secondaryText: u.email,
+          badge: u.status !== 'Active' ? `(${u.status})` : undefined,
+        }));
+
+        // Preserve current selection: ensure current priest is in options even if inactive/unassigned
+        if (parish.priestId && !priestOptions.some((opt) => opt.id === parish.priestId)) {
+          priestOptions.push({
+            id: parish.priestId,
+            name: parish.priestName || parish.priest || 'Assigned Priest',
+            badge: '(Currently Assigned)',
+          });
+        }
+
+        // Preserve current selection: ensure current secretary is in options even if inactive/unassigned
+        if (parish.secretaryId && !secretaryOptions.some((opt) => opt.id === parish.secretaryId)) {
+          secretaryOptions.push({
+            id: parish.secretaryId,
+            name: parish.secretaryName || parish.secretary || 'Assigned Secretary',
+            badge: '(Currently Assigned)',
+          });
+        }
+
+        setPriests(priestOptions);
+        setSecretaries(secretaryOptions);
+      } catch (err: any) {
+        console.error('Failed to load assignable staff:', err);
+        if (active) {
+          setStaffError('Failed to load parish staff directory');
+        }
+      } finally {
+        if (active) {
+          setIsLoadingStaff(false);
+        }
+      }
+    }
+    void loadStaff();
+    return () => {
+      active = false;
+    };
+  }, [parish.id, parish.priestId, parish.priestName, parish.priest, parish.secretaryId, parish.secretaryName, parish.secretary]);
+
   const set =
     (field: keyof EditParishFormData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const canSubmit = Boolean(form.name && form.type && form.vicariate && form.priest && form.secretary);
+  const canSubmit = Boolean(form.name && form.type && form.vicariate) && !isLoadingStaff;
 
   const handleSave = async () => {
     if (!form.type) return;
@@ -147,8 +223,8 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
       name: form.name,
       type: form.type as ParishType,
       vicariate: form.vicariate,
-      priest: form.priest,
-      secretary: form.secretary,
+      priestId: form.priestId,
+      secretaryId: form.secretaryId,
       status: form.status,
       patronSaint: form.patronSaint || undefined,
       address: form.address || undefined,
@@ -191,6 +267,12 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
 
         {/* Form */}
         <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4">
+          {staffError && (
+            <div className="text-xs text-red-600 font-medium bg-red-50 border border-red-150 rounded-lg p-3">
+              {staffError}
+            </div>
+          )}
+
           <FormField label="Parish Name" id="ep-name" required>
             <input id="ep-name" className={inputCls} value={form.name} onChange={set('name')} />
           </FormField>
@@ -221,11 +303,29 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
           </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Assigned Priest" id="ep-priest" required>
-              <input id="ep-priest" className={inputCls} placeholder="Fr. Name" value={form.priest} onChange={set('priest')} />
+            <FormField label="Assigned Priest" id="ep-priest">
+              <SearchableDropdown
+                id="ep-priest"
+                options={priests}
+                selectedValue={form.priestId}
+                onChange={(val) => setForm((prev) => ({ ...prev, priestId: val }))}
+                placeholder="Select priest..."
+                searchPlaceholder="Search priests..."
+                emptyMessage="No available priests"
+                loading={isLoadingStaff}
+              />
             </FormField>
-            <FormField label="Assigned Secretary" id="ep-secretary" required>
-              <input id="ep-secretary" className={inputCls} placeholder="Full Name" value={form.secretary} onChange={set('secretary')} />
+            <FormField label="Assigned Secretary" id="ep-secretary">
+              <SearchableDropdown
+                id="ep-secretary"
+                options={secretaries}
+                selectedValue={form.secretaryId}
+                onChange={(val) => setForm((prev) => ({ ...prev, secretaryId: val }))}
+                placeholder="Select secretary..."
+                searchPlaceholder="Search secretaries..."
+                emptyMessage="No available secretaries"
+                loading={isLoadingStaff}
+              />
             </FormField>
           </div>
 
@@ -307,6 +407,8 @@ export function ParishManagementPage() {
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Auto-dismiss toast after 3 s
   useEffect(() => {
@@ -319,8 +421,17 @@ export function ParishManagementPage() {
     setToast({ message, type });
 
   const fetchParishes = useCallback(async () => {
-    const result = await ParishManagementService.getParishes({ search, type, status });
-    setParishes(result);
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await ParishManagementService.getParishes({ search, type, status });
+      setParishes(result);
+    } catch (err: any) {
+      console.error('Failed to load parishes:', err);
+      setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [search, type, status]);
 
   useEffect(() => {
@@ -446,62 +557,68 @@ export function ParishManagementPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {parishes.length === 0 ? (
-          <EmptyState title="No parishes found" description="Try adjusting your search or filter criteria." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Parish Name</th>
-                  <th>Type</th>
-                  <th>Assigned Priest</th>
-                  <th>Assigned Secretary</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parishes.map((parish) => (
-                  <tr key={parish.id}>
-                    <td className="font-semibold text-gray-900">{parish.name}</td>
-                    <td><ParishTypeBadge type={parish.type} /></td>
-                    <td className="text-gray-700">{parish.priest}</td>
-                    <td className="text-gray-700">{parish.secretary}</td>
-                    <td><ParishStatusBadge status={parish.status} /></td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <button
-                          id={`edit-parish-${parish.id}`}
-                          onClick={() => setModal({ type: 'edit', parish })}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                          aria-label={`Edit ${parish.name}`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Edit
-                        </button>
-                        {parish.status !== 'Archived' && (
-                          <button
-                            id={`archive-parish-${parish.id}`}
-                            onClick={() => void handleArchive(parish)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-md hover:bg-amber-100 transition-colors"
-                            aria-label={`Archive ${parish.name}`}
-                          >
-                            <Archive className="w-3.5 h-3.5" />
-                            Archive
-                          </button>
-                        )}
-                      </div>
-                    </td>
+      {/* Content */}
+      {isLoading ? (
+        <LoadingState message="Loading parishes..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={fetchParishes} />
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {parishes.length === 0 ? (
+            <EmptyState title="No parishes found" description="Try adjusting your search or filter criteria." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Parish Name</th>
+                    <th>Type</th>
+                    <th>Assigned Priest</th>
+                    <th>Assigned Secretary</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {parishes.map((parish) => (
+                    <tr key={parish.id}>
+                      <td className="font-semibold text-gray-900">{parish.name}</td>
+                      <td><ParishTypeBadge type={parish.type} /></td>
+                      <td className="text-gray-700">{parish.priest}</td>
+                      <td className="text-gray-700">{parish.secretary}</td>
+                      <td><ParishStatusBadge status={parish.status} /></td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <button
+                            id={`edit-parish-${parish.id}`}
+                            onClick={() => setModal({ type: 'edit', parish })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                            aria-label={`Edit ${parish.name}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            Edit
+                          </button>
+                          {parish.status !== 'Archived' && (
+                            <button
+                              id={`archive-parish-${parish.id}`}
+                              onClick={() => void handleArchive(parish)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-md hover:bg-amber-100 transition-colors"
+                              aria-label={`Archive ${parish.name}`}
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                              Archive
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Modals ── */}
 

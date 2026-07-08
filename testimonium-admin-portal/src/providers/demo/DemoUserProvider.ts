@@ -1,13 +1,33 @@
 import type { UserProvider, UserFilters, AddUserPayload } from '../interfaces';
 import type { ManagedUser } from '@/types';
 import { managedUsers as mockUsers } from '@/mock/managedUsers';
+import { parishes as mockParishes } from '@/mock/parishes';
 
 let store: ManagedUser[] = [...mockUsers];
 
 export const DemoUserProvider: UserProvider = {
   async getUsers(filters: UserFilters = {}): Promise<ManagedUser[]> {
-    const { search = '', role = 'all', status = 'all' } = filters;
+    const { search = '', role = 'all', status = 'all', assignableForParishId } = filters;
     let result = [...store];
+
+    if (role !== 'all') {
+      result = result.filter((u) => u.role === role);
+    }
+
+    if (assignableForParishId !== undefined) {
+      const targetParish = mockParishes.find(p => p.id === assignableForParishId);
+      const targetParishName = targetParish ? targetParish.name : '';
+
+      result = result.filter((u) => {
+        const isActiveAndUnassigned = u.status === 'Active' && (!u.parish || u.parish === 'None' || u.parish === '');
+        const isCurrentlyAssigned = Boolean(targetParishName && u.parish === targetParishName);
+        return isActiveAndUnassigned || isCurrentlyAssigned;
+      });
+    } else {
+      if (status !== 'all') {
+        result = result.filter((u) => u.status === status);
+      }
+    }
 
     if (search) {
       const q = search.toLowerCase();
@@ -18,17 +38,11 @@ export const DemoUserProvider: UserProvider = {
           u.parish.toLowerCase().includes(q)
       );
     }
-    if (role !== 'all') {
-      result = result.filter((u) => u.role === role);
-    }
-    if (status !== 'all') {
-      result = result.filter((u) => u.status === status);
-    }
 
     return result;
   },
 
-  async addUser(payload: AddUserPayload): Promise<ManagedUser> {
+  async addUser(payload: AddUserPayload): Promise<{ user: ManagedUser; setupLink?: string }> {
     const initials = payload.name
       .split(' ')
       .slice(0, 2)
@@ -45,7 +59,10 @@ export const DemoUserProvider: UserProvider = {
       avatarColor,
     };
     store = [newUser, ...store];
-    return newUser;
+    return {
+      user: newUser,
+      setupLink: `https://demo.testimonium.org/__/auth/action?mode=resetPassword&oobCode=demo-setup-${newUser.email}`,
+    };
   },
 
   async editUser(id: string, data: Partial<ManagedUser>): Promise<ManagedUser> {
@@ -65,8 +82,8 @@ export const DemoUserProvider: UserProvider = {
     return Promise.resolve();
   },
 
-  async resetPassword(id: string): Promise<void> {
+  async resetPassword(id: string): Promise<string> {
     console.log(`[DemoUserProvider] Password reset triggered for user ${id}`);
-    return Promise.resolve();
+    return Promise.resolve(`https://demo.testimonium.org/__/auth/action?mode=resetPassword&oobCode=demo-reset-code-${id}`);
   },
 };

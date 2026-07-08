@@ -1,20 +1,27 @@
+import api from '@/api/api';
 import type { AnalyticsProvider } from '../interfaces';
-import { sacramentStats, documentStats, parishStats, financialStats } from '@/mock/analytics';
+import type { SacramentStat, DocumentAnalyticsStat, ParishAnalyticsStat, FinancialStat } from '@/types';
+import type { ApiResponseEnvelope } from '@/types/api';
+import { financialStats } from '@/mock/analytics';
 
 export const ApiAnalyticsProvider: AnalyticsProvider = {
-  async getSacramentStats() {
-    console.warn('[ApiAnalyticsProvider] getSacramentStats is not yet implemented on the backend. Falling back to mock data.');
-    return [...sacramentStats];
+  async getOverviewStats(): Promise<any> {
+    const response = await api.get<ApiResponseEnvelope<any>>('/analytics/overview');
+    return response.data.data;
   },
-  async getDocumentStats() {
-    console.warn('[ApiAnalyticsProvider] getDocumentStats is not yet implemented on the backend. Falling back to mock data.');
-    return [...documentStats];
+  async getSacramentStats(): Promise<SacramentStat[]> {
+    const response = await api.get<ApiResponseEnvelope<SacramentStat[]>>('/analytics/sacraments');
+    return response.data.data;
   },
-  async getParishStats() {
-    console.warn('[ApiAnalyticsProvider] getParishStats is not yet implemented on the backend. Falling back to mock data.');
-    return [...parishStats];
+  async getDocumentStats(): Promise<DocumentAnalyticsStat[]> {
+    const response = await api.get<ApiResponseEnvelope<DocumentAnalyticsStat[]>>('/analytics/documents');
+    return response.data.data;
   },
-  async getFinancialStats() {
+  async getParishStats(): Promise<ParishAnalyticsStat[]> {
+    const response = await api.get<ApiResponseEnvelope<ParishAnalyticsStat[]>>('/analytics/parishes');
+    return response.data.data;
+  },
+  async getFinancialStats(): Promise<FinancialStat[]> {
     console.warn('[ApiAnalyticsProvider] getFinancialStats is not yet implemented on the backend. Falling back to mock data.');
     return [...financialStats];
   }

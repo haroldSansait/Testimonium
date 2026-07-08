@@ -1,6 +1,8 @@
 export const notFoundHandler = (req, res) => {
   res.status(404).json({
+    success: false,
     message: `TESTIMONIUM endpoint not found: ${req.method} ${req.originalUrl}`,
+    errors: [],
   });
 };
 
@@ -12,9 +14,11 @@ export const errorHandler = (err, _req, res, _next) => {
   }
 
   res.status(statusCode).json({
+    success: false,
     message:
       statusCode >= 500
         ? "TESTIMONIUM encountered an internal server error."
         : err.message,
+    errors: err.errors || [],
   });
 };

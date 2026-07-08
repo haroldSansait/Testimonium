@@ -1,54 +1,121 @@
 import { prisma } from "../config/db.js";
 
-const listInclude = {
-  user: {
-    select: { id: true, fullName: true, email: true },
-  },
-};
-
 export class ActivityLogRepository {
   /**
    * Paginated list of activity logs with optional filters.
-   * @param {object} opts
-   * @param {number} opts.page
-   * @param {number} opts.limit
-   * @param {string|undefined} opts.personnelName - searches related user's fullName
-   * @param {string|undefined} opts.action        - partial match on action description
-   * @param {string|undefined} opts.startDate     - ISO date string (inclusive)
-   * @param {string|undefined} opts.endDate       - ISO date string (inclusive)
    */
-  async findMany({ page = 1, limit = 10, personnelName, action, startDate, endDate } = {}) {
+  async findMany({
+    page = 1,
+    limit = 10,
+    personnelName,
+    action,
+    startDate,
+    endDate,
+    parishId,
+    includeArchived = false,
+    archivedOnly = false,
+    status = "Active",
+    role,
+  } = {}) {
     const skip = (page - 1) * limit;
+    const andConditions = [];
 
-    const where = {};
-
-    if (personnelName) {
-      where.user = {
-        fullName: { contains: personnelName, mode: "insensitive" },
-      };
+    if (personnelName || parishId || role) {
+      const userCondition = {};
+      if (personnelName) {
+        userCondition.fullName = { contains: personnelName, mode: "insensitive" };
+      }
+      if (parishId) {
+        userCondition.parishId = parseInt(parishId, 10);
+      }
+      if (role && role !== "All Roles") {
+        let prismaRole = role;
+        if (role === "Diocese Coordinator") prismaRole = "DIOCESE_COORDINATOR";
+        else if (role === "Priest") prismaRole = "PRIEST";
+        else if (role === "Secretary") prismaRole = "SECRETARY";
+        userCondition.role = {
+          roleName: prismaRole,
+        };
+      }
+      andConditions.push({ user: userCondition });
     }
 
     if (action) {
-      where.action = { contains: action, mode: "insensitive" };
+      if (action === "Staff Assignment") {
+        andConditions.push({
+          OR: [
+            { action: { contains: "Priest", mode: "insensitive" } },
+            { action: { contains: "Secretary", mode: "insensitive" } },
+          ],
+        });
+      } else if (action === "Authentication") {
+        andConditions.push({
+          OR: [
+            { action: { contains: "Login", mode: "insensitive" } },
+            { action: { contains: "Logout", mode: "insensitive" } },
+          ],
+        });
+      } else if (action === "Activity Logs") {
+        andConditions.push({
+          OR: [
+            { action: { contains: "archived", mode: "insensitive" } },
+            { action: { contains: "restored", mode: "insensitive" } },
+            { action: { contains: "purged", mode: "insensitive" } },
+          ],
+        });
+      } else if (action === "Document Management") {
+        andConditions.push({
+          OR: [
+            { action: { contains: "document", mode: "insensitive" } },
+            { action: { contains: "schedule", mode: "insensitive" } },
+          ],
+        });
+      } else if (action === "User Management") {
+        andConditions.push({
+          OR: [
+            { action: { contains: "User", mode: "insensitive" } },
+            { action: { contains: "Reset", mode: "insensitive" } },
+          ],
+        });
+      } else if (action === "Parish Management") {
+        andConditions.push({
+          action: { contains: "Parish", mode: "insensitive" },
+        });
+      } else {
+        andConditions.push({ action: { contains: action, mode: "insensitive" } });
+      }
     }
 
     if (startDate || endDate) {
-      where.createdAt = {};
+      const dateCondition = {};
       if (startDate) {
-        where.createdAt.gte = new Date(startDate);
+        dateCondition.gte = new Date(startDate);
       }
       if (endDate) {
-        // Include the entire end date by moving to start of next day
         const end = new Date(endDate);
         end.setDate(end.getDate() + 1);
-        where.createdAt.lt = end;
+        dateCondition.lt = end;
       }
+      andConditions.push({ createdAt: dateCondition });
     }
+
+    // Soft archive filters
+    if (archivedOnly || status === "Archived") {
+      andConditions.push({ archivedAt: { not: null } });
+    } else if (status === "Active" && !includeArchived) {
+      andConditions.push({ archivedAt: null });
+    }
+
+    const where = andConditions.length > 0 ? { AND: andConditions } : {};
 
     const [data, total] = await Promise.all([
       prisma.activityLog.findMany({
         where,
-        include: listInclude,
+        include: {
+          user: {
+            select: { id: true, fullName: true, email: true, role: true },
+          },
+        },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -57,5 +124,103 @@ export class ActivityLogRepository {
     ]);
 
     return { data, total };
+  }
+
+  async create({ userId, action, isSystem = false }) {
+    return prisma.activityLog.create({
+      data: {
+        userId,
+        action,
+        isSystem,
+      },
+    });
+  }
+
+  async archiveMany(ids, actorId) {
+    const numericIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    return prisma.activityLog.updateMany({
+      where: {
+        id: { in: numericIds },
+        isSystem: false,
+        NOT: [
+          { action: { contains: "Initial database migration", mode: "insensitive" } },
+          { action: { contains: "System initialization", mode: "insensitive" } },
+          { action: { contains: "First Diocese Coordinator", mode: "insensitive" } },
+        ],
+      },
+      data: {
+        archivedAt: new Date(),
+        archivedBy: actorId,
+      },
+    });
+  }
+
+  async archiveAll(actorId) {
+    return prisma.activityLog.updateMany({
+      where: {
+        archivedAt: null,
+        isSystem: false,
+        NOT: [
+          { action: { contains: "Initial database migration", mode: "insensitive" } },
+          { action: { contains: "System initialization", mode: "insensitive" } },
+          { action: { contains: "First Diocese Coordinator", mode: "insensitive" } },
+        ],
+      },
+      data: {
+        archivedAt: new Date(),
+        archivedBy: actorId,
+      },
+    });
+  }
+
+  async restoreMany(ids) {
+    const numericIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    return prisma.activityLog.updateMany({
+      where: {
+        id: { in: numericIds },
+      },
+      data: {
+        archivedAt: null,
+        archivedBy: null,
+      },
+    });
+  }
+
+  async restoreAll() {
+    return prisma.activityLog.updateMany({
+      where: {
+        archivedAt: { not: null },
+      },
+      data: {
+        archivedAt: null,
+        archivedBy: null,
+      },
+    });
+  }
+
+  async countActive() {
+    return prisma.activityLog.count({
+      where: {
+        archivedAt: null,
+      },
+    });
+  }
+
+  async countArchived() {
+    return prisma.activityLog.count({
+      where: {
+        archivedAt: { not: null },
+      },
+    });
+  }
+
+  async purgeArchived(retentionDays) {
+    const dateThreshold = new Date();
+    dateThreshold.setDate(dateThreshold.getDate() - retentionDays);
+    return prisma.activityLog.deleteMany({
+      where: {
+        archivedAt: { lte: dateThreshold },
+      },
+    });
   }
 }

@@ -71,7 +71,25 @@ export const providerFactory = {
     return resolveProvider('dioceseDashboard', DemoDioceseDashboardProvider, ApiDioceseDashboardProvider);
   },
   getAnalyticsProvider(): AnalyticsProvider {
-    return resolveProvider('analytics', DemoAnalyticsProvider, ApiAnalyticsProvider);
+    const demo = DemoAnalyticsProvider;
+    const api = ApiAnalyticsProvider;
+    return {
+      getOverviewStats: () => {
+        return resolveProvider('analytics', demo, api).getOverviewStats();
+      },
+      getSacramentStats: () => {
+        return resolveProvider('analytics', demo, api).getSacramentStats();
+      },
+      getDocumentStats: () => {
+        return resolveProvider('analytics', demo, api).getDocumentStats();
+      },
+      getParishStats: () => {
+        return resolveProvider('analytics', demo, api).getParishStats();
+      },
+      getFinancialStats: () => {
+        return resolveProvider('financialAnalytics', demo, api).getFinancialStats();
+      }
+    };
   },
   getParishProvider(): ParishProvider {
     return resolveProvider('parishes', DemoParishProvider, ApiParishProvider);

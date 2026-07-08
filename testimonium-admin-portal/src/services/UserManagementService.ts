@@ -5,6 +5,7 @@ export interface UserFilters {
   search?: string;
   role?: string;
   status?: string;
+  assignableForParishId?: string;
 }
 
 export interface AddUserPayload {
@@ -19,7 +20,7 @@ export const UserManagementService = {
     return providerFactory.getUserProvider().getUsers(filters);
   },
 
-  async addUser(payload: AddUserPayload): Promise<ManagedUser> {
+  async addUser(payload: AddUserPayload): Promise<{ user: ManagedUser; setupLink?: string }> {
     return providerFactory.getUserProvider().addUser(payload);
   },
 
@@ -35,7 +36,7 @@ export const UserManagementService = {
     return providerFactory.getUserProvider().enableUser(id);
   },
 
-  async resetPassword(id: string): Promise<void> {
+  async resetPassword(id: string): Promise<string> {
     return providerFactory.getUserProvider().resetPassword(id);
   },
 };

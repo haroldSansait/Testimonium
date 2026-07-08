@@ -7,6 +7,10 @@ import type {
 } from '@/types';
 
 export const AnalyticsService = {
+  async getOverviewStats(): Promise<any> {
+    return providerFactory.getAnalyticsProvider().getOverviewStats();
+  },
+
   async getSacramentStats(): Promise<SacramentStat[]> {
     return providerFactory.getAnalyticsProvider().getSacramentStats();
   },

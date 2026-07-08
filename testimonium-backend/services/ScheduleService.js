@@ -13,7 +13,7 @@ export class ScheduleService {
    * @param {string|undefined} opts.search
    * @param {string|undefined} opts.status
    */
-  async list({ page = 1, limit = 10, search, status } = {}) {
+  async list({ page = 1, limit = 10, search, status, parishId } = {}) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
@@ -22,6 +22,7 @@ export class ScheduleService {
       limit: parsedLimit,
       search,
       status,
+      parishId,
     });
   }
 }

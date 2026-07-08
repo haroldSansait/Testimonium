@@ -165,10 +165,15 @@ export interface ActivityLogEntry {
   id: string;
   dateTime: string; // display string e.g. "Oct 24, 2023 14:30 PM"
   personnel: string;
+  role?: string;
   avatar: PersonnelAvatar;
   actionDescription: string;
   referenceId: string;
   statusUpdate: ActivityStatus;
+  archivedAt?: string | null;
+  archivedBy?: number | null;
+  archivedByName?: string | null;
+  isSystem?: boolean;
 }
 
 // ─── User / Auth ─────────────────────────────────────────────────────────────
@@ -223,7 +228,11 @@ export interface Parish {
   type: ParishType;
   vicariate: string;
   priest: string;
+  priestId?: string | null;
+  priestName?: string | null;
   secretary: string;
+  secretaryId?: string | null;
+  secretaryName?: string | null;
   status: ParishStatus;
   patronSaint?: string;
   address?: string;
@@ -242,6 +251,7 @@ export interface ManagedUser {
   email: string;
   role: ManagedUserRole;
   parish: string;
+  parishId?: string | null;
   status: ManagedUserStatus;
   avatarInitials: string;
   avatarColor: string;

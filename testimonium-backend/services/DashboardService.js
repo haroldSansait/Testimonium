@@ -22,10 +22,10 @@ export class DashboardService {
    * until a dedicated correction status is added to the schema.
    * Dependency: Prisma migration adding DocumentRequestStatus.CORRECTION_NEEDED.
    */
-  async getStats() {
+  async getStats(parishId) {
     const [docStats, pendingSchedules] = await Promise.all([
-      this.documentRequestRepository.countStats(),
-      this.scheduleRepository.countPending(),
+      this.documentRequestRepository.countStats(parishId),
+      this.scheduleRepository.countPending(parishId),
     ]);
 
     return {
@@ -39,8 +39,8 @@ export class DashboardService {
   /**
    * Returns today's upcoming schedule events.
    */
-  async getSchedule() {
-    return this.scheduleRepository.findTodayEvents();
+  async getSchedule(parishId) {
+    return this.scheduleRepository.findTodayEvents(parishId);
   }
 
   /**

@@ -14,7 +14,7 @@ export class DocumentRequestService {
    * @param {string|undefined} opts.status
    * @param {string|undefined} opts.documentType
    */
-  async list({ page = 1, limit = 10, search, status, documentType } = {}) {
+  async list({ page = 1, limit = 10, search, status, documentType, parishId } = {}) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
@@ -24,6 +24,7 @@ export class DocumentRequestService {
       search,
       status,
       documentType,
+      parishId,
     });
   }
 }

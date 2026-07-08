@@ -12,6 +12,8 @@ import {
 import { cn } from '@/utils/cn';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { AnalyticsService } from '@/services/AnalyticsService';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import type {
   SacramentStat,
   DocumentAnalyticsStat,
@@ -299,19 +301,34 @@ export function AnalyticsPage() {
   const [documentData, setDocumentData] = useState<DocumentAnalyticsStat[]>([]);
   const [parishData, setParishData] = useState<ParishAnalyticsStat[]>([]);
   const [financialData, setFinancialData] = useState<FinancialStat[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void Promise.all([
+  const loadData = () => {
+    setIsLoading(true);
+    setError(null);
+    Promise.all([
       AnalyticsService.getSacramentStats(),
       AnalyticsService.getDocumentStats(),
       AnalyticsService.getParishStats(),
       AnalyticsService.getFinancialStats(),
-    ]).then(([sacraments, documents, parishes, financial]) => {
-      setSacramentData(sacraments);
-      setDocumentData(documents);
-      setParishData(parishes);
-      setFinancialData(financial);
-    });
+    ])
+      .then(([sacraments, documents, parishes, financial]) => {
+        setSacramentData(sacraments);
+        setDocumentData(documents);
+        setParishData(parishes);
+        setFinancialData(financial);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load analytics data:', err);
+        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+        setIsLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   return (
@@ -342,10 +359,18 @@ export function AnalyticsPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'sacraments' && <SacramentsTab data={sacramentData} />}
-      {activeTab === 'documents'  && <DocumentsTab data={documentData} />}
-      {activeTab === 'parishes'   && <ParishesTab data={parishData} />}
-      {activeTab === 'financial'  && <FinancialTab data={financialData} />}
+      {isLoading ? (
+        <LoadingState message="Loading analytics..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={loadData} />
+      ) : (
+        <>
+          {activeTab === 'sacraments' && <SacramentsTab data={sacramentData} />}
+          {activeTab === 'documents'  && <DocumentsTab data={documentData} />}
+          {activeTab === 'parishes'   && <ParishesTab data={parishData} />}
+          {activeTab === 'financial'  && <FinancialTab data={financialData} />}
+        </>
+      )}
     </div>
   );
 }

@@ -9,6 +9,8 @@ import { cn } from '@/utils/cn';
 import { Avatar } from '@/components/ui/Avatar';
 import { DioceseDashboardService } from '@/services/DioceseDashboardService';
 import { StatCard } from '@/components/dashboard/StatCard';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import type { DioceseStat, DioceseActivity, DioceseNotification, StatCardData } from '@/types';
 
 // ─── Shared Detail Modal for Activity ─────────────────────────────────────────
@@ -69,6 +71,14 @@ interface ActivityFeedProps {
 }
 
 function ActivityFeed({ items, onRowClick }: ActivityFeedProps) {
+  if (items.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 shadow-card p-6 text-center">
+        <p className="text-sm text-gray-500">No recent activity logs found.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-card">
       <div className="px-5 pt-5 pb-2">
@@ -122,7 +132,7 @@ function DioceseNotifications({ items }: DioceseNotificationsProps) {
   const handleNotificationClick = (notif: DioceseNotification) => {
     const titleLower = notif.title.toLowerCase();
     const bodyLower = notif.body.toLowerCase();
-    
+
     if (titleLower.includes('document') || bodyLower.includes('request')) {
       navigate('/document-requests');
     } else if (titleLower.includes('report') || bodyLower.includes('statistics') || bodyLower.includes('sacrament')) {
@@ -135,6 +145,14 @@ function DioceseNotifications({ items }: DioceseNotificationsProps) {
       navigate('/notifications');
     }
   };
+
+  if (items.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 shadow-card p-6 text-center">
+        <p className="text-sm text-gray-500">No diocese alerts or notifications.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-card">
@@ -152,7 +170,7 @@ function DioceseNotifications({ items }: DioceseNotificationsProps) {
                 <div className="flex-shrink-0 mt-0.5">{cfg.icon}</div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-900">{notif.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{notif.body}</p>
+                  <p className="text-xs text-gray-505 mt-0.5 leading-relaxed">{notif.body}</p>
                   <p className="text-xs text-gray-400 mt-1.5">{notif.timeAgo}</p>
                 </div>
               </div>
@@ -171,21 +189,36 @@ export function DioceseDashboard() {
   const [activity, setActivity] = useState<DioceseActivity[]>([]);
   const [notifications, setNotifications] = useState<DioceseNotification[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<DioceseActivity | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
-  useEffect(() => {
-    void Promise.all([
+  const loadData = () => {
+    setIsLoading(true);
+    setError(null);
+    Promise.all([
       DioceseDashboardService.getStats(),
       DioceseDashboardService.getRecentActivity(),
       DioceseDashboardService.getNotifications(),
-    ]).then(([s, a, n]) => {
-      setStats(s);
-      setActivity(a);
-      setNotifications(n);
-    });
+    ])
+      .then(([s, a, n]) => {
+        setStats(s);
+        setActivity(a);
+        setNotifications(n);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load dashboard data:', err);
+        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+        setIsLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   return (
@@ -198,27 +231,35 @@ export function DioceseDashboard() {
         >
           {greeting}
         </h1>
-        <p className="text-gray-500 mt-1 text-sm">
+        <p className="text-gray-505 mt-1 text-sm">
           Diocese-wide overview — all parishes, personnel, and pending requests at a glance.
         </p>
       </div>
 
-      {/* KPI Grid — 4 columns on xl, 2 on md, 1 on sm */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
-          <StatCard key={stat.id} card={stat as unknown as StatCardData} />
-        ))}
-      </div>
+      {isLoading ? (
+        <LoadingState message="Loading dashboard statistics..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={loadData} />
+      ) : (
+        <>
+          {/* KPI Grid ── 4 columns on xl, 2 on md, 1 on sm */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {stats.map((stat) => (
+              <StatCard key={stat.id} card={stat as unknown as StatCardData} />
+            ))}
+          </div>
 
-      {/* Activity feed + Notifications */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <ActivityFeed items={activity} onRowClick={setSelectedActivity} />
-        </div>
-        <div className="lg:col-span-1">
-          <DioceseNotifications items={notifications} />
-        </div>
-      </div>
+          {/* Activity feed + Notifications */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <ActivityFeed items={activity} onRowClick={setSelectedActivity} />
+            </div>
+            <div className="lg:col-span-1">
+              <DioceseNotifications items={notifications} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Activity Details Modal */}
       {selectedActivity && (

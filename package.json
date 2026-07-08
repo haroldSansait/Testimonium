@@ -1,0 +1,13 @@
+{
+  "name": "testimonium",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"Backend,Admin\" --prefix-colors \"blue,magenta\" \"npm run dev --prefix testimonium-backend\" \"npm run dev --prefix testimonium-admin-portal\"",
+    "backend": "npm run dev --prefix testimonium-backend",
+    "admin": "npm run dev --prefix testimonium-admin-portal",
+    "build": "npm run build --prefix testimonium-admin-portal"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

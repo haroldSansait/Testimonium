@@ -10,7 +10,7 @@ export class CalendarService {
    * @param {number} year
    * @param {number} month - 1-based (1 = January, 12 = December)
    */
-  async getEvents(year, month) {
+  async getEvents(year, month, parishId) {
     const parsedYear = parseInt(year, 10);
     const parsedMonth = parseInt(month, 10);
 
@@ -27,6 +27,6 @@ export class CalendarService {
       throw error;
     }
 
-    return this.scheduleRepository.findByMonth(parsedYear, parsedMonth);
+    return this.scheduleRepository.findByMonth(parsedYear, parsedMonth, parishId);
   }
 }
