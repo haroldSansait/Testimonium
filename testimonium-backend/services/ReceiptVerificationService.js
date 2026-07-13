@@ -1,7 +1,7 @@
 import { prisma } from "../config/db.js";
 import { FileUploadService } from "./FileUploadService.js";
 import { StubOcrProvider } from "./ocr/StubOcrProvider.js";
-import { RequestNotificationService } from "./RequestNotificationService.js";
+import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { AuditLogService } from "./AuditLogService.js";
 
 const ocrProvider = new StubOcrProvider();
@@ -111,13 +111,17 @@ export class ReceiptVerificationService {
           },
         });
 
-        // Send notifications
-        await RequestNotificationService.notifyStatusChange(
-          userId,
-          request.id,
-          request.trackingNumber,
-          "PAYMENT_PENDING",
-          "PAYMENT_VERIFIED",
+        // Auto-verified: notify parishioner only (OCR handled it, no admin action required)
+        await NotificationDispatcher.notifyDocumentStatusChange(
+          {
+            parishionerId: userId,
+            parishId: request.parishId,
+            requestId: request.id,
+            trackingNumber: request.trackingNumber,
+            oldStatus: "PAYMENT_PENDING",
+            newStatus: "PAYMENT_VERIFIED",
+            notifyAdmins: false,
+          },
           tx
         );
 
@@ -152,12 +156,14 @@ export class ReceiptVerificationService {
           },
         });
 
-        // Notify
-        await RequestNotificationService.send(
-          userId,
-          "Payment Proof Submitted",
-          `Your payment proof for request ${request.trackingNumber} has been uploaded and is undergoing verification.`,
-          "IN_APP",
+        // Manual review: notify parishioner + admins so staff can verify the proof
+        await NotificationDispatcher.notifyReceiptUploaded(
+          {
+            parishionerId: userId,
+            parishId: request.parishId,
+            requestId: request.id,
+            trackingNumber: request.trackingNumber,
+          },
           tx
         );
 

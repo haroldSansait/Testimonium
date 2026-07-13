@@ -52,6 +52,18 @@ export class NotificationRepository {
   }
 
   /**
+   * Batch-inserts an array of notification records.
+   * Called exclusively by NotificationDispatcher — do not call this directly
+   * from domain services or controllers.
+   * @param {object[]} payloads - Array of Notification create data objects
+   * @param {object|null} tx   - Prisma transaction client (optional)
+   */
+  async createMany(payloads, tx = null) {
+    const client = tx || prisma;
+    return client.notification.createMany({ data: payloads });
+  }
+
+  /**
    * Returns the most recent unread IN_APP notifications for a user.
    * Used by the dashboard alerts endpoint.
    * @param {number} userId

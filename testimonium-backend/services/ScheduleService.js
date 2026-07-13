@@ -82,12 +82,15 @@ export class ScheduleService {
       },
     });
 
-    // Notify user of submitted appointment
+    // Notify parishioner + admins of new booking
     await RequestNotificationService.notifyScheduleChange(
       parseInt(userId, 10),
+      schedule.parishId,
       schedule.id,
       schedule.displayTitle || eventType,
-      "PENDING"
+      "PENDING",
+      null, // no tx: create() runs outside a Prisma transaction
+      true  // notifyAdmins: new booking needs staff awareness
     );
 
     return schedule;
@@ -141,12 +144,15 @@ export class ScheduleService {
       },
     });
 
-    // Notify user of schedule status change
+    // Notify parishioner of status update (staff-driven: no admin fan-out)
     await RequestNotificationService.notifyScheduleChange(
       updated.userId,
+      updated.parishId,
       updated.id,
       updated.displayTitle || updated.eventType,
-      targetStatus
+      targetStatus,
+      null, // no tx: updateStatus() runs outside a Prisma transaction
+      false // notifyAdmins: staff is performing this action, no admin fan-out
     );
 
     return updated;

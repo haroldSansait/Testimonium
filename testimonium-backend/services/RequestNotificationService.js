@@ -1,11 +1,34 @@
+import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { prisma } from "../config/db.js";
 
+/**
+ * RequestNotificationService — Compatibility shim.
+ *
+ * This class preserves the original call signatures used by domain services
+ * so that callers require only a minimal update (adding parishId) rather than
+ * a full replacement. All logic is delegated to NotificationDispatcher.
+ *
+ * Future cleanup: once all callers have been verified against the dispatcher's
+ * API, this shim can be removed and domain services updated to call
+ * NotificationDispatcher directly.
+ */
 export class RequestNotificationService {
   /**
-   * Helper to write a notification record to the database.
-   * Supports execution within a Prisma transaction block.
-   * Backwards compatible signature support for (userId, title, message, type, tx)
-   * as well as (userId, title, message, type, referenceType, referenceId, tx)
+   * Low-level send — writes a single notification for one recipient.
+   * Retained for edge-case single-recipient notifications that do not require
+   * admin fan-out (e.g., auto-verified payment receipts).
+   *
+   * Backwards compatible signature:
+   *   (userId, title, message, type, tx)
+   *   (userId, title, message, type, referenceType, referenceId, tx)
+   *
+   * @param {number} userId
+   * @param {string} title
+   * @param {string} message
+   * @param {string} type
+   * @param {*} arg5
+   * @param {*} arg6
+   * @param {*} arg7
    */
   static async send(userId, title, message, type = "IN_APP", arg5, arg6, arg7) {
     let referenceType = null;
@@ -45,68 +68,61 @@ export class RequestNotificationService {
   }
 
   /**
-   * Sends user notifications when a document request changes state.
+   * Notifies recipients when a document request changes state.
+   *
+   * Updated signature (adds parishId so the dispatcher can resolve admin
+   * recipients). notifyAdmins controls whether admin fan-out occurs.
+   *
+   * @param {number} parishionerId    - User ID of the parishioner
+   * @param {number} parishId         - Parish the request belongs to
+   * @param {number} requestId        - DocumentRequest primary key
+   * @param {string} trackingNumber
+   * @param {string} oldStatus
+   * @param {string} newStatus
+   * @param {object|null} tx          - Prisma transaction client
+   * @param {boolean} notifyAdmins    - Fan-out to admins? (default: false)
    */
-  static async notifyStatusChange(userId, requestId, trackingNumber, oldStatus, newStatus, tx) {
-    let title = "Document Request Update";
-    let message = `Your request ${trackingNumber} status has changed from ${oldStatus} to ${newStatus}.`;
-
-    if (newStatus === "PENDING" && oldStatus === "DRAFT") {
-      title = "Request Submitted Successfully";
-      message = `Your sacramental document request (Tracking #: ${trackingNumber}) has been submitted and is pending review.`;
-    } else if (newStatus === "PENDING") {
-      title = "Request Submitted";
-      message = `Your request (Tracking #: ${trackingNumber}) has been received and is pending.`;
-    } else if (newStatus === "UNDER_REVIEW") {
-      title = "Request Under Review";
-      message = `Your request (Tracking #: ${trackingNumber}) is now being reviewed by the parish staff.`;
-    } else if (newStatus === "PAYMENT_PENDING") {
-      title = "Payment Required";
-      message = `Your request (Tracking #: ${trackingNumber}) requires payment. Please upload your payment receipt to proceed.`;
-    } else if (newStatus === "PAYMENT_VERIFIED") {
-      title = "Payment Proof Verified";
-      message = `Your payment receipt for request (Tracking #: ${trackingNumber}) has been verified successfully.`;
-    } else if (newStatus === "PROCESSING") {
-      title = "Processing Document";
-      message = `Your sacramental certificate (Tracking #: ${trackingNumber}) is now being prepared.`;
-    } else if (newStatus === "READY_FOR_PICKUP") {
-      title = "Document Ready for Pickup";
-      message = `Your requested document (Tracking #: ${trackingNumber}) is ready. Please pick it up from the parish office.`;
-    } else if (newStatus === "COMPLETED") {
-      title = "Request Completed";
-      message = `Your request (Tracking #: ${trackingNumber}) has been fully processed and completed.`;
-    } else if (newStatus === "REJECTED") {
-      title = "Request Rejected";
-      message = `Your request (Tracking #: ${trackingNumber}) was rejected by the parish. Please review the comments/rejection reasons.`;
-    } else if (newStatus === "CANCELLED") {
-      title = "Request Cancelled";
-      message = `Your request (Tracking #: ${trackingNumber}) has been cancelled.`;
-    }
-
-    await this.send(userId, title, message, "IN_APP", "DOCUMENT_REQUEST", requestId, tx);
+  static async notifyStatusChange(
+    parishionerId,
+    parishId,
+    requestId,
+    trackingNumber,
+    oldStatus,
+    newStatus,
+    tx = null,
+    notifyAdmins = false
+  ) {
+    await NotificationDispatcher.notifyDocumentStatusChange(
+      { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins },
+      tx
+    );
   }
 
   /**
-   * Sends user notifications when a schedule request changes state.
+   * Notifies recipients when a schedule request changes state.
+   *
+   * Updated signature (adds parishId and notifyAdmins flag).
+   *
+   * @param {number} parishionerId    - User ID of the parishioner
+   * @param {number} parishId         - Parish the schedule belongs to
+   * @param {number} scheduleId       - Schedule primary key
+   * @param {string} displayTitle
+   * @param {string} newStatus
+   * @param {object|null} tx          - Prisma transaction client
+   * @param {boolean} notifyAdmins    - Fan-out to admins? (default: false)
    */
-  static async notifyScheduleChange(userId, scheduleId, displayTitle, newStatus, tx) {
-    let title = "Schedule Status Update";
-    let message = `Your schedule request for ${displayTitle} has been updated to ${newStatus}.`;
-
-    if (newStatus === "PENDING") {
-      title = "Appointment Submitted";
-      message = `Your schedule request for "${displayTitle}" has been submitted successfully and is pending review.`;
-    } else if (newStatus === "CONFIRMED") {
-      title = "Appointment Confirmed";
-      message = `Your schedule request for "${displayTitle}" has been confirmed by the parish.`;
-    } else if (newStatus === "REJECTED") {
-      title = "Appointment Declined";
-      message = `Your schedule request for "${displayTitle}" has been declined.`;
-    } else if (newStatus === "CANCELLED") {
-      title = "Appointment Cancelled";
-      message = `Your schedule request for "${displayTitle}" has been cancelled.`;
-    }
-
-    await this.send(userId, title, message, "IN_APP", "SCHEDULE_REQUEST", scheduleId, tx);
+  static async notifyScheduleChange(
+    parishionerId,
+    parishId,
+    scheduleId,
+    displayTitle,
+    newStatus,
+    tx = null,
+    notifyAdmins = false
+  ) {
+    await NotificationDispatcher.notifyScheduleChange(
+      { parishionerId, parishId, scheduleId, displayTitle, newStatus, notifyAdmins },
+      tx
+    );
   }
 }

@@ -107,14 +107,16 @@ export class ParishionerRequestService {
         },
       });
 
-      // Trigger notification
+      // Parishioner-initiated submission: notify parishioner + admins
       await RequestNotificationService.notifyStatusChange(
         userId,
+        submittedRequest.parishId,
         submittedRequest.id,
         submittedRequest.trackingNumber,
         "DRAFT",
         "PENDING",
-        tx
+        tx,
+        true // notifyAdmins: new request visible to Secretary and Coordinator
       );
 
       await AuditLogService.log(userId, `Submitted request ${submittedRequest.trackingNumber}`, tx);
@@ -165,14 +167,16 @@ export class ParishionerRequestService {
         },
       });
 
-      // Notify
+      // Parishioner-initiated cancellation: notify parishioner + admins
       await RequestNotificationService.notifyStatusChange(
         userId,
+        request.parishId,
         request.id,
         request.trackingNumber,
         currentStatus,
         targetStatus,
-        tx
+        tx,
+        true // notifyAdmins: cancellation affects administrative workload
       );
 
       await AuditLogService.log(userId, `Cancelled request ${request.trackingNumber}`, tx);

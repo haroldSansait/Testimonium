@@ -134,14 +134,16 @@ export class DocumentRequestService {
         },
       });
 
-      // Send Notification to user
+      // Send notification to parishioner (staff-driven transition: no admin fan-out)
       await RequestNotificationService.notifyStatusChange(
         request.userId,
+        request.parishId,
         request.id,
         request.trackingNumber,
         currentStatus,
         targetStatus,
-        tx
+        tx,
+        false // notifyAdmins: staff is performing this action, no admin fan-out
       );
 
       await AuditLogService.log(
