@@ -30,7 +30,7 @@ export const env = {
   enableDevAuth: process.env.ENABLE_DEV_AUTH === "true",
   port: Number(process.env.PORT ?? 5000),
   databaseUrl: getDatabaseUrl(),
-  corsOrigins: ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],
+  corsOrigins: ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://localhost:5174"],
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,

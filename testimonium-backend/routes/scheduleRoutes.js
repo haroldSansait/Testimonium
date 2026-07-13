@@ -1,15 +1,19 @@
 import { Router } from "express";
-import { list } from "../controllers/ScheduleController.js";
+import { list, create, getAvailableSlots, updateStatus } from "../controllers/ScheduleController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
-import { checkRole } from "../middlewares/roleMiddleware.js";
+import { validateBody } from "../middlewares/validateRequest.js";
+import { createScheduleSchema } from "../validators/scheduleSchemas.js";
 
 const router = Router();
 
-const staffRoles = ["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"];
-
+// Apply authentication middleware to all routes
 router.use(authenticateFirebaseToken);
-router.use(checkRole(staffRoles));
 
+// Parishioner-facing / general scheduling routes
 router.get("/", list);
+router.post("/", validateBody(createScheduleSchema), create);
+router.get("/available-slots", getAvailableSlots);
+router.patch("/:id/status", updateStatus);
 
 export default router;
+

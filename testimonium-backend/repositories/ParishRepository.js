@@ -89,6 +89,18 @@ export class ParishRepository {
   }
 
   /**
+   * Retrieves a single parish by its slug.
+   * @param {string} slug
+   * @returns {Promise<object|null>}
+   */
+  async findBySlug(slug) {
+    return prisma.parish.findUnique({
+      where: { slug },
+      include: parishInclude,
+    });
+  }
+
+  /**
    * Inserts a new parish record.
    * @param {object} data
    * @returns {Promise<object>}

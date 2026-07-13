@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import {
   Info,
   AlertTriangle,
@@ -196,30 +197,41 @@ export function DioceseDashboard() {
   const greeting =
     hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
-  const loadData = () => {
-    setIsLoading(true);
-    setError(null);
-    Promise.all([
-      DioceseDashboardService.getStats(),
-      DioceseDashboardService.getRecentActivity(),
-      DioceseDashboardService.getNotifications(),
-    ])
-      .then(([s, a, n]) => {
-        setStats(s);
-        setActivity(a);
-        setNotifications(n);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to load dashboard data:', err);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
+    try {
+      const [s, a, n] = await Promise.all([
+        DioceseDashboardService.getStats(),
+        DioceseDashboardService.getRecentActivity(),
+        DioceseDashboardService.getNotifications(),
+      ]);
+      setStats(s);
+      setActivity(a);
+      setNotifications(n);
+    } catch (err: any) {
+      console.error('Failed to load dashboard data:', err);
+      if (!silent) {
         setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+      }
+    } finally {
+      if (!silent) {
         setIsLoading(false);
-      });
-  };
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData(false);
+  }, [loadData]);
+
+  // Set up auto-refresh polling (every 60 seconds)
+  useAutoRefresh(
+    () => void loadData(true),
+    { intervalMs: 60000, enabled: !isLoading }
+  );
 
   return (
     <div className="space-y-6">

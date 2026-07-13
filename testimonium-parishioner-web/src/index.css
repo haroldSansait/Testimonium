@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Primary Brand Colors */
+  --color-crimson: #7B1C2A;
+  --color-crimson-dark: #5C1520;
+  --color-crimson-light: #9B2535;
+
+  /* Canvas */
+  --bg-app-base: #FCFBFA;
+  --color-page-bg: #F5F0EE;
+  --color-card-bg: #FFFFFF;
+
+  /* Navigation */
+  --color-sidebar-bg: #6B0F1A;
+  --color-sidebar-dark: #4A0A12;
+
+  /* Typography */
+  --color-text-primary: #1A1A1A;
+  --color-text-muted: #6B7280;
+
+  /* Borders */
+  --color-border: #E5E7EB;
+
+  /* Status Colors */
+  --status-pending: #FBBF24;
+  --status-under-review: #3B82F6;
+  --status-ready: #10B981;
+  --status-rejected: #EF4444;
+
+  /* UI */
+  --shadow-card: 0 8px 24px rgba(0,0,0,.08);
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --transition-fast: 180ms ease;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--color-page-bg);
+  color: var(--color-text-primary);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Reusable Focus ring helper */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-crimson focus:ring-offset-2;
+}

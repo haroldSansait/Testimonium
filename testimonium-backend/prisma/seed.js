@@ -32,6 +32,11 @@ const parishes = [
     contactNumber: "09171234567",
     patronSaint: "Our Lady of the Mountains",
     email: "mountains.qp@diocese.org",
+    latitude: 10.471569605685998,
+    longitude: 123.19701153481317,
+    feastDay: "February 18",
+    coverImage: "https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
   {
@@ -44,6 +49,11 @@ const parishes = [
     contactNumber: "09281234567",
     patronSaint: "St. Joseph",
     email: "stjoseph.canlaon@diocese.org",
+    latitude: 10.394138566499564,
+    longitude: 123.21627595844299,
+    feastDay: "March 19",
+    coverImage: "https://images.unsplash.com/photo-1507038772120-7bef2c68207a?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1507038772120-7bef2c68207a?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
   {
@@ -56,6 +66,11 @@ const parishes = [
     contactNumber: "09391234567",
     patronSaint: "Our Lady of the Miraculous Medal",
     email: "miraculousmedal@diocese.org",
+    latitude: 10.576326017964021,
+    longitude: 123.22058465093365,
+    feastDay: "November 27",
+    coverImage: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
   {
@@ -67,6 +82,11 @@ const parishes = [
     contactNumber: "09451234567",
     patronSaint: "Nuestra Señora De Las Flores",
     email: "lasflores.ms@diocese.org",
+    latitude: 10.372131883491218,
+    longitude: 123.18524746817344,
+    feastDay: "May 31",
+    coverImage: "https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
   {
@@ -78,6 +98,11 @@ const parishes = [
     contactNumber: "09561234567",
     patronSaint: "Our Lady of Peace and Good Voyage",
     email: "peacevoyage.qp@diocese.org",
+    latitude: 10.509888442021262,
+    longitude: 123.2781245897416,
+    feastDay: "May 4",
+    coverImage: "https://images.unsplash.com/photo-1507038772120-7bef2c68207a?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1507038772120-7bef2c68207a?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
   {
@@ -89,6 +114,11 @@ const parishes = [
     contactNumber: "09671234567",
     patronSaint: "Santo Niño (Holy Child)",
     email: "holychild@diocese.org",
+    latitude: 10.43773546578091,
+    longitude: 123.25825411243267,
+    feastDay: "January 30",
+    coverImage: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
   {
@@ -100,9 +130,23 @@ const parishes = [
     contactNumber: "09781234567",
     patronSaint: "Our Lady of Guadalupe",
     email: "guadalupe@diocese.org",
+    latitude: 10.377092506378611,
+    longitude: 123.26692080467562,
+    feastDay: "December 12",
+    coverImage: "https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800",
+    gallery: ["https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800"],
     isActive: true,
   },
 ];
+
+const generateSlug = (name) => {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .trim();
+};
 
 const seed = async () => {
   for (const role of roles) {
@@ -114,10 +158,12 @@ const seed = async () => {
   }
 
   for (const parish of parishes) {
+    const slug = generateSlug(parish.parishName);
+    const parishWithSlug = { ...parish, slug };
     await prisma.parish.upsert({
       where: { parishName: parish.parishName },
-      update: parish,
-      create: parish,
+      update: parishWithSlug,
+      create: parishWithSlug,
     });
   }
 

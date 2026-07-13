@@ -2,10 +2,12 @@ import api from '@/api/api';
 import type { CalendarProvider } from '../interfaces';
 import type { CalendarEvent, CalendarEventCategory } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
+import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
 
 interface BackendScheduleDTO {
   id: number;
   eventType: string;
+  displayTitle: string | null;
   requestedDate: string;
   startDatetime: string | null;
   endDatetime: string | null;
@@ -22,17 +24,7 @@ interface BackendScheduleDTO {
   remarks?: string | null;
 }
 
-const formatEventType = (type: string): string => {
-  switch (type) {
-    case 'WEDDING': return 'Wedding';
-    case 'BAPTISM': return 'Baptism';
-    case 'CONFIRMATION': return 'Confirmation';
-    case 'PRIVATE_MASS': return 'Private Mass';
-    case 'MASS_INTENTION': return 'Mass Intention';
-    default:
-      return type.charAt(0) + type.slice(1).toLowerCase().replace(/_/g, ' ');
-  }
-};
+// Event type mapping helper removed in favor of resolveDisplayTitle from shared catalog
 
 export const ApiCalendarProvider: CalendarProvider = {
   async getEvents(year: number, month: number): Promise<CalendarEvent[]> {
@@ -71,13 +63,21 @@ export const ApiCalendarProvider: CalendarProvider = {
         }
       }
 
+      let appointmentTitle = resolveDisplayTitle(dbItem.eventType, dbItem.displayTitle);
+      if (!dbItem.displayTitle && dbItem.remarks) {
+        const match = dbItem.remarks.match(/Service:\s*([^.]+)/);
+        if (match) {
+          appointmentTitle = match[1].trim();
+        }
+      }
+
       return {
         id: String(dbItem.id),
         day: reqDate.getDate(),
         month: reqDate.getMonth(), // keep 0-indexed for frontend CalendarGrid mapping
         year: reqDate.getFullYear(),
         time: timeStr,
-        title: `${formatEventType(dbItem.eventType)}: ${dbItem.user?.fullName || 'Anonymous'}`,
+        title: `${appointmentTitle}: ${dbItem.user?.fullName || 'Anonymous'}`,
         category,
         parish: dbItem.parish?.parishName || 'Main Church',
         priest: dbItem.processedBy?.fullName || 'TBD',

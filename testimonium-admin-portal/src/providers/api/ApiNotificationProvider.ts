@@ -1,6 +1,6 @@
 import api from '@/api/api';
 import type { NotificationProvider } from '../interfaces';
-import type { Notification, NotificationGroup, NotificationUrgency, NotificationAction } from '@/types';
+import type { Notification, NotificationGroup, NotificationUrgency, NotificationAction, NotificationType } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
 
 interface BackendNotificationDTO {
@@ -13,6 +13,8 @@ interface BackendNotificationDTO {
   readAt: string | null;
   dateSent: string;
   createdAt: string;
+  referenceType?: string | null;
+  referenceId?: number | null;
 }
 
 const getNotificationGroup = (dateSent: string | Date): NotificationGroup => {
@@ -57,13 +59,25 @@ export const ApiNotificationProvider: NotificationProvider = {
       const titleLower = (dbItem.title || '').toLowerCase();
       const msgLower = (dbItem.message || '').toLowerCase();
 
-      let type: 'schedule-conflict' | 'baptism-request' | 'document-ready' | 'system-update' | 'warning' = 'system-update';
+      let type: NotificationType = 'system-update';
       if (titleLower.includes('conflict') || msgLower.includes('conflict')) {
         type = 'schedule-conflict';
+      } else if (titleLower.includes('under review') || msgLower.includes('under review')) {
+        type = 'document-under-review';
       } else if (titleLower.includes('baptism') || msgLower.includes('baptism')) {
         type = 'baptism-request';
       } else if (titleLower.includes('ready') || titleLower.includes('pickup') || msgLower.includes('ready') || msgLower.includes('pickup')) {
         type = 'document-ready';
+      } else if (titleLower.includes('uploaded') || msgLower.includes('uploaded') || msgLower.includes('proof') || titleLower.includes('proof')) {
+        type = 'payment-uploaded';
+      } else if (titleLower.includes('verified') || msgLower.includes('verified') || titleLower.includes('auto-verified')) {
+        type = 'payment-verified';
+      } else if (titleLower.includes('cancel') || msgLower.includes('cancel')) {
+        type = 'document-cancelled';
+      } else if (titleLower.includes('document') || msgLower.includes('document')) {
+        type = 'document-request';
+      } else if (titleLower.includes('schedule') || msgLower.includes('schedule') || titleLower.includes('appointment') || msgLower.includes('appointment')) {
+        type = 'schedule-request';
       } else if (titleLower.includes('warning') || titleLower.includes('error') || msgLower.includes('warning') || msgLower.includes('error')) {
         type = 'warning';
       } else if (titleLower.includes('system') || titleLower.includes('update') || msgLower.includes('system') || msgLower.includes('update')) {
@@ -71,11 +85,18 @@ export const ApiNotificationProvider: NotificationProvider = {
       }
 
       let urgency: NotificationUrgency = 'info';
-      if (type === 'schedule-conflict' || type === 'warning') {
+      if (type === 'schedule-conflict' || type === 'warning' || type === 'document-cancelled') {
         urgency = 'urgent';
-      } else if (type === 'baptism-request' || !dbItem.isRead) {
+      } else if (
+        type === 'baptism-request' ||
+        type === 'document-request' ||
+        type === 'schedule-request' ||
+        type === 'payment-uploaded' ||
+        type === 'document-under-review' ||
+        !dbItem.isRead
+      ) {
         urgency = 'pending';
-      } else if (type === 'document-ready') {
+      } else if (type === 'document-ready' || type === 'payment-verified') {
         urgency = 'success';
       }
 
@@ -89,15 +110,21 @@ export const ApiNotificationProvider: NotificationProvider = {
       }
 
       let actions: NotificationAction[] = [];
-      if (type === 'schedule-conflict') {
+      if (type === 'schedule-conflict' || type === 'schedule-request') {
         actions = [
-          { label: 'Urgent Action Required' },
-          { label: 'Resolve Conflict', href: '/schedule-requests' },
+          { label: 'View Schedule', href: '/schedule-requests' },
         ];
-      } else if (type === 'baptism-request') {
+      } else if (
+        type === 'baptism-request' ||
+        type === 'document-request' ||
+        type === 'payment-uploaded' ||
+        type === 'payment-verified' ||
+        type === 'document-under-review' ||
+        type === 'document-cancelled' ||
+        type === 'document-ready'
+      ) {
         actions = [
-          { label: 'Pending Review' },
-          { label: 'View Application', href: '/schedule-requests' },
+          { label: 'View Request', href: '/document-requests' },
         ];
       }
 
@@ -112,6 +139,8 @@ export const ApiNotificationProvider: NotificationProvider = {
         urgency,
         leftBorderColor,
         actions,
+        referenceType: dbItem.referenceType || null,
+        referenceId: dbItem.referenceId ? String(dbItem.referenceId) : null,
       };
     });
   },

@@ -49,6 +49,12 @@ enum PaymentStatus {
   CONFIRMED
 }
 
+enum PaymentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 enum ScheduleEventType {
   WEDDING
   BAPTISM
@@ -69,6 +75,13 @@ enum NotificationType {
   EMAIL
 }
 
+enum NotificationReferenceType {
+  DOCUMENT_REQUEST
+  SCHEDULE_REQUEST
+  GENERAL
+}
+
+
 model Role {
   id          Int      @id @default(autoincrement()) @map("role_id")
   roleName    RoleName @unique @map("role_name")
@@ -81,6 +94,7 @@ model Role {
 model Parish {
   id               Int               @id @default(autoincrement()) @map("parish_id")
   parishName       String            @unique @map("parish_name") @db.VarChar(150)
+  slug             String?           @unique @db.VarChar(150)
   type             ParishType
   address          String?           @db.Text
   municipalityCity String            @map("municipality_city") @db.VarChar(100)
@@ -88,6 +102,11 @@ model Parish {
   contactNumber    String?           @map("contact_number") @db.VarChar(20)
   patronSaint      String?           @map("patron_saint") @db.VarChar(150)
   email            String?           @db.VarChar(150)
+  latitude         Float?
+  longitude        Float?
+  feastDay         String?           @map("feast_day") @db.VarChar(100)
+  coverImage       String?           @map("cover_image") @db.VarChar(255)
+  gallery          String[]          @default([])
   isActive         Boolean           @default(true) @map("is_active")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
@@ -123,6 +142,8 @@ model User {
   updatedFaqEntries         FaqKnowledgeBase[] @relation("FaqUpdater")
   chatbotLogs               ChatbotLog[]
   activityLogs              ActivityLog[]
+  requestHistory            RequestHistory[]   @relation("RequestHistoryActor")
+  paymentTransactions       PaymentTransaction[] @relation("PaymentTransactionVerifier")
 
   @@index([roleId])
   @@index([parishId])
@@ -134,6 +155,10 @@ model DocumentRequest {
   id                    Int                   @id @default(autoincrement()) @map("request_id")
   userId                Int                   @map("user_id")
   parishId              Int                   @map("parish_id")
+  trackingNumber        String?               @unique @map("tracking_number") @db.VarChar(50)
+  applicantName         String                @map("applicant_name") @db.VarChar(150)
+  relationship          String?               @db.VarChar(100)
+  isDraft               Boolean               @default(true) @map("is_draft")
   documentType          DocumentType          @map("document_type")
   purpose               String?               @db.Text
   status                DocumentRequestStatus @default(PENDING)
@@ -149,7 +174,9 @@ model DocumentRequest {
   user                  User                  @relation("DocumentRequestSubmitter", fields: [userId], references: [id], onDelete: Restrict)
   parish                Parish                @relation(fields: [parishId], references: [id], onDelete: Restrict)
   processedBy           User?                 @relation("DocumentRequestProcessor", fields: [processedById], references: [id], onDelete: SetNull)
-  requirements          Requirement[]
+  attachments           RequestAttachment[]
+  paymentTransactions   PaymentTransaction[]
+  requestHistory        RequestHistory[]
 
   @@index([userId])
   @@index([parishId])
@@ -158,21 +185,93 @@ model DocumentRequest {
   @@index([status])
   @@index([paymentStatus])
   @@index([dateRequested])
+  @@index([trackingNumber])
   @@map("document_requests")
 }
 
-model Requirement {
-  id          Int             @id @default(autoincrement()) @map("requirement_id")
+model RequestAttachment {
+  id          Int             @id @default(autoincrement()) @map("attachment_id")
   requestId   Int             @map("request_id")
   fileName    String          @map("file_name") @db.VarChar(255)
   r2ObjectKey String          @map("r2_object_key") @db.VarChar(255)
-  fileType    String?         @map("file_type") @db.VarChar(50)
+  fileType    String?         @map("file_type") @db.VarChar(100)
   fileSize    Int?            @map("file_size")
+  category    String          @db.VarChar(50) // "primary" | "supporting" | "receipt"
   uploadedAt  DateTime        @default(now()) @map("uploaded_at")
   request     DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
-  @@map("requirements")
+  @@map("request_attachments")
+}
+
+model PaymentTransaction {
+  id              Int                       @id @default(autoincrement()) @map("payment_id")
+  requestId       Int                       @map("request_id")
+  amount          Decimal?                  @db.Decimal(10, 2)
+  provider        String?                   @db.VarChar(50)
+  referenceNumber String?                   @map("reference_number") @db.VarChar(100)
+  status          PaymentVerificationStatus @default(PENDING)
+  verifiedById    Int?                      @map("verified_by")
+  verifiedAt      DateTime?                 @map("verified_at")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  
+  request         DocumentRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  verifier        User?                     @relation("PaymentTransactionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  receipts        ReceiptUpload[]
+
+  @@index([requestId])
+  @@index([verifiedById])
+  @@map("payment_transactions")
+}
+
+model ReceiptUpload {
+  id                    Int                @id @default(autoincrement()) @map("receipt_id")
+  paymentTransactionId  Int                @map("payment_transaction_id")
+  r2ObjectKey           String             @map("r2_object_key") @db.VarChar(255)
+  fileName              String             @map("file_name") @db.VarChar(255)
+  mimeType              String?            @map("mime_type") @db.VarChar(100)
+  fileSize              Int?               @map("file_size")
+  uploadedAt            DateTime           @default(now()) @map("uploaded_at")
+  
+  transaction           PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  ocrResult             OcrResult?
+
+  @@index([paymentTransactionId])
+  @@map("receipt_uploads")
+}
+
+model OcrResult {
+  id              Int           @id @default(autoincrement()) @map("ocr_id")
+  receiptUploadId Int           @unique @map("receipt_upload_id")
+  referenceNumber String?       @map("reference_number") @db.VarChar(100)
+  amount          String?       @db.VarChar(50)
+  paymentDate     String?       @map("payment_date") @db.VarChar(100)
+  provider        String?       @db.VarChar(50)
+  confidenceScore Float?        @map("confidence_score")
+  rawText         String?       @map("raw_text") @db.Text
+  processedAt     DateTime      @default(now()) @map("processed_at")
+  
+  receipt         ReceiptUpload @relation(fields: [receiptUploadId], references: [id], onDelete: Cascade)
+
+  @@map("ocr_results")
+}
+
+model RequestHistory {
+  id          Int             @id @default(autoincrement()) @map("history_id")
+  requestId   Int             @map("request_id")
+  actorId     Int?            @map("actor_id")
+  action      String          @db.VarChar(255)
+  oldStatus   String?         @map("old_status") @db.VarChar(50)
+  newStatus   String?         @map("new_status") @db.VarChar(50)
+  remarks     String?         @db.Text
+  createdAt   DateTime        @default(now()) @map("created_at")
+  
+  request     DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor       User?           @relation("RequestHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([requestId])
+  @@index([actorId])
+  @@map("request_history")
 }
 
 model Schedule {
@@ -186,6 +285,7 @@ model Schedule {
   status        ScheduleStatus    @default(PENDING)
   conflictFlag  Boolean           @default(false) @map("conflict_flag")
   remarks       String?           @db.Text
+  displayTitle  String?           @map("display_title") @db.VarChar(150)
   processedById Int?              @map("processed_by")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
@@ -204,16 +304,18 @@ model Schedule {
 }
 
 model Notification {
-  id        Int              @id @default(autoincrement()) @map("notification_id")
-  userId    Int              @map("user_id")
-  title     String           @db.VarChar(150)
-  message   String           @db.Text
-  type      NotificationType
-  isRead    Boolean          @default(false) @map("is_read")
-  readAt    DateTime?        @map("read_at")
-  dateSent  DateTime         @default(now()) @map("date_sent")
-  createdAt DateTime         @default(now()) @map("created_at")
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            Int                        @id @default(autoincrement()) @map("notification_id")
+  userId        Int                        @map("user_id")
+  title         String                     @db.VarChar(150)
+  message       String                     @db.Text
+  type          NotificationType
+  isRead        Boolean                    @default(false) @map("is_read")
+  readAt        DateTime?                  @map("read_at")
+  dateSent      DateTime                   @default(now()) @map("date_sent")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  referenceType NotificationReferenceType? @map("reference_type")
+  referenceId   Int?                       @map("reference_id")
+  user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([isRead])

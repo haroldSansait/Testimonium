@@ -5,6 +5,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
 import { getScheduleRequests, updateScheduleStatus } from '@/services/scheduleRequestService';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import { cn } from '@/utils/cn';
 import type { ScheduleFilter } from '@/services/scheduleRequestService';
@@ -75,9 +78,16 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange }: Detai
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event Type</span>
-              <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
-                <FileText className="w-4 h-4 text-gray-400" />
-                {request.eventType}
+              <div className="flex flex-col gap-0.5 mt-1">
+                <div className="flex items-center gap-2 text-gray-800 font-medium">
+                  <FileText className="w-4 h-4 text-gray-400" />
+                  {request.appointmentTitle || request.eventType}
+                </div>
+                {request.appointmentTitle && request.appointmentTitle !== request.eventType && (
+                  <span className="text-[11px] text-gray-500 font-normal pl-6">
+                    Category: {request.eventType}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -230,19 +240,42 @@ export function ScheduleRequestsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<ScheduleRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const PAGE_SIZE = 5;
 
-  const fetchRequests = useCallback(async () => {
-    const result = await getScheduleRequests({ filter: activeFilter, page, pageSize: PAGE_SIZE });
-    setRequests(result.data);
-    setTotal(result.total);
-    setTotalPages(result.totalPages);
+  const fetchRequests = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
+    try {
+      const result = await getScheduleRequests({ filter: activeFilter, page, pageSize: PAGE_SIZE });
+      setRequests(result.data);
+      setTotal(result.total);
+      setTotalPages(result.totalPages);
+    } catch (err: any) {
+      console.error('Failed to load schedule requests:', err);
+      if (!silent) {
+        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+      }
+    } finally {
+      if (!silent) {
+        setIsLoading(false);
+      }
+    }
   }, [activeFilter, page]);
 
   useEffect(() => {
-    void fetchRequests();
+    void fetchRequests(false);
   }, [fetchRequests]);
+
+  // Set up auto-refresh polling (every 60 seconds), paused when loading, or when a request details modal is active
+  useAutoRefresh(
+    () => void fetchRequests(true),
+    { intervalMs: 60000, enabled: !isLoading && !selectedRequest }
+  );
 
   // Listen to router state (e.g. from Notifications about schedule conflict)
   useEffect(() => {
@@ -265,7 +298,7 @@ export function ScheduleRequestsPage() {
     try {
       await updateScheduleStatus(selectedRequest.id, status);
       setToastMessage(`Schedule request status updated to ${status}.`);
-      void fetchRequests();
+      void fetchRequests(true);
     } catch (err) {
       console.error(err);
     }
@@ -303,17 +336,25 @@ export function ScheduleRequestsPage() {
 
       {/* Table Card */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <ScheduleRequestTable
-          requests={requests}
-          onViewDetails={setSelectedRequest}
-        />
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          total={total}
-          pageSize={PAGE_SIZE}
-          onPageChange={setPage}
-        />
+        {isLoading ? (
+          <LoadingState message="Loading schedule requests..." />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void fetchRequests(false)} />
+        ) : (
+          <>
+            <ScheduleRequestTable
+              requests={requests}
+              onViewDetails={setSelectedRequest}
+            />
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </>
+        )}
       </div>
 
       {/* Details Modal */}

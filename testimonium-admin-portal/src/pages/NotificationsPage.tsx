@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Filter, CheckCheck, ChevronDown, Info } from 'lucide-react';
+import { CheckCheck, ChevronDown, Info } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { NotificationGroup } from '@/components/notifications/NotificationGroup';
 import { NotificationService } from '@/services/NotificationService';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { Notification, NotificationGroup as GroupType } from '@/types';
 
 const GROUPS: GroupType[] = ['TODAY', 'YESTERDAY', 'EARLIER'];
@@ -47,14 +50,39 @@ export function NotificationsPage() {
   const navigate = useNavigate();
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [selectedNotice, setSelectedNotice] = useState<Notification | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
 
-  const fetchNotifs = () => {
-    void NotificationService.getNotifications().then(setNotifs);
-  };
+  const fetchNotifs = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
+    try {
+      const data = await NotificationService.getNotifications();
+      setNotifs(data);
+    } catch (err: any) {
+      console.error('Failed to load notifications:', err);
+      if (!silent) {
+        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+      }
+    } finally {
+      if (!silent) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    fetchNotifs();
-  }, []);
+    void fetchNotifs(false);
+  }, [fetchNotifs]);
+
+  // Visibility-aware polling every 30 seconds, paused if loading or notice modal is open
+  useAutoRefresh(
+    () => void fetchNotifs(true),
+    { intervalMs: 30000, enabled: !isLoading && !selectedNotice }
+  );
 
   const markAllRead = () => {
     // Optimistic UI update
@@ -69,19 +97,16 @@ export function NotificationsPage() {
     // 1. Mark as read
     await NotificationService.markRead(notif.id);
     window.dispatchEvent(new Event('notifications-updated'));
-    fetchNotifs();
+    void fetchNotifs(true);
 
-    // 2. Perform action based on notification type
-    if (notif.type === 'baptism-request') {
-      // Document request
-      navigate('/document-requests', { state: { requestId: 'doc-1' } });
-    } else if (notif.type === 'document-ready') {
-      navigate('/document-requests', { state: { requestId: 'doc-3' } });
+    // 2. Perform action based on notification type / reference properties
+    if (notif.referenceType === 'DOCUMENT_REQUEST' && notif.referenceId) {
+      navigate('/document-requests', { state: { requestId: notif.referenceId } });
+    } else if (notif.referenceType === 'SCHEDULE_REQUEST' && notif.referenceId) {
+      navigate('/schedule-requests', { state: { requestId: notif.referenceId } });
     } else if (notif.type === 'schedule-conflict') {
-      // Schedule conflict
       navigate('/schedule-requests', { state: { highlightConflict: true } });
     } else if (notif.type === 'system-update') {
-      // General Notice modal
       setSelectedNotice(notif);
     } else {
       // Fallback
@@ -89,7 +114,12 @@ export function NotificationsPage() {
     }
   };
 
-  const grouped = (group: GroupType) => notifs.filter((n) => n.group === group);
+  const filteredNotifs = notifs.filter((n) => {
+    if (filterMode === 'unread') return !n.isRead;
+    return true;
+  });
+
+  const grouped = (group: GroupType) => filteredNotifs.filter((n) => n.group === group);
 
   return (
     <div>
@@ -98,14 +128,21 @@ export function NotificationsPage() {
         subtitle="Stay updated on administrative alerts and requests."
         actions={
           <div className="flex items-center gap-2">
-            <button
-              id="notifications-filter"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <Filter className="w-4 h-4" />
-              Filter
-              <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-            </button>
+            {/* Notifications Filter Dropdown */}
+            <div className="relative">
+              <select
+                value={filterMode}
+                onChange={(e) => setFilterMode(e.target.value as 'all' | 'unread')}
+                className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[120px]"
+                id="notifications-filter"
+                aria-label="Filter notifications"
+              >
+                <option value="all">All Notifications</option>
+                <option value="unread">Unread Only</option>
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+
             <button
               id="mark-all-read"
               onClick={markAllRead}
@@ -118,26 +155,43 @@ export function NotificationsPage() {
         }
       />
 
-      {/* Grouped notifications */}
-      <div className="space-y-2">
-        {GROUPS.map((group) => (
-          <NotificationGroup
-            key={group}
-            group={group}
-            notifications={grouped(group)}
-            onAction={handleNotificationAction}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <LoadingState message="Loading notifications..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => void fetchNotifs(false)} />
+      ) : filteredNotifs.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center my-6 shadow-card">
+          <p className="text-sm text-gray-500 font-medium">
+            {filterMode === 'unread' ? 'No unread notifications.' : 'No notifications found.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {GROUPS.map((group) => {
+            const groupNotifs = grouped(group);
+            if (groupNotifs.length === 0) return null;
+            return (
+              <NotificationGroup
+                key={group}
+                group={group}
+                notifications={groupNotifs}
+                onAction={handleNotificationAction}
+              />
+            );
+          })}
+        </div>
+      )}
 
-      {/* Load Previous */}
+      {/* Load Previous (Disabled - not supported by backend) */}
       <div className="flex justify-center mt-4">
         <button
           id="load-previous-notifications"
-          className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors py-2"
+          disabled
+          className="flex items-center gap-2 text-sm font-medium text-gray-400 cursor-not-allowed py-2 opacity-60"
+          title="Pagination is not currently supported"
         >
           <ChevronDown className="w-4 h-4" />
-          Load Previous Notifications
+          No More Notifications
         </button>
       </div>
 

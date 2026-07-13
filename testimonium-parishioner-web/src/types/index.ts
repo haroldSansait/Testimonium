@@ -1,0 +1,186 @@
+export const UserRole = {
+  PARISHIONER: 'PARISHIONER',
+  SECRETARY: 'SECRETARY',
+  PRIEST: 'PRIEST',
+  DIOCESE_COORDINATOR: 'DIOCESE_COORDINATOR'
+} as const;
+
+export type UserRole = typeof UserRole[keyof typeof UserRole];
+
+export interface Parish {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  province: string;
+  coordinates: { lat: number; lng: number };
+  coverImage: string;
+  gallery: string[];
+  phone: string;
+  email: string;
+  facebookPage: string;
+  officeHours: string;
+  patronSaint: string;
+  feastDay: string;
+  description: string;
+  assignedPriest: string;
+  assignedSecretary: string;
+  massSchedules: string[];
+  upcomingEvents: string[];
+  services: string[];
+}
+
+export type RequestStatus =
+  | 'pending'
+  | 'under-review'
+  | 'awaiting-information'
+  | 'payment-pending'
+  | 'payment-verification'
+  | 'processing'
+  | 'ready'
+  | 'completed'
+  | 'rejected'
+  | 'cancelled'
+  | 'expired';
+
+export interface RequestAttachment {
+  id: number;
+  requestId: number;
+  fileName: string;
+  r2ObjectKey: string;
+  fileType?: string | null;
+  fileSize?: number | null;
+  category: string; // "primary" | "supporting" | "receipt"
+  uploadedAt: string;
+}
+
+export interface PaymentTransaction {
+  id: number;
+  requestId: number;
+  amount: number | null;
+  provider: string | null;
+  referenceNumber: string | null;
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  verifiedById?: number | null;
+  verifiedAt?: string | null;
+  createdAt: string;
+}
+
+export interface RequestHistoryEntry {
+  id: number;
+  requestId: number;
+  actorId?: number | null;
+  action: string;
+  oldStatus?: string | null;
+  newStatus?: string | null;
+  remarks?: string | null;
+  createdAt: string;
+  actor?: {
+    id: number;
+    fullName: string;
+  } | null;
+}
+
+export interface SacramentalRequest {
+  id: string;
+  trackingNumber: string | null;
+  parishId: string;
+  documentType: 'baptism' | 'confirmation' | 'marriage' | 'death' | 'other' | 'BAPTISMAL_CERTIFICATE' | 'CONFIRMATION_CERTIFICATE' | 'MARRIAGE_CERTIFICATE' | 'FIRST_COMMUNION_CERTIFICATE';
+  status: RequestStatus;
+  applicantName: string;
+  relationship: string;
+  purpose: string;
+  isDraft: boolean;
+  submittedAt: string;
+  updatedAt: string;
+  requirements: string[]; // for backward compatibility/demo
+  attachments?: RequestAttachment[];
+  paymentTransactions?: PaymentTransaction[];
+  requestHistory?: RequestHistoryEntry[];
+  paymentStatus?: 'unpaid' | 'proof-submitted' | 'confirmed' | 'UNPAID' | 'PROOF_SUBMITTED' | 'CONFIRMED';
+  rejectionReason?: string;
+  instructions?: string;
+}
+
+export interface Appointment {
+  id: string;
+  parishId: string;
+  serviceName: string;
+  date: string;
+  timeSlot: string;
+  status: 'booked' | 'confirmed' | 'cancelled';
+  confirmationNumber: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+}
+
+export type NotificationType =
+  | 'document-submitted'
+  | 'document-approved'
+  | 'document-ready'
+  | 'document-completed'
+  | 'document-cancelled'
+  | 'document-rejected'
+  | 'payment-requested'
+  | 'payment-verified'
+  | 'appointment-confirmed'
+  | 'appointment-declined'
+  | 'appointment-submitted'
+  | 'announcement'
+  | 'general';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  read: boolean;
+  createdAt: string;
+  referenceType?: 'DOCUMENT_REQUEST' | 'SCHEDULE_REQUEST' | 'GENERAL' | null;
+  referenceId?: number | null;
+}
+
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  emailVerified: boolean;
+  role: UserRole;
+  displayName?: string;
+  phone?: string;
+  address?: string;
+  photoURL?: string;
+  notificationsEnabled: boolean;
+  parishId?: string;
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  description: string;
+  category: 'Holy Mass' | 'Fiesta' | 'Seminar' | 'Youth' | 'Formation' | 'Retreat' | 'Outreach' | 'Community' | 'Diocesan Event' | 'Sacramental';
+  parishId: string;
+  parishName: string;
+  coverImage: string;
+  coverImageAlt: string;
+  gallery?: string[];
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  organizer: string;
+  contactPerson: string;
+  contactNumber: string;
+  featured: boolean;
+  status: 'upcoming' | 'ongoing' | 'completed';
+  registrationRequired: boolean;
+  maxParticipants?: number;
+  currentParticipants?: number;
+}
+

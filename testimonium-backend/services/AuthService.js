@@ -34,17 +34,33 @@ export class AuthService {
     if (existingUserByEmail) {
       // Reject if firebaseUid is already set (non-null) and belongs to a different Firebase account
       if (existingUserByEmail.firebaseUid) {
+        if (existingUserByEmail.firebaseUid === firebaseUid) {
+          return this.toApplicationProfile(existingUserByEmail);
+        }
         const error = new Error("This email is already linked to another authentication account.");
         error.statusCode = 409;
         throw error;
       }
 
       // Link the Firebase UID to the existing pre-provisioned staff record
-      const linkedUser = await this.userRepository.updateFirebaseUid(
-        existingUserByEmail.id,
-        firebaseUid,
-      );
-      return this.toApplicationProfile(linkedUser);
+      try {
+        const linkedUser = await this.userRepository.updateFirebaseUid(
+          existingUserByEmail.id,
+          firebaseUid,
+        );
+        return this.toApplicationProfile(linkedUser);
+      } catch (error) {
+        // Handle concurrent linking race condition (P2002 unique constraint failure)
+        if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
+          console.log(`[AuthService] JIT email-linking race condition detected for ${firebaseUid}. Retrying lookup...`);
+          const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) || 
+                       (await this.userRepository.findByEmail(email));
+          if (user) {
+            return this.toApplicationProfile(user);
+          }
+        }
+        throw error;
+      }
     }
 
     // 3. Email does not exist: create a new PARISHIONER
@@ -56,16 +72,29 @@ export class AuthService {
       throw error;
     }
 
-    const createdUser = await this.userRepository.create({
-      firebaseUid,
-      email,
-      fullName: this.resolveFullName(decodedToken),
-      isVerified: Boolean(decodedToken.email_verified),
-      roleId: parishionerRole.id,
-      parishId: null,
-    });
+    try {
+      const createdUser = await this.userRepository.create({
+        firebaseUid,
+        email,
+        fullName: this.resolveFullName(decodedToken),
+        isVerified: Boolean(decodedToken.email_verified),
+        roleId: parishionerRole.id,
+        parishId: null,
+      });
 
-    return this.toApplicationProfile(createdUser);
+      return this.toApplicationProfile(createdUser);
+    } catch (error) {
+      // Handle concurrent user JIT creation race condition (P2002 unique constraint failure)
+      if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
+        console.log(`[AuthService] JIT creation race condition detected for ${firebaseUid}. Retrying lookup...`);
+        const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) || 
+                     (await this.userRepository.findByEmail(email));
+        if (user) {
+          return this.toApplicationProfile(user);
+        }
+      }
+      throw error;
+    }
   }
 
   resolveFullName(decodedToken) {

@@ -1,0 +1,295 @@
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Search, 
+  Compass, 
+  RefreshCw, 
+  MapPin, 
+  AlertTriangle,
+  Map as MapIcon
+} from 'lucide-react';
+import { useParishes } from '../../hooks/useService';
+import type { Parish } from '../../types';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { LeafletMap } from '../../components/maps/LeafletMap';
+import { ParishMarker } from '../../features/parishes/components/ParishMarker';
+import { ParishDrawer } from '../../features/parishes/components/ParishDrawer';
+
+// Center of the Vicariate of Canlaon (Negros Oriental)
+const DEFAULT_CENTER = { lat: 10.22, lng: 123.25 };
+const DEFAULT_ZOOM = 9;
+
+const EMPTY_PARISHES_ARRAY: Parish[] = [];
+
+export const ParishDirectoryPage: React.FC = () => {
+  const navigate = useNavigate();
+
+  const parishesQuery = useParishes();
+  const parishes = parishesQuery.data || EMPTY_PARISHES_ARRAY;
+  const { loading, error, refetch } = parishesQuery;
+
+  const [selectedParish, setSelectedParish] = useState<Parish | null>(null);
+
+  // Map state
+  const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
+  const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<Parish[]>([]);
+
+  // Update suggestions on search query change
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setSuggestions(prev => prev.length === 0 ? prev : EMPTY_PARISHES_ARRAY);
+      return;
+    }
+    const filtered = parishes.filter(p => {
+      const q = searchQuery.toLowerCase();
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.address.toLowerCase().includes(q) ||
+        p.patronSaint.toLowerCase().includes(q) ||
+        p.city.toLowerCase().includes(q) ||
+        p.province.toLowerCase().includes(q) ||
+        p.feastDay.toLowerCase().includes(q)
+      );
+    });
+    setSuggestions(filtered);
+  }, [searchQuery, parishes]);
+
+  const handleSelectParish = (parish: Parish) => {
+    setSelectedParish(parish);
+    setMapCenter(parish.coordinates);
+    setMapZoom(14);
+    setSearchQuery('');
+    setSuggestions([]);
+  };
+
+  const handleLocateMe = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setMapCenter({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          setMapZoom(14);
+          setGeoError(null);
+        },
+        (error) => {
+          console.error(error);
+          setGeoError("Location permission denied or unavailable.");
+          setTimeout(() => setGeoError(null), 4000);
+        }
+      );
+    } else {
+      setGeoError("Geolocation is not supported by your browser.");
+      setTimeout(() => setGeoError(null), 4000);
+    }
+  };
+
+  const handleResetView = () => {
+    setMapCenter(DEFAULT_CENTER);
+    setMapZoom(DEFAULT_ZOOM);
+    setSelectedParish(null);
+    setSearchQuery('');
+  };
+
+  const handleRequestDocument = (parishId: string) => {
+    navigate(`/dashboard/request?parishId=${parishId}`);
+  };
+
+  const handleScheduleAppointment = (parishId: string) => {
+    navigate(`/dashboard/scheduler?parishId=${parishId}`);
+  };
+
+  const handleRefresh = () => {
+    setSelectedParish(null);
+    setSearchQuery('');
+    refetch();
+  };
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <PageHeader 
+          title="Parish Directory Map" 
+          description="Explore the parishes of the Vicariate of Canlaon geographically."
+          onRefresh={handleRefresh}
+          breadcrumbs={['Home', 'Parish Directory']}
+        />
+        <ErrorState 
+          title="Failed to load parish directory" 
+          description="We had trouble fetching coordinates and schedules for Canlaon parishes. Please try again."
+          onRetry={handleRefresh} 
+        />
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true">
+        <PageHeader 
+          title="Parish Directory Map" 
+          description="Explore the parishes of the Vicariate of Canlaon geographically."
+          onRefresh={handleRefresh}
+          isRefreshing={true}
+          breadcrumbs={['Home', 'Parish Directory']}
+        />
+        
+        {/* Search Input Skeleton */}
+        <Skeleton className="h-11 max-w-md w-full rounded-button" />
+
+        {/* Map Viewport Skeleton */}
+        <div className="relative h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border bg-gray-100 flex items-center justify-center">
+          <Skeleton className="absolute inset-0 h-full w-full" />
+          {/* Floating detail skeleton to mimic desktop view */}
+          <div className="hidden lg:block absolute left-4 top-4 bottom-4 w-96 z-10 bg-white border border-border/80 rounded-card p-5 space-y-4">
+            <Skeleton className="h-44 w-full rounded-card" />
+            <Skeleton className="h-5 w-3/4 rounded" />
+            <Skeleton className="h-4 w-1/2 rounded" />
+            <Skeleton className="h-10 w-full rounded-button mt-4" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Filtered parishes list for the map if suggestions are shown or if we search matches
+  const displayParishes = searchQuery.trim() !== '' ? suggestions : parishes;
+
+  return (
+    <div className="space-y-6 flex flex-col h-full" aria-live="polite">
+      <PageHeader 
+        title="Parish Directory Map" 
+        description="Explore the parishes of the Vicariate of Canlaon geographically, view mass schedules, and request sacraments."
+        onRefresh={handleRefresh}
+        breadcrumbs={['Home', 'Parish Directory']}
+      />
+
+      {/* Geolocation friendly error notification */}
+      {geoError && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-3 flex items-center space-x-2 text-red-700 text-xs rounded shadow-sm animate-in fade-in slide-in-from-top duration-200">
+          <AlertTriangle size={16} />
+          <span>{geoError}</span>
+        </div>
+      )}
+
+      {/* Search Input Box */}
+      <div className="relative max-w-md w-full z-20">
+        <div className="flex items-center border border-border bg-white rounded-button px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-crimson/20 focus-within:border-crimson transition-all shadow-sm">
+          <Search size={18} className="text-text-muted mr-2" />
+          <input 
+            type="text"
+            placeholder="Search Parish (by name, city, feast day, patron saint)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full text-sm outline-none text-text-primary bg-transparent placeholder-text-muted"
+          />
+        </div>
+
+        {/* Suggestion list */}
+        {searchQuery.trim() !== '' && suggestions.length > 0 && (
+          <Card className="absolute top-full left-0 right-0 mt-1 shadow-card border border-border bg-white divide-y divide-border/60 z-20 max-h-60 overflow-y-auto">
+            {suggestions.map(parish => (
+              <div 
+                key={parish.id}
+                onClick={() => handleSelectParish(parish)}
+                className="p-3 hover:bg-app-page cursor-pointer transition-colors text-xs flex items-center space-x-2"
+              >
+                <MapPin size={14} className="text-crimson" />
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-text-primary truncate">{parish.name}</h4>
+                  <p className="text-[10px] text-text-muted truncate">{parish.address}</p>
+                </div>
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
+
+      {/* Map Container Viewport */}
+      <div className="relative h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md">
+        {/* Leaflet map */}
+        {displayParishes.length > 0 ? (
+          <LeafletMap center={mapCenter} zoom={mapZoom} className="h-full w-full">
+            {displayParishes.map(parish => (
+              <ParishMarker 
+                key={parish.id}
+                parish={parish}
+                position={parish.coordinates}
+                onClick={() => handleSelectParish(parish)}
+              />
+            ))}
+          </LeafletMap>
+        ) : (
+          <div className="absolute inset-0 bg-app-base flex items-center justify-center p-8 z-10">
+            <EmptyState 
+              title="No parish found"
+              description="No canonical registry location matches your current search keyword. Try another parish name or vicariate city."
+              icon={<MapIcon size={36} className="text-text-muted/40" />}
+              action={
+                <Button size="sm" onClick={() => setSearchQuery('')} className="bg-crimson hover:bg-crimson-dark">
+                  Reset Search
+                </Button>
+              }
+            />
+          </div>
+        )}
+
+        {/* Map Floating Control Controls */}
+        <div className="absolute right-3.5 top-3.5 z-[1000] flex flex-col space-y-2">
+          <button
+            onClick={handleLocateMe}
+            className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
+            title="Locate Me"
+          >
+            <Compass size={18} />
+          </button>
+          <button
+            onClick={handleResetView}
+            className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
+            title="Reset View"
+          >
+            <RefreshCw size={18} />
+          </button>
+        </div>
+
+        {/* Rich Floating Parish Info Overlay Card (Desktop: left side overlay, Mobile: bottom sheet style) */}
+        {selectedParish && (
+          <div className="absolute inset-0 pointer-events-none z-[1000]">
+            {/* Desktop layout: floating overlay */}
+            <div className="hidden lg:block absolute left-4 top-4 bottom-4 w-96 pointer-events-auto overflow-y-auto animate-in slide-in-from-left duration-300">
+              <ParishDrawer 
+                parish={selectedParish}
+                onRequestDocument={handleRequestDocument}
+                onScheduleAppointment={handleScheduleAppointment}
+                onClose={() => setSelectedParish(null)}
+              />
+            </div>
+
+            {/* Mobile layout: bottom sheet overlay */}
+            <div className="lg:hidden absolute bottom-0 left-0 right-0 max-h-[50vh] pointer-events-auto overflow-y-auto border-t border-border shadow-2xl rounded-t-card bg-white animate-in slide-in-from-bottom duration-300">
+              <ParishDrawer 
+                parish={selectedParish}
+                onRequestDocument={handleRequestDocument}
+                onScheduleAppointment={handleScheduleAppointment}
+                onClose={() => setSelectedParish(null)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ParishDirectoryPage;

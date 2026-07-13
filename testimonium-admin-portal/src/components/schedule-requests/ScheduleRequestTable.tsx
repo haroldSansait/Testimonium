@@ -18,6 +18,7 @@ const eventTypeIcons: Record<EventType, React.ReactNode> = {
   'Mass Intention': <Church className="w-3.5 h-3.5" />,
   'House Blessing': <Home className="w-3.5 h-3.5" />,
   'Funeral Mass': <Church className="w-3.5 h-3.5" />,
+  Confirmation: <Church className="w-3.5 h-3.5" />,
   Other: <MoreHorizontal className="w-3.5 h-3.5" />,
 };
 
@@ -64,9 +65,16 @@ export function ScheduleRequestTable({ requests, onViewDetails }: ScheduleReques
                 </div>
               </td>
               <td>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <span className="text-gray-400">{eventTypeIcons[req.eventType]}</span>
-                  <span>{req.eventType}</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2 text-gray-900 font-medium">
+                    <span className="text-gray-400">{eventTypeIcons[req.eventType]}</span>
+                    <span>{req.appointmentTitle || req.eventType}</span>
+                  </div>
+                  {req.appointmentTitle && req.appointmentTitle !== req.eventType && (
+                    <span className="text-[11px] text-gray-500 font-normal" style={{ marginLeft: '1.375rem' }}>
+                      {req.eventType}
+                    </span>
+                  )}
                 </div>
               </td>
               <td className="whitespace-nowrap text-gray-600">

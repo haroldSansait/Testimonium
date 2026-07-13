@@ -17,12 +17,14 @@ const router = Router();
 // Apply authentication middleware
 router.use(authenticateFirebaseToken);
 
+// Publicly read parishes for all authenticated users
+router.get("/", list);
+router.get("/:id", getById);
+
 // Apply authorization middleware — only Diocese Coordinators can modify parishes
 router.use(checkRole(["DIOCESE_COORDINATOR"]));
 
 // Routes
-router.get("/", list);
-router.get("/:id", getById);
 router.post("/", validateBody(createParishSchema), create);
 router.put("/:id", validateBody(updateParishSchema), update);
 router.delete("/:id", archive);

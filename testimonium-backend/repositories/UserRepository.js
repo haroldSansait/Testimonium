@@ -176,6 +176,7 @@ export class UserRepository {
     if (data.email !== undefined) updateData.email = data.email;
     if (data.roleId !== undefined) updateData.roleId = data.roleId;
     if (data.parishId !== undefined) updateData.parishId = data.parishId;
+    if (data.contactNumber !== undefined) updateData.contactNumber = data.contactNumber;
 
     return prisma.user.update({
       where: { id },

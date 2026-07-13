@@ -2,12 +2,14 @@ import api from '@/api/api';
 import type { ScheduleProvider, ScheduleRequestFilters } from '../interfaces';
 import type { ScheduleRequest, ScheduleStatus, EventType } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
+import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
 
 interface BackendScheduleRequestDTO {
   id: number;
   userId: number;
   parishId: number;
   eventType: string;
+  displayTitle: string | null;
   requestedDate: string;
   startDatetime: string | null;
   endDatetime: string | null;
@@ -21,6 +23,15 @@ interface BackendScheduleRequestDTO {
     id: number;
     fullName: string;
     email: string;
+  } | null;
+  parish?: {
+    id: number;
+    parishName: string;
+    type: string;
+  } | null;
+  processedBy?: {
+    id: number;
+    fullName: string;
   } | null;
 }
 
@@ -41,7 +52,7 @@ const mapEventType = (type: string): EventType => {
   switch (type) {
     case 'WEDDING': return 'Wedding';
     case 'BAPTISM': return 'Baptism';
-    case 'CONFIRMATION': return 'Other';
+    case 'CONFIRMATION': return 'Confirmation';
     case 'PRIVATE_MASS': return 'Mass Intention';
     case 'MASS_INTENTION': return 'Mass Intention';
     default:
@@ -69,9 +80,17 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     day: 'numeric',
   });
 
-  const start = dbItem.startDatetime ? new Date(dbItem.startDatetime) : null;
+  // Extract time slot from remarks (e.g. "Time Slot: 03:00 PM. Parishioner Portal Request")
   let preferredTime = '00:00 AM';
-  if (start) {
+  if (dbItem.remarks) {
+    const match = dbItem.remarks.match(/Time Slot:\s*([^.]+)/);
+    if (match) {
+      preferredTime = match[1].trim();
+    }
+  }
+
+  if (preferredTime === '00:00 AM' && dbItem.startDatetime) {
+    const start = new Date(dbItem.startDatetime);
     let hours = start.getHours();
     const minutes = start.getMinutes();
     const period = hours >= 12 ? 'PM' : 'AM';
@@ -82,6 +101,17 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     preferredTime = `${hourStr}:${minStr} ${period}`;
   }
 
+  // Extract custom service/appointment title, checking displayTitle first, then fallback to remarks, then eventType
+  let appointmentTitle: string = resolveDisplayTitle(dbItem.eventType, dbItem.displayTitle);
+  if (!dbItem.displayTitle && dbItem.remarks) {
+    const match = dbItem.remarks.match(/Service:\s*([^.]+)/);
+    if (match) {
+      appointmentTitle = match[1].trim();
+    }
+  }
+
+  const assignedPriest = dbItem.processedBy?.fullName || 'TBD';
+
   return {
     id: String(dbItem.id),
     referenceNo: `REQ-${new Date(dbItem.createdAt).getFullYear()}-${String(dbItem.id).padStart(4, '0')}`,
@@ -89,16 +119,18 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     initials,
     avatarColor,
     eventType: mapEventType(dbItem.eventType),
+    appointmentTitle,
     preferredDate,
     preferredTime,
     status: mapScheduleStatus(dbItem.status),
-    assignedPriest: dbItem.processedById ? 'Father Michael' : 'TBD',
-    parish: 'St. Joseph the Worker Parish',
+    assignedPriest,
+    parish: dbItem.parish?.parishName || 'Main Church',
     contactInfo: dbItem.user?.email || 'Anonymous',
     notes: dbItem.remarks || 'No notes provided.',
     timeline: [
       { status: 'Pending', date: preferredDate, note: 'Schedule request submitted.' },
-      ...(dbItem.status === 'CONFIRMED' ? [{ status: 'Confirmed', date: preferredDate, note: 'Approved and scheduled.' }] : []),
+      ...(dbItem.status === 'CONFIRMED' ? [{ status: 'Confirmed', date: preferredDate, note: `Approved by ${assignedPriest}.` }] : []),
+      ...(dbItem.status === 'REJECTED' ? [{ status: 'Cancelled', date: preferredDate, note: 'Request rejected/cancelled.' }] : []),
     ]
   };
 };
@@ -147,3 +179,4 @@ export const ApiScheduleProvider: ScheduleProvider = {
     return mapToFrontend(response.data.data);
   }
 };
+

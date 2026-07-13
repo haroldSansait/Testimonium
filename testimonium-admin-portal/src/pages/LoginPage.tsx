@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, LogIn, KeyRound } from 'lucide-react';
 import logoUrl from '@/assets/TESTIMONIUM_logo.png';
 import { useAuth } from '@/hooks/useAuth';
 import type { ApiError } from '@/types/api';
@@ -47,6 +47,8 @@ export function LoginPage() {
   const { signIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const {
     register,
@@ -64,10 +66,36 @@ export function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setServerError(null);
     try {
-      await signIn(data.email, data.password);
+      await signIn(data.email, data.password, data.rememberMe);
       navigate('/dashboard');
     } catch (err: unknown) {
       setServerError(resolveErrorMessage(err));
+    }
+  };
+
+  useEffect(() => {
+    if (!showForgotModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowForgotModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Auto-focus the close button
+    setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 50);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showForgotModal]);
+
+  const handleTabKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      e.preventDefault(); // Trap focus inside this single-button modal
     }
   };
 
@@ -155,6 +183,7 @@ export function LoginPage() {
           </label>
           <button
             type="button"
+            onClick={() => setShowForgotModal(true)}
             id="forgot-password"
             className="text-sm font-medium text-crimson-700 hover:text-crimson-800 transition-colors"
           >
@@ -194,6 +223,50 @@ export function LoginPage() {
       <p className="text-center text-[10px] font-semibold tracking-widest text-gray-400 uppercase mt-8">
         CONFIDENTIAL &amp; OFFICIAL USE ONLY
       </p>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          onClick={(e) => e.target === e.currentTarget && setShowForgotModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="forgot-password-title"
+          >
+            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-crimson-700" />
+            </div>
+            <h3
+              id="forgot-password-title"
+              className="text-base font-bold text-gray-900 mb-2"
+              style={{ fontFamily: 'Playfair Display, serif' }}
+            >
+              Password Recovery
+            </h3>
+            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+              Password recovery via email is not yet available.
+              <br />
+              Please contact your Diocese Coordinator to request a password reset.
+              <br />
+              This feature will be available in a future update.
+            </p>
+            <div className="flex justify-center">
+              <button
+                ref={closeButtonRef}
+                onClick={() => setShowForgotModal(false)}
+                onKeyDown={handleTabKey}
+                className="w-full px-4 py-2.5 bg-crimson-700 hover:bg-crimson-800 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-crimson-700 focus:ring-offset-2"
+                id="forgot-password-close"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

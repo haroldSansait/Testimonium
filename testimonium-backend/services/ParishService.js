@@ -29,15 +29,15 @@ export class ParishService {
    * @param {string|number} id
    * @returns {Promise<object>}
    */
-  async getParishById(id) {
-    const numericId = parseInt(id, 10);
-    if (isNaN(numericId)) {
-      const err = new Error("Invalid parish ID format.");
-      err.statusCode = 400;
-      throw err;
+  async getParishById(idOrSlug) {
+    let parish;
+    const numericId = parseInt(idOrSlug, 10);
+    if (!isNaN(numericId)) {
+      parish = await this.parishRepository.findById(numericId);
+    } else {
+      parish = await this.parishRepository.findBySlug(idOrSlug);
     }
 
-    const parish = await this.parishRepository.findById(numericId);
     if (!parish) {
       const err = new Error("Parish not found.");
       err.statusCode = 404;
@@ -305,6 +305,7 @@ export class ParishService {
     return {
       id: String(p.id),
       name: p.parishName,
+      slug: p.slug || "",
       type: this.mapEnumToType(p.type),
       vicariate: "Vicariate of Canlaon",
       priest: priestUser ? priestUser.fullName : "Unassigned",
@@ -318,6 +319,11 @@ export class ParishService {
       address: p.address || "",
       contactNumber: p.contactNumber || "",
       email: p.email || "",
+      latitude: p.latitude,
+      longitude: p.longitude,
+      feastDay: p.feastDay || "",
+      coverImage: p.coverImage || "",
+      gallery: p.gallery || [],
     };
   }
 

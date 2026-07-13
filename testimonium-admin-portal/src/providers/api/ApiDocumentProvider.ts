@@ -7,6 +7,9 @@ interface BackendDocumentRequestDTO {
   id: number;
   userId: number;
   parishId: number;
+  trackingNumber: string | null;
+  applicantName: string;
+  relationship: string | null;
   documentType: string;
   purpose: string | null;
   status: string;
@@ -24,15 +27,76 @@ interface BackendDocumentRequestDTO {
     fullName: string;
     email: string;
   } | null;
+  attachments?: {
+    id: number;
+    requestId: number;
+    fileName: string;
+    r2ObjectKey: string;
+    fileType?: string | null;
+    fileSize?: number | null;
+    category: string;
+    uploadedAt: string;
+  }[];
+  paymentTransactions?: {
+    id: number;
+    requestId: number;
+    amount: number | null;
+    provider: string | null;
+    referenceNumber: string | null;
+    status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+    verifiedById?: number | null;
+    verifiedAt?: string | null;
+    createdAt: string;
+    receipts?: {
+      id: number;
+      paymentTransactionId: number;
+      r2ObjectKey: string;
+      fileName: string;
+      mimeType?: string | null;
+      fileSize?: number | null;
+      uploadedAt: string;
+      ocrResult?: {
+        id: number;
+        receiptUploadId: number;
+        referenceNumber?: string | null;
+        amount?: string | null;
+        paymentDate?: string | null;
+        provider?: string | null;
+        confidenceScore?: number | null;
+        rawText?: string | null;
+        processedAt: string;
+      } | null;
+    }[];
+  }[];
+  requestHistory?: {
+    id: number;
+    requestId: number;
+    actorId?: number | null;
+    action: string;
+    oldStatus?: string | null;
+    newStatus?: string | null;
+    remarks?: string | null;
+    createdAt: string;
+    actor?: {
+      id: number;
+      fullName: string;
+      role?: {
+        roleName: string;
+      } | null;
+    } | null;
+  }[];
 }
 
 const mapDocumentStatus = (status: string): DocumentStatus => {
   switch (status) {
     case 'PENDING':
-    case 'UNDER_REVIEW':
-    case 'PAYMENT_PENDING':
       return 'Pending Review';
+    case 'UNDER_REVIEW':
+      return 'Under Review';
+    case 'PAYMENT_PENDING':
+      return 'Payment Pending';
     case 'PAYMENT_VERIFIED':
+      return 'Payment Verified';
     case 'PROCESSING':
       return 'Processing';
     case 'READY_FOR_PICKUP':
@@ -40,8 +104,9 @@ const mapDocumentStatus = (status: string): DocumentStatus => {
     case 'COMPLETED':
       return 'Released';
     case 'REJECTED':
-    case 'CANCELLED':
       return 'Rejected';
+    case 'CANCELLED':
+      return 'Cancelled';
     default:
       return 'Pending Review';
   }
@@ -69,22 +134,42 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
     day: 'numeric',
   });
 
+  const timeline = dbItem.requestHistory && dbItem.requestHistory.length > 0
+    ? dbItem.requestHistory.map(h => {
+        const staffName = h.actor?.fullName ? ` by ${h.actor.fullName}` : '';
+        return {
+          status: mapDocumentStatus(h.newStatus || h.oldStatus || 'PENDING'),
+          date: new Date(h.createdAt).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          note: `${h.remarks || h.action}${staffName}`
+        };
+      })
+    : [
+        { status: 'Pending Review' as DocumentStatus, date: dateSubmitted, note: 'Request received.' }
+      ];
+
   return {
     id: String(dbItem.id),
-    referenceNo: `REQ-${new Date(dbItem.createdAt || dbItem.dateRequested).getFullYear()}-${String(dbItem.id).padStart(4, '0')}`,
-    parishionerName: dbItem.user?.fullName || 'Anonymous',
+    referenceNo: dbItem.trackingNumber || `REQ-${new Date(dbItem.createdAt || dbItem.dateRequested).getFullYear()}-${String(dbItem.id).padStart(4, '0')}`,
+    trackingNumber: dbItem.trackingNumber || '',
+    applicantName: dbItem.applicantName || '',
+    relationship: dbItem.relationship || 'Self',
+    parishionerName: dbItem.user?.fullName || dbItem.applicantName || 'Anonymous',
     documentType: mapDocumentType(dbItem.documentType),
     dateSubmitted,
     status: mapDocumentStatus(dbItem.status),
     purpose: dbItem.purpose || 'Official Use',
-    paymentStatus: dbItem.paymentStatus === 'PAID' || dbItem.paymentStatus === 'VERIFIED' ? 'Paid' : 'Pending',
+    paymentStatus: dbItem.paymentStatus === 'CONFIRMED' || dbItem.paymentStatus === 'PROOF_SUBMITTED' ? 'Paid' : 'Pending',
     requirements: ['Government Issued ID', 'Parishioner Certificate'],
-    timeline: [
-      { status: 'Pending Review', date: dateSubmitted, note: 'Request received.' },
-      ...(dbItem.status !== 'PENDING' ? [{ status: 'Processing', date: dateSubmitted, note: 'Document preparation in progress.' }] : []),
-      ...(dbItem.status === 'READY_FOR_PICKUP' ? [{ status: 'Ready for Pickup', date: dateSubmitted, note: 'Document is ready for pickup.' }] : []),
-      ...(dbItem.status === 'COMPLETED' ? [{ status: 'Released', date: dateSubmitted, note: 'Document collected.' }] : []),
-    ]
+    attachments: dbItem.attachments || [],
+    paymentTransactions: dbItem.paymentTransactions || [],
+    requestHistory: dbItem.requestHistory || [],
+    timeline
   };
 };
 
@@ -94,14 +179,18 @@ export const ApiDocumentProvider: DocumentProvider = {
   ): Promise<PaginatedResponse<DocumentRequest>> {
     const { search, documentType, status, page = 1, pageSize = 5 } = filters;
 
-    // If status / documentType is passed in frontend format, map it to backend format
+    // Map filters back to backend values
     let backendStatus = status;
     if (status && status !== 'all') {
       if (status === 'Pending Review') backendStatus = 'PENDING' as any;
+      else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW' as any;
+      else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING' as any;
+      else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED' as any;
       else if (status === 'Processing') backendStatus = 'PROCESSING' as any;
       else if (status === 'Ready for Pickup') backendStatus = 'READY_FOR_PICKUP' as any;
-      else if (status === 'Released') backendStatus = 'COMPLETED' as any;
+      else if (status === 'Released' || status === 'Completed') backendStatus = 'COMPLETED' as any;
       else if (status === 'Rejected') backendStatus = 'REJECTED' as any;
+      else if (status === 'Cancelled') backendStatus = 'CANCELLED' as any;
     }
 
     let backendDocType = documentType;
@@ -132,13 +221,18 @@ export const ApiDocumentProvider: DocumentProvider = {
 
   async updateDocumentStatus(id: string, status: DocumentStatus): Promise<DocumentRequest> {
     let backendStatus = 'PENDING';
-    if (status === 'Processing') backendStatus = 'PROCESSING';
+    if (status === 'Pending Review') backendStatus = 'PENDING';
+    else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
+    else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING';
+    else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED';
+    else if (status === 'Processing') backendStatus = 'PROCESSING';
     else if (status === 'Ready for Pickup') backendStatus = 'READY_FOR_PICKUP';
-    else if (status === 'Released') backendStatus = 'COMPLETED';
+    else if (status === 'Released' || status === 'Completed') backendStatus = 'COMPLETED';
     else if (status === 'Rejected') backendStatus = 'REJECTED';
-    else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION';
+    else if (status === 'Cancelled') backendStatus = 'CANCELLED';
 
     const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, { status: backendStatus });
     return mapToFrontend(response.data.data);
   }
 };
+

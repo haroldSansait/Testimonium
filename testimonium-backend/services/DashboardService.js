@@ -1,39 +1,24 @@
-import { DocumentRequestRepository } from "../repositories/DocumentRequestRepository.js";
 import { NotificationRepository } from "../repositories/NotificationRepository.js";
 import { ScheduleRepository } from "../repositories/ScheduleRepository.js";
+import { DashboardStatsService } from "./DashboardStatsService.js";
 
 export class DashboardService {
   constructor(
-    documentRequestRepository = new DocumentRequestRepository(),
     scheduleRepository = new ScheduleRepository(),
     notificationRepository = new NotificationRepository(),
+    dashboardStatsService = new DashboardStatsService()
   ) {
-    this.documentRequestRepository = documentRequestRepository;
     this.scheduleRepository = scheduleRepository;
     this.notificationRepository = notificationRepository;
+    this.dashboardStatsService = dashboardStatsService;
   }
 
   /**
    * Returns aggregate counts for the admin dashboard stats panel.
-   *
-   * NOTE — "Documents Needing Correction":
-   * The current DocumentRequestStatus enum does not include a dedicated
-   * CORRECTION_NEEDED or RETURNED status. This stat is returned as 0
-   * until a dedicated correction status is added to the schema.
-   * Dependency: Prisma migration adding DocumentRequestStatus.CORRECTION_NEEDED.
+   * Consumes the shared statistics service.
    */
   async getStats(parishId) {
-    const [docStats, pendingSchedules] = await Promise.all([
-      this.documentRequestRepository.countStats(parishId),
-      this.scheduleRepository.countPending(parishId),
-    ]);
-
-    return {
-      pendingDocumentRequests: docStats.pending,
-      pendingScheduleRequests: pendingSchedules,
-      needingCorrection: 0, // DEPENDENCY: No dedicated correction status in schema (see note above)
-      readyForPickup: docStats.readyForPickup,
-    };
+    return this.dashboardStatsService.getParishStats(parishId);
   }
 
   /**

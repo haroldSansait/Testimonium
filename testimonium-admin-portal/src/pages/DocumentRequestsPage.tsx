@@ -6,6 +6,9 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { Pagination } from '@/components/ui/Pagination';
 import { DocumentRequestTable } from '@/components/document-requests/DocumentRequestTable';
 import { getDocumentRequests, updateDocumentStatus } from '@/services/documentRequestService';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
 import { cn } from '@/utils/cn';
 
@@ -38,14 +41,130 @@ interface DetailsModalProps {
 
 function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleAction = async (status: DocumentStatus) => {
     setIsUpdating(true);
+    setErrorMessage(null);
     try {
       await onStatusChange(status);
       onClose();
+    } catch (err: any) {
+      console.error(err);
+      const msg = err.response?.data?.message || err.message || 'Failed to update status.';
+      setErrorMessage(msg);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const renderActionButtons = () => {
+    switch (request.status) {
+      case 'Pending Review':
+        return (
+          <>
+            <button
+              onClick={() => void handleAction('Under Review')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Start Review
+            </button>
+            <button
+              onClick={() => void handleAction('Rejected')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Reject
+            </button>
+          </>
+        );
+      case 'Under Review':
+        return (
+          <>
+            <button
+              onClick={() => void handleAction('Payment Pending')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Request Payment
+            </button>
+            <button
+              onClick={() => void handleAction('Needs Correction')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Needs Correction
+            </button>
+            <button
+              onClick={() => void handleAction('Rejected')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Reject
+            </button>
+          </>
+        );
+      case 'Payment Pending':
+        return (
+          <>
+            <button
+              onClick={() => void handleAction('Payment Verified')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Verify Payment
+            </button>
+            <button
+              onClick={() => void handleAction('Cancelled')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Cancel
+            </button>
+          </>
+        );
+      case 'Payment Verified':
+        return (
+          <>
+            <button
+              onClick={() => void handleAction('Processing')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Start Processing
+            </button>
+            <button
+              onClick={() => void handleAction('Payment Pending')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Reject Payment Proof
+            </button>
+          </>
+        );
+      case 'Processing':
+        return (
+          <button
+            onClick={() => void handleAction('Ready for Pickup')}
+            disabled={isUpdating}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+          >
+            Mark Ready for Pickup
+          </button>
+        );
+      case 'Ready for Pickup':
+        return (
+          <button
+            onClick={() => void handleAction('Released')}
+            disabled={isUpdating}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+          >
+            Complete / Release
+          </button>
+        );
+      default:
+        return null;
     }
   };
 
@@ -73,6 +192,14 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
           </button>
         </div>
 
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-800 animate-in fade-in duration-150">
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-5 text-sm flex-1">
           {/* Main Info */}
@@ -81,7 +208,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Applicant</span>
               <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
                 <User className="w-4 h-4 text-gray-400" />
-                {request.parishionerName}
+                {request.applicantName} ({request.relationship})
               </div>
             </div>
             <div>
@@ -124,8 +251,8 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
                   request.status === 'Released' && "bg-blue-50 text-blue-700 border-blue-200",
                   request.status === 'Ready for Pickup' && "bg-green-50 text-green-700 border-green-200",
                   request.status === 'Processing' && "bg-purple-50 text-purple-700 border-purple-200",
-                  request.status === 'Pending Review' && "bg-amber-50 text-amber-700 border-amber-200",
-                  (request.status === 'Rejected' || request.status === 'Needs Correction') && "bg-red-50 text-red-700 border-red-200"
+                  (request.status === 'Pending Review' || request.status === 'Under Review') && "bg-amber-50 text-amber-700 border-amber-200",
+                  (request.status === 'Rejected' || request.status === 'Needs Correction' || request.status === 'Cancelled') && "bg-red-50 text-red-700 border-red-200"
                 )}>
                   {request.status}
                 </span>
@@ -133,35 +260,145 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
             </div>
           </div>
 
-          {/* Requirements Checklist */}
+          {/* Attachments Section */}
           <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Submitted Requirements</span>
-            <div className="mt-2 space-y-1.5">
-              {(request.requirements || ['Government Issued ID', 'Parishioner Record Application']).map((reqItem, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 p-2.5 rounded-lg">
-                  <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <span>{reqItem}</span>
-                </div>
-              ))}
-            </div>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Submitted Attachments</span>
+            {request.attachments && request.attachments.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {request.attachments.map((file) => {
+                  const fileUrl = `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${file.r2ObjectKey}`;
+                  return (
+                    <div key={file.id} className="flex flex-col border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+                      <span className="font-semibold text-xs text-gray-800 truncate" title={file.fileName}>{file.fileName}</span>
+                      <span className="text-[10px] text-gray-400 mt-1">Uploaded: {new Date(file.uploadedAt).toLocaleDateString()}</span>
+                      <span className="text-[10px] text-gray-400 capitalize">Category: {file.category}</span>
+                      <div className="flex gap-2 mt-3">
+                        <a
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-800 text-[10px] font-bold rounded-md transition-all text-center flex-1"
+                        >
+                          Preview
+                        </a>
+                        <a
+                          href={fileUrl}
+                          download={file.fileName}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 bg-[#7B1C2A] text-white hover:bg-[#9B2C3A] text-[10px] font-bold rounded-md transition-all text-center flex-1"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 italic">No supporting attachments uploaded.</p>
+            )}
+          </div>
+
+          {/* Payments Section */}
+          <div>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Payment Details</span>
+            {request.paymentTransactions && request.paymentTransactions.length > 0 ? (
+              <div className="space-y-4">
+                {request.paymentTransactions.map((tx) => {
+                  const receipt = tx.receipts?.[0];
+                  const ocr = receipt?.ocrResult;
+                  const receiptUrl = receipt ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${receipt.r2ObjectKey}` : null;
+                  const needsManual = tx.status === 'PENDING' && (!ocr || !ocr.confidenceScore || ocr.confidenceScore < 0.9);
+
+                  return (
+                    <div key={tx.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 uppercase">Transaction</span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize",
+                          tx.status === 'VERIFIED' && "bg-green-50 text-green-700 border-green-200",
+                          tx.status === 'PENDING' && "bg-amber-50 text-amber-700 border-amber-200",
+                          tx.status === 'REJECTED' && "bg-red-50 text-red-700 border-red-200"
+                        )}>
+                          {tx.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-[10px] text-gray-400 block uppercase">Provider</span>
+                          <span className="font-semibold text-gray-800">{tx.provider || ocr?.provider || 'GCash'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-gray-400 block uppercase">Reference Number</span>
+                          <span className="font-semibold text-gray-800">{tx.referenceNumber || ocr?.referenceNumber || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-gray-400 block uppercase">Amount</span>
+                          <span className="font-semibold text-gray-800">₱{tx.amount || ocr?.amount || '0.00'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-gray-400 block uppercase">OCR Confidence</span>
+                          <span className="font-semibold text-gray-800">
+                            {ocr?.confidenceScore ? `${(ocr.confidenceScore * 100).toFixed(0)}%` : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {needsManual && (
+                        <div className="flex items-center gap-2 p-2.5 bg-amber-50/60 border border-amber-200/50 rounded-lg text-xs text-amber-800">
+                          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                          <span>Manual Review Required (OCR low confidence).</span>
+                        </div>
+                      )}
+
+                      {receiptUrl && (
+                        <div>
+                          <span className="text-[10px] text-gray-400 block uppercase mb-1">Receipt Image Preview</span>
+                          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-48 flex justify-center bg-gray-900">
+                            <img
+                              src={receiptUrl}
+                              alt="Receipt Proof"
+                              className="object-contain max-h-48"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 italic">No payment transactions recorded.</p>
+            )}
           </div>
 
           {/* Timeline */}
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Request Timeline</span>
             <div className="relative border-l-2 border-gray-100 pl-4 ml-2 space-y-4">
-              {(request.timeline || [
-                { status: 'Pending Review', date: request.dateSubmitted, note: 'Request submitted and under review.' }
-              ]).map((t, idx) => (
-                <div key={idx} className="relative">
+              {request.timeline && request.timeline.length > 0 ? (
+                request.timeline.map((t, idx) => (
+                  <div key={idx} className="relative">
+                    <span className="absolute -left-[23px] top-1 w-2.5 h-2.5 rounded-full bg-crimson-700 border-2 border-white ring-4 ring-gray-50" />
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span className="font-semibold text-gray-800">{t.status}</span>
+                      <span>{t.date}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">{t.note}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="relative">
                   <span className="absolute -left-[23px] top-1 w-2.5 h-2.5 rounded-full bg-crimson-700 border-2 border-white ring-4 ring-gray-50" />
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span className="font-semibold text-gray-800">{t.status}</span>
-                    <span>{t.date}</span>
+                    <span className="font-semibold text-gray-800">Pending Review</span>
+                    <span>{request.dateSubmitted}</span>
                   </div>
-                  <p className="text-xs text-gray-400 mt-0.5">{t.note}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Request received.</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -169,31 +406,11 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => void handleAction('Ready for Pickup')}
-              disabled={isUpdating || request.status === 'Ready for Pickup' || request.status === 'Released'}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              <Check className="w-3.5 h-3.5" /> Approve
-            </button>
-            <button
-              onClick={() => void handleAction('Needs Correction')}
-              disabled={isUpdating || request.status === 'Released'}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              <AlertCircle className="w-3.5 h-3.5" /> Request Correction
-            </button>
-            <button
-              onClick={() => void handleAction('Rejected')}
-              disabled={isUpdating || request.status === 'Released'}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" /> Reject
-            </button>
+            {renderActionButtons()}
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border"
+            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border bg-white"
           >
             Close
           </button>
@@ -232,19 +449,42 @@ export function DocumentRequestsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<DocumentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const PAGE_SIZE = 5;
 
-  const fetchRequests = useCallback(async () => {
-    const result = await getDocumentRequests({ search, documentType, status, page, pageSize: PAGE_SIZE });
-    setRequests(result.data);
-    setTotal(result.total);
-    setTotalPages(result.totalPages);
+  const fetchRequests = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
+    try {
+      const result = await getDocumentRequests({ search, documentType, status, page, pageSize: PAGE_SIZE });
+      setRequests(result.data);
+      setTotal(result.total);
+      setTotalPages(result.totalPages);
+    } catch (err: any) {
+      console.error('Failed to load document requests:', err);
+      if (!silent) {
+        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
+      }
+    } finally {
+      if (!silent) {
+        setIsLoading(false);
+      }
+    }
   }, [search, documentType, status, page]);
 
   useEffect(() => {
-    void fetchRequests();
+    void fetchRequests(false);
   }, [fetchRequests]);
+
+  // Set up auto-refresh polling (every 60 seconds), paused when loading, or when a request details modal is active
+  useAutoRefresh(
+    () => void fetchRequests(true),
+    { intervalMs: 60000, enabled: !isLoading && !selectedRequest }
+  );
 
   // Listen to router state for auto-opening (e.g. from Notifications)
   useEffect(() => {
@@ -261,7 +501,7 @@ export function DocumentRequestsPage() {
     try {
       await updateDocumentStatus(selectedRequest.id, newStatus);
       setToastMessage(`Request status updated to ${newStatus}.`);
-      void fetchRequests();
+      void fetchRequests(true);
     } catch (err) {
       console.error('Failed to update status:', err);
     }
@@ -326,17 +566,25 @@ export function DocumentRequestsPage() {
 
       {/* Table Card */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <DocumentRequestTable
-          requests={requests}
-          onViewDetails={setSelectedRequest}
-        />
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          total={total}
-          pageSize={PAGE_SIZE}
-          onPageChange={setPage}
-        />
+        {isLoading ? (
+          <LoadingState message="Loading document requests..." />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void fetchRequests(false)} />
+        ) : (
+          <>
+            <DocumentRequestTable
+              requests={requests}
+              onViewDetails={setSelectedRequest}
+            />
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </>
+        )}
       </div>
 
       {/* Details Modal */}

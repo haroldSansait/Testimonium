@@ -2,10 +2,15 @@
 
 export type DocumentStatus =
   | 'Pending Review'
+  | 'Under Review'
+  | 'Payment Pending'
+  | 'Payment Verified'
   | 'Processing'
   | 'Ready for Pickup'
   | 'Released'
+  | 'Completed'
   | 'Rejected'
+  | 'Cancelled'
   | 'Needs Correction';
 
 export type DocumentType =
@@ -19,6 +24,9 @@ export type DocumentType =
 export interface DocumentRequest {
   id: string;
   referenceNo: string;
+  trackingNumber?: string;
+  applicantName?: string;
+  relationship?: string;
   parishionerName: string;
   documentType: DocumentType;
   dateSubmitted: string;
@@ -27,7 +35,66 @@ export interface DocumentRequest {
   paymentStatus?: string;
   requirements?: string[];
   timeline?: { status: string; date: string; note?: string }[];
+  attachments?: {
+    id: number;
+    requestId: number;
+    fileName: string;
+    r2ObjectKey: string;
+    fileType?: string | null;
+    fileSize?: number | null;
+    category: string;
+    uploadedAt: string;
+  }[];
+  paymentTransactions?: {
+    id: number;
+    requestId: number;
+    amount: number | null;
+    provider: string | null;
+    referenceNumber: string | null;
+    status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+    verifiedById?: number | null;
+    verifiedAt?: string | null;
+    createdAt: string;
+    receipts?: {
+      id: number;
+      paymentTransactionId: number;
+      r2ObjectKey: string;
+      fileName: string;
+      mimeType?: string | null;
+      fileSize?: number | null;
+      uploadedAt: string;
+      ocrResult?: {
+        id: number;
+        receiptUploadId: number;
+        referenceNumber?: string | null;
+        amount?: string | null;
+        paymentDate?: string | null;
+        provider?: string | null;
+        confidenceScore?: number | null;
+        rawText?: string | null;
+        processedAt: string;
+      } | null;
+    }[];
+  }[];
+  requestHistory?: {
+    id: number;
+    requestId: number;
+    actorId?: number | null;
+    action: string;
+    oldStatus?: string | null;
+    newStatus?: string | null;
+    remarks?: string | null;
+    createdAt: string;
+    actor?: {
+      id: number;
+      fullName: string;
+      role?: {
+        roleName: string;
+      } | null;
+    } | null;
+  }[];
 }
+
 
 // ─── Schedule Requests ─────────────────────────────────────────────────────────
 
@@ -45,7 +112,9 @@ export type EventType =
   | 'Mass Intention'
   | 'House Blessing'
   | 'Funeral Mass'
+  | 'Confirmation'
   | 'Other';
+
 
 export interface ScheduleRequest {
   id: string;
@@ -54,6 +123,7 @@ export interface ScheduleRequest {
   initials: string;
   avatarColor?: string;
   eventType: EventType;
+  appointmentTitle?: string;
   preferredDate: string;
   preferredTime: string;
   status: ScheduleStatus;
@@ -102,7 +172,13 @@ export type NotificationType =
   | 'baptism-request'
   | 'document-ready'
   | 'system-update'
-  | 'warning';
+  | 'warning'
+  | 'document-under-review'
+  | 'document-request'
+  | 'schedule-request'
+  | 'payment-uploaded'
+  | 'payment-verified'
+  | 'document-cancelled';
 
 export type NotificationUrgency = 'urgent' | 'pending' | 'info' | 'success';
 
@@ -122,6 +198,8 @@ export interface Notification {
   urgency: NotificationUrgency;
   actions: NotificationAction[];
   leftBorderColor: string; // tailwind border color class
+  referenceType?: string | null;
+  referenceId?: string | null;
 }
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────

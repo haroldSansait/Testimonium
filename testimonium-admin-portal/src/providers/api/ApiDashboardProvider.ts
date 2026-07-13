@@ -2,6 +2,7 @@ import api from '@/api/api';
 import type { DashboardProvider } from '../interfaces';
 import type { StatCardData, TodayScheduleItem, RecentAlert } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
+import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
 
 interface BackendStatsDTO {
   pendingDocumentRequests: number;
@@ -13,6 +14,7 @@ interface BackendStatsDTO {
 interface BackendScheduleDTO {
   id: number;
   eventType: string;
+  displayTitle: string | null;
   requestedDate: string;
   startDatetime: string | null;
   endDatetime: string | null;
@@ -26,6 +28,7 @@ interface BackendScheduleDTO {
   processedBy?: {
     fullName: string;
   };
+  remarks?: string | null;
 }
 
 interface BackendNotificationDTO {
@@ -38,17 +41,7 @@ interface BackendNotificationDTO {
   createdAt: string;
 }
 
-const formatEventType = (type: string): string => {
-  switch (type) {
-    case 'WEDDING': return 'Wedding';
-    case 'BAPTISM': return 'Baptism';
-    case 'CONFIRMATION': return 'Confirmation';
-    case 'PRIVATE_MASS': return 'Private Mass';
-    case 'MASS_INTENTION': return 'Mass Intention';
-    default:
-      return type.charAt(0) + type.slice(1).toLowerCase().replace(/_/g, ' ');
-  }
-};
+// Unused formatEventType removed in favor of resolveDisplayTitle from shared catalog
 
 const formatTimeAgo = (dateStr: string | Date): string => {
   const date = new Date(dateStr);
@@ -138,11 +131,19 @@ export const ApiDashboardProvider: DashboardProvider = {
         statusVal = 'Pending';
       }
 
+      let appointmentTitle = resolveDisplayTitle(dbItem.eventType, dbItem.displayTitle);
+      if (!dbItem.displayTitle && dbItem.remarks) {
+        const match = dbItem.remarks.match(/Service:\s*([^.]+)/);
+        if (match) {
+          appointmentTitle = match[1].trim();
+        }
+      }
+
       return {
         id: String(dbItem.id),
         time: timeStr,
         period: periodVal,
-        title: `${formatEventType(dbItem.eventType)}: ${dbItem.user?.fullName || 'Anonymous'}`,
+        title: `${appointmentTitle}: ${dbItem.user?.fullName || 'Anonymous'}`,
         location: dbItem.parish?.parishName || 'Main Church',
         priest: dbItem.processedBy?.fullName || 'TBD',
         status: statusVal,

@@ -22,7 +22,7 @@ export interface AuthContextValue {
   /** True while the initial auth state is being resolved */
   loading: boolean;
   /** Sign in with Firebase email/password and fetch backend profile */
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   /** Sign out from Firebase and clear all local state */
   logout: () => Promise<void>;
   /** Re-fetch the backend profile (e.g. after role changes) */
@@ -74,8 +74,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // ── Auth actions ────────────────────────────────────────────────────────
   const signIn = useCallback(
-    async (email: string, password: string): Promise<void> => {
-      const profile = await AuthService.signIn(email, password);
+    async (email: string, password: string, rememberMe = false): Promise<void> => {
+      const profile = await AuthService.signIn(email, password, rememberMe);
       setApplicationUser(profile);
     },
     []

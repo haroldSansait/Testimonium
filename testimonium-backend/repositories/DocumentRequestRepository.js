@@ -10,7 +10,43 @@ const listInclude = {
   processedBy: {
     select: { id: true, fullName: true },
   },
+  attachments: {
+    orderBy: {
+      uploadedAt: "asc",
+    },
+  },
+  paymentTransactions: {
+    include: {
+      receipts: {
+        include: {
+          ocrResult: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  },
+  requestHistory: {
+    include: {
+      actor: {
+        select: {
+          id: true,
+          fullName: true,
+          role: {
+            select: {
+              roleName: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
 };
+
 
 export class DocumentRequestRepository {
   /**
@@ -25,7 +61,7 @@ export class DocumentRequestRepository {
   async findMany({ page = 1, limit = 10, search, status, documentType, parishId } = {}) {
     const skip = (page - 1) * limit;
 
-    const where = {};
+    const where = { isDraft: false };
 
     if (parishId) {
       where.parishId = parseInt(parishId, 10);
@@ -60,13 +96,14 @@ export class DocumentRequestRepository {
     return { data, total };
   }
 
-  /**
-   * Returns dashboard stat counts across all document requests.
-   * @param {number|undefined} parishId
-   */
   async countStats(parishId) {
-    const pendingWhere = { status: "PENDING" };
-    const pickupWhere = { status: "READY_FOR_PICKUP" };
+    const pendingWhere = {
+      status: {
+        in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING"]
+      },
+      isDraft: false
+    };
+    const pickupWhere = { status: "READY_FOR_PICKUP", isDraft: false };
 
     if (parishId) {
       pendingWhere.parishId = parseInt(parishId, 10);

@@ -1,8 +1,8 @@
 import { DATA_PROVIDER, HYBRID_CONFIG } from '@/config/demo';
 import { DemoDashboardProvider } from './demo/DemoDashboardProvider';
 import { ApiDashboardProvider } from './api/ApiDashboardProvider';
-import { DemoNotificationProvider } from './demo/DemoNotificationProvider';
 import { ApiNotificationProvider } from './api/ApiNotificationProvider';
+import { DemoNotificationProvider } from './demo/DemoNotificationProvider';
 import { DemoDocumentProvider } from './demo/DemoDocumentProvider';
 import { ApiDocumentProvider } from './api/ApiDocumentProvider';
 import { DemoScheduleProvider } from './demo/DemoScheduleProvider';

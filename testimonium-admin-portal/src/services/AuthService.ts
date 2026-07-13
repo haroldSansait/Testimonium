@@ -1,6 +1,9 @@
 import {
   signInWithEmailAndPassword,
   signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth } from '@/config/firebase';
@@ -20,8 +23,11 @@ export const AuthService = {
    * Sign in with email/password via Firebase.
    * Then fetches the backend application profile.
    */
-  async signIn(email: string, password: string): Promise<ApplicationUser> {
+  async signIn(email: string, password: string, rememberMe = false): Promise<ApplicationUser> {
+    await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
     await signInWithEmailAndPassword(auth, email, password);
+    // Send login info to the backend
+    await api.post('/auth/login', { rememberMe });
     return AuthService.getApplicationUser();
   },
 

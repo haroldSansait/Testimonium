@@ -33,3 +33,42 @@ export const list = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const updateStatus = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { status, remarks } = req.body;
+    const actorId = req.user.id;
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document request ID.",
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required.",
+      });
+    }
+
+    const updated = await documentRequestService.updateStatus(id, status, remarks, actorId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Document request status updated successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+      });
+    }
+    return next(err);
+  }
+};
+
