@@ -11,6 +11,7 @@ const mapProfile = (data: any): UserProfile => {
     role: data.role,
     displayName: data.fullName || "",
     phone: data.contactNumber || "",
+    address: data.address || "",
     notificationsEnabled: true,
     parishId: data.parish?.id ? String(data.parish.id) : undefined,
   };
@@ -24,10 +25,14 @@ export class ApiProfileProvider implements IProfileProvider {
   }
 
   async updateProfile(_uid: string, profile: Partial<UserProfile>): Promise<void> {
-    const payload = {
+    const payload: Record<string, unknown> = {
       fullName: profile.displayName,
       contactNumber: profile.phone,
     };
+    // Include address only when it was explicitly provided in the update payload
+    if (profile.address !== undefined) {
+      payload.address = profile.address;
+    }
     await client.put<any>("/auth/profile", payload);
   }
 }

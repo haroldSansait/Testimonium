@@ -21,6 +21,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { Dropdown } from '../components/ui/Dropdown';
 import type { DropdownItem } from '../components/ui/Dropdown';
 import { CaloyAssistant } from '../features/chat/components/CaloyAssistant';
+import { Button } from '../components/ui/Button';
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
@@ -28,6 +29,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const navigate = useNavigate();
   const location = useLocation();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [modalType, setModalType] = useState<'none' | 'help' | 'about'>('none');
 
   // Close drawer on route change
   useEffect(() => {
@@ -47,7 +49,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
   const navItems = [
     { label: 'Home', path: '/dashboard/home', icon: <Home size={18} /> },
-    { label: 'Parish Directory', path: '/dashboard/parishes', icon: <MapPin size={18} /> },
+    { label: 'Vicariate Directory', path: '/dashboard/parishes', icon: <MapPin size={18} /> },
     { label: 'Request Document', path: '/dashboard/request', icon: <FilePlus size={18} /> },
     { label: 'Track Request', path: '/dashboard/track', icon: <ClipboardCheck size={18} /> },
     { label: 'Scheduler', path: '/dashboard/scheduler', icon: <Calendar size={18} /> },
@@ -77,7 +79,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       label: 'Sign Out', 
       value: 'logout', 
       icon: <LogOut size={16} />,
-      onClick: logout 
+      onClick: async () => {
+        await logout();
+        navigate('/');
+      } 
     },
   ];
 
@@ -252,7 +257,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <button
                 onClick={() => {
                   setIsDrawerOpen(false);
-                  alert("Help Center: For assistance, please use the Caloy AI Assistant floating button in the bottom right corner or contact support@testimonium.org.");
+                  setModalType('help');
                 }}
                 className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white focus-ring text-left"
               >
@@ -263,7 +268,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <button
                 onClick={() => {
                   setIsDrawerOpen(false);
-                  alert("About TESTIMONIUM: Parishioner Web Portal. Built for the Diocese and the Vicariate of Canlaon to facilitate sacramental request processing and parish communications. Version 1.0.0.");
+                  setModalType('about');
                 }}
                 className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white focus-ring text-left"
               >
@@ -276,9 +281,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             <div className="space-y-1.5 pt-2">
               <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-4 mb-2">Session</p>
               <button 
-                onClick={() => {
+                onClick={async () => {
                   setIsDrawerOpen(false);
-                  logout();
+                  await logout();
+                  navigate('/');
                 }}
                 className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-colors focus-ring text-left"
               >
@@ -297,6 +303,67 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
       {/* Floating Caloy AI Assistant Drawer */}
       <CaloyAssistant />
+
+      {/* Help / About Modals */}
+      {modalType !== 'none' && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setModalType('none')}
+        >
+          <div 
+            className="bg-white rounded-card shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4 text-left"
+            onClick={e => e.stopPropagation()}
+          >
+            {modalType === 'help' ? (
+              <>
+                <div className="flex items-center space-x-3 text-crimson">
+                  <HelpCircle size={24} />
+                  <h3 className="font-serif font-bold text-lg text-text-primary">Help Center</h3>
+                </div>
+                <div className="text-xs text-text-muted space-y-2.5 leading-relaxed">
+                  <p>
+                    Welcome to the <strong>TESTIMONIUM Help Center</strong>. Here is how you can get help:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 pl-1">
+                    <li>
+                      <strong>Caloy AI Assistant:</strong> Use the floating widget in the bottom right corner of any page to ask instant questions about services, requirements, and office hours.
+                    </li>
+                    <li>
+                      <strong>Support Email:</strong> Write to us at <a href="mailto:support@testimonium.org" className="text-crimson hover:underline font-semibold">support@testimonium.org</a> for technical or account issues.
+                    </li>
+                    <li>
+                      <strong>Parish Contact:</strong> Contact your selected parish office directly using the phone or email listed under the Parishes Directory page.
+                    </li>
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center space-x-3 text-crimson">
+                  <Info size={24} />
+                  <h3 className="font-serif font-bold text-lg text-text-primary">About TESTIMONIUM</h3>
+                </div>
+                <div className="text-xs text-text-muted space-y-2.5 leading-relaxed">
+                  <p>
+                    <strong>TESTIMONIUM v1.0.0</strong> is the official digital registry and sacramental services portal of the Diocese and the Vicariate of Canlaon.
+                  </p>
+                  <p>
+                    Designed to streamline communications and certificate processing, TESTIMONIUM links parishioners directly to parish records, canonical scheduling calendars, and secure document verification systems.
+                  </p>
+                  <p className="text-[10px] text-text-muted/65 italic border-t border-border/40 pt-2.5">
+                    © 2026 Diocese and Vicariate of Canlaon. All rights reserved.
+                  </p>
+                </div>
+              </>
+            )}
+            <div className="flex justify-end pt-2">
+              <Button size="sm" className="bg-crimson hover:bg-crimson-dark" onClick={() => setModalType('none')}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -24,8 +24,8 @@ export const LandingPage: React.FC = () => {
       icon: <Calendar className="text-crimson w-8 h-8" />
     },
     {
-      title: 'Parish Directory',
-      description: 'Locate nearby parishes, view office hours, check mass schedules, and contact priests using our interactive parish map.',
+      title: 'Vicariate Directory',
+      description: 'Locate nearby parishes, view office hours, check mass schedules, and contact the assigned parish secretary using our interactive vicariate map.',
       icon: <Map className="text-crimson w-8 h-8" />
     },
     {

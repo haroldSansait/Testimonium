@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, ChevronDown, Pencil, UserX, KeyRound, X, Check, UserPlus, Copy, ExternalLink } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -45,13 +46,15 @@ function FormField({
 const roleLabels: Record<ManagedUserRole, string> = {
   DIOCESE_COORDINATOR: 'Diocese Coordinator',
   SECRETARY: 'Secretary',
-  PRIEST: 'Priest',
+  PRIEST: 'Parish Priest',
+  ASSISTANT_PRIEST: 'Assistant Priest',
 };
 
 const roleStyles: Record<ManagedUserRole, string> = {
   DIOCESE_COORDINATOR: 'bg-red-50 text-crimson-700',
   SECRETARY: 'bg-blue-50 text-blue-700',
   PRIEST: 'bg-purple-50 text-purple-700',
+  ASSISTANT_PRIEST: 'bg-indigo-50 text-indigo-700',
 };
 
 function RoleBadge({ role }: { role: ManagedUserRole }) {
@@ -96,7 +99,8 @@ const ROLE_OPTIONS = [
   { label: 'All Roles', value: 'all' },
   { label: 'Diocese Coordinator', value: 'DIOCESE_COORDINATOR' },
   { label: 'Secretary', value: 'SECRETARY' },
-  { label: 'Priest', value: 'PRIEST' },
+  { label: 'Parish Priest', value: 'PRIEST' },
+  { label: 'Assistant Priest', value: 'ASSISTANT_PRIEST' },
 ];
 
 const STATUS_OPTIONS = [
@@ -148,7 +152,7 @@ function UserModal({ user, onSave, onClose, isSaving }: UserModalProps) {
 
   const canSubmit = Boolean(form.name && form.email && form.role && form.parish);
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -215,7 +219,8 @@ function UserModal({ user, onSave, onClose, isSaving }: UserModalProps) {
               <option value="">Select role...</option>
               <option value="DIOCESE_COORDINATOR">Diocese Coordinator</option>
               <option value="SECRETARY">Secretary</option>
-              <option value="PRIEST">Priest</option>
+              <option value="PRIEST">Parish Priest</option>
+              <option value="ASSISTANT_PRIEST">Assistant Priest</option>
             </select>
           </FormField>
 
@@ -254,7 +259,8 @@ function UserModal({ user, onSave, onClose, isSaving }: UserModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -271,7 +277,7 @@ function DisableConfirmModal({
   onClose: () => void;
   isSaving: boolean;
 }) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -305,7 +311,8 @@ function DisableConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -322,7 +329,7 @@ function EnableConfirmModal({
   onClose: () => void;
   isSaving: boolean;
 }) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -356,7 +363,8 @@ function EnableConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -373,7 +381,7 @@ function ResetPasswordModal({
   onClose: () => void;
   isSaving: boolean;
 }) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -407,7 +415,8 @@ function ResetPasswordModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -438,7 +447,7 @@ function LinkSuccessModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -510,7 +519,8 @@ function LinkSuccessModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

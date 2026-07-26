@@ -35,6 +35,7 @@ export class UserRepository {
     isVerified,
     roleId,
     parishId = null,
+    isAssistant = false,
   }) {
     return prisma.user.create({
       data: {
@@ -44,6 +45,7 @@ export class UserRepository {
         isVerified,
         roleId,
         parishId,
+        isAssistant,
       },
       include: profileInclude,
     });
@@ -72,7 +74,7 @@ export class UserRepository {
    * @param {object} filters
    * @returns {Promise<Array>}
    */
-  async findMany({ search, role, status, page, limit, assignableForParishId } = {}) {
+  async findMany({ search, role, status, page, limit, assignableForParishId, parishId } = {}) {
     const andConditions = [
       {
         role: {
@@ -84,7 +86,17 @@ export class UserRepository {
     ];
 
     if (role && role !== "all") {
-      andConditions.push({ role: { roleName: role } });
+      if (role === "ASSISTANT_PRIEST") {
+        andConditions.push({ role: { roleName: "PRIEST" }, isAssistant: true });
+      } else if (role === "PRIEST") {
+        andConditions.push({ role: { roleName: "PRIEST" } });
+      } else {
+        andConditions.push({ role: { roleName: role } });
+      }
+    }
+
+    if (parishId) {
+      andConditions.push({ parishId: parseInt(parishId, 10) });
     }
 
     if (assignableForParishId !== undefined) {
@@ -177,6 +189,9 @@ export class UserRepository {
     if (data.roleId !== undefined) updateData.roleId = data.roleId;
     if (data.parishId !== undefined) updateData.parishId = data.parishId;
     if (data.contactNumber !== undefined) updateData.contactNumber = data.contactNumber;
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.isAssistant !== undefined) updateData.isAssistant = data.isAssistant;
+    if (data.color !== undefined) updateData.color = data.color;
 
     return prisma.user.update({
       where: { id },

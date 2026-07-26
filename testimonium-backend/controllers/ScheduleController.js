@@ -127,4 +127,63 @@ export const updateStatus = async (req, res, next) => {
   }
 };
 
+export const proposeReschedule = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { proposedDate, proposedStartDatetime, proposedEndDatetime, reason } = req.body;
+    const actorId = req.user.id;
+
+    const updated = await scheduleService.proposeReschedule(id, {
+      proposedDate,
+      proposedStartDatetime,
+      proposedEndDatetime,
+      reason,
+      actorId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Alternative schedule date proposed successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const respondReschedule = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { accept } = req.body;
+
+    const updated = await scheduleService.respondReschedule(id, accept);
+
+    return res.status(200).json({
+      success: true,
+      message: accept ? "Reschedule proposal accepted." : "Reschedule proposal declined.",
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const assignPriest = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { priestId } = req.body;
+    const actorId = req.user.id;
+
+    const updated = await scheduleService.assignPriest(id, priestId, actorId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Priest assigned successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 

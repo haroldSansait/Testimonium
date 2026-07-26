@@ -10,9 +10,10 @@ interface CalendarGridProps {
   events: CalendarEvent[];
   today?: number; // day of month to highlight as today
   onEventClick?: (evt: CalendarEvent) => void;
+  onMoreClick?: (day: number, dayEvents: CalendarEvent[]) => void;
 }
 
-export function CalendarGrid({ year, month, events, today, onEventClick }: CalendarGridProps) {
+export function CalendarGrid({ year, month, events, today, onEventClick, onMoreClick }: CalendarGridProps) {
   const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
@@ -85,7 +86,15 @@ export function CalendarGrid({ year, month, events, today, onEventClick }: Calen
                         <CalendarEventChip key={evt.id} event={evt} onClick={() => onEventClick?.(evt)} />
                       ))}
                       {dayEvents.length > 3 && (
-                        <p className="text-[10px] text-gray-400 pl-1">+{dayEvents.length - 3} more</p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMoreClick?.(cell.day, dayEvents);
+                          }}
+                          className="text-[10px] text-crimson-800 hover:text-crimson-900 font-bold hover:underline pl-1 cursor-pointer block text-left"
+                        >
+                          +{dayEvents.length - 3} more
+                        </button>
                       )}
                     </div>
                   </td>

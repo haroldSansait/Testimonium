@@ -7,11 +7,15 @@ let store: ManagedUser[] = [...mockUsers];
 
 export const DemoUserProvider: UserProvider = {
   async getUsers(filters: UserFilters = {}): Promise<ManagedUser[]> {
-    const { search = '', role = 'all', status = 'all', assignableForParishId } = filters;
+    const { search = '', role = 'all', status = 'all', assignableForParishId, parishId } = filters;
     let result = [...store];
 
     if (role !== 'all') {
       result = result.filter((u) => u.role === role);
+    }
+
+    if (parishId) {
+      result = result.filter((u) => u.parishId === parishId);
     }
 
     if (assignableForParishId !== undefined) {
@@ -85,5 +89,12 @@ export const DemoUserProvider: UserProvider = {
   async resetPassword(id: string): Promise<string> {
     console.log(`[DemoUserProvider] Password reset triggered for user ${id}`);
     return Promise.resolve(`https://demo.testimonium.org/__/auth/action?mode=resetPassword&oobCode=demo-reset-code-${id}`);
+  },
+
+  async updateUserColor(id: string, color: string | null): Promise<ManagedUser> {
+    store = store.map((u) => (u.id === id ? { ...u, color: color || null } : u));
+    const updated = store.find((u) => u.id === id);
+    if (!updated) throw new Error(`User ${id} not found`);
+    return updated;
   },
 };

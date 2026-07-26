@@ -61,12 +61,35 @@ enum ScheduleEventType {
   CONFIRMATION
   PRIVATE_MASS
   MASS_INTENTION
+  MARRIAGE_SPECIAL
+  WAKE_MASS
+  FUNERAL
+  ANOINTING_OF_THE_SICK
+  FIESTA
+  BLESSING
+  DELIVERANCE
+  THANKSGIVING
+  FIRST_COMMUNION
+  MASS_OF_HOLY_SPIRIT
+  CONFESSION
 }
 
 enum ScheduleStatus {
   PENDING
+  REQUESTED
+  PROPOSED_RESCHEDULE
+  WAITING_PARISHIONER_RESPONSE
   CONFIRMED
+  COMPLETED
+  CANCELLED
   REJECTED
+}
+
+enum AvailabilityType {
+  PARISH_CLOSED
+  SECRETARY_LEAVE
+  PRIEST_LEAVE
+  FULLY_BOOKED
 }
 
 enum NotificationType {
@@ -113,6 +136,10 @@ model Parish {
   users            User[]
   documentRequests DocumentRequest[]
   schedules        Schedule[]
+  availabilities   ParishAvailability[]
+  massScheduleTemplates MassScheduleTemplate[]
+  parishEvents          ParishEvent[]
+  activityLogs          ActivityLog[]
 
   @@index([type])
   @@index([isActive])
@@ -126,10 +153,13 @@ model User {
   fullName                  String             @map("full_name") @db.VarChar(150)
   email                     String             @unique @db.VarChar(150)
   contactNumber             String?            @map("contact_number") @db.VarChar(20)
+  address                   String?            @db.Text
   roleId                    Int                @map("role_id")
   parishId                  Int?               @map("parish_id")
+  isAssistant               Boolean            @default(false) @map("is_assistant")
   isVerified                Boolean            @default(false) @map("is_verified")
   status                    UserStatus         @default(ACTIVE)
+  color                     String?            @db.VarChar(50)
   createdAt                 DateTime           @default(now()) @map("created_at")
   updatedAt                 DateTime           @updatedAt @map("updated_at")
   role                      Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -138,12 +168,17 @@ model User {
   processedDocumentRequests DocumentRequest[]  @relation("DocumentRequestProcessor")
   schedules                 Schedule[]         @relation("ScheduleRequester")
   processedSchedules        Schedule[]         @relation("ScheduleProcessor")
+  assignedSchedules         Schedule[]         @relation("SchedulePriestAssignment")
+  availabilities            ParishAvailability[]
   notifications             Notification[]
   updatedFaqEntries         FaqKnowledgeBase[] @relation("FaqUpdater")
   chatbotLogs               ChatbotLog[]
   activityLogs              ActivityLog[]
   requestHistory            RequestHistory[]   @relation("RequestHistoryActor")
   paymentTransactions       PaymentTransaction[] @relation("PaymentTransactionVerifier")
+  createdParishEvents       ParishEvent[]      @relation("ParishEventCreator")
+  assignedParishEvents      ParishEvent[]      @relation("ParishEventPriest")
+  massTemplates             MassScheduleTemplate[] @relation("MassTemplatePriest")
 
   @@index([roleId])
   @@index([parishId])
@@ -275,32 +310,60 @@ model RequestHistory {
 }
 
 model Schedule {
-  id            Int               @id @default(autoincrement()) @map("schedule_id")
-  userId        Int               @map("user_id")
-  parishId      Int               @map("parish_id")
-  eventType     ScheduleEventType @map("event_type")
-  requestedDate DateTime          @map("requested_date") @db.Date
-  startDatetime DateTime?         @map("start_datetime")
-  endDatetime   DateTime?         @map("end_datetime")
-  status        ScheduleStatus    @default(PENDING)
-  conflictFlag  Boolean           @default(false) @map("conflict_flag")
-  remarks       String?           @db.Text
-  displayTitle  String?           @map("display_title") @db.VarChar(150)
-  processedById Int?              @map("processed_by")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
-  user          User              @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)
-  parish        Parish            @relation(fields: [parishId], references: [id], onDelete: Restrict)
-  processedBy   User?             @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  id                    Int               @id @default(autoincrement()) @map("schedule_id")
+  userId                Int               @map("user_id")
+  parishId              Int               @map("parish_id")
+  assignedPriestId       Int?              @map("assigned_priest_id")
+  eventType             ScheduleEventType @map("event_type")
+  requestedDate         DateTime          @map("requested_date") @db.Date
+  startDatetime         DateTime?         @map("start_datetime")
+  endDatetime           DateTime?         @map("end_datetime")
+  location              String?           @db.VarChar(150)
+  proposedDate          DateTime?         @map("proposed_date") @db.Date
+  proposedStartDatetime DateTime?         @map("proposed_start_datetime")
+  proposedEndDatetime   DateTime?         @map("proposed_end_datetime")
+  rescheduleReason      String?           @map("reschedule_reason") @db.Text
+  status                ScheduleStatus    @default(REQUESTED)
+  conflictFlag          Boolean           @default(false) @map("conflict_flag")
+  remarks               String?           @db.Text
+  displayTitle          String?           @map("display_title") @db.VarChar(150)
+  processedById         Int?              @map("processed_by")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  user                  User              @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)
+  parish                Parish            @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  processedBy           User?             @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  assignedPriest        User?             @relation("SchedulePriestAssignment", fields: [assignedPriestId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([parishId])
+  @@index([assignedPriestId])
   @@index([processedById])
   @@index([eventType])
   @@index([status])
   @@index([requestedDate])
   @@index([parishId, requestedDate])
   @@map("schedules")
+}
+
+model ParishAvailability {
+  id          Int              @id @default(autoincrement()) @map("availability_id")
+  parishId    Int              @map("parish_id")
+  userId      Int?             @map("user_id")
+  type        AvailabilityType
+  startDate   DateTime         @map("start_date") @db.Date
+  endDate     DateTime         @map("end_date") @db.Date
+  title       String           @db.VarChar(150)
+  description String?          @db.Text
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  parish      Parish           @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([parishId])
+  @@index([startDate, endDate])
+  @@map("parish_availabilities")
 }
 
 model Notification {
@@ -368,9 +431,60 @@ model ActivityLog {
   archivedAt       DateTime? @map("archived_at")
   archivedBy       Int?      @map("archived_by")
   isSystem         Boolean   @default(false) @map("is_system")
+  
+  // New Audit Logging fields
+  role             String?   @db.VarChar(50)
+  parishId         Int?      @map("parish_id")
+  previousValues   String?   @db.Text
+  newValues        String?   @db.Text
+  metadata         String?   @db.Text
+  parish           Parish?   @relation(fields: [parishId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([affectedTable])
   @@index([createdAt])
+  @@index([parishId])
   @@map("activity_logs")
+}
+
+model MassScheduleTemplate {
+  id               Int      @id @default(autoincrement()) @map("template_id")
+  parishId         Int      @map("parish_id")
+  dayType          String   @map("day_type") @db.VarChar(20)  // "WEEKDAY" | "SUNDAY" | "HOLIDAY" | "SPECIAL"
+  timeSlot         String   @map("time_slot") @db.VarChar(20) // "06:00 AM"
+  label            String   @db.VarChar(100)                  // "Morning Mass"
+  isActive         Boolean  @default(true) @map("is_active")
+  assignedPriestId Int?     @map("assigned_priest_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  parish           Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  assignedPriest   User?    @relation("MassTemplatePriest", fields: [assignedPriestId], references: [id], onDelete: SetNull)
+
+  @@index([parishId])
+  @@index([dayType])
+  @@map("mass_schedule_templates")
+}
+
+model ParishEvent {
+  id               Int      @id @default(autoincrement()) @map("event_id")
+  parishId         Int      @map("parish_id")
+  createdById      Int?     @map("created_by")
+  title            String   @db.VarChar(150)
+  eventType        String   @map("event_type") @db.VarChar(50)   // "BAPTISM" | "MARRIAGE" | "CONFESSION" | "OTHER"
+  description      String?  @db.Text
+  location         String?  @db.VarChar(150)
+  eventDate        DateTime @map("event_date") @db.Date
+  startTime        String?  @map("start_time") @db.VarChar(20)
+  endTime          String?  @map("end_time") @db.VarChar(20)
+  assignedPriestId Int?     @map("assigned_priest_id")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  parish           Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  createdBy        User?    @relation("ParishEventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  assignedPriest   User?    @relation("ParishEventPriest", fields: [assignedPriestId], references: [id], onDelete: SetNull)
+
+  @@index([parishId])
+  @@index([eventDate])
+  @@map("parish_events")
 }

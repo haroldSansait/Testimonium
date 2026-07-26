@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { CheckCheck, ChevronDown, Info } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -17,7 +18,7 @@ interface NoticeModalProps {
 }
 
 function NoticeModal({ notification, onClose }: NoticeModalProps) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -42,7 +43,8 @@ function NoticeModal({ notification, onClose }: NoticeModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

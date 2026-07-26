@@ -151,10 +151,22 @@ const ScheduleTemplates = {
    * @returns {{ title: string, message: string }}
    */
   parishioner(displayTitle, newStatus) {
-    if (newStatus === "PENDING") {
+    if (newStatus === "PENDING" || newStatus === "REQUESTED") {
       return {
         title: "Appointment Submitted",
         message: `Your schedule request for "${displayTitle}" has been submitted successfully and is pending review.`,
+      };
+    }
+    if (newStatus === "UNDER_REVIEW") {
+      return {
+        title: "Appointment Under Review",
+        message: `Your schedule request for "${displayTitle}" is now being reviewed by the parish staff.`,
+      };
+    }
+    if (newStatus === "PROPOSED_RESCHEDULE" || newStatus === "WAITING_PARISHIONER_RESPONSE") {
+      return {
+        title: "Alternative Date Proposed",
+        message: `The parish has proposed an alternative schedule for your "${displayTitle}" request. Please review and respond.`,
       };
     }
     if (newStatus === "CONFIRMED") {
@@ -163,10 +175,10 @@ const ScheduleTemplates = {
         message: `Your schedule request for "${displayTitle}" has been confirmed by the parish.`,
       };
     }
-    if (newStatus === "REJECTED") {
+    if (newStatus === "REJECTED" || newStatus === "DECLINED") {
       return {
         title: "Appointment Declined",
-        message: `Your schedule request for "${displayTitle}" has been declined.`,
+        message: `Your schedule request for "${displayTitle}" has been declined by the parish.`,
       };
     }
     if (newStatus === "CANCELLED") {
@@ -175,9 +187,15 @@ const ScheduleTemplates = {
         message: `Your schedule request for "${displayTitle}" has been cancelled.`,
       };
     }
+    if (newStatus === "COMPLETED") {
+      return {
+        title: "Appointment Completed",
+        message: `Your schedule request for "${displayTitle}" has been successfully completed.`,
+      };
+    }
     return {
       title: "Schedule Status Update",
-      message: `Your schedule request for ${displayTitle} has been updated to ${newStatus}.`,
+      message: `Your schedule request for "${displayTitle}" status has been updated to ${newStatus}.`,
     };
   },
 
@@ -190,6 +208,13 @@ const ScheduleTemplates = {
     return {
       title: "New Appointment Request",
       message: `A new appointment request for "${displayTitle}" has been submitted and is pending review.`,
+    };
+  },
+
+  adminRescheduleResponse(displayTitle, accepted) {
+    return {
+      title: accepted ? "Reschedule Proposal Accepted" : "Reschedule Proposal Declined",
+      message: `The parishioner has ${accepted ? "accepted" : "declined"} the alternative schedule proposed for "${displayTitle}".`,
     };
   },
 };
@@ -396,6 +421,36 @@ export class NotificationDispatcher {
         });
       }
     }
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
+  static async notifyPriestAssigned(
+    { parishionerId, parishId, scheduleId, displayTitle, priestId, priestName },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const payloads = [];
+
+    // -- Parishioner notification --
+    payloads.push({
+      userId: parishionerId,
+      title: "Priest Assigned to Appointment",
+      message: `${priestName} has been assigned to your "${displayTitle}" appointment.`,
+      type: "IN_APP",
+      referenceType: "SCHEDULE_REQUEST",
+      referenceId: scheduleId,
+    });
+
+    // -- Priest notification --
+    payloads.push({
+      userId: priestId,
+      title: "New Pastoral Assignment",
+      message: `You have been assigned to lead the "${displayTitle}" event.`,
+      type: "IN_APP",
+      referenceType: "SCHEDULE_REQUEST",
+      referenceId: scheduleId,
+    });
 
     await NotificationDispatcher._persist(payloads, client);
   }

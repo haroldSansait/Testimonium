@@ -6,7 +6,9 @@ import {
   RefreshCw, 
   MapPin, 
   AlertTriangle,
-  Map as MapIcon
+  Map as MapIcon,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { useParishes } from '../../hooks/useService';
 import type { Parish } from '../../types';
@@ -39,6 +41,7 @@ export const ParishDirectoryPage: React.FC = () => {
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,13 +123,13 @@ export const ParishDirectoryPage: React.FC = () => {
     return (
       <div className="space-y-6">
         <PageHeader 
-          title="Parish Directory Map" 
+          title="Vicariate Directory Map" 
           description="Explore the parishes of the Vicariate of Canlaon geographically."
           onRefresh={handleRefresh}
-          breadcrumbs={['Home', 'Parish Directory']}
+          breadcrumbs={['Home', 'Vicariate Directory']}
         />
         <ErrorState 
-          title="Failed to load parish directory" 
+          title="Failed to load vicariate directory" 
           description="We had trouble fetching coordinates and schedules for Canlaon parishes. Please try again."
           onRetry={handleRefresh} 
         />
@@ -138,11 +141,11 @@ export const ParishDirectoryPage: React.FC = () => {
     return (
       <div className="space-y-6" aria-busy="true">
         <PageHeader 
-          title="Parish Directory Map" 
+          title="Vicariate Directory Map" 
           description="Explore the parishes of the Vicariate of Canlaon geographically."
           onRefresh={handleRefresh}
           isRefreshing={true}
-          breadcrumbs={['Home', 'Parish Directory']}
+          breadcrumbs={['Home', 'Vicariate Directory']}
         />
         
         {/* Search Input Skeleton */}
@@ -169,10 +172,10 @@ export const ParishDirectoryPage: React.FC = () => {
   return (
     <div className="space-y-6 flex flex-col h-full" aria-live="polite">
       <PageHeader 
-        title="Parish Directory Map" 
+        title="Vicariate Directory Map" 
         description="Explore the parishes of the Vicariate of Canlaon geographically, view mass schedules, and request sacraments."
         onRefresh={handleRefresh}
-        breadcrumbs={['Home', 'Parish Directory']}
+        breadcrumbs={['Home', 'Vicariate Directory']}
       />
 
       {/* Geolocation friendly error notification */}
@@ -217,7 +220,11 @@ export const ParishDirectoryPage: React.FC = () => {
       </div>
 
       {/* Map Container Viewport */}
-      <div className="relative h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md">
+      <div className={
+        isFullScreen 
+          ? "fixed inset-0 z-[9999] h-screen w-screen bg-white rounded-none border-none shadow-2xl" 
+          : "relative h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md"
+      }>
         {/* Leaflet map */}
         {displayParishes.length > 0 ? (
           <LeafletMap center={mapCenter} zoom={mapZoom} className="h-full w-full">
@@ -247,6 +254,13 @@ export const ParishDirectoryPage: React.FC = () => {
 
         {/* Map Floating Control Controls */}
         <div className="absolute right-3.5 top-3.5 z-[1000] flex flex-col space-y-2">
+          <button
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
+            title={isFullScreen ? "Exit Fullscreen" : "Fullscreen Mode"}
+          >
+            {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
           <button
             onClick={handleLocateMe}
             className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"

@@ -101,6 +101,8 @@ const mapDocumentStatus = (status: string): DocumentStatus => {
       return 'Processing';
     case 'READY_FOR_PICKUP':
       return 'Ready for Pickup';
+    case 'NEEDS_CORRECTION':
+      return 'Needs Correction';
     case 'COMPLETED':
       return 'Released';
     case 'REJECTED':
@@ -184,6 +186,7 @@ export const ApiDocumentProvider: DocumentProvider = {
     if (status && status !== 'all') {
       if (status === 'Pending Review') backendStatus = 'PENDING' as any;
       else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW' as any;
+      else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION' as any;
       else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING' as any;
       else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED' as any;
       else if (status === 'Processing') backendStatus = 'PROCESSING' as any;
@@ -219,10 +222,11 @@ export const ApiDocumentProvider: DocumentProvider = {
     };
   },
 
-  async updateDocumentStatus(id: string, status: DocumentStatus): Promise<DocumentRequest> {
+  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string): Promise<DocumentRequest> {
     let backendStatus = 'PENDING';
     if (status === 'Pending Review') backendStatus = 'PENDING';
     else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
+    else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION';
     else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING';
     else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED';
     else if (status === 'Processing') backendStatus = 'PROCESSING';
@@ -231,7 +235,7 @@ export const ApiDocumentProvider: DocumentProvider = {
     else if (status === 'Rejected') backendStatus = 'REJECTED';
     else if (status === 'Cancelled') backendStatus = 'CANCELLED';
 
-    const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, { status: backendStatus });
+    const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, { status: backendStatus, remarks });
     return mapToFrontend(response.data.data);
   }
 };

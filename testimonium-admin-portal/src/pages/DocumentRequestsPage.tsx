@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, X, Check, AlertCircle, FileText, User } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -36,18 +37,20 @@ const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
 interface DetailsModalProps {
   request: DocumentRequest;
   onClose: () => void;
-  onStatusChange: (status: DocumentStatus) => Promise<void>;
+  onStatusChange: (status: DocumentStatus, remarks?: string) => Promise<void>;
 }
 
 function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionNotes, setCorrectionNotes] = useState('');
 
-  const handleAction = async (status: DocumentStatus) => {
+  const handleAction = async (status: DocumentStatus, remarks?: string) => {
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      await onStatusChange(status);
+      await onStatusChange(status, remarks);
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -56,6 +59,14 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  const handleSendCorrection = async () => {
+    if (!correctionNotes.trim()) {
+      setErrorMessage('Please provide specific correction instructions for the parishioner.');
+      return;
+    }
+    await handleAction('Needs Correction', correctionNotes);
   };
 
   const renderActionButtons = () => {
@@ -90,7 +101,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
               Request Payment
             </button>
             <button
-              onClick={() => void handleAction('Needs Correction')}
+              onClick={() => setShowCorrectionModal(true)}
               disabled={isUpdating}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
             >
@@ -168,7 +179,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -403,6 +414,45 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
           </div>
         </div>
 
+        {/* Correction Instructions Sub-Modal */}
+        {showCorrectionModal && (
+          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between animate-in fade-in duration-150">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <h3 className="text-base font-bold text-gray-900">Request Document Correction</h3>
+                <button onClick={() => setShowCorrectionModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-600">
+                Specify what needs to be corrected by the parishioner (e.g. illegible ID scan, missing GKK signature, incorrect registrant name).
+              </p>
+              <textarea
+                value={correctionNotes}
+                onChange={(e) => setCorrectionNotes(e.target.value)}
+                placeholder="Enter detailed correction notes and instructions for the parishioner..."
+                rows={5}
+                className="w-full p-3 border border-gray-200 rounded-xl text-xs text-gray-800 outline-none focus:border-[#7B1C2A] focus:ring-1 focus:ring-[#7B1C2A]"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => setShowCorrectionModal(false)}
+                className="px-4 py-2 text-xs font-semibold border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleSendCorrection()}
+                disabled={isUpdating || !correctionNotes.trim()}
+                className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-40"
+              >
+                Send Correction Request
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -416,7 +466,8 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -496,10 +547,10 @@ export function DocumentRequestsPage() {
     }
   }, [location.state, requests]);
 
-  const handleStatusUpdate = async (newStatus: DocumentStatus) => {
+  const handleStatusUpdate = async (newStatus: DocumentStatus, remarks?: string) => {
     if (!selectedRequest) return;
     try {
-      await updateDocumentStatus(selectedRequest.id, newStatus);
+      await updateDocumentStatus(selectedRequest.id, newStatus, remarks);
       setToastMessage(`Request status updated to ${newStatus}.`);
       void fetchRequests(true);
     } catch (err) {

@@ -59,6 +59,52 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
   }
 };
 
+const exportToGoogleCalendar = (appt: any, parishName: string) => {
+  const title = encodeURIComponent(appt.serviceName);
+  const details = encodeURIComponent(`Testimonium Parish Appointment\nParish: ${parishName}\nConfirmation: ${appt.confirmationNumber || appt.id}`);
+  const locationStr = encodeURIComponent(parishName);
+  
+  const dateObj = new Date(`${appt.date}T${appt.timeSlot.includes('AM') ? '09:00:00' : '14:00:00'}`);
+  const startStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  dateObj.setHours(dateObj.getHours() + 1);
+  const endStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${locationStr}`;
+  window.open(url, '_blank');
+};
+
+const exportToICS = (appt: any, parishName: string) => {
+  const dateObj = new Date(`${appt.date}T${appt.timeSlot.includes('AM') ? '09:00:00' : '14:00:00'}`);
+  const startStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  dateObj.setHours(dateObj.getHours() + 1);
+  const endStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Testimonium//NONSGML Calendar//EN',
+    'BEGIN:VEVENT',
+    `UID:${appt.id}@testimonium.app`,
+    `DTSTAMP:${startStr}`,
+    `DTSTART:${startStr}`,
+    `DTEND:${endStr}`,
+    `SUMMARY:${appt.serviceName}`,
+    `DESCRIPTION:Parish: ${parishName}\\nConfirmation Number: ${appt.confirmationNumber || appt.id}`,
+    `LOCATION:${parishName}`,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${appt.serviceName.replace(/\s+/g, '_')}_Appointment.ics`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 export const HomePage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -118,7 +164,7 @@ export const HomePage: React.FC = () => {
     { label: 'Request a Document', path: '/dashboard/request', icon: <FileText size={20} />, description: 'Submit requests for baptism, marriage, or other certificates.' },
     { label: 'Track a Request', path: '/dashboard/track', icon: <Search size={20} />, description: 'Check the real-time status and download approved documents.' },
     { label: 'Schedule an Appointment', path: '/dashboard/scheduler', icon: <Calendar size={20} />, description: 'Book canonical interviews, blessings, or weddings with a priest.' },
-    { label: 'Parish Directory', path: '/dashboard/parishes', icon: <Map size={20} />, description: 'Locate vicariate parishes, contact offices, and view mass schedules.' },
+    { label: 'Vicariate Directory', path: '/dashboard/parishes', icon: <Map size={20} />, description: 'Locate vicariate parishes, contact offices, and view mass schedules.' },
     { label: 'Notifications', path: '/dashboard/notifications', icon: <Bell size={20} />, description: 'View your alerts, request status updates, and diocese announcements.' },
     { label: 'My Profile', path: '/dashboard/profile', icon: <UserIcon size={20} />, description: 'Manage your contact details, assigned parish, and email alerts.' },
   ];
@@ -239,11 +285,20 @@ export const HomePage: React.FC = () => {
             TESTIMONIUM Parishioner Web Portal
           </span>
           <h2 className="text-3xl md:text-4xl font-serif font-bold tracking-tight">
-            Welcome back, {user?.displayName || 'Parishioner'}!
+            {(!profile?.phone || !profile?.address) 
+              ? `Welcome, ${user?.displayName || 'Parishioner'}!`
+              : `Welcome back, ${user?.displayName || 'Parishioner'}!`}
           </h2>
           <p className="text-sm md:text-base text-white/80 max-w-xl leading-relaxed">
             Manage document requests, schedule canonical interviews, and explore the directory of the parishes in the Vicariate of Canlaon.
           </p>
+          {(!profile?.phone || !profile?.address) && (
+            <div className="pt-2">
+              <Button size="sm" variant="outline" className="bg-white/10 hover:bg-white/20 text-white border-white/30" onClick={() => navigate('/dashboard/profile')}>
+                Complete Profile Details
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -254,7 +309,7 @@ export const HomePage: React.FC = () => {
             Upcoming Vicariate Events
           </h2>
           <button 
-            onClick={() => alert("Events Directory Page coming in Phase 7B!")}
+            onClick={() => navigate('/dashboard/events')}
             className="text-xs font-bold text-crimson hover:underline flex items-center space-x-1 focus-ring"
           >
             <span>See All Events</span>
@@ -269,7 +324,7 @@ export const HomePage: React.FC = () => {
             icon={<CalendarDays size={40} className="text-text-muted/40" />}
             action={
               <Button size="sm" onClick={() => navigate('/dashboard/parishes')} className="bg-crimson hover:bg-crimson-dark">
-                Browse Parish Directory
+                Browse Vicariate Directory
               </Button>
             }
           />
@@ -470,6 +525,21 @@ export const HomePage: React.FC = () => {
                       <p className="text-[10px] text-text-muted">
                         {appt.date} at {appt.timeSlot}
                       </p>
+                      <div className="flex gap-2 mt-1 pb-1">
+                        <button
+                          onClick={() => exportToGoogleCalendar(appt, getParishName(appt.parishId))}
+                          className="text-[10px] text-crimson hover:underline font-semibold flex items-center gap-0.5 cursor-pointer bg-transparent border-none p-0"
+                        >
+                          + Google Calendar
+                        </button>
+                        <span className="text-[10px] text-text-muted/40">•</span>
+                        <button
+                          onClick={() => exportToICS(appt, getParishName(appt.parishId))}
+                          className="text-[10px] text-crimson hover:underline font-semibold flex items-center gap-0.5 cursor-pointer bg-transparent border-none p-0"
+                        >
+                          + iCal / .ics
+                        </button>
+                      </div>
                     </div>
                     <Badge variant="ready">
                       {appt.status}

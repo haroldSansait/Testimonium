@@ -53,7 +53,7 @@ export const DemoDocumentProvider: DocumentProvider = {
     };
   },
 
-  async updateDocumentStatus(id: string, status: DocumentStatus): Promise<DocumentRequest> {
+  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string): Promise<DocumentRequest> {
     store = store.map(r => {
       if (r.id !== id) return r;
       
@@ -62,7 +62,7 @@ export const DemoDocumentProvider: DocumentProvider = {
       newTimeline.push({
         status,
         date: todayStr,
-        note: `Status changed to ${status}.`
+        note: remarks || `Status changed to ${status}.`
       });
 
       return {

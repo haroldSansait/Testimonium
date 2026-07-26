@@ -1,6 +1,7 @@
 import { providerFactory } from '@/providers/providerFactory';
 import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import type { PaginatedResponse } from '@/types/api';
+import type { ProposeReschedulePayload } from '@/providers/interfaces';
 
 export type ScheduleFilter = 'all' | 'pending' | 'upcoming';
 
@@ -22,4 +23,16 @@ export async function getScheduleRequest(id: string): Promise<ScheduleRequest> {
 
 export async function updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest> {
   return providerFactory.getScheduleProvider().updateScheduleStatus(id, status);
+}
+
+export async function proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest> {
+  return providerFactory.getScheduleProvider().proposeReschedule(id, payload);
+}
+
+export async function respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest> {
+  return providerFactory.getScheduleProvider().respondReschedule(id, accept);
+}
+
+export async function assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
+  return providerFactory.getScheduleProvider().assignPriest(id, priestId);
 }

@@ -52,7 +52,9 @@ export class UserService {
     }
 
     // 3. Resolve role and parish
-    const role = await this.roleRepository.findByName(data.role);
+    const isAssistant = data.role === "ASSISTANT_PRIEST";
+    const roleName = data.role === "ASSISTANT_PRIEST" ? "PRIEST" : data.role;
+    const role = await this.roleRepository.findByName(roleName);
     if (!role) {
       const err = new Error(`Role "${data.role}" is not valid.`);
       err.statusCode = 400;
@@ -94,6 +96,7 @@ export class UserService {
         isVerified: true,
         roleId: role.id,
         parishId,
+        isAssistant,
       });
 
       await AuditLogService.log(actorId, `User Created: ${data.email}`);
@@ -158,8 +161,11 @@ export class UserService {
 
     // Resolve role and parish
     let roleId = undefined;
+    let isAssistant = undefined;
     if (data.role) {
-      const role = await this.roleRepository.findByName(data.role);
+      isAssistant = data.role === "ASSISTANT_PRIEST";
+      const roleName = data.role === "ASSISTANT_PRIEST" ? "PRIEST" : data.role;
+      const role = await this.roleRepository.findByName(roleName);
       if (!role) {
         const err = new Error(`Role "${data.role}" is not valid.`);
         err.statusCode = 400;
@@ -199,9 +205,14 @@ export class UserService {
       email: data.email,
       roleId,
       parishId,
+      isAssistant,
     });
 
-    await AuditLogService.log(actorId, `User Updated: ${updated.email}`);
+    await AuditLogService.log(actorId, `User Updated: ${updated.email} (Role: ${data.role || 'unchanged'})`, null, false, {
+      affectedTable: "User",
+      affectedRecordId: updated.id,
+      newValues: { role: data.role, email: data.email }
+    });
     return this.mapToDto(updated);
   }
 
@@ -290,6 +301,52 @@ export class UserService {
     return resetLink;
   }
 
+  /**
+   * Updates a user's assigned calendar color.
+   * @param {string|number} id
+   * @param {string|null} color
+   * @param {number} actorId
+   * @param {string} actorRole
+   * @param {number|null} actorParishId
+   * @returns {Promise<object>}
+   */
+  async updateUserColor(id, color, actorId, actorRole, actorParishId) {
+    const numericId = parseInt(id, 10);
+    if (isNaN(numericId)) {
+      const err = new Error("Invalid user ID format.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const user = await this.userRepository.findById(numericId);
+    if (!user) {
+      const err = new Error("User not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Role check: Secretaries can only update priests of their own parish
+    if (actorRole === "SECRETARY") {
+      if (user.parishId !== actorParishId) {
+        const err = new Error("You do not have permission to manage this priest's color.");
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
+    const updated = await this.userRepository.update(numericId, {
+      color: color || null
+    });
+
+    await AuditLogService.log(actorId, `Updated priest color for ${updated.email} to ${color || 'default'}`, null, false, {
+      affectedTable: "User",
+      affectedRecordId: updated.id,
+      newValues: { color }
+    });
+
+    return this.mapToDto(updated);
+  }
+
   // MAPPING HELPERS
 
   /**
@@ -302,10 +359,12 @@ export class UserService {
       id: String(u.id),
       name: u.fullName,
       email: u.email,
-      role: u.role.roleName,
+      role: u.isAssistant ? "ASSISTANT_PRIEST" : u.role.roleName,
       parish: u.parish ? u.parish.parishName : "None",
       parishId: u.parishId ? String(u.parishId) : null,
       status: u.status === "ACTIVE" ? "Active" : "Disabled",
+      isAssistant: u.isAssistant,
+      color: u.color || null,
       avatarInitials: this.getInitials(u.fullName),
       avatarColor: this.getActorColor(u.fullName),
     };

@@ -108,8 +108,11 @@ export interface Appointment {
   serviceName: string;
   date: string;
   timeSlot: string;
-  status: 'booked' | 'confirmed' | 'cancelled';
+  status: 'booked' | 'confirmed' | 'cancelled' | 'proposed' | 'tentative';
   confirmationNumber: string;
+  proposedDate?: string;
+  proposedTime?: string;
+  rescheduleReason?: string;
 }
 
 export interface Announcement {

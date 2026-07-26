@@ -4,8 +4,8 @@ const userService = new UserService();
 
 export const list = async (req, res, next) => {
   try {
-    const { search, role, status, page, limit, assignableForParishId } = req.query;
-    const filters = { search, role, status, assignableForParishId };
+    const { search, role, status, page, limit, assignableForParishId, parishId } = req.query;
+    const filters = { search, role, status, assignableForParishId, parishId };
     if (page !== undefined || limit !== undefined) {
       filters.page = page ? parseInt(page, 10) : 1;
       filters.limit = limit ? parseInt(limit, 10) : 25;
@@ -82,6 +82,17 @@ export const resetPassword = async (req, res, next) => {
       message: "Password reset link generated successfully.",
       data: { resetLink },
     });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const updateColor = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { color } = req.body;
+    const data = await userService.updateUserColor(id, color, req.user?.id, req.user?.role, req.user?.parish?.id);
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);
   }

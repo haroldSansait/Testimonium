@@ -34,11 +34,12 @@ export const login = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { fullName, contactNumber } = req.body;
+    const { fullName, contactNumber, address } = req.body;
 
     const updated = await userRepository.update(userId, {
       fullName,
       contactNumber,
+      address,
     });
 
     const profile = authService.toApplicationProfile(updated);

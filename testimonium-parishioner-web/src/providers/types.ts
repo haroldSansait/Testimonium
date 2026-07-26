@@ -52,6 +52,7 @@ export interface ISchedulerProvider {
     date: string;
     timeSlot: string;
   }): Promise<Appointment>;
+  respondReschedule(id: string, accept: boolean): Promise<Appointment>;
 }
 
 export interface INotificationProvider {

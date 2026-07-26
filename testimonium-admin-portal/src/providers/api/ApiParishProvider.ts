@@ -1,5 +1,5 @@
 import api from '@/api/api';
-import type { ParishProvider, ParishFilters } from '../interfaces';
+import type { ParishProvider, ParishFilters, MassScheduleTemplate } from '../interfaces';
 import type { Parish } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
 
@@ -24,4 +24,23 @@ export const ApiParishProvider: ParishProvider = {
   async archiveParish(id: string): Promise<void> {
     await api.delete(`/parishes/${id}`);
   },
+
+  async getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
+    const response = await api.get<ApiResponseEnvelope<MassScheduleTemplate[]>>(`/mass-schedules/${parishId}`);
+    return response.data.data;
+  },
+
+  async upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate> {
+    const response = await api.post<ApiResponseEnvelope<MassScheduleTemplate>>(`/mass-schedules/${parishId}`, data);
+    return response.data.data;
+  },
+
+  async deleteMassSchedule(id: string): Promise<void> {
+    await api.delete(`/mass-schedules/${id}`);
+  },
+
+  async resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
+    const response = await api.post<ApiResponseEnvelope<MassScheduleTemplate[]>>(`/mass-schedules/${parishId}/reset`);
+    return response.data.data;
+  }
 };

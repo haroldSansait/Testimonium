@@ -1,11 +1,11 @@
 import api from '@/api/api';
-import type { CalendarProvider } from '../interfaces';
+import type { CalendarProvider, CreateParishEventPayload } from '../interfaces';
 import type { CalendarEvent, CalendarEventCategory } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
 import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
 
 interface BackendScheduleDTO {
-  id: number;
+  id: number | string;
   eventType: string;
   displayTitle: string | null;
   requestedDate: string;
@@ -14,17 +14,21 @@ interface BackendScheduleDTO {
   status: string;
   user?: {
     fullName: string;
-  };
+  } | null;
   parish?: {
     parishName: string;
-  };
+  } | null;
   processedBy?: {
     fullName: string;
-  };
+  } | null;
+  assignedPriest?: {
+    id: number | string;
+    fullName: string;
+    color: string | null;
+  } | null;
   remarks?: string | null;
+  sourceType?: string;
 }
-
-// Event type mapping helper removed in favor of resolveDisplayTitle from shared catalog
 
 export const ApiCalendarProvider: CalendarProvider = {
   async getEvents(year: number, month: number): Promise<CalendarEvent[]> {
@@ -53,7 +57,11 @@ export const ApiCalendarProvider: CalendarProvider = {
       }
 
       let category: CalendarEventCategory = 'admin';
-      if (dbItem.status === 'PENDING') {
+      if (dbItem.sourceType === 'MASS') {
+        category = 'mass';
+      } else if (dbItem.sourceType === 'PARISH_EVENT') {
+        category = 'sacrament';
+      } else if (dbItem.status === 'PENDING') {
         category = 'tentative';
       } else {
         if (dbItem.eventType === 'PRIVATE_MASS' || dbItem.eventType === 'MASS_INTENTION') {
@@ -71,20 +79,29 @@ export const ApiCalendarProvider: CalendarProvider = {
         }
       }
 
+      const requestorName = dbItem.user?.fullName || (dbItem.sourceType === 'MASS' ? 'Parish' : 'Anonymous');
+
       return {
         id: String(dbItem.id),
         day: reqDate.getDate(),
         month: reqDate.getMonth(), // keep 0-indexed for frontend CalendarGrid mapping
         year: reqDate.getFullYear(),
         time: timeStr,
-        title: `${appointmentTitle}: ${dbItem.user?.fullName || 'Anonymous'}`,
+        title: dbItem.sourceType === 'MASS' ? `${appointmentTitle}` : `${appointmentTitle}: ${requestorName}`,
         category,
         parish: dbItem.parish?.parishName || 'Main Church',
-        priest: dbItem.processedBy?.fullName || 'TBD',
-        requestor: dbItem.user?.fullName || 'Anonymous',
+        priest: dbItem.assignedPriest?.fullName || dbItem.processedBy?.fullName || 'TBD',
+        priestId: dbItem.assignedPriest?.id ? String(dbItem.assignedPriest.id) : undefined,
+        priestColor: dbItem.assignedPriest?.color || undefined,
+        requestor: requestorName,
         status: dbItem.status.charAt(0) + dbItem.status.slice(1).toLowerCase(),
         description: dbItem.remarks || 'Official schedule request event.',
       };
     });
   },
+
+  async createParishEvent(payload: CreateParishEventPayload): Promise<any> {
+    const response = await api.post<ApiResponseEnvelope<any>>('/parish-events', payload);
+    return response.data.data;
+  }
 };

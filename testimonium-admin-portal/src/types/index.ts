@@ -129,8 +129,12 @@ export interface ScheduleRequest {
   status: ScheduleStatus;
   assignedPriest?: string;
   parish?: string;
+  parishId?: string;
   contactInfo?: string;
   notes?: string;
+  proposedDate?: string;
+  proposedTime?: string;
+  rescheduleReason?: string;
   timeline?: { status: string; date: string; note?: string }[];
 }
 
@@ -220,6 +224,8 @@ export interface CalendarEvent {
   category: CalendarEventCategory;
   parish?: string;
   priest?: string;
+  priestId?: string;
+  priestColor?: string;
   requestor?: string;
   status?: string;
   description?: string;
@@ -320,7 +326,7 @@ export interface Parish {
 
 // ─── User Management ──────────────────────────────────────────────────────────
 
-export type ManagedUserRole = 'DIOCESE_COORDINATOR' | 'SECRETARY' | 'PRIEST';
+export type ManagedUserRole = 'DIOCESE_COORDINATOR' | 'SECRETARY' | 'PRIEST' | 'ASSISTANT_PRIEST';
 export type ManagedUserStatus = 'Active' | 'Inactive' | 'Disabled';
 
 export interface ManagedUser {
@@ -333,6 +339,7 @@ export interface ManagedUser {
   status: ManagedUserStatus;
   avatarInitials: string;
   avatarColor: string;
+  color?: string | null;
 }
 
 // ─── Analytics ───────────────────────────────────────────────────────────────

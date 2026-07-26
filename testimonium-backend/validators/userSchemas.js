@@ -7,8 +7,8 @@ export const createUserSchema = z.object({
   email: z.string({
     required_error: "Email is required",
   }).email("Invalid email format"),
-  role: z.enum(["DIOCESE_COORDINATOR", "PRIEST", "SECRETARY"], {
-    errorMap: () => ({ message: "Role must be one of: DIOCESE_COORDINATOR, PRIEST, SECRETARY" }),
+  role: z.enum(["DIOCESE_COORDINATOR", "PRIEST", "SECRETARY", "ASSISTANT_PRIEST"], {
+    errorMap: () => ({ message: "Role must be one of: DIOCESE_COORDINATOR, PRIEST, SECRETARY, ASSISTANT_PRIEST" }),
   }),
   parish: z.string().optional().nullable(),
 });

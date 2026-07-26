@@ -13,7 +13,10 @@ import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
 import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { ParishManagementPage } from '@/pages/ParishManagementPage';
 import { UserManagementPage } from '@/pages/UserManagementPage';
+import { MassSchedulePage } from '@/pages/MassSchedulePage';
+import { StaffAvailabilityPage } from '@/pages/StaffAvailabilityPage';
 import { PERMISSIONS } from '@/permissions/permissions';
+import { ProfilePage } from '@/pages/ProfilePage';
 
 export function AppRouter() {
   return (
@@ -37,6 +40,21 @@ export function AppRouter() {
           <Route path="/schedule-requests" element={<ScheduleRequestsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+        </Route>
+      </Route>
+
+      {/* ── Secretary / Coordinator Mass Schedule Settings ── */}
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_MASS_SCHEDULE} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/mass-schedule" element={<MassSchedulePage />} />
+        </Route>
+      </Route>
+
+      {/* ── Staff Availability / Leave Settings ── */}
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_MY_AVAILABILITY} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/availability" element={<StaffAvailabilityPage />} />
         </Route>
       </Route>
 

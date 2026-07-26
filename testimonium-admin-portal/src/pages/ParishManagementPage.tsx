@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, ChevronDown, Pencil, Archive, X, Check, Church } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -233,7 +234,7 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
     });
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -367,7 +368,8 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

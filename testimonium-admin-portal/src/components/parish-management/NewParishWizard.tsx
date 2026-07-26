@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronRight, ChevronLeft, Check, Church } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -246,7 +247,7 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
     }
   };
 
-  return (
+  return createPortal(
     /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
@@ -372,6 +373,7 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

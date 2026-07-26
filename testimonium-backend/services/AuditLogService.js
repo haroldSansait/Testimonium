@@ -1,21 +1,49 @@
-import { ActivityLogRepository } from "../repositories/ActivityLogRepository.js";
-
-const activityLogRepository = new ActivityLogRepository();
+import { prisma } from "../config/db.js";
 
 export class AuditLogService {
-  static async log(userId, action, tx, isSystem = false) {
+  /**
+   * Write an audit log entry.
+   * Keeps backward compatibility with log(userId, action, tx, isSystem)
+   */
+  static async log(userId, action, tx = null, isSystem = false, extra = {}) {
     if (!userId && !isSystem) {
       console.warn(`[TESTIMONIUM] Attempted to log action "${action}" without a userId.`);
       return;
     }
     try {
-      if (tx) {
-        await tx.activityLog.create({
-          data: { userId, action, isSystem },
+      const client = tx || prisma;
+      
+      // If we don't have the user's role/parish, we can fetch it if userId is provided
+      let roleName = extra.role || null;
+      let parishId = extra.parishId ? parseInt(extra.parishId, 10) : null;
+
+      if (userId && (!roleName || !parishId)) {
+        const user = await client.user.findUnique({
+          where: { id: parseInt(userId, 10) },
+          include: { role: true }
         });
-      } else {
-        await activityLogRepository.create({ userId, action, isSystem });
+        if (user) {
+          if (!roleName) roleName = user.role?.roleName || null;
+          if (!parishId) parishId = user.parishId || null;
+        }
       }
+
+      const data = {
+        userId: userId ? parseInt(userId, 10) : null,
+        action,
+        isSystem,
+        affectedTable: extra.affectedTable || null,
+        affectedRecordId: extra.affectedRecordId ? parseInt(extra.affectedRecordId, 10) : null,
+        role: roleName,
+        parishId: parishId,
+        ipAddress: extra.ipAddress || null,
+        userAgent: extra.userAgent || null,
+        previousValues: extra.previousValues ? (typeof extra.previousValues === 'string' ? extra.previousValues : JSON.stringify(extra.previousValues)) : null,
+        newValues: extra.newValues ? (typeof extra.newValues === 'string' ? extra.newValues : JSON.stringify(extra.newValues)) : null,
+        metadata: extra.metadata ? (typeof extra.metadata === 'string' ? extra.metadata : JSON.stringify(extra.metadata)) : null,
+      };
+
+      await client.activityLog.create({ data });
     } catch (err) {
       console.error("[TESTIMONIUM] Failed to write audit log entry:", err.message);
     }

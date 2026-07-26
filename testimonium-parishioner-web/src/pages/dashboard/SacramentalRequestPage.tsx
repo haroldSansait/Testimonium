@@ -27,9 +27,20 @@ export const SacramentalRequestPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
+  const ALL_DOCUMENT_TYPES = [
+    { type: 'BAPTISMAL_CERTIFICATE', title: 'Baptismal Certificate', reqs: 'Valid ID, GKK Endorsement Letter' },
+    { type: 'CONFIRMATION_CERTIFICATE', title: 'Confirmation Certificate', reqs: 'Valid ID, GKK Endorsement Letter' },
+    { type: 'MARRIAGE_CERTIFICATE', title: 'Marriage Certificate', reqs: 'Valid ID, GKK Endorsement Letter' },
+    { type: 'FIRST_COMMUNION_CERTIFICATE', title: 'First Communion Certificate', reqs: 'Parent/Guardian ID, GKK Endorsement Letter' },
+    { type: 'MARRIAGE_BANNS', title: 'Marriage Banns', reqs: 'Valid IDs, Baptismal & Confirmation Certs, Civil Marriage License, Pre-Cana, CENOMAR, Banns Clearance, GKK Endorsement' },
+    { type: 'PERMIT_TO_MARRY', title: 'Permit to Marry', reqs: 'Valid ID, Baptismal & Confirmation Certs, Civil Marriage License, Pre-Cana, CENOMAR, Canonical Interview, Banns Clearance, GKK Endorsement' },
+    { type: 'STATUS_OF_LIBERTY', title: 'Status of Liberty', reqs: 'Valid ID, Baptismal Cert, CENOMAR, Canonical Interview, GKK Endorsement' },
+    { type: 'ENDORSEMENT', title: 'GKK Endorsement', reqs: 'GKK Chapel Officer Recommendation Form' },
+  ];
+
   // Form State
   const [selectedParishId, setSelectedParishId] = useState('');
-  const [docType, setDocType] = useState<'baptism' | 'confirmation' | 'marriage' | 'death' | 'other'>('baptism');
+  const [docType, setDocType] = useState<string>('BAPTISMAL_CERTIFICATE');
   const [applicantName, setApplicantName] = useState('');
   const [relationship, setRelationship] = useState('Self');
   const [purpose, setPurpose] = useState('');
@@ -90,7 +101,7 @@ export const SacramentalRequestPage: React.FC = () => {
       // 1. Create request draft
       const draft = await services.request.createRequest({
         parishId: selectedParishId,
-        documentType: docType,
+        documentType: docType as any,
         applicantName,
         relationship,
         purpose,
@@ -220,20 +231,21 @@ export const SacramentalRequestPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
                   Document Certificate Type
                 </label>
-                <p className="text-xs text-text-muted">Select the sacrament certificate document registry.</p>
+                <p className="text-xs text-text-muted">Select from the 8 official sacramental document types.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {(['baptism', 'confirmation', 'marriage', 'death', 'other'] as const).map(type => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {ALL_DOCUMENT_TYPES.map(doc => (
                   <button
-                    key={type}
-                    onClick={() => setDocType(type)}
-                    className={`p-4 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
-                      docType === type 
-                        ? 'border-crimson bg-red-50/10 text-crimson font-bold' 
+                    key={doc.type}
+                    onClick={() => setDocType(doc.type)}
+                    className={`p-3.5 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
+                      docType === doc.type 
+                        ? 'border-crimson bg-red-50/20 text-crimson font-bold shadow-sm' 
                         : 'border-border text-text-primary hover:bg-app-page'
                     }`}
                   >
-                    <span className="capitalize">{type} Certificate</span>
+                    <div className="font-serif font-bold text-sm leading-snug">{doc.title}</div>
+                    <div className="text-[10px] text-text-muted mt-1 font-sans font-normal truncate">{doc.reqs}</div>
                   </button>
                 ))}
               </div>
@@ -287,11 +299,14 @@ export const SacramentalRequestPage: React.FC = () => {
           {/* Step 4: Upload Requirements */}
           {currentStep === 3 && (
             <div className="space-y-4 max-w-xl mx-auto">
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
-                  Supporting Documents Upload
-                </label>
-                <p className="text-xs text-text-muted">Attach required files (e.g., Valid ID, Authorization letter if requesting on behalf of someone). PNG, JPG, or PDF (Max 5MB).</p>
+              <div className="p-4 bg-app-page border border-border/80 rounded-card space-y-2">
+                <span className="text-[10px] font-bold text-crimson uppercase tracking-wider">Required Attachments for {ALL_DOCUMENT_TYPES.find(d => d.type === docType)?.title}</span>
+                <p className="text-xs text-text-primary font-medium">
+                  {ALL_DOCUMENT_TYPES.find(d => d.type === docType)?.reqs}
+                </p>
+                <p className="text-[11px] text-text-muted">
+                  Please upload clear scans or legible photos of the specified files. Maximum 5MB per file (PNG, JPG, PDF).
+                </p>
               </div>
 
               <FileDropzone

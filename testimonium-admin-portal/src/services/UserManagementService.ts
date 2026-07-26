@@ -6,6 +6,7 @@ export interface UserFilters {
   role?: string;
   status?: string;
   assignableForParishId?: string;
+  parishId?: string;
 }
 
 export interface AddUserPayload {
@@ -38,5 +39,9 @@ export const UserManagementService = {
 
   async resetPassword(id: string): Promise<string> {
     return providerFactory.getUserProvider().resetPassword(id);
+  },
+
+  async updateUserColor(id: string, color: string | null): Promise<ManagedUser> {
+    return providerFactory.getUserProvider().updateUserColor(id, color);
   },
 };

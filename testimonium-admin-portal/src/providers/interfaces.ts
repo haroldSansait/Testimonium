@@ -58,6 +58,7 @@ export interface UserFilters {
   role?: string;
   status?: string;
   assignableForParishId?: string;
+  parishId?: string;
 }
 
 export interface AddUserPayload {
@@ -83,17 +84,40 @@ export interface NotificationProvider {
 
 export interface DocumentProvider {
   getDocumentRequests(filters: DocumentRequestFilters): Promise<PaginatedResponse<DocumentRequest>>;
-  updateDocumentStatus(id: string, status: DocumentStatus): Promise<DocumentRequest>;
+  updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string): Promise<DocumentRequest>;
+}
+
+export interface ProposeReschedulePayload {
+  proposedDate: string;
+  proposedStartDatetime?: string;
+  proposedEndDatetime?: string;
+  reason: string;
 }
 
 export interface ScheduleProvider {
   getScheduleRequests(filters: ScheduleRequestFilters): Promise<PaginatedResponse<ScheduleRequest>>;
   getScheduleRequest(id: string): Promise<ScheduleRequest>;
   updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest>;
+  proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest>;
+  respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest>;
+  assignPriest(id: string, priestId: string): Promise<ScheduleRequest>;
+}
+
+export interface CreateParishEventPayload {
+  title: string;
+  eventType: string;
+  description?: string;
+  location?: string;
+  eventDate: string;
+  startTime?: string;
+  endTime?: string;
+  assignedPriestId?: string;
+  parishId?: string;
 }
 
 export interface CalendarProvider {
   getEvents(year: number, month: number): Promise<CalendarEvent[]>;
+  createParishEvent(payload: CreateParishEventPayload): Promise<any>;
 }
 
 export interface ActivityLogProvider {
@@ -119,11 +143,30 @@ export interface AnalyticsProvider {
   getFinancialStats(): Promise<FinancialStat[]>;
 }
 
+export interface MassScheduleTemplate {
+  id: string;
+  parishId: string;
+  dayType: string;
+  timeSlot: string;
+  label: string;
+  isActive: boolean;
+  assignedPriestId?: string | null;
+  assignedPriest?: {
+    id: string;
+    fullName: string;
+    isAssistant?: boolean;
+  } | null;
+}
+
 export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
   addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish>;
   editParish(id: string, data: Partial<Parish>): Promise<Parish>;
   archiveParish(id: string): Promise<void>;
+  getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
+  upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate>;
+  deleteMassSchedule(id: string): Promise<void>;
+  resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
 }
 
 export interface UserProvider {
@@ -133,4 +176,26 @@ export interface UserProvider {
   disableUser(id: string): Promise<void>;
   enableUser(id: string): Promise<void>;
   resetPassword(id: string): Promise<string>;
+  updateUserColor(id: string, color: string | null): Promise<ManagedUser>;
+}
+
+export interface ParishAvailability {
+  id: string;
+  parishId: string;
+  userId?: string | null;
+  type: 'PARISH_CLOSED' | 'SECRETARY_LEAVE' | 'PRIEST_LEAVE' | 'FULLY_BOOKED';
+  startDate: string;
+  endDate: string;
+  title: string;
+  description?: string;
+  user?: {
+    fullName: string;
+    email: string;
+  } | null;
+}
+
+export interface AvailabilityProvider {
+  getAvailabilities(parishId?: string, startDate?: string, endDate?: string): Promise<ParishAvailability[]>;
+  createAvailability(data: Omit<ParishAvailability, 'id'>): Promise<ParishAvailability>;
+  deleteAvailability(id: string): Promise<void>;
 }

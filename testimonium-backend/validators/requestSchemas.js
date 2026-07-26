@@ -8,11 +8,15 @@ export const createRequestSchema = z.object({
       "CONFIRMATION_CERTIFICATE",
       "MARRIAGE_CERTIFICATE",
       "FIRST_COMMUNION_CERTIFICATE",
+      "MARRIAGE_BANNS",
+      "PERMIT_TO_MARRY",
+      "STATUS_OF_LIBERTY",
+      "ENDORSEMENT",
     ],
     {
       errorMap: () => ({
         message:
-          "Document type must be one of: BAPTISMAL_CERTIFICATE, CONFIRMATION_CERTIFICATE, MARRIAGE_CERTIFICATE, FIRST_COMMUNION_CERTIFICATE",
+          "Document type must be one of the official 8 sacramental document types.",
       }),
     }
   ),
@@ -30,6 +34,7 @@ export const updateRequestStatusSchema = z.object({
     [
       "PENDING",
       "UNDER_REVIEW",
+      "NEEDS_CORRECTION",
       "PAYMENT_PENDING",
       "PAYMENT_VERIFIED",
       "PROCESSING",

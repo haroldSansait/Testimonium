@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, Bell, Shield, LogOut } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { User, Bell, Shield, LogOut, Info } from 'lucide-react';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProfile } from '../../hooks/useService';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -12,6 +15,8 @@ import { ErrorState } from '../../components/ui/ErrorState';
 
 export const ProfilePage: React.FC = () => {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const isNewUser = (location.state as any)?.isNewUser || false;
   
   const profileQuery = useProfile(user?.uid || '');
   const { data: profile, loading, error, refetch, updateProfile } = profileQuery;
@@ -23,6 +28,25 @@ export const ProfilePage: React.FC = () => {
   const [smsNotifications, setSmsNotifications] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  const handlePasswordReset = async () => {
+    if (!user?.email) {
+      setResetMessage('Error: Email address not found.');
+      return;
+    }
+    setResetSending(true);
+    setResetMessage(null);
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      setResetMessage('Verification email dispatched! Please check your inbox.');
+    } catch (err: any) {
+      setResetMessage(err.message || 'Failed to dispatch verification email.');
+    } finally {
+      setResetSending(false);
+    }
+  };
 
   // Sync profile data to local state
   useEffect(() => {
@@ -117,6 +141,21 @@ export const ProfilePage: React.FC = () => {
         onRefresh={refetch}
         breadcrumbs={['Home', 'Profile']}
       />
+
+      {/* First-Time User / Incomplete Profile Onboarding Prompt Banner */}
+      {(isNewUser || !phone || !address) && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-card shadow-sm flex items-start space-x-3 text-xs text-amber-800 animate-in fade-in duration-300">
+          <Info size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="font-bold text-amber-900">
+              {isNewUser ? 'Welcome to TESTIMONIUM! Let’s complete your profile.' : 'Complete Your Profile Information'}
+            </h4>
+            <p>
+              Finalize your phone number and mailing address below so parish secretaries can contact you regarding sacramental certificates and appointments.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Side: Avatar Card */}
@@ -231,9 +270,20 @@ export const ProfilePage: React.FC = () => {
                 <p className="text-text-muted">
                   Passwords are managed through secure Firebase parameters. Click below to request a security verification email.
                 </p>
-                <Button variant="outline" size="sm" type="button" onClick={() => alert('Informational only: password reset functions not active in Phase 7A')}>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  type="button" 
+                  loading={resetSending} 
+                  onClick={() => void handlePasswordReset()}
+                >
                   Send Password Reset Email
                 </Button>
+                {resetMessage && (
+                  <p className={`mt-2 font-medium ${resetMessage.startsWith('Error') ? 'text-status-rejected' : 'text-green-600'}`}>
+                    {resetMessage}
+                  </p>
+                )}
               </CardContent>
             </Card>
 

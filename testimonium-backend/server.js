@@ -22,6 +22,10 @@ import scheduleRoutes from "./routes/scheduleRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import parishionerRequestRoutes from "./routes/parishionerRequestRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import documentRequirementRoutes from "./routes/documentRequirementRoutes.js";
+import parishAvailabilityRoutes from "./routes/parishAvailabilityRoutes.js";
+import massScheduleRoutes from "./routes/massScheduleRoutes.js";
+import parishEventRoutes from "./routes/parishEventRoutes.js";
 
 const app = express();
 const apiVersion = "/api/v1";
@@ -66,6 +70,8 @@ app.use(`${apiVersion}/health`, healthRoutes);
 app.use(`${apiVersion}/auth`, authRoutes);
 app.use(`${apiVersion}/dashboard`, dashboardRoutes);
 app.use(`${apiVersion}/document-requests`, documentRequestRoutes);
+app.use(`${apiVersion}/document-requirements`, documentRequirementRoutes);
+app.use(`${apiVersion}/parish-availabilities`, parishAvailabilityRoutes);
 app.use(`${apiVersion}/requests`, parishionerRequestRoutes);
 app.use(`${apiVersion}/payment`, paymentRoutes);
 app.use(`${apiVersion}/parishes`, parishRoutes);
@@ -76,6 +82,8 @@ app.use(`${apiVersion}/calendar`, calendarRoutes);
 app.use(`${apiVersion}/activity-log`, activityLogRoutes);
 app.use(`${apiVersion}/diocese`, dioceseRoutes);
 app.use(`${apiVersion}/analytics`, analyticsRoutes);
+app.use(`${apiVersion}/mass-schedules`, massScheduleRoutes);
+app.use(`${apiVersion}/parish-events`, parishEventRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

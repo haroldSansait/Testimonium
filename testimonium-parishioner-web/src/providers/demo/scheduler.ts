@@ -82,4 +82,22 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     this.save();
     return newAppointment;
   }
+
+  async respondReschedule(id: string, accept: boolean): Promise<Appointment> {
+    this.appointments = this.appointments.map(a => {
+      if (a.id === id) {
+        return {
+          ...a,
+          status: accept ? 'confirmed' : 'cancelled',
+          date: accept && a.proposedDate ? a.proposedDate : a.date,
+          timeSlot: accept && a.proposedTime ? a.proposedTime : a.timeSlot,
+        } as Appointment;
+      }
+      return a;
+    });
+    this.save();
+    const match = this.appointments.find(a => a.id === id);
+    if (!match) throw new Error(`Appointment ${id} not found`);
+    return match;
+  }
 }

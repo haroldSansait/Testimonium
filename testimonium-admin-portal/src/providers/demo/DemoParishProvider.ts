@@ -1,9 +1,31 @@
-import type { ParishProvider, ParishFilters } from '../interfaces';
+import type { ParishProvider, ParishFilters, MassScheduleTemplate } from '../interfaces';
 import type { Parish } from '@/types';
 import { parishes as mockParishes } from '@/mock/parishes';
 import { DemoUserProvider } from './DemoUserProvider';
 
 let store: Parish[] = [...mockParishes];
+let massTemplates: MassScheduleTemplate[] = [];
+
+const seedDemoMassTemplates = (parishId: string) => {
+  const defaults: Omit<MassScheduleTemplate, 'id' | 'parishId' | 'isActive'>[] = [
+    { dayType: "WEEKDAY", timeSlot: "06:00 AM", label: "Morning Mass" },
+    { dayType: "WEEKDAY", timeSlot: "05:15 PM", label: "Evening Mass" },
+    { dayType: "SUNDAY", timeSlot: "05:00 AM", label: "Sunday Early Mass" },
+    { dayType: "SUNDAY", timeSlot: "07:00 AM", label: "Sunday Morning Mass" },
+    { dayType: "SUNDAY", timeSlot: "09:00 AM", label: "Sunday High Mass" },
+    { dayType: "SUNDAY", timeSlot: "04:00 PM", label: "Sunday Afternoon Mass" },
+    { dayType: "SUNDAY", timeSlot: "06:00 PM", label: "Sunday Evening Mass" },
+  ];
+  const items = defaults.map((d, index) => ({
+    id: `demo-mt-${parishId}-${index}`,
+    parishId,
+    dayType: d.dayType as any,
+    timeSlot: d.timeSlot,
+    label: d.label,
+    isActive: true
+  }));
+  massTemplates = [...massTemplates, ...items];
+};
 
 export const DemoParishProvider: ParishProvider = {
   async getParishes(filters: ParishFilters = {}): Promise<Parish[]> {
@@ -132,4 +154,72 @@ export const DemoParishProvider: ParishProvider = {
     store = store.map((p) => (p.id === id ? { ...p, status: 'Archived' } : p));
     return Promise.resolve();
   },
+
+  async getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
+    const existing = massTemplates.filter(t => t.parishId === parishId && t.isActive);
+    if (existing.length === 0) {
+      seedDemoMassTemplates(parishId);
+    }
+    const list = massTemplates.filter(t => t.parishId === parishId && t.isActive);
+    
+    // Resolve priest details
+    const users = await DemoUserProvider.getUsers({});
+    for (const t of list) {
+      if (t.assignedPriestId) {
+        const u = users.find(x => x.id === t.assignedPriestId);
+        if (u) {
+          t.assignedPriest = { id: u.id, fullName: u.name, isAssistant: u.role === 'ASSISTANT_PRIEST' };
+        }
+      } else {
+        t.assignedPriest = null;
+      }
+    }
+    return list;
+  },
+
+  async upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate> {
+    const users = await DemoUserProvider.getUsers({});
+    let priestObj = null;
+    if (data.assignedPriestId) {
+      const u = users.find(x => x.id === data.assignedPriestId);
+      if (u) {
+        priestObj = { id: u.id, fullName: u.name, isAssistant: u.role === 'ASSISTANT_PRIEST' };
+      }
+    }
+
+    if (data.id) {
+      massTemplates = massTemplates.map(t => {
+        if (t.id === data.id) {
+          return { ...t, ...data, assignedPriest: priestObj } as MassScheduleTemplate;
+        }
+        return t;
+      });
+      const match = massTemplates.find(t => t.id === data.id);
+      if (!match) throw new Error(`Template ${data.id} not found`);
+      return match;
+    } else {
+      const newT: MassScheduleTemplate = {
+        id: `demo-mt-${parishId}-${Date.now()}`,
+        parishId,
+        dayType: data.dayType as any,
+        timeSlot: data.timeSlot,
+        label: data.label,
+        isActive: true,
+        assignedPriestId: data.assignedPriestId || null,
+        assignedPriest: priestObj
+      };
+      massTemplates.push(newT);
+      return newT;
+    }
+  },
+
+  async deleteMassSchedule(id: string): Promise<void> {
+    massTemplates = massTemplates.map(t => t.id === id ? { ...t, isActive: false } : t);
+  },
+
+  async resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
+    massTemplates = massTemplates.map(t => t.parishId === parishId ? { ...t, isActive: false } : t);
+    seedDemoMassTemplates(parishId);
+    return this.getMassSchedule(parishId);
+  }
 };

@@ -31,19 +31,62 @@ export const EventSchedulerPage: React.FC = () => {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
+  // Active reschedule proposal (populated when parish staff proposes an alternative date)
+  const [activeProposal, setActiveProposal] = useState<{
+    id: string;
+    serviceName: string;
+    proposedDate: string;
+    proposedTime: string;
+    reason: string;
+  } | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [submittingProposal, setSubmittingProposal] = useState(false);
+
   // Booking confirmation
   const [createdBooking, setCreatedBooking] = useState<Appointment | null>(null);
 
   const steps = ['Select Parish', 'Choose Service', 'Select Date', 'Choose Time Slot', 'Confirmation'];
 
   const servicesList = [
-    'Baptism Interview',
-    'Confirmation Canonical Interview',
-    'Marriage Pre-Cana Seminar',
-    'Marriage Canonical Interview',
-    'Funeral Mass Scheduling',
-    'House Blessing Request'
+    'Marriage Special',
+    'Wake Mass',
+    'Funeral',
+    'Private Mass',
+    'Anointing of the Sick',
+    'Fiesta',
+    'Blessing',
+    'Deliverance',
+    'Thanksgiving',
+    'First Communion',
+    'Mass of the Holy Spirit',
+    'Confirmation',
+    'Confession'
   ];
+
+  const fetchActiveProposal = async () => {
+    try {
+      const appointments = await services.scheduler.getAppointments();
+      const proposal = appointments.find(a => a.status === 'proposed');
+      if (proposal) {
+        setActiveProposal({
+          id: proposal.id,
+          serviceName: proposal.serviceName,
+          proposedDate: proposal.proposedDate || proposal.date,
+          proposedTime: proposal.proposedTime || proposal.timeSlot,
+          reason: proposal.rescheduleReason || 'Staff pastoral commitment / slot conflict.'
+        });
+      } else {
+        setActiveProposal(null);
+      }
+    } catch (err) {
+      console.error('Failed to load appointments/proposals:', err);
+    }
+  };
+
+  useEffect(() => {
+    void fetchActiveProposal();
+  }, []);
 
   // Sync initial parish
   useEffect(() => {
@@ -72,6 +115,29 @@ export const EventSchedulerPage: React.FC = () => {
       fetchSlots();
     }
   }, [selectedParishId, selectedDate]);
+
+  const handleRespondProposal = async (accept: boolean) => {
+    if (!activeProposal) return;
+    setSubmittingProposal(true);
+    try {
+      await services.scheduler.respondReschedule(activeProposal.id, accept);
+      setToastMessage(`Alternative schedule date ${accept ? 'accepted' : 'declined'} successfully.`);
+      setActiveProposal(null);
+      void fetchActiveProposal();
+    } catch (err) {
+      console.error(err);
+      setToastMessage('Failed to respond to proposal. Please try again.');
+    } finally {
+      setSubmittingProposal(false);
+    }
+  };
+
+  useEffect(() => {
+    if (toastMessage) {
+      const t = setTimeout(() => setToastMessage(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [toastMessage]);
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -171,6 +237,29 @@ export const EventSchedulerPage: React.FC = () => {
         onRefresh={refetch}
         breadcrumbs={['Home', 'Event Scheduler']}
       />
+
+      {/* Reschedule Proposal Response Banner (shown only when a proposed reschedule exists) */}
+      {activeProposal && (
+        <Card className="bg-amber-50/70 border-l-4 border-amber-500 p-5 space-y-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Alternative Schedule Proposal</span>
+              <h4 className="font-serif font-bold text-sm text-amber-950">{activeProposal.serviceName} — Proposed Date Update</h4>
+              <p className="text-xs text-amber-800">
+                The parish secretary has proposed an alternative slot on <strong className="font-semibold">{activeProposal.proposedDate} at {activeProposal.proposedTime}</strong> due to: {activeProposal.reason}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={submittingProposal} onClick={() => void handleRespondProposal(true)}>
+              {submittingProposal ? 'Responding...' : 'Accept Proposed Date'}
+            </Button>
+            <Button size="sm" variant="outline" className="border-amber-400 text-amber-900 hover:bg-amber-100" disabled={submittingProposal} onClick={() => void handleRespondProposal(false)}>
+              {submittingProposal ? 'Responding...' : 'Decline Proposal'}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-6 space-y-8">
@@ -352,6 +441,12 @@ export const EventSchedulerPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+      
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-emerald-700 text-white rounded-xl shadow-lg text-sm font-semibold animate-in slide-in-from-bottom-4">
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 };

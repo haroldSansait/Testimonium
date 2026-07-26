@@ -19,8 +19,11 @@ import { DemoParishProvider } from './demo/DemoParishProvider';
 import { ApiParishProvider } from './api/ApiParishProvider';
 import { DemoUserProvider } from './demo/DemoUserProvider';
 import { ApiUserProvider } from './api/ApiUserProvider';
+import { ApiAvailabilityProvider } from './api/ApiAvailabilityProvider';
+import { DemoAvailabilityProvider } from './demo/DemoAvailabilityProvider';
 import type {
   DashboardProvider,
+  AvailabilityProvider,
   NotificationProvider,
   DocumentProvider,
   ScheduleProvider,
@@ -96,5 +99,8 @@ export const providerFactory = {
   },
   getUserProvider(): UserProvider {
     return resolveProvider('users', DemoUserProvider, ApiUserProvider);
+  },
+  getAvailabilityProvider(): AvailabilityProvider {
+    return resolveProvider('availability', DemoAvailabilityProvider, ApiAvailabilityProvider);
   },
 };

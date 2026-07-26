@@ -22,3 +22,5 @@ export const prisma =
 if (env.nodeEnv !== "production") {
   globalForPrisma.prisma = prisma;
 }
+// Trigger restart to load generated client
+

@@ -33,4 +33,9 @@ export const ApiUserProvider: UserProvider = {
     const response = await api.post<ApiResponseEnvelope<{ resetLink: string }>>(`/users/${id}/reset-password`);
     return response.data.data.resetLink;
   },
+
+  async updateUserColor(id: string, color: string | null): Promise<ManagedUser> {
+    const response = await api.put<ApiResponseEnvelope<ManagedUser>>(`/users/${id}/color`, { color });
+    return response.data.data;
+  },
 };

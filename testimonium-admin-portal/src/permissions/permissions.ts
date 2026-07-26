@@ -16,7 +16,9 @@ export type Permission =
   | 'VIEW_ANALYTICS'
   | 'MANAGE_PARISHES'
   | 'MANAGE_USERS'
-  | 'VIEW_ACTIVITY_LOG';
+  | 'VIEW_ACTIVITY_LOG'
+  | 'MANAGE_MASS_SCHEDULE'
+  | 'MANAGE_MY_AVAILABILITY';
 
 // ─── Convenience constants ────────────────────────────────────────────────────
 // Re-export each permission as a constant so callers can write
@@ -33,4 +35,6 @@ export const PERMISSIONS = {
   MANAGE_PARISHES: 'MANAGE_PARISHES' as const,
   MANAGE_USERS: 'MANAGE_USERS' as const,
   VIEW_ACTIVITY_LOG: 'VIEW_ACTIVITY_LOG' as const,
+  MANAGE_MASS_SCHEDULE: 'MANAGE_MASS_SCHEDULE' as const,
+  MANAGE_MY_AVAILABILITY: 'MANAGE_MY_AVAILABILITY' as const,
 } satisfies Record<Permission, Permission>;

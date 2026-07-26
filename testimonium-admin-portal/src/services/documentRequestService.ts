@@ -18,7 +18,8 @@ export async function getDocumentRequests(
 
 export async function updateDocumentStatus(
   id: string,
-  status: DocumentStatus
+  status: DocumentStatus,
+  remarks?: string
 ): Promise<DocumentRequest> {
-  return providerFactory.getDocumentProvider().updateDocumentStatus(id, status);
+  return providerFactory.getDocumentProvider().updateDocumentStatus(id, status, remarks);
 }

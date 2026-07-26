@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldAlert, UserPlus } from 'lucide-react';
+import { ShieldAlert, UserPlus, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -13,8 +13,10 @@ export const SignupPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +40,17 @@ export const SignupPage: React.FC = () => {
 
     try {
       await signUpWithEmail(email, password, name);
-      navigate('/dashboard/home');
+      setSuccessMessage('Account registered successfully! Redirecting to complete your profile...');
+      setTimeout(() => {
+        navigate('/dashboard/profile', { state: { isNewUser: true } });
+      }, 1500);
     } catch (err: any) {
-      setError(err?.message || 'Registration failed. Please check your inputs.');
+      if (err?.code === 'auth/email-already-in-use') {
+        setError('An account with this email address already exists. Redirecting to Login...');
+        setTimeout(() => navigate('/login'), 2000);
+      } else {
+        setError(err?.message || 'Registration failed. Please check your inputs.');
+      }
     } finally {
       setLoading(false);
     }
@@ -51,9 +61,14 @@ export const SignupPage: React.FC = () => {
     setError('');
     try {
       await signInWithGoogle();
-      navigate('/dashboard/home');
+      navigate('/dashboard/profile', { state: { isNewUser: true } });
     } catch (err: any) {
-      setError(err?.message || 'Google Sign-In failed.');
+      if (err?.code === 'auth/account-exists-with-different-credential' || err?.code === 'auth/email-already-in-use') {
+        setError('An account with this email address already exists. Please log in using your primary sign-in method.');
+        setTimeout(() => navigate('/login'), 2000);
+      } else {
+        setError(err?.message || 'Google Sign-In failed.');
+      }
     } finally {
       setLoading(false);
     }
@@ -102,6 +117,13 @@ export const SignupPage: React.FC = () => {
             </p>
           </div>
 
+          {successMessage && (
+            <div className="p-3.5 bg-green-50 border border-green-300 text-green-800 rounded-button flex items-start space-x-2.5 text-xs font-medium animate-in fade-in duration-fast">
+              <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-600" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
           {error && (
             <div className="p-3.5 bg-red-50 border border-status-rejected/25 text-status-rejected rounded-button flex items-start space-x-2.5 text-xs font-medium animate-in fade-in duration-fast">
               <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
@@ -130,26 +152,38 @@ export const SignupPage: React.FC = () => {
               disabled={loading}
               className="w-full"
             />
-            <Input
-              label="Password (min. 6 characters)"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              disabled={loading}
-              className="w-full"
-            />
-            <Input
-              label="Confirm Password"
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              required
-              disabled={loading}
-              className="w-full"
-            />
+            <div className="relative">
+              <Input
+                label="Password (min. 6 characters)"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                disabled={loading}
+                className="w-full pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-8 text-text-muted hover:text-text-primary transition-colors focus:outline-none"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            <div className="relative">
+              <Input
+                label="Confirm Password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                required
+                disabled={loading}
+                className="w-full pr-10"
+              />
+            </div>
 
             <Button type="submit" loading={loading} className="w-full pt-2.5 pb-2.5 mt-4">
               Register Account

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { ActivityLogTable } from '@/components/activity-log/ActivityLogTable';
@@ -33,7 +34,7 @@ function ActivityDetailModal({ entry, onClose }: DetailModalProps) {
     ? 'Schedule Requests'
     : 'Parish/User Management';
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -107,7 +108,8 @@ function ActivityDetailModal({ entry, onClose }: DetailModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -171,7 +173,7 @@ function ConfirmationModal({ type, selectedCount, onConfirm, onClose }: ConfirmM
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -223,7 +225,8 @@ function ConfirmationModal({ type, selectedCount, onConfirm, onClose }: ConfirmM
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

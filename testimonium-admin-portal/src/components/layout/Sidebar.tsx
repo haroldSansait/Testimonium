@@ -11,12 +11,18 @@ import {
   ClipboardList,
   User,
   LogOut,
+  Clock,
+  HelpCircle,
+  Info,
 } from 'lucide-react';
+import { useState } from 'react';
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/TESTIMONIUM_logo.png';
 import { useAuth } from '@/hooks/useAuth';
 import { hasPermission } from '@/permissions/rolePermissions';
 import { PERMISSIONS, type Permission } from '@/permissions/permissions';
+import { HelpModal } from '@/components/modals/HelpModal';
+import { AboutModal } from '@/components/modals/AboutModal';
 
 // ─── Nav item definition ──────────────────────────────────────────────────────
 
@@ -59,6 +65,18 @@ const ALL_NAV_ITEMS: NavItem[] = [
     label: 'Notifications',
     icon: <Bell className="w-4 h-4" />,
     permission: PERMISSIONS.VIEW_NOTIFICATIONS,
+  },
+  {
+    to: '/mass-schedule',
+    label: 'Mass Schedule',
+    icon: <Clock className="w-4 h-4" />,
+    permission: PERMISSIONS.MANAGE_MASS_SCHEDULE,
+  },
+  {
+    to: '/availability',
+    label: 'My Leave Settings',
+    icon: <Calendar className="w-4 h-4" />,
+    permission: PERMISSIONS.MANAGE_MY_AVAILABILITY,
   },
   // ── Diocese Coordinator only ──
   {
@@ -103,6 +121,8 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 export function Sidebar() {
   const navigate = useNavigate();
   const { role, logout } = useAuth();
+  const [showHelp, setShowHelp] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   // Filter nav items to only those the current role has permission to see.
   const visibleNavItems = ALL_NAV_ITEMS.filter((item) =>
@@ -115,6 +135,7 @@ export function Sidebar() {
   };
 
   return (
+    <>
     <aside className="sidebar flex flex-col">
       {/* Brand */}
       <div className="px-5 pt-6 pb-4">
@@ -167,6 +188,22 @@ export function Sidebar() {
             <span>Profile</span>
           </button>
           <button
+            onClick={() => setShowHelp(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white/65 rounded-md hover:bg-white/10 hover:text-white transition-all duration-150 border-l-2 border-transparent pl-[10px]"
+            id="nav-help"
+          >
+            <HelpCircle className="w-4 h-4 flex-shrink-0" />
+            <span>Help</span>
+          </button>
+          <button
+            onClick={() => setShowAbout(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white/65 rounded-md hover:bg-white/10 hover:text-white transition-all duration-150 border-l-2 border-transparent pl-[10px]"
+            id="nav-about"
+          >
+            <Info className="w-4 h-4 flex-shrink-0" />
+            <span>About</span>
+          </button>
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white/65 rounded-md hover:bg-white/10 hover:text-white transition-all duration-150 border-l-2 border-transparent pl-[10px]"
             id="nav-logout"
@@ -177,5 +214,10 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+
+    {/* Modals rendered outside aside to escape stacking context */}
+    <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
+    <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
+    </>
   );
 }

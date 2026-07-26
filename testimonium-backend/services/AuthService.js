@@ -112,6 +112,7 @@ export class AuthService {
       email: user.email,
       fullName: user.fullName,
       contactNumber: user.contactNumber,
+      address: user.address || null,
       isVerified: user.isVerified,
       status: user.status,
       role: user.role.roleName,

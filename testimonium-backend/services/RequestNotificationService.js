@@ -125,4 +125,19 @@ export class RequestNotificationService {
       tx
     );
   }
+
+  static async notifyPriestAssigned(
+    parishionerId,
+    parishId,
+    scheduleId,
+    displayTitle,
+    priestId,
+    priestName,
+    tx = null
+  ) {
+    await NotificationDispatcher.notifyPriestAssigned(
+      { parishionerId, parishId, scheduleId, displayTitle, priestId, priestName },
+      tx
+    );
+  }
 }

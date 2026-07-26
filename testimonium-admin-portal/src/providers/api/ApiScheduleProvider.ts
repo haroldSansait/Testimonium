@@ -1,5 +1,5 @@
 import api from '@/api/api';
-import type { ScheduleProvider, ScheduleRequestFilters } from '../interfaces';
+import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload } from '../interfaces';
 import type { ScheduleRequest, ScheduleStatus, EventType } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
 import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
@@ -17,6 +17,9 @@ interface BackendScheduleRequestDTO {
   conflictFlag: boolean;
   remarks: string | null;
   processedById: number | null;
+  proposedDate: string | null;
+  proposedStartDatetime: string | null;
+  rescheduleReason: string | null;
   createdAt: string;
   updatedAt: string;
   user?: {
@@ -33,15 +36,28 @@ interface BackendScheduleRequestDTO {
     id: number;
     fullName: string;
   } | null;
+  assignedPriest?: {
+    id: number;
+    fullName: string;
+  } | null;
 }
 
 const mapScheduleStatus = (status: string): ScheduleStatus => {
   switch (status) {
     case 'PENDING':
+    case 'REQUESTED':
       return 'Pending';
+    case 'UNDER_REVIEW':
+      return 'Under Review';
+    case 'PROPOSED_RESCHEDULE':
+    case 'WAITING_PARISHIONER_RESPONSE':
+    case 'TENTATIVE':
+      return 'Tentative';
     case 'CONFIRMED':
+    case 'COMPLETED':
       return 'Confirmed';
     case 'REJECTED':
+    case 'CANCELLED':
       return 'Cancelled';
     default:
       return 'Pending';
@@ -110,7 +126,28 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     }
   }
 
-  const assignedPriest = dbItem.processedBy?.fullName || 'TBD';
+  const assignedPriest = dbItem.assignedPriest?.fullName || dbItem.processedBy?.fullName || 'TBD';
+
+  let proposedDateStr = undefined;
+  let proposedTimeStr = undefined;
+  if (dbItem.proposedDate) {
+    proposedDateStr = new Date(dbItem.proposedDate).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+  if (dbItem.proposedStartDatetime) {
+    const pStart = new Date(dbItem.proposedStartDatetime);
+    let hours = pStart.getHours();
+    const minutes = pStart.getMinutes();
+    const period = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minStr = minutes < 10 ? '0' + minutes : minutes;
+    const hourStr = hours < 10 ? '0' + hours : hours;
+    proposedTimeStr = `${hourStr}:${minStr} ${period}`;
+  }
 
   return {
     id: String(dbItem.id),
@@ -125,12 +162,17 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     status: mapScheduleStatus(dbItem.status),
     assignedPriest,
     parish: dbItem.parish?.parishName || 'Main Church',
+    parishId: String(dbItem.parishId),
     contactInfo: dbItem.user?.email || 'Anonymous',
     notes: dbItem.remarks || 'No notes provided.',
+    proposedDate: proposedDateStr,
+    proposedTime: proposedTimeStr,
+    rescheduleReason: dbItem.rescheduleReason || undefined,
     timeline: [
       { status: 'Pending', date: preferredDate, note: 'Schedule request submitted.' },
-      ...(dbItem.status === 'CONFIRMED' ? [{ status: 'Confirmed', date: preferredDate, note: `Approved by ${assignedPriest}.` }] : []),
-      ...(dbItem.status === 'REJECTED' ? [{ status: 'Cancelled', date: preferredDate, note: 'Request rejected/cancelled.' }] : []),
+      ...(dbItem.status === 'PROPOSED_RESCHEDULE' || dbItem.status === 'WAITING_PARISHIONER_RESPONSE' ? [{ status: 'Tentative', date: preferredDate, note: `Alternative date proposed: ${proposedDateStr} (${proposedTimeStr || ''}). Reason: ${dbItem.rescheduleReason || 'None'}` }] : []),
+      ...(dbItem.status === 'CONFIRMED' ? [{ status: 'Confirmed', date: preferredDate, note: `Approved and scheduled with priest: ${assignedPriest}.` }] : []),
+      ...(dbItem.status === 'CANCELLED' || dbItem.status === 'REJECTED' ? [{ status: 'Cancelled', date: preferredDate, note: 'Request cancelled.' }] : []),
     ]
   };
 };
@@ -173,10 +215,25 @@ export const ApiScheduleProvider: ScheduleProvider = {
   async updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest> {
     let backendStatus = 'PENDING';
     if (status === 'Confirmed') backendStatus = 'CONFIRMED';
-    else if (status === 'Cancelled') backendStatus = 'REJECTED';
+    else if (status === 'Cancelled') backendStatus = 'CANCELLED';
+    else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
 
     const response = await api.patch<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/status`, { status: backendStatus });
     return mapToFrontend(response.data.data);
+  },
+
+  async proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest> {
+    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/propose-reschedule`, payload);
+    return mapToFrontend(response.data.data);
+  },
+
+  async respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest> {
+    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/respond-reschedule`, { accept });
+    return mapToFrontend(response.data.data);
+  },
+
+  async assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
+    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-priest`, { priestId });
+    return mapToFrontend(response.data.data);
   }
 };
-

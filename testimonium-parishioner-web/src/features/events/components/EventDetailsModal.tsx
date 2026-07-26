@@ -1,5 +1,5 @@
-import React from 'react';
-import { Calendar, Clock, MapPin, Building, User, Phone, Share2, Clipboard, Globe } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Calendar, Clock, MapPin, Building, User, Phone, Share2, Clipboard, Globe, Check, AlertCircle, Download } from 'lucide-react';
 import type { Event } from '../../../types';
 import { getEventCountdownLabel } from '../../../utils/date';
 import { Modal } from '../../../components/ui/Modal';
@@ -13,6 +13,53 @@ interface EventDetailsModalProps {
   onViewParish?: (parishId: string) => void;
 }
 
+// ─── ICS Download Utility (parishioner events) ──────────────────────────────
+
+function buildEventIcs(event: Event): string {
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const startDate = event.startDate.replace(/-/g, '');
+  const endDate = event.endDate.replace(/-/g, '');
+
+  const escape = (s: string) =>
+    s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//TESTIMONIUM//Parish Events//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:testimonium-event-${event.id}@testimonium.parish`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${startDate}`,
+    `DTEND;VALUE=DATE:${endDate}`,
+    `SUMMARY:${escape(event.title)}`,
+    `LOCATION:${escape(event.location + ', ' + event.parishName)}`,
+    `DESCRIPTION:${escape(event.description || '')}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+function downloadEventIcs(event: Event) {
+  const content = buildEventIcs(event);
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${event.title.replace(/\s+/g, '_')}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ─── Inline action feedback states ──────────────────────────────────────────
+
+type FeedbackState = 'idle' | 'success' | 'error';
+
 export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   event,
   isOpen,
@@ -22,6 +69,15 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   if (!event) return null;
 
   const countdown = getEventCountdownLabel(event.startDate);
+
+  // Per-action inline feedback states (no browser alert())
+  const [calendarFeedback, setCalendarFeedback] = useState<FeedbackState>('idle');
+  const [shareFeedback, setShareFeedback] = useState<FeedbackState>('idle');
+  const [shareError, setShareError] = useState('');
+
+  const resetFeedback = (setter: React.Dispatch<React.SetStateAction<FeedbackState>>) => {
+    setTimeout(() => setter('idle'), 2500);
+  };
 
   const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
     switch (category) {
@@ -39,18 +95,38 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
     }
   };
 
-  const handleAddToCalendar = () => {
-    alert(`Syncing "${event.title}" to device calendar. (Feature integration simulated)`);
-  };
-
-  const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(`${window.location.origin}/dashboard/events?id=${event.id}`);
-      alert('Event link copied to clipboard!');
-    } else {
-      alert('Unable to copy event link.');
+  const handleAddToCalendar = useCallback(() => {
+    try {
+      downloadEventIcs(event);
+      setCalendarFeedback('success');
+      resetFeedback(setCalendarFeedback);
+    } catch {
+      setCalendarFeedback('error');
+      resetFeedback(setCalendarFeedback);
     }
-  };
+  }, [event]);
+
+  const handleShare = useCallback(() => {
+    const url = `${window.location.origin}/dashboard/events?id=${event.id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(
+        () => {
+          setShareFeedback('success');
+          setShareError('');
+          resetFeedback(setShareFeedback);
+        },
+        () => {
+          setShareFeedback('error');
+          setShareError('Unable to copy. Please copy the URL manually.');
+          resetFeedback(setShareFeedback);
+        }
+      );
+    } else {
+      setShareFeedback('error');
+      setShareError('Clipboard not supported in this browser.');
+      resetFeedback(setShareFeedback);
+    }
+  }, [event.id]);
 
   const handleDirections = () => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location + ', ' + event.parishName)}`;
@@ -189,16 +265,60 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
           </div>
         </div>
 
+        {/* Share error feedback (inline, below actions) */}
+        {shareFeedback === 'error' && shareError && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700 font-medium">
+            <AlertCircle size={13} className="flex-shrink-0" />
+            {shareError}
+          </div>
+        )}
+
         {/* Action Buttons Row */}
         <div className="flex flex-wrap gap-2.5 pt-4 border-t border-border/80 justify-end">
-          <Button variant="outline" size="sm" onClick={handleShare} className="flex items-center space-x-1">
-            <Share2 size={14} />
-            <span>Share</span>
+          {/* Share button with inline feedback */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleShare}
+            className={`flex items-center space-x-1 transition-colors ${
+              shareFeedback === 'success'
+                ? 'border-green-500 text-green-700 bg-green-50'
+                : shareFeedback === 'error'
+                ? 'border-red-400 text-red-600'
+                : ''
+            }`}
+          >
+            {shareFeedback === 'success' ? (
+              <><Check size={14} /><span>Copied!</span></>
+            ) : shareFeedback === 'error' ? (
+              <><AlertCircle size={14} /><span>Failed</span></>
+            ) : (
+              <><Share2 size={14} /><span>Share</span></>
+            )}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleAddToCalendar} className="flex items-center space-x-1">
-            <Calendar size={14} />
-            <span>Add to Calendar</span>
+
+          {/* Add to Calendar button with inline feedback */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAddToCalendar}
+            className={`flex items-center space-x-1 transition-colors ${
+              calendarFeedback === 'success'
+                ? 'border-green-500 text-green-700 bg-green-50'
+                : calendarFeedback === 'error'
+                ? 'border-red-400 text-red-600'
+                : ''
+            }`}
+          >
+            {calendarFeedback === 'success' ? (
+              <><Check size={14} /><span>Downloaded!</span></>
+            ) : calendarFeedback === 'error' ? (
+              <><AlertCircle size={14} /><span>Failed</span></>
+            ) : (
+              <><Download size={14} /><span>Add to Calendar</span></>
+            )}
           </Button>
+
           <Button variant="outline" size="sm" onClick={handleDirections} className="flex items-center space-x-1">
             <MapPin size={14} />
             <span>Get Directions</span>

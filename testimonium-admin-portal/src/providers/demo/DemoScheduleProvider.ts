@@ -1,4 +1,4 @@
-import type { ScheduleProvider, ScheduleRequestFilters } from '../interfaces';
+import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload } from '../interfaces';
 import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import type { PaginatedResponse } from '@/types/api';
 import { scheduleRequests } from '@/mock/scheduleRequests';
@@ -67,6 +67,49 @@ export const DemoScheduleProvider: ScheduleProvider = {
       };
     });
 
+    const updated = store.find(r => r.id === id);
+    if (!updated) throw new Error(`Schedule request ${id} not found`);
+    return updated;
+  },
+
+  async proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest> {
+    store = store.map(r => {
+      if (r.id !== id) return r;
+      const todayStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const newTimeline = [...(r.timeline || [])];
+      newTimeline.push({
+        status: 'Tentative',
+        date: todayStr,
+        note: `Alternative date proposed: ${payload.proposedDate}. Reason: ${payload.reason}`
+      });
+
+      return {
+        ...r,
+        status: 'Tentative' as ScheduleStatus,
+        proposedDate: payload.proposedDate,
+        rescheduleReason: payload.reason,
+        timeline: newTimeline
+      };
+    });
+
+    const updated = store.find(r => r.id === id);
+    if (!updated) throw new Error(`Schedule request ${id} not found`);
+    return updated;
+  },
+
+  async respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest> {
+    const targetStatus: ScheduleStatus = accept ? 'Confirmed' : 'Cancelled';
+    return this.updateScheduleStatus(id, targetStatus);
+  },
+
+  async assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
+    store = store.map(r => {
+      if (r.id !== id) return r;
+      return {
+        ...r,
+        assignedPriest: `Priest ID ${priestId}`
+      };
+    });
     const updated = store.find(r => r.id === id);
     if (!updated) throw new Error(`Schedule request ${id} not found`);
     return updated;

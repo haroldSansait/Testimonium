@@ -1,4 +1,11 @@
-export function CalendarLegend() {
+import { getPriestColor } from '@/utils/priestColors';
+import type { ManagedUser } from '@/types';
+
+interface CalendarLegendProps {
+  priests: ManagedUser[];
+}
+
+export function CalendarLegend({ priests }: CalendarLegendProps) {
   const items = [
     { color: 'bg-crimson-800', label: 'Mass Schedule' },
     { color: 'bg-rose-100 border border-rose-200', label: 'Confirmed Sacrament (Baptism/Wedding)' },
@@ -21,6 +28,28 @@ export function CalendarLegend() {
             <span className="text-xs text-gray-600">{item.label}</span>
           </div>
         )
+      )}
+
+      {priests.length > 0 && (
+        <>
+          <div className="h-4 w-px bg-gray-200" />
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Priests:</span>
+          {priests.map((p) => {
+            const hexColor = p.color || getPriestColor(p.name).hex;
+            return (
+              <div key={p.id} className="flex items-center gap-2">
+                <span
+                  className="w-4 h-4 rounded-full inline-block border"
+                  style={{
+                    backgroundColor: `${hexColor}15`,
+                    borderColor: `${hexColor}40`,
+                  }}
+                />
+                <span className="text-xs text-gray-600 font-semibold">{p.name}</span>
+              </div>
+            );
+          })}
+        </>
       )}
     </div>
   );

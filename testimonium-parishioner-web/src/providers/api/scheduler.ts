@@ -18,8 +18,10 @@ const mapAppointment = (s: any): Appointment => {
 
   if (s.status === "CONFIRMED") {
     status = "confirmed";
-  } else if (s.status === "REJECTED") {
+  } else if (s.status === "REJECTED" || s.status === "CANCELLED") {
     status = "cancelled";
+  } else if (s.status === "PROPOSED_RESCHEDULE" || s.status === "WAITING_PARISHIONER_RESPONSE") {
+    status = "proposed";
   }
 
   // Extract display title, checking displayTitle first, then fallback to remarks, then eventType
@@ -29,6 +31,23 @@ const mapAppointment = (s: any): Appointment => {
     if (match) {
       serviceName = match[1].trim();
     }
+  }
+
+  let proposedDateStr = undefined;
+  let proposedTimeStr = undefined;
+  if (s.proposedDate) {
+    proposedDateStr = new Date(s.proposedDate).toISOString().split("T")[0];
+  }
+  if (s.proposedStartDatetime) {
+    const pStart = new Date(s.proposedStartDatetime);
+    let hours = pStart.getHours();
+    const minutes = pStart.getMinutes();
+    const period = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minStr = minutes < 10 ? '0' + minutes : minutes;
+    const hourStr = hours < 10 ? '0' + hours : hours;
+    proposedTimeStr = `${hourStr}:${minStr} ${period}`;
   }
 
   return {
@@ -41,6 +60,9 @@ const mapAppointment = (s: any): Appointment => {
     confirmationNumber: `CONF-${new Date(s.createdAt || Date.now()).getFullYear()}-${String(
       s.id
     ).padStart(4, "0")}`,
+    proposedDate: proposedDateStr,
+    proposedTime: proposedTimeStr,
+    rescheduleReason: s.rescheduleReason || undefined,
   };
 };
 
@@ -79,6 +101,13 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     };
 
     const data = await client.post<any>("/schedule-requests", payload);
-    return mapAppointment(data);
+    const item = data?.data !== undefined ? data.data : data;
+    return mapAppointment(item);
+  }
+
+  async respondReschedule(id: string, accept: boolean): Promise<Appointment> {
+    const response = await client.post<any>(`/schedule-requests/${id}/respond-reschedule`, { accept });
+    const item = response?.data !== undefined ? response.data : response;
+    return mapAppointment(item);
   }
 }
