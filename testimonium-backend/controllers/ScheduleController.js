@@ -11,9 +11,13 @@ export const list = async (req, res, next) => {
     // Staff see schedules from their parish, and diocese coordinator sees all.
     let userId;
     let parishId;
+    let priestId;
 
     if (req.user.role === "PARISHIONER") {
       userId = req.user.id;
+    } else if (req.user.role === "PRIEST") {
+      parishId = req.user.parish?.id;
+      priestId = req.user.id;
     } else if (req.user.role !== "DIOCESE_COORDINATOR") {
       parishId = req.user.parish?.id;
     }
@@ -25,6 +29,7 @@ export const list = async (req, res, next) => {
       status,
       parishId,
       userId,
+      priestId,
     });
 
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
@@ -100,6 +105,8 @@ export const updateStatus = async (req, res, next) => {
     const id = parseInt(req.params.id, 10);
     const { status } = req.body;
     const processedById = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
 
     if (isNaN(id)) {
       return res.status(400).json({
@@ -115,7 +122,7 @@ export const updateStatus = async (req, res, next) => {
       });
     }
 
-    const updated = await scheduleService.updateStatus(id, status, processedById);
+    const updated = await scheduleService.updateStatus(id, status, processedById, actorRole, actorParishId);
 
     return res.status(200).json({
       success: true,
@@ -132,6 +139,8 @@ export const proposeReschedule = async (req, res, next) => {
     const id = parseInt(req.params.id, 10);
     const { proposedDate, proposedStartDatetime, proposedEndDatetime, reason } = req.body;
     const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
 
     const updated = await scheduleService.proposeReschedule(id, {
       proposedDate,
@@ -139,6 +148,8 @@ export const proposeReschedule = async (req, res, next) => {
       proposedEndDatetime,
       reason,
       actorId,
+      actorRole,
+      actorParishId,
     });
 
     return res.status(200).json({
@@ -155,8 +166,10 @@ export const respondReschedule = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
     const { accept } = req.body;
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
 
-    const updated = await scheduleService.respondReschedule(id, accept);
+    const updated = await scheduleService.respondReschedule(id, accept, actorId, actorRole);
 
     return res.status(200).json({
       success: true,
@@ -173,12 +186,46 @@ export const assignPriest = async (req, res, next) => {
     const id = parseInt(req.params.id, 10);
     const { priestId } = req.body;
     const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
 
-    const updated = await scheduleService.assignPriest(id, priestId, actorId);
+    const updated = await scheduleService.assignPriest(id, priestId, actorId, actorRole, actorParishId);
 
     return res.status(200).json({
       success: true,
       message: "Priest assigned successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const respondPriestAssignment = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { status, reason } = req.body;
+    const priestId = req.user.id;
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid schedule ID.",
+      });
+    }
+
+    if (!status || !["ACCEPTED", "REJECTED"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required and must be either ACCEPTED or REJECTED.",
+      });
+    }
+
+    const updated = await scheduleService.respondPriestAssignment(id, priestId, status, reason);
+
+    return res.status(200).json({
+      success: true,
+      message: `Schedule assignment ${status.toLowerCase()} successfully.`,
       data: updated,
     });
   } catch (err) {

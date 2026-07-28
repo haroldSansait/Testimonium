@@ -17,6 +17,8 @@ import { MassSchedulePage } from '@/pages/MassSchedulePage';
 import { StaffAvailabilityPage } from '@/pages/StaffAvailabilityPage';
 import { PERMISSIONS } from '@/permissions/permissions';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { SettingsPage } from '@/pages/SettingsPage';
+
 
 export function AppRouter() {
   return (
@@ -57,6 +59,14 @@ export function AppRouter() {
           <Route path="/availability" element={<StaffAvailabilityPage />} />
         </Route>
       </Route>
+
+      {/* ── Parish Settings ── */}
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_PARISH_SETTINGS} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+      </Route>
+
 
       {/* ── Diocese Coordinator–only routes ── */}
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.VIEW_ACTIVITY_LOG} />}>

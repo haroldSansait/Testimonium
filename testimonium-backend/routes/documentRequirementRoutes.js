@@ -4,10 +4,10 @@ import { DocumentRequirementService } from "../services/DocumentRequirementServi
 const router = Router();
 
 // GET /api/v1/document-requirements — Get all or specific document requirements metadata
-router.get("/", (req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
-    const { type } = req.query;
-    const requirements = DocumentRequirementService.getRequirements(type);
+    const { type, parishId } = req.query;
+    const requirements = await DocumentRequirementService.getRequirements(type, parishId);
     res.json({
       success: true,
       data: requirements,
@@ -17,10 +17,11 @@ router.get("/", (req, res, next) => {
   }
 });
 
-router.get("/:type", (req, res, next) => {
+router.get("/:type", async (req, res, next) => {
   try {
     const { type } = req.params;
-    const requirements = DocumentRequirementService.getRequirements(type);
+    const { parishId } = req.query;
+    const requirements = await DocumentRequirementService.getRequirements(type, parishId);
     res.json({
       success: true,
       data: requirements,

@@ -3,6 +3,8 @@ import { prisma } from "../config/db.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { ConflictHelper } from "./ConflictHelper.js";
+import { NotificationDispatcher } from "./NotificationDispatcher.js";
+import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
 
 export class ScheduleService {
   constructor(scheduleRepository = new ScheduleRepository()) {
@@ -17,7 +19,7 @@ export class ScheduleService {
    * @param {string|undefined} opts.search
    * @param {string|undefined} opts.status
    */
-  async list({ page = 1, limit = 10, search, status, parishId, userId } = {}) {
+  async list({ page = 1, limit = 10, search, status, parishId, userId, priestId } = {}) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
@@ -51,6 +53,7 @@ export class ScheduleService {
           user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
           parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
           processedBy: { select: { id: true, fullName: true } },
+          assignedPriest: { select: { id: true, fullName: true } },
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -58,6 +61,144 @@ export class ScheduleService {
       }),
       prisma.schedule.count({ where }),
     ]);
+
+    // If priestId is provided, also fetch ParishEvent assignments for this priest and merge them
+    if (priestId) {
+      const parsedPriestId = parseInt(priestId, 10);
+      
+      const eventWhere = {
+        assignedPriestId: parsedPriestId,
+        isActive: true,
+      };
+
+      // Filter by priestResponseStatus if filtering by status
+      if (status === "PENDING") {
+        eventWhere.priestResponseStatus = null;
+      }
+
+      const parishEvents = await prisma.parishEvent.findMany({
+        where: eventWhere,
+        include: {
+          parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+          assignedPriest: { select: { id: true, fullName: true } },
+          createdBy: { select: { id: true, fullName: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Map ParishEvent to Schedule DTO shape
+      const mappedEvents = parishEvents.map(e => {
+        const combine = (d, timeStr) => {
+          try {
+            const temp = new Date(d);
+            let [hourMin, period] = timeStr.split(" ");
+            let [hours, minutes] = hourMin.split(":").map(Number);
+            if (period === "PM" && hours < 12) hours += 12;
+            if (period === "AM" && hours === 12) hours = 0;
+            temp.setHours(hours, minutes, 0, 0);
+            return temp;
+          } catch {
+            return null;
+          }
+        };
+
+        const start = e.startTime ? combine(e.eventDate, e.startTime) : null;
+        const end = e.endTime ? combine(e.eventDate, e.endTime) : null;
+
+        return {
+          id: e.id + 100000, // Safe offset key to distinguish ParishEvent from Schedule
+          isParishEvent: true, // flag
+          userId: e.createdById || 0,
+          parishId: e.parishId,
+          eventType: e.eventType,
+          displayTitle: e.title,
+          requestedDate: e.eventDate,
+          startDatetime: start,
+          endDatetime: end,
+          status: "CONFIRMED",
+          remarks: e.description || "",
+          createdAt: e.createdAt,
+          updatedAt: e.updatedAt,
+          user: {
+            id: e.createdById || 0,
+            fullName: e.createdBy?.fullName || "Staff",
+            email: e.createdBy?.email || "staff@diocese.org",
+            contactNumber: "",
+          },
+          parish: e.parish,
+          assignedPriest: e.assignedPriest,
+          priestResponseStatus: e.priestResponseStatus,
+          priestResponseReason: e.priestResponseReason,
+        };
+      });
+
+      // Fetch MassScheduleTemplate assignments for this priest and merge them
+      const templateWhere = {
+        assignedPriestId: parsedPriestId,
+        isActive: true,
+      };
+
+      if (status === "PENDING") {
+        templateWhere.priestResponseStatus = { notIn: ["ACCEPTED", "REJECTED"] };
+      }
+
+      const massTemplates = await prisma.massScheduleTemplate.findMany({
+        where: templateWhere,
+        include: {
+          parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+          assignedPriest: { select: { id: true, fullName: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const mappedTemplates = massTemplates.map(t => {
+        const getNextDayOfWeek = (dayName) => {
+          const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+          const targetDay = days.indexOf(dayName);
+          if (targetDay === -1) return new Date();
+          const resultDate = new Date();
+          resultDate.setDate(resultDate.getDate() + (targetDay + 7 - resultDate.getDay()) % 7);
+          return resultDate;
+        };
+        const nextOccur = getNextDayOfWeek(t.dayType);
+
+        return {
+          id: t.id + 200000, // Safe offset key to distinguish MassScheduleTemplate
+          isMassTemplate: true,
+          userId: 0,
+          parishId: t.parishId,
+          eventType: "PRIVATE_MASS",
+          displayTitle: `${t.label || "Holy Mass"} (${t.dayType})`,
+          requestedDate: nextOccur,
+          startDatetime: null,
+          endDatetime: null,
+          status: "CONFIRMED",
+          remarks: `Time Slot: ${t.timeSlot}. Recurring Mass schedule on ${t.dayType}.`,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          user: {
+            id: 0,
+            fullName: "Parish Staff",
+            email: "staff@diocese.org",
+            contactNumber: "",
+          },
+          parish: t.parish,
+          assignedPriest: t.assignedPriest,
+          priestResponseStatus: t.priestResponseStatus,
+          priestResponseReason: t.priestResponseReason,
+        };
+      });
+
+      // Combine, sort by createdAt desc, and paginate
+      const combined = [...data, ...mappedEvents, ...mappedTemplates];
+      combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      const paginated = combined.slice(skip, skip + parsedLimit);
+      return {
+        data: paginated,
+        total: total + mappedEvents.length + mappedTemplates.length,
+      };
+    }
 
     return { data, total };
   }
@@ -160,7 +301,10 @@ export class ScheduleService {
       select: { remarks: true },
     });
 
-    const standardSlots = ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
+    const isSaturday = targetDate.getDay() === 6;
+    const standardSlots = isSaturday
+      ? ["06:00 AM", "09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"]
+      : ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
     
     // Filter standard slots by checking if they are already found in booking remarks
     const available = standardSlots.filter((slot) => {
@@ -174,10 +318,40 @@ export class ScheduleService {
   /**
    * Updates the status of a schedule request.
    */
-  async updateStatus(id, targetStatus, processedById) {
+  async updateStatus(id, targetStatus, processedById, actorRole, actorParishId) {
     const original = await prisma.schedule.findUnique({
       where: { id: parseInt(id, 10) },
     });
+
+    if (!original) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Idempotency: if already in the target status, no-op
+    if (original.status === targetStatus) {
+      return original;
+    }
+
+    // Authorization & Ownership checks
+    if (actorRole === "PARISHIONER") {
+      if (targetStatus !== "CANCELLED" || original.userId !== parseInt(processedById, 10)) {
+        const err = new Error("Unauthorized to perform this status update.");
+        err.statusCode = 403;
+        throw err;
+      }
+    } else if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
+      if (original.parishId !== actorParishId) {
+        const err = new Error("Unauthorized: Request belongs to a different parish.");
+        err.statusCode = 403;
+        throw err;
+      }
+    } else if (actorRole !== "DIOCESE_COORDINATOR") {
+      const err = new Error("Unauthorized role.");
+      err.statusCode = 403;
+      throw err;
+    }
 
     const updated = await prisma.schedule.update({
       where: { id: parseInt(id, 10) },
@@ -199,16 +373,16 @@ export class ScheduleService {
       updated.id,
       updated.displayTitle || updated.eventType,
       targetStatus,
-      null, // no tx: updateStatus() runs outside a Prisma transaction
-      false // notifyAdmins: staff is performing this action, no admin fan-out
+      null,
+      false
     );
 
     // Audit log
-    await AuditLogService.log(processedById, `Updated schedule request #${id} status from ${original ? original.status : 'unknown'} to ${targetStatus}`, null, false, {
+    await AuditLogService.log(processedById, `Updated schedule request #${id} status from ${original.status} to ${targetStatus}`, null, false, {
       affectedTable: "Schedule",
       affectedRecordId: id,
       parishId: updated.parishId,
-      previousValues: original ? { status: original.status } : null,
+      previousValues: { status: original.status },
       newValues: { status: targetStatus }
     });
 
@@ -218,10 +392,29 @@ export class ScheduleService {
   /**
    * Proposes an alternative date for a schedule request (Secretary -> Parishioner).
    */
-  async proposeReschedule(id, { proposedDate, proposedStartDatetime, proposedEndDatetime, reason, actorId }) {
+  async proposeReschedule(id, { proposedDate, proposedStartDatetime, proposedEndDatetime, reason, actorId, actorRole, actorParishId }) {
     const original = await prisma.schedule.findUnique({
       where: { id: parseInt(id, 10) },
     });
+
+    if (!original) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Authorization & Ownership checks
+    if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
+      if (original.parishId !== actorParishId) {
+        const err = new Error("Unauthorized: Request belongs to a different parish.");
+        err.statusCode = 403;
+        throw err;
+      }
+    } else if (actorRole !== "DIOCESE_COORDINATOR") {
+      const err = new Error("Unauthorized: Only parish staff can propose reschedule.");
+      err.statusCode = 403;
+      throw err;
+    }
 
     const updated = await prisma.schedule.update({
       where: { id: parseInt(id, 10) },
@@ -254,7 +447,7 @@ export class ScheduleService {
       affectedTable: "Schedule",
       affectedRecordId: id,
       parishId: updated.parishId,
-      previousValues: original ? { status: original.status, proposedDate: original.proposedDate } : null,
+      previousValues: { status: original.status, proposedDate: original.proposedDate },
       newValues: { status: "PROPOSED_RESCHEDULE", proposedDate, rescheduleReason: reason }
     });
 
@@ -264,7 +457,7 @@ export class ScheduleService {
   /**
    * Responds to a proposed reschedule (Parishioner -> Accept / Decline).
    */
-  async respondReschedule(id, accept) {
+  async respondReschedule(id, accept, actorId, actorRole) {
     const schedule = await prisma.schedule.findUnique({
       where: { id: parseInt(id, 10) },
     });
@@ -273,6 +466,20 @@ export class ScheduleService {
       const err = new Error("Schedule request not found.");
       err.statusCode = 404;
       throw err;
+    }
+
+    // Idempotency: if already responded and confirmed/cancelled, no-op
+    if (schedule.status === "CONFIRMED" || schedule.status === "CANCELLED") {
+      return schedule;
+    }
+
+    // Authorization & Ownership checks
+    if (actorRole === "PARISHIONER") {
+      if (schedule.userId !== parseInt(actorId, 10)) {
+        const err = new Error("Unauthorized to respond to this reschedule proposal.");
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     let data = {};
@@ -307,7 +514,7 @@ export class ScheduleService {
       updated.displayTitle || updated.eventType,
       updated.status,
       null,
-      true // notify admins too!
+      true
     );
 
     // Audit log
@@ -325,7 +532,7 @@ export class ScheduleService {
   /**
    * Assigns a priest (primary or assistant) to a schedule event.
    */
-  async assignPriest(id, priestId, actorId) {
+  async assignPriest(id, priestId, actorId, actorRole, actorParishId) {
     const parsedId = parseInt(id, 10);
     const parsedPriestId = parseInt(priestId, 10);
 
@@ -336,6 +543,24 @@ export class ScheduleService {
     if (!original) {
       const err = new Error("Schedule request not found.");
       err.statusCode = 404;
+      throw err;
+    }
+
+    // Idempotency: if priest is already assigned, no-op
+    if (original.assignedPriestId === parsedPriestId) {
+      return original;
+    }
+
+    // Authorization & Ownership checks
+    if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
+      if (original.parishId !== actorParishId) {
+        const err = new Error("Unauthorized: Request belongs to a different parish.");
+        err.statusCode = 403;
+        throw err;
+      }
+    } else if (actorRole !== "DIOCESE_COORDINATOR") {
+      const err = new Error("Unauthorized role.");
+      err.statusCode = 403;
       throw err;
     }
 
@@ -401,6 +626,13 @@ export class ScheduleService {
     });
 
     return updated;
+  }
+
+  /**
+   * Respond to priest assignment (Priest -> Accept / Reject).
+   */
+  async respondPriestAssignment(id, priestId, status, reason) {
+    return PriestAssignmentHandler.handleResponse(id, priestId, status, reason, "SCHEDULE");
   }
 }
 

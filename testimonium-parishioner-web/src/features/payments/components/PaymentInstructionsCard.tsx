@@ -40,7 +40,8 @@ export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = (
     );
   }
 
-  const selected = activeTab === 'gcash' ? config.gcash : config.maya;
+  const hasMaya = !!config.maya;
+  const selected = (activeTab === 'gcash' || !hasMaya) ? config.gcash : config.maya;
 
   return (
     <Card className="shadow-md overflow-hidden border-border/80">
@@ -52,34 +53,36 @@ export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = (
       </CardHeader>
       <CardContent className="p-5 space-y-5">
         <p className="text-xs text-text-muted font-normal leading-relaxed">
-          Please settle the document fee using GCash or Maya. Ensure you capture a screenshot of your receipt after transaction.
+          Please settle the document fee using {hasMaya ? 'GCash or Maya' : 'GCash'}. Ensure you capture a screenshot of your receipt after transaction.
         </p>
 
         {/* Tab Buttons */}
-        <div className="flex bg-app-page p-1 rounded-lg border border-border/40">
-          <button
-            onClick={() => setActiveTab('gcash')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'gcash'
-                ? 'bg-white text-blue-600 shadow-sm border border-blue-100'
-                : 'text-text-muted hover:text-text-primary'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            GCash
-          </button>
-          <button
-            onClick={() => setActiveTab('maya')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'maya'
-                ? 'bg-white text-green-700 shadow-sm border border-green-100'
-                : 'text-text-muted hover:text-text-primary'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            PayMaya
-          </button>
-        </div>
+        {hasMaya && (
+          <div className="flex bg-app-page p-1 rounded-lg border border-border/40">
+            <button
+              onClick={() => setActiveTab('gcash')}
+              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'gcash'
+                  ? 'bg-white text-blue-600 shadow-sm border border-blue-100'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              GCash
+            </button>
+            <button
+              onClick={() => setActiveTab('maya')}
+              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'maya'
+                  ? 'bg-white text-green-700 shadow-sm border border-green-100'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              PayMaya
+            </button>
+          </div>
+        )}
 
         {/* Selected Account Info */}
         <div className="space-y-4">

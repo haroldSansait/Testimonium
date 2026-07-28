@@ -84,7 +84,7 @@ export interface NotificationProvider {
 
 export interface DocumentProvider {
   getDocumentRequests(filters: DocumentRequestFilters): Promise<PaginatedResponse<DocumentRequest>>;
-  updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string): Promise<DocumentRequest>;
+  updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]): Promise<DocumentRequest>;
 }
 
 export interface ProposeReschedulePayload {
@@ -101,6 +101,7 @@ export interface ScheduleProvider {
   proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest>;
   respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest>;
   assignPriest(id: string, priestId: string): Promise<ScheduleRequest>;
+  respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest>;
 }
 
 export interface CreateParishEventPayload {
@@ -116,8 +117,9 @@ export interface CreateParishEventPayload {
 }
 
 export interface CalendarProvider {
-  getEvents(year: number, month: number): Promise<CalendarEvent[]>;
+  getEvents(year: number, month: number, parishId?: string): Promise<CalendarEvent[]>;
   createParishEvent(payload: CreateParishEventPayload): Promise<any>;
+  updateParishEvent(id: string, payload: Partial<CreateParishEventPayload>): Promise<any>;
 }
 
 export interface ActivityLogProvider {
@@ -162,6 +164,7 @@ export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
   addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish>;
   editParish(id: string, data: Partial<Parish>): Promise<Parish>;
+  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish>;
   archiveParish(id: string): Promise<void>;
   getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
   upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate>;

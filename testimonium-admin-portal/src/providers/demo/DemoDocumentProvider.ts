@@ -53,7 +53,7 @@ export const DemoDocumentProvider: DocumentProvider = {
     };
   },
 
-  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string): Promise<DocumentRequest> {
+  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]): Promise<DocumentRequest> {
     store = store.map(r => {
       if (r.id !== id) return r;
       
@@ -69,6 +69,8 @@ export const DemoDocumentProvider: DocumentProvider = {
         ...r,
         status,
         paymentStatus: status === 'Ready for Pickup' || status === 'Released' ? 'Paid' : r.paymentStatus,
+        correctionRequirementIds: correctionRequirementIds || [],
+        correctionNote: remarks || null,
         timeline: newTimeline
       };
     });

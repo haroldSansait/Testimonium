@@ -31,13 +31,17 @@ interface BackendScheduleDTO {
 }
 
 export const ApiCalendarProvider: CalendarProvider = {
-  async getEvents(year: number, month: number): Promise<CalendarEvent[]> {
+  async getEvents(year: number, month: number, parishId?: string): Promise<CalendarEvent[]> {
     // Backend expects month parameter as 1-based (1 = Jan, 12 = Dec),
     // but the frontend uses 0-based month state (0 = Jan, 11 = Dec).
     const backendMonth = month + 1;
+    const params: any = { year, month: backendMonth };
+    if (parishId && parishId !== 'all') {
+      params.parishId = parishId;
+    }
 
     const response = await api.get<ApiResponseEnvelope<BackendScheduleDTO[]>>('/calendar/events', {
-      params: { year, month: backendMonth },
+      params,
     });
 
     return (response.data.data || []).map((dbItem): CalendarEvent => {
@@ -102,6 +106,11 @@ export const ApiCalendarProvider: CalendarProvider = {
 
   async createParishEvent(payload: CreateParishEventPayload): Promise<any> {
     const response = await api.post<ApiResponseEnvelope<any>>('/parish-events', payload);
+    return response.data.data;
+  },
+
+  async updateParishEvent(id: string, payload: Partial<CreateParishEventPayload>): Promise<any> {
+    const response = await api.put<ApiResponseEnvelope<any>>(`/parish-events/${id}`, payload);
     return response.data.data;
   }
 };

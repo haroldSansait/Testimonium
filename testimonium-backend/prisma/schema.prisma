@@ -34,7 +34,10 @@ enum DocumentType {
 enum DocumentRequestStatus {
   PENDING
   UNDER_REVIEW
+  NEEDS_CORRECTION
   PAYMENT_PENDING
+  PAYMENT_UNDER_REVIEW
+  PAYMENT_NEEDS_CORRECTION
   PAYMENT_VERIFIED
   PROCESSING
   READY_FOR_PICKUP
@@ -131,6 +134,9 @@ model Parish {
   coverImage       String?           @map("cover_image") @db.VarChar(255)
   gallery          String[]          @default([])
   isActive         Boolean           @default(true) @map("is_active")
+  documentSettings String?           @map("document_settings") @db.Text
+  eventSettings    String?           @map("event_settings") @db.Text
+  officeHours      String?           @map("office_hours") @db.Text
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   users            User[]
@@ -140,6 +146,7 @@ model Parish {
   massScheduleTemplates MassScheduleTemplate[]
   parishEvents          ParishEvent[]
   activityLogs          ActivityLog[]
+
 
   @@index([type])
   @@index([isActive])
@@ -202,6 +209,9 @@ model DocumentRequest {
   paymentQrReference    String?               @map("payment_qr_reference") @db.VarChar(100)
   processedById         Int?                  @map("processed_by")
   remarks               String?               @db.Text
+  correctionNote        String?               @map("correction_note") @db.Text
+  paymentCorrectionNote String?               @map("payment_correction_note") @db.Text
+  correctionRequirementIds String[]           @default([]) @map("correction_requirement_ids")
   dateRequested         DateTime              @default(now()) @map("date_requested")
   dateProcessed         DateTime?             @map("date_processed")
   createdAt             DateTime              @default(now()) @map("created_at")
@@ -328,6 +338,8 @@ model Schedule {
   remarks               String?           @db.Text
   displayTitle          String?           @map("display_title") @db.VarChar(150)
   processedById         Int?              @map("processed_by")
+  priestResponseStatus  String?           @map("priest_response_status") @db.VarChar(50)
+  priestResponseReason  String?           @map("priest_response_reason") @db.Text
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   user                  User              @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)
@@ -455,6 +467,8 @@ model MassScheduleTemplate {
   label            String   @db.VarChar(100)                  // "Morning Mass"
   isActive         Boolean  @default(true) @map("is_active")
   assignedPriestId Int?     @map("assigned_priest_id")
+  priestResponseStatus String?  @map("priest_response_status") @db.VarChar(50)
+  priestResponseReason String?  @map("priest_response_reason") @db.Text
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
   parish           Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
@@ -477,6 +491,8 @@ model ParishEvent {
   startTime        String?  @map("start_time") @db.VarChar(20)
   endTime          String?  @map("end_time") @db.VarChar(20)
   assignedPriestId Int?     @map("assigned_priest_id")
+  priestResponseStatus String?  @map("priest_response_status") @db.VarChar(50)
+  priestResponseReason String?  @map("priest_response_reason") @db.Text
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")

@@ -40,7 +40,9 @@ export interface IRequestProvider {
   submitDraft(id: string): Promise<SacramentalRequest>;
   cancelRequest(id: string, remarks?: string): Promise<SacramentalRequest>;
   uploadFiles(id: string, files: File[], category?: string): Promise<RequestAttachment[]>;
-  uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any }>;
+  uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any; request?: SacramentalRequest }>;
+  getDocumentRequirements(type: string, parishId?: string): Promise<any>;
+  resubmitCorrections(id: string): Promise<SacramentalRequest>;
 }
 
 export interface ISchedulerProvider {
@@ -51,6 +53,7 @@ export interface ISchedulerProvider {
     serviceName: string;
     date: string;
     timeSlot: string;
+    location?: string;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean): Promise<Appointment>;
 }

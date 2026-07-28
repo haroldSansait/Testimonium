@@ -9,9 +9,11 @@ import { CalendarDayView } from '@/components/calendar/CalendarDayView';
 import { CalendarService } from '@/services/CalendarService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { cn } from '@/utils/cn';
-import type { CalendarEvent, ManagedUser } from '@/types';
 import { downloadIcsFile, buildGoogleCalendarUrl, getUpcomingEvent } from '@/utils/calendarExport';
+import { ParishManagementService } from '@/services/ParishManagementService';
+import type { CalendarEvent, ManagedUser, Parish } from '@/types';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -145,10 +147,52 @@ function ExportMenu({
 interface EventDetailsModalProps {
   event: CalendarEvent;
   onClose: () => void;
+  onSuccess?: () => void;
+  role?: string;
 }
 
-function EventDetailsModal({ event, onClose }: EventDetailsModalProps) {
+function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModalProps) {
   const dateStr = `${MONTH_NAMES[event.month]} ${event.day}, ${event.year}`;
+  
+  const canEdit = role === 'DIOCESE_COORDINATOR' && (event.id.startsWith('event-vicariate-meeting-') || event.title.includes('Vicariate Meeting'));
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [editLocation, setEditLocation] = useState(event.location || event.parish || 'Vicariate Pastoral Center (Default)');
+  const [editDescription, setEditDescription] = useState(event.description || '');
+  const [editStartTime, setEditStartTime] = useState(event.time ? event.time.split(' - ')[0] : '09:00 AM');
+  const [editEndTime, setEditEndTime] = useState(event.time ? event.time.split(' - ')[1] : '12:00 PM');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const isDynamic = event.id.startsWith('event-vicariate-meeting-');
+      const payload = {
+        title: "Vicariate Meeting",
+        eventType: "OTHER",
+        eventDate: `${event.year}-${String(event.month + 1).padStart(2, '0')}-${String(event.day).padStart(2, '0')}`,
+        startTime: editStartTime,
+        endTime: editEndTime,
+        location: editLocation,
+        description: editDescription,
+      };
+
+      if (isDynamic) {
+        await CalendarService.createParishEvent(payload);
+      } else {
+        const dbId = event.id.replace('event-', '');
+        await CalendarService.updateParishEvent(dbId, payload);
+      }
+      if (onSuccess) onSuccess();
+      setIsEditing(false);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save event details");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return createPortal(
     <div
@@ -162,7 +206,9 @@ function EventDetailsModal({ event, onClose }: EventDetailsModalProps) {
             <CalendarIcon className="w-5 h-5 opacity-90" />
             <div>
               <h2 className="text-base font-bold tracking-wide leading-tight">Event Details</h2>
-              <p className="text-[10px] text-white/80 uppercase tracking-widest mt-0.5">Read-Only View</p>
+              <p className="text-[10px] text-white/80 uppercase tracking-widest mt-0.5">
+                {canEdit ? 'Coordinator Managed' : 'Read-Only View'}
+              </p>
             </div>
           </div>
           <button
@@ -176,79 +222,155 @@ function EventDetailsModal({ event, onClose }: EventDetailsModalProps) {
 
         {/* Body */}
         <div className="p-6 space-y-4 text-sm">
-          {/* Title */}
-          <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event Title</span>
-            <p className="text-base font-bold text-gray-900 mt-0.5">{event.title}</p>
-          </div>
+          {isEditing ? (
+            <div className="space-y-4 text-xs font-semibold text-gray-500">
+              <div className="space-y-1.5">
+                <label className="block uppercase tracking-wider">Location Settings</label>
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block uppercase tracking-wider">Start Time</label>
+                  <input
+                    type="text"
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block uppercase tracking-wider">End Time</label>
+                  <input
+                    type="text"
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block uppercase tracking-wider">Description</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Title */}
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event Title</span>
+                <p className="text-base font-bold text-gray-900 mt-0.5">{event.title}</p>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date</span>
-              <div className="flex items-center gap-2 text-gray-700 mt-1">
-                <CalendarIcon className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-xs">{dateStr}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date</span>
+                  <div className="flex items-center gap-2 text-gray-700 mt-1">
+                    <CalendarIcon className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-xs">{dateStr}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Time</span>
+                  <div className="flex items-center gap-2 text-gray-700 mt-1">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-xs">{event.time}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Time</span>
-              <div className="flex items-center gap-2 text-gray-700 mt-1">
-                <Clock className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-xs">{event.time}</span>
-              </div>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Parish Location</span>
-              <div className="flex items-center gap-2 text-gray-700 mt-1">
-                <MapPin className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-xs">{event.parish || 'Main Church'}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Parish Location</span>
+                  <div className="flex items-center gap-2 text-gray-700 mt-1">
+                    <MapPin className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-xs">{event.location || event.parish || 'Main Church'}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assigned Priest</span>
+                  <div className="flex items-center gap-2 text-gray-700 mt-1">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-xs">{event.priest || 'TBD'}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assigned Priest</span>
-              <div className="flex items-center gap-2 text-gray-700 mt-1">
-                <User className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-xs">{event.priest || 'TBD'}</span>
-              </div>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Requestor</span>
-              <div className="flex items-center gap-2 text-gray-700 mt-1">
-                <User className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-xs">{event.requestor || 'Anonymous'}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Requestor</span>
+                  <div className="flex items-center gap-2 text-gray-700 mt-1">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-xs">{event.requestor || 'Anonymous'}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    <span className="font-semibold text-xs text-gray-900">{event.status || 'Confirmed'}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</span>
-              <div className="flex items-center gap-2 mt-1">
-                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                <span className="font-semibold text-xs text-gray-900">{event.status || 'Confirmed'}</span>
-              </div>
-            </div>
-          </div>
 
-          <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Description</span>
-            <p className="text-gray-600 mt-1 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100 text-xs">
-              {event.description || 'No description provided.'}
-            </p>
-          </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Description</span>
+                <p className="text-gray-600 mt-1 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100 text-xs">
+                  {event.description || 'No description provided.'}
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end bg-gray-50">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors"
-          >
-            Close
-          </button>
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end bg-gray-50 gap-2">
+          {isEditing ? (
+            <>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 font-bold text-gray-600 bg-white text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-[#7B1C2A] hover:bg-[#9B2C3A] text-white rounded-lg text-xs font-bold"
+              >
+                {saving ? 'Saving...' : 'Save Settings'}
+              </button>
+            </>
+          ) : (
+            <>
+              {canEdit && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 border border-[#7B1C2A] text-[#7B1C2A] rounded-lg text-xs font-bold hover:bg-red-50/20"
+                >
+                  Edit Location / Details
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-semibold bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-xs"
+              >
+                Close
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>,
@@ -682,13 +804,31 @@ export function CalendarPage() {
   const [priests, setPriests] = useState<ManagedUser[]>([]);
   const [showPriestSettings, setShowPriestSettings] = useState(false);
   const [moreEventsDay, setMoreEventsDay] = useState<{ day: number; events: CalendarEvent[] } | null>(null);
+  
+  const [parishes, setParishes] = useState<Parish[]>([]);
+  const [selectedParishFilter, setSelectedParishFilter] = useState<string>('all');
 
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
 
   useEffect(() => {
-    void CalendarService.getEvents(year, month).then(setEvents);
-  }, [year, month]);
+    if (applicationUser?.role === 'DIOCESE_COORDINATOR') {
+      void ParishManagementService.getParishes().then(setParishes).catch(err => {
+        console.error('Failed to load parishes for filter:', err);
+      });
+    }
+  }, [applicationUser]);
+
+  const fetchCalendarEvents = useCallback(() => {
+    const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
+    return CalendarService.getEvents(year, month, filterId).then(setEvents);
+  }, [year, month, selectedParishFilter, applicationUser]);
+
+  useEffect(() => {
+    void fetchCalendarEvents();
+  }, [fetchCalendarEvents]);
+
+  useAutoRefresh(fetchCalendarEvents, { intervalMs: 5000 });
 
   const fetchPriests = useCallback(async () => {
     if (!parishId) return;
@@ -778,13 +918,30 @@ export function CalendarPage() {
     <div>
       {/* Calendar Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <h1
             className="text-4xl font-bold text-gray-900"
             style={{ fontFamily: 'Playfair Display, serif' }}
           >
             {getHeaderTitle()}
           </h1>
+          {applicationUser?.role === 'DIOCESE_COORDINATOR' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Parish:</span>
+              <select
+                value={selectedParishFilter}
+                onChange={(e) => setSelectedParishFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs font-semibold bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#7B1C2A] transition-colors shadow-sm"
+              >
+                <option value="all">All Parishes</option>
+                {parishes.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg overflow-hidden">
             <button
               onClick={handlePrev}
@@ -894,6 +1051,11 @@ export function CalendarPage() {
         <EventDetailsModal
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          role={applicationUser?.role}
+          onSuccess={() => {
+            const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
+            void CalendarService.getEvents(year, month, filterId).then(setEvents);
+          }}
         />
       )}
 
@@ -902,7 +1064,10 @@ export function CalendarPage() {
         <CreateParishEventModal
           parishId={parishId}
           onClose={() => setShowCreateModal(false)}
-          onSuccess={() => void CalendarService.getEvents(year, month).then(setEvents)}
+          onSuccess={() => {
+            const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
+            void CalendarService.getEvents(year, month, filterId).then(setEvents);
+          }}
           onError={(msg) => showToast(msg, 'error')}
         />
       )}
@@ -914,7 +1079,8 @@ export function CalendarPage() {
           onClose={() => setShowPriestSettings(false)}
           onSuccess={() => {
             void fetchPriests();
-            void CalendarService.getEvents(year, month).then(setEvents);
+            const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
+            void CalendarService.getEvents(year, month, filterId).then(setEvents);
             showToast('Priest color updated successfully!', 'success');
           }}
           onError={(msg) => showToast(msg, 'error')}

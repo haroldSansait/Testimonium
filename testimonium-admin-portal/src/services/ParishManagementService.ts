@@ -21,6 +21,10 @@ export const ParishManagementService = {
     return providerFactory.getParishProvider().editParish(id, data);
   },
 
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish> {
+    return providerFactory.getParishProvider().editParishSettings(id, data);
+  },
+
   async archiveParish(id: string): Promise<void> {
     return providerFactory.getParishProvider().archiveParish(id);
   },

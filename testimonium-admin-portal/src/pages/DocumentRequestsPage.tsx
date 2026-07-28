@@ -12,6 +12,26 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
 import { cn } from '@/utils/cn';
+import api from '@/api/api';
+
+const mapFrontendToBackendDocType = (type: string): string => {
+  switch (type) {
+    case 'Baptismal Certificate':
+      return 'BAPTISMAL_CERTIFICATE';
+    case 'Marriage Certificate':
+      return 'MARRIAGE_CERTIFICATE';
+    case 'Confirmation Certificate':
+      return 'CONFIRMATION_CERTIFICATE';
+    case 'First Communion Certificate':
+      return 'FIRST_COMMUNION_CERTIFICATE';
+    case 'Good Moral Character':
+      return 'GOOD_MORAL_CHARACTER';
+    case 'Death Certificate':
+      return 'DEATH_CERTIFICATE';
+    default:
+      return type;
+  }
+};
 
 const DOCUMENT_TYPE_OPTIONS: { label: string; value: DocumentType | 'all' }[] = [
   { label: 'All Document Types', value: 'all' },
@@ -25,6 +45,11 @@ const DOCUMENT_TYPE_OPTIONS: { label: string; value: DocumentType | 'all' }[] = 
 const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
   { label: 'All Statuses', value: 'all' },
   { label: 'Pending Review', value: 'Pending Review' },
+  { label: 'Under Review', value: 'Under Review' },
+  { label: 'Payment Pending', value: 'Payment Pending' },
+  { label: 'Awaiting Payment Review', value: 'Awaiting Payment Review' },
+  { label: 'Payment Needs Correction', value: 'Payment Needs Correction' },
+  { label: 'Payment Verified', value: 'Payment Verified' },
   { label: 'Processing', value: 'Processing' },
   { label: 'Ready for Pickup', value: 'Ready for Pickup' },
   { label: 'Released', value: 'Released' },
@@ -37,7 +62,7 @@ const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
 interface DetailsModalProps {
   request: DocumentRequest;
   onClose: () => void;
-  onStatusChange: (status: DocumentStatus, remarks?: string) => Promise<void>;
+  onStatusChange: (status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => Promise<void>;
 }
 
 function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModalProps) {
@@ -45,12 +70,40 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [correctionNotes, setCorrectionNotes] = useState('');
+  const [showPaymentCorrectionModal, setShowPaymentCorrectionModal] = useState(false);
+  const [paymentCorrectionNotes, setPaymentCorrectionNotes] = useState('');
+  const [requirements, setRequirements] = useState<{ id: string; label: string; description?: string }[]>([]);
+  const [loadingReqs, setLoadingReqs] = useState(false);
+  const [selectedReqs, setSelectedReqs] = useState<Record<string, boolean>>({});
 
-  const handleAction = async (status: DocumentStatus, remarks?: string) => {
+  useEffect(() => {
+    if (showCorrectionModal) {
+      setLoadingReqs(true);
+      const backendType = mapFrontendToBackendDocType(request.documentType);
+      api.get(`/document-requirements`, { params: { type: backendType, parishId: request.parishId } })
+        .then(res => {
+          const reqs = res.data?.data?.requiredDocuments || res.data?.requiredDocuments || [];
+          setRequirements(reqs);
+          const initialSelect: Record<string, boolean> = {};
+          reqs.forEach((r: any) => {
+            initialSelect[r.id] = false;
+          });
+          setSelectedReqs(initialSelect);
+        })
+        .catch(err => {
+          console.error("Failed to fetch document requirements:", err);
+        })
+        .finally(() => {
+          setLoadingReqs(false);
+        });
+    }
+  }, [showCorrectionModal, request.documentType, request.parishId]);
+
+  const handleAction = async (status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => {
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      await onStatusChange(status, remarks);
+      await onStatusChange(status, remarks, correctionRequirementIds);
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -66,7 +119,20 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
       setErrorMessage('Please provide specific correction instructions for the parishioner.');
       return;
     }
-    await handleAction('Needs Correction', correctionNotes);
+    const selectedIds = Object.keys(selectedReqs).filter(id => selectedReqs[id]);
+    if (selectedIds.length === 0) {
+      setErrorMessage('Please select at least one document requirement that requires correction.');
+      return;
+    }
+    await handleAction('Needs Correction', correctionNotes, selectedIds);
+  };
+
+  const handleSendPaymentCorrection = async () => {
+    if (!paymentCorrectionNotes.trim()) {
+      setErrorMessage('Please provide specific correction instructions for the payment proof.');
+      return;
+    }
+    await handleAction('Payment Needs Correction', paymentCorrectionNotes);
   };
 
   const renderActionButtons = () => {
@@ -117,6 +183,26 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
           </>
         );
       case 'Payment Pending':
+      case 'Payment Needs Correction':
+        return (
+          <>
+            <button
+              onClick={() => void handleAction('Payment Verified')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Verify Payment (Cash Override)
+            </button>
+            <button
+              onClick={() => void handleAction('Cancelled')}
+              disabled={isUpdating}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Cancel
+            </button>
+          </>
+        );
+      case 'Awaiting Payment Review':
         return (
           <>
             <button
@@ -127,11 +213,11 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
               Verify Payment
             </button>
             <button
-              onClick={() => void handleAction('Cancelled')}
+              onClick={() => setShowPaymentCorrectionModal(true)}
               disabled={isUpdating}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
             >
-              Cancel
+              Reject Payment Proof
             </button>
           </>
         );
@@ -146,7 +232,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
               Start Processing
             </button>
             <button
-              onClick={() => void handleAction('Payment Pending')}
+              onClick={() => setShowPaymentCorrectionModal(true)}
               disabled={isUpdating}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
             >
@@ -416,7 +502,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
 
         {/* Correction Instructions Sub-Modal */}
         {showCorrectionModal && (
-          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between animate-in fade-in duration-150">
+          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between overflow-y-auto animate-in fade-in duration-150">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                 <h3 className="text-base font-bold text-gray-900">Request Document Correction</h3>
@@ -431,11 +517,37 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
                 value={correctionNotes}
                 onChange={(e) => setCorrectionNotes(e.target.value)}
                 placeholder="Enter detailed correction notes and instructions for the parishioner..."
-                rows={5}
+                rows={4}
                 className="w-full p-3 border border-gray-200 rounded-xl text-xs text-gray-800 outline-none focus:border-[#7B1C2A] focus:ring-1 focus:ring-[#7B1C2A]"
               />
+
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Select requirements requiring correction</span>
+                {loadingReqs ? (
+                  <p className="text-xs text-gray-400">Loading requirements...</p>
+                ) : requirements.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No requirement definitions configured for this document type.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-150 rounded-xl p-3 bg-gray-50/50">
+                    {requirements.map((req) => (
+                      <label key={req.id} className="flex items-start gap-2.5 p-1.5 hover:bg-white rounded-lg cursor-pointer transition-colors text-xs text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedReqs[req.id]}
+                          onChange={(e) => setSelectedReqs(prev => ({ ...prev, [req.id]: e.target.checked }))}
+                          className="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                        />
+                        <div>
+                          <span className="font-semibold block">{req.label}</span>
+                          {req.description && <span className="text-[10px] text-gray-400">{req.description}</span>}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 flex-shrink-0">
               <button
                 onClick={() => setShowCorrectionModal(false)}
                 className="px-4 py-2 text-xs font-semibold border rounded-lg hover:bg-gray-50"
@@ -444,7 +556,45 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
               </button>
               <button
                 onClick={() => void handleSendCorrection()}
-                disabled={isUpdating || !correctionNotes.trim()}
+                disabled={isUpdating || !correctionNotes.trim() || Object.keys(selectedReqs).filter(id => selectedReqs[id]).length === 0}
+                className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-40"
+              >
+                Send Correction Request
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showPaymentCorrectionModal && (
+          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between overflow-y-auto animate-in fade-in duration-150">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <h3 className="text-base font-bold text-gray-900">Reject Payment Proof</h3>
+                <button onClick={() => setShowPaymentCorrectionModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-600">
+                Specify what needs to be corrected in the uploaded payment proof (e.g. blurry receipt image, incorrect amount paid, duplicate reference number).
+              </p>
+              <textarea
+                value={paymentCorrectionNotes}
+                onChange={(e) => setPaymentCorrectionNotes(e.target.value)}
+                placeholder="Enter detailed correction notes and instructions for the payment proof..."
+                rows={5}
+                className="w-full p-3 border border-gray-200 rounded-xl text-xs text-gray-800 outline-none focus:border-[#7B1C2A] focus:ring-1 focus:ring-[#7B1C2A]"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => setShowPaymentCorrectionModal(false)}
+                className="px-4 py-2 text-xs font-semibold border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleSendPaymentCorrection()}
+                disabled={isUpdating || !paymentCorrectionNotes.trim()}
                 className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-40"
               >
                 Send Correction Request
@@ -502,6 +652,7 @@ export function DocumentRequestsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
 
   const PAGE_SIZE = 5;
 
@@ -531,10 +682,10 @@ export function DocumentRequestsPage() {
     void fetchRequests(false);
   }, [fetchRequests]);
 
-  // Set up auto-refresh polling (every 60 seconds), paused when loading, or when a request details modal is active
+  // Set up auto-refresh polling (every 60 seconds), paused when loading, when modal is active, or when mutating
   useAutoRefresh(
     () => void fetchRequests(true),
-    { intervalMs: 60000, enabled: !isLoading && !selectedRequest }
+    { intervalMs: 60000, enabled: !isLoading && !selectedRequest && !isMutating }
   );
 
   // Listen to router state for auto-opening (e.g. from Notifications)
@@ -547,14 +698,28 @@ export function DocumentRequestsPage() {
     }
   }, [location.state, requests]);
 
-  const handleStatusUpdate = async (newStatus: DocumentStatus, remarks?: string) => {
+  const handleStatusUpdate = async (newStatus: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => {
     if (!selectedRequest) return;
+    setIsMutating(true);
+    const originalRequest = { ...selectedRequest };
+    const originalRequests = [...requests];
+
+    // Optimistic UI updates
+    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { ...r, status: newStatus } : r));
+    setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
+
     try {
-      await updateDocumentStatus(selectedRequest.id, newStatus, remarks);
+      await updateDocumentStatus(selectedRequest.id, newStatus, remarks, correctionRequirementIds);
       setToastMessage(`Request status updated to ${newStatus}.`);
-      void fetchRequests(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update status:', err);
+      // Rollback on error
+      setRequests(originalRequests);
+      setSelectedRequest(originalRequest);
+      setToastMessage(`Error: ${err.message || 'Failed to update status.'}`);
+    } finally {
+      setIsMutating(false);
+      void fetchRequests(true);
     }
   };
 

@@ -4,6 +4,8 @@ export type DocumentStatus =
   | 'Pending Review'
   | 'Under Review'
   | 'Payment Pending'
+  | 'Awaiting Payment Review'
+  | 'Payment Needs Correction'
   | 'Payment Verified'
   | 'Processing'
   | 'Ready for Pickup'
@@ -34,6 +36,10 @@ export interface DocumentRequest {
   purpose?: string;
   paymentStatus?: string;
   requirements?: string[];
+  parishId?: string;
+  correctionRequirementIds?: string[];
+  correctionNote?: string | null;
+  paymentCorrectionNote?: string | null;
   timeline?: { status: string; date: string; note?: string }[];
   attachments?: {
     id: number;
@@ -135,7 +141,10 @@ export interface ScheduleRequest {
   proposedDate?: string;
   proposedTime?: string;
   rescheduleReason?: string;
+  priestResponseStatus?: string | null;
+  priestResponseReason?: string | null;
   timeline?: { status: string; date: string; note?: string }[];
+  isParishEvent?: boolean;
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
@@ -229,6 +238,7 @@ export interface CalendarEvent {
   requestor?: string;
   status?: string;
   description?: string;
+  location?: string;
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
@@ -322,6 +332,9 @@ export interface Parish {
   address?: string;
   contactNumber?: string;
   email?: string;
+  documentSettings?: any;
+  eventSettings?: any;
+  officeHours?: any;
 }
 
 // ─── User Management ──────────────────────────────────────────────────────────

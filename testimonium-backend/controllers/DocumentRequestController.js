@@ -37,8 +37,10 @@ export const list = async (req, res, next) => {
 export const updateStatus = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status, remarks } = req.body;
+    const { status, remarks, correctionRequirementIds } = req.body;
     const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
 
     if (isNaN(id)) {
       return res.status(400).json({
@@ -54,7 +56,7 @@ export const updateStatus = async (req, res, next) => {
       });
     }
 
-    const updated = await documentRequestService.updateStatus(id, status, remarks, actorId);
+    const updated = await documentRequestService.updateStatus(id, status, remarks, actorId, actorRole, actorParishId, correctionRequirementIds);
 
     return res.status(200).json({
       success: true,

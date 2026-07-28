@@ -23,6 +23,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.VIEW_NOTIFICATIONS,
     PERMISSIONS.MANAGE_MASS_SCHEDULE,
     PERMISSIONS.MANAGE_MY_AVAILABILITY,
+    PERMISSIONS.MANAGE_PARISH_SETTINGS,
   ],
 
   PRIEST: [
@@ -45,6 +46,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.MANAGE_USERS,
     PERMISSIONS.VIEW_ACTIVITY_LOG,
     PERMISSIONS.MANAGE_MY_AVAILABILITY,
+    PERMISSIONS.MANAGE_PARISH_SETTINGS,
   ],
 
   // Parishioners do not have access to the admin portal.
@@ -97,6 +99,11 @@ export function canManageMassSchedule(role: UserRole | null | undefined): boolea
 /** True when the role may manage their availability / leave. */
 export function canManageMyAvailability(role: UserRole | null | undefined): boolean {
   return hasPermission(role, PERMISSIONS.MANAGE_MY_AVAILABILITY);
+}
+
+/** True when the role may manage parish settings. */
+export function canManageParishSettings(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.MANAGE_PARISH_SETTINGS);
 }
 
 // Re-export Permission type for convenient single-import by consumers.

@@ -62,3 +62,35 @@ export const reset = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const respondPriestAssignment = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { status, reason } = req.body;
+    const priestId = req.user.id;
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid template ID.",
+      });
+    }
+
+    if (!status || !["ACCEPTED", "REJECTED"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required and must be either ACCEPTED or REJECTED.",
+      });
+    }
+
+    const updated = await service.respondPriestAssignment(id, priestId, status, reason);
+
+    return res.status(200).json({
+      success: true,
+      message: `Mass assignment ${status.toLowerCase()} successfully.`,
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};

@@ -20,6 +20,7 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
     case 'pending':
       return 'pending';
     case 'under-review':
+    case 'payment-under-review':
       return 'under-review';
     case 'ready':
     case 'completed':
@@ -27,10 +28,18 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
     case 'rejected':
     case 'cancelled':
     case 'expired':
+    case 'payment-needs-correction':
       return 'rejected';
     default:
       return 'under-review';
   }
+};
+
+const formatStatusDisplay = (status: string) => {
+  if (status === 'payment-under-review') return 'Awaiting Payment Review';
+  if (status === 'payment-needs-correction') return 'Payment Needs Correction';
+  if (status === 'needs-correction' || status === 'needs_correction') return 'Needs Correction';
+  return status;
 };
 
 export const RequestTrackingPage: React.FC = () => {
@@ -44,6 +53,39 @@ export const RequestTrackingPage: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<SacramentalRequest | null>(null);
   const [searchError, setSearchError] = useState(false);
   const [searchCompleted, setSearchCompleted] = useState(false);
+
+  // Correction Resubmission State
+  const [correctionReqsList, setCorrectionReqsList] = useState<Array<{ id: string; label: string; required: boolean; description?: string }>>([]);
+  const [loadingCorrectionReqs, setLoadingCorrectionReqs] = useState(false);
+  const [uploadedFilesByCorrectionReq, setUploadedFilesByCorrectionReq] = useState<Record<string, File>>({});
+  const [submittingCorrections, setSubmittingCorrections] = useState(false);
+  const [correctionSuccess, setCorrectionSuccess] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedRequest && (selectedRequest.status === 'needs-correction' || selectedRequest.status === 'needs_correction')) {
+      setLoadingCorrectionReqs(true);
+      setCorrectionError(null);
+      setCorrectionSuccess(false);
+      setUploadedFilesByCorrectionReq({});
+      services.request.getDocumentRequirements(selectedRequest.documentType, selectedRequest.parishId)
+        .then(res => {
+          const reqs = res?.requiredDocuments || [];
+          const selectedReqIds = selectedRequest.correctionRequirementIds || [];
+          const filtered = reqs.filter((r: any) => selectedReqIds.includes(r.id));
+          setCorrectionReqsList(filtered);
+        })
+        .catch(err => {
+          console.error("Failed to load correction requirements:", err);
+          setCorrectionError("Failed to load document requirements. Please refresh.");
+        })
+        .finally(() => {
+          setLoadingCorrectionReqs(false);
+        });
+    } else {
+      setCorrectionReqsList([]);
+    }
+  }, [selectedRequest]);
 
   // Parse query parameter for specific request ID
   const queryParams = new URLSearchParams(window.location.search);
@@ -114,6 +156,16 @@ export const RequestTrackingPage: React.FC = () => {
     setSearchError(false);
     setSearchCompleted(false);
     setSelectedRequest(null);
+    refetch();
+  };
+
+  const handleOptimisticPaymentUpload = (updatedRequest?: SacramentalRequest) => {
+    if (updatedRequest) {
+      setSelectedRequest(updatedRequest);
+    } else if (selectedRequest) {
+      const fallbackRequest = { ...selectedRequest, status: 'payment-under-review' as RequestStatus };
+      setSelectedRequest(fallbackRequest);
+    }
     refetch();
   };
 
@@ -260,7 +312,7 @@ export const RequestTrackingPage: React.FC = () => {
                           {req.trackingNumber}
                         </span>
                         <Badge variant={getBadgeVariant(req.status)}>
-                          {req.status}
+                          {formatStatusDisplay(req.status)}
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center text-[10px] text-text-muted">
@@ -307,7 +359,61 @@ export const RequestTrackingPage: React.FC = () => {
                     <ReceiptUploadCard
                       requestId={selectedRequest.id}
                       existingTransaction={selectedRequest.paymentTransactions?.[0]}
-                      onSuccess={refetch}
+                      onSuccess={(updatedRequest) => handleOptimisticPaymentUpload(updatedRequest)}
+                    />
+                  </div>
+                </div>
+              ) : selectedRequest.status === 'payment-needs-correction' ? (
+                <div className="space-y-6 animate-in fade-in duration-200 text-left">
+                  {/* Correction Required Banner Card */}
+                  <div className="p-5 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-4 text-left shadow-sm">
+                    <div className="flex items-start space-x-2.5">
+                      <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-bold text-amber-800">Payment Correction Required</h4>
+                        <p className="text-xs text-amber-700 mt-1 leading-relaxed font-normal">
+                          The secretary has requested a correction for your uploaded payment proof. Please review the note below and upload a replacement receipt.
+                        </p>
+                        
+                        {selectedRequest.paymentCorrectionNote && (
+                          <div className="mt-3 p-3 bg-white border border-amber-100 rounded-xl">
+                            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest block mb-1">Secretary Note</span>
+                            <p className="text-xs text-gray-700 italic">"{selectedRequest.paymentCorrectionNote}"</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Previous Receipt Reference */}
+                    {selectedRequest.paymentTransactions?.[0]?.receipts?.[0] && (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-white border border-gray-150 rounded-xl text-xs gap-3">
+                        <div className="flex flex-col min-w-0">
+                          <span className="truncate max-w-[280px] font-semibold text-gray-700">
+                            Rejected Receipt: {selectedRequest.paymentTransactions[0].receipts[0].fileName}
+                          </span>
+                          <span className="text-[9px] text-gray-400 mt-0.5">
+                            Uploaded: {new Date(selectedRequest.paymentTransactions[0].receipts[0].uploadedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <a
+                          href={`https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${selectedRequest.paymentTransactions[0].receipts[0].r2ObjectKey}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-1.5 bg-[#7B1C2A] text-white hover:bg-[#9B2C3A] text-xs font-bold rounded-lg transition-all text-center"
+                        >
+                          View Receipt
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Replacement Upload component below */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <PaymentInstructionsCard parishId={selectedRequest.parishId} />
+                    <ReceiptUploadCard
+                      requestId={selectedRequest.id}
+                      existingTransaction={undefined} /* Force upload dropzone mode */
+                      onSuccess={(updatedRequest) => handleOptimisticPaymentUpload(updatedRequest)}
                     />
                   </div>
                 </div>
@@ -320,7 +426,7 @@ export const RequestTrackingPage: React.FC = () => {
                     </div>
                     <div className="flex items-center space-x-2">
                       <span className="text-xs text-text-muted capitalize">{selectedRequest.documentType} Document</span>
-                      <Badge variant={getBadgeVariant(selectedRequest.status)}>{selectedRequest.status}</Badge>
+                      <Badge variant={getBadgeVariant(selectedRequest.status)}>{formatStatusDisplay(selectedRequest.status)}</Badge>
                     </div>
                   </CardHeader>
 
@@ -372,6 +478,167 @@ export const RequestTrackingPage: React.FC = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* Correction Resubmission Section */}
+                    {(selectedRequest.status === 'needs-correction' || selectedRequest.status === 'needs_correction') && (
+                      <div className="p-5 bg-amber-50/60 border border-amber-200 rounded-card space-y-4 text-left">
+                        <div className="flex items-start space-x-2.5">
+                          <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <h4 className="text-sm font-bold text-amber-800">Correction Required</h4>
+                            <p className="text-xs text-amber-700 mt-1 leading-relaxed font-normal">
+                              The secretary has requested correction for the following document requirement(s). Only the selected documents require replacement.
+                            </p>
+                            {selectedRequest.correctionNote && (
+                              <div className="mt-3 p-3 bg-white border border-amber-100 rounded-xl">
+                                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest block mb-1">Secretary Note</span>
+                                <p className="text-xs text-gray-700 italic">"{selectedRequest.correctionNote}"</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {loadingCorrectionReqs ? (
+                          <div className="space-y-3 pt-2">
+                            <Skeleton className="h-16 w-full rounded" />
+                          </div>
+                        ) : correctionReqsList.length === 0 ? (
+                          <p className="text-xs text-gray-500 italic">No requirement corrections specified.</p>
+                        ) : (
+                          <div className="space-y-4 pt-2">
+                            {correctionReqsList.map(req => {
+                              const existingFile = selectedRequest.attachments?.find(a => a.category === req.id);
+                              const selectedFile = uploadedFilesByCorrectionReq[req.id];
+                              const fileUrl = existingFile ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${existingFile.r2ObjectKey}` : null;
+
+                              return (
+                                <div key={req.id} className="p-4 bg-white border border-gray-150 rounded-xl space-y-3 shadow-sm">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <span className="text-xs font-bold text-gray-800 block">{req.label}</span>
+                                      {req.description && <p className="text-[10px] text-gray-400 mt-0.5">{req.description}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      {selectedFile && (
+                                        <span className="text-[9px] bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                          <CheckCircle2 size={10} /> Selected
+                                        </span>
+                                      )}
+                                      <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                        Correction Needed
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {existingFile && (
+                                    <div className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-100 rounded-lg text-xs">
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="truncate max-w-[280px] font-medium text-gray-600">
+                                          Current: {existingFile.fileName}
+                                        </span>
+                                        <span className="text-[9px] text-gray-400 mt-0.5">
+                                          Uploaded: {new Date(existingFile.uploadedAt).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                      {fileUrl && (
+                                        <a
+                                          href={fileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-crimson hover:underline font-bold text-xs cursor-pointer flex-shrink-0 ml-4"
+                                        >
+                                          View
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {selectedFile ? (
+                                    <div className="flex items-center justify-between p-2.5 bg-green-50/30 border border-green-200/50 rounded-lg text-xs">
+                                      <span className="truncate max-w-[280px] font-mono font-semibold text-green-800">
+                                        New: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setUploadedFilesByCorrectionReq(prev => {
+                                          const copy = { ...prev };
+                                          delete copy[req.id];
+                                          return copy;
+                                        })}
+                                        className="text-crimson hover:underline font-bold text-xs cursor-pointer"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="relative border border-dashed border-gray-300 hover:border-amber-500 rounded-lg p-4 text-center transition-colors bg-white">
+                                      <input
+                                        type="file"
+                                        onChange={(e) => {
+                                          const selected = e.target.files?.[0];
+                                          if (selected) {
+                                            setUploadedFilesByCorrectionReq(prev => ({ ...prev, [req.id]: selected }));
+                                          }
+                                        }}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        accept=".png,.jpg,.jpeg,.pdf"
+                                      />
+                                      <span className="text-xs text-gray-400">Click or drag a new file to replace</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {correctionError && (
+                          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-medium">
+                            {correctionError}
+                          </div>
+                        )}
+
+                        {correctionSuccess && (
+                          <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800 font-medium">
+                            Corrected documents submitted successfully! Awaiting review.
+                          </div>
+                        )}
+
+                        <div className="flex justify-end pt-2">
+                          <Button
+                            onClick={async () => {
+                              setSubmittingCorrections(true);
+                              setCorrectionError(null);
+                              try {
+                                const entries = Object.entries(uploadedFilesByCorrectionReq);
+                                for (const [reqId, file] of entries) {
+                                  await services.request.uploadFiles(selectedRequest.id, [file], reqId);
+                                }
+                                const res = await services.request.resubmitCorrections(selectedRequest.id);
+                                setCorrectionSuccess(true);
+                                setUploadedFilesByCorrectionReq({});
+                                setSelectedRequest(res);
+                                refetch();
+                              } catch (err: any) {
+                                console.error(err);
+                                setCorrectionError(err.response?.data?.message || err.message || "Failed to submit corrections. Please check files and try again.");
+                              } finally {
+                                setSubmittingCorrections(false);
+                              }
+                            }}
+                            disabled={
+                              submittingCorrections ||
+                              correctionSuccess ||
+                              correctionReqsList.some(req => !uploadedFilesByCorrectionReq[req.id])
+                            }
+                            loading={submittingCorrections}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                          >
+                            Submit Corrections
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Rejection / Resubmit Condition */}
                     {selectedRequest.status === 'rejected' && (

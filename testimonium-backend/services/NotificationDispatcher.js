@@ -20,6 +20,12 @@ const DocumentRequestTemplates = {
    * @returns {{ title: string, message: string }}
    */
   parishioner(trackingNumber, oldStatus, newStatus) {
+    if (newStatus === "PAYMENT_NEEDS_CORRECTION") {
+      return {
+        title: "Payment Proof Requires Correction",
+        message: `Your payment proof for request (Tracking #: ${trackingNumber}) requires correction.`,
+      };
+    }
     if (newStatus === "PENDING" && oldStatus === "DRAFT") {
       return {
         title: "Request Submitted Successfully",
@@ -136,6 +142,20 @@ const ReceiptTemplates = {
     return {
       title: "Payment Proof Requires Verification",
       message: `Payment proof for request (Tracking #: ${trackingNumber}) has been uploaded and is awaiting manual verification.`,
+    };
+  },
+
+  parishionerResubmitted(trackingNumber) {
+    return {
+      title: "Corrected Payment Submitted",
+      message: `Your corrected payment proof for request (Tracking #: ${trackingNumber}) has been submitted for review.`,
+    };
+  },
+
+  adminResubmitted(trackingNumber, parishionerName) {
+    return {
+      title: "Corrected Payment Proof Submitted",
+      message: `${parishionerName} submitted a corrected payment proof for request (Tracking #: ${trackingNumber}).`,
     };
   },
 };
@@ -365,6 +385,43 @@ export class NotificationDispatcher {
     await NotificationDispatcher._persist(payloads, client);
   }
 
+  static async notifyReceiptResubmitted(
+    { parishionerId, parishionerName, parishId, requestId, trackingNumber },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const payloads = [];
+
+    // -- Parishioner --
+    const p = ReceiptTemplates.parishionerResubmitted(trackingNumber);
+    payloads.push({
+      userId: parishionerId,
+      title: p.title,
+      message: p.message,
+      type: "IN_APP",
+      referenceType: "DOCUMENT_REQUEST",
+      referenceId: requestId,
+    });
+
+    // -- Admins --
+    const adminTemplate = ReceiptTemplates.adminResubmitted(trackingNumber, parishionerName);
+    const adminIds = await RecipientResolver.getAdminRecipients(parishId, tx);
+
+    for (const adminId of adminIds) {
+      if (adminId === parishionerId) continue;
+      payloads.push({
+        userId: adminId,
+        title: adminTemplate.title,
+        message: adminTemplate.message,
+        type: "IN_APP",
+        referenceType: "DOCUMENT_REQUEST",
+        referenceId: requestId,
+      });
+    }
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
   // -------------------------------------------------------------------------
   // Schedule Events
   // -------------------------------------------------------------------------
@@ -433,14 +490,16 @@ export class NotificationDispatcher {
     const payloads = [];
 
     // -- Parishioner notification --
-    payloads.push({
-      userId: parishionerId,
-      title: "Priest Assigned to Appointment",
-      message: `${priestName} has been assigned to your "${displayTitle}" appointment.`,
-      type: "IN_APP",
-      referenceType: "SCHEDULE_REQUEST",
-      referenceId: scheduleId,
-    });
+    if (parishionerId) {
+      payloads.push({
+        userId: parishionerId,
+        title: "Priest Assigned to Appointment",
+        message: `${priestName} has been assigned to your "${displayTitle}" appointment.`,
+        type: "IN_APP",
+        referenceType: "SCHEDULE_REQUEST",
+        referenceId: scheduleId,
+      });
+    }
 
     // -- Priest notification --
     payloads.push({
@@ -451,6 +510,34 @@ export class NotificationDispatcher {
       referenceType: "SCHEDULE_REQUEST",
       referenceId: scheduleId,
     });
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
+  static async notifyPriestResponse(
+    { parishId, scheduleId, displayTitle, priestName, status, reason, referenceType = "SCHEDULE_REQUEST" },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const payloads = [];
+
+    const action = status === "ACCEPTED" ? "accepted" : "declined";
+    const reasonText = reason ? ` Reason: ${reason}` : "";
+    const title = `Pastoral Assignment ${status === "ACCEPTED" ? "Accepted" : "Declined"}`;
+    const message = `Father ${priestName} has ${action} the assignment for "${displayTitle}".${reasonText}`;
+
+    const adminIds = await RecipientResolver.getAdminRecipients(parishId, tx);
+
+    for (const adminId of adminIds) {
+      payloads.push({
+        userId: adminId,
+        title,
+        message,
+        type: "IN_APP",
+        referenceType,
+        referenceId: scheduleId,
+      });
+    }
 
     await NotificationDispatcher._persist(payloads, client);
   }

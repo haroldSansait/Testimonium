@@ -1,3 +1,5 @@
+import { prisma } from "../config/db.js";
+
 /**
  * Configurable Sacramental Document Requirements Matrix
  * Single source of truth for document requirements across the platform.
@@ -151,10 +153,42 @@ export class DocumentRequirementService {
   /**
    * Returns requirements metadata for all document types or a specific document type.
    * @param {string} [documentType]
+   * @param {string|number} [parishId]
    */
-  static getRequirements(documentType) {
+  static async getRequirements(documentType, parishId) {
+    let matrix = JSON.parse(JSON.stringify(DOCUMENT_REQUIREMENTS_MATRIX));
+
+    if (parishId) {
+      const parish = await prisma.parish.findUnique({
+        where: { id: parseInt(parishId, 10) }
+      });
+      if (parish && parish.documentSettings) {
+        try {
+          const settings = JSON.parse(parish.documentSettings);
+          for (const [docType, config] of Object.entries(settings)) {
+            if (matrix[docType]) {
+              if (config.price !== undefined) {
+                matrix[docType].baseFee = parseFloat(config.price);
+              }
+              if (config.requirements) {
+                matrix[docType].requiredDocuments = matrix[docType].requiredDocuments.map(doc => {
+                  const isRequired = config.requirements[doc.id];
+                  if (isRequired !== undefined) {
+                    return { ...doc, required: !!isRequired };
+                  }
+                  return doc;
+                }).filter(doc => doc.required);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing documentSettings", e);
+        }
+      }
+    }
+
     if (documentType) {
-      const config = DOCUMENT_REQUIREMENTS_MATRIX[documentType];
+      const config = matrix[documentType];
       if (!config) {
         const err = new Error(`Unsupported document type: ${documentType}`);
         err.statusCode = 404;
@@ -162,6 +196,6 @@ export class DocumentRequirementService {
       }
       return config;
     }
-    return DOCUMENT_REQUIREMENTS_MATRIX;
+    return matrix;
   }
 }

@@ -21,6 +21,11 @@ export const ApiParishProvider: ParishProvider = {
     return response.data.data;
   },
 
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish> {
+    const response = await api.put<ApiResponseEnvelope<Parish>>(`/parishes/${id}/settings`, data);
+    return response.data.data;
+  },
+
   async archiveParish(id: string): Promise<void> {
     await api.delete(`/parishes/${id}`);
   },

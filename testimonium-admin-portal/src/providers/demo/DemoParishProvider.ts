@@ -150,6 +150,23 @@ export const DemoParishProvider: ParishProvider = {
     return updated;
   },
 
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish> {
+    store = store.map((p) => {
+      if (p.id === id) {
+        return {
+          ...p,
+          documentSettings: data.documentSettings !== undefined ? data.documentSettings : p.documentSettings,
+          eventSettings: data.eventSettings !== undefined ? data.eventSettings : p.eventSettings,
+          officeHours: data.officeHours !== undefined ? data.officeHours : p.officeHours,
+        };
+      }
+      return p;
+    });
+    const updated = store.find((p) => p.id === id);
+    if (!updated) throw new Error(`Parish ${id} not found`);
+    return updated;
+  },
+
   async archiveParish(id: string): Promise<void> {
     store = store.map((p) => (p.id === id ? { ...p, status: 'Archived' } : p));
     return Promise.resolve();

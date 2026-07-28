@@ -29,7 +29,7 @@ interface DetailsModalProps {
   onClose: () => void;
   onStatusChange: (status: ScheduleStatus) => Promise<void>;
   onProposeReschedule: (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => Promise<void>;
-  onAssignPriest: (priestId: string) => Promise<void>;
+  onAssignPriest: (priestId: string, priestName: string) => Promise<void>;
 }
 
 function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest }: DetailsModalProps) {
@@ -80,10 +80,11 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       setPriestValidationError(true);
       return;
     }
+    const priestName = priests.find(p => p.id === selectedPriestId)?.name || 'Priest';
     setPriestValidationError(false);
     setIsUpdating(true);
     try {
-      await onAssignPriest(selectedPriestId);
+      await onAssignPriest(selectedPriestId, priestName);
       await onStatusChange('Confirmed');
       onClose();
     } catch (err) {
@@ -377,6 +378,7 @@ export function ScheduleRequestsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
 
   const PAGE_SIZE = 5;
 
@@ -406,10 +408,10 @@ export function ScheduleRequestsPage() {
     void fetchRequests(false);
   }, [fetchRequests]);
 
-  // Set up auto-refresh polling (every 60 seconds), paused when loading, or when a request details modal is active
+  // Set up auto-refresh polling (every 60 seconds), paused when loading, modal active, or mutating
   useAutoRefresh(
     () => void fetchRequests(true),
-    { intervalMs: 60000, enabled: !isLoading && !selectedRequest }
+    { intervalMs: 60000, enabled: !isLoading && !selectedRequest && !isMutating }
   );
 
   // Listen to router state (e.g. from Notifications about schedule conflict)
@@ -430,32 +432,95 @@ export function ScheduleRequestsPage() {
 
   const handleStatusUpdate = async (status: ScheduleStatus) => {
     if (!selectedRequest) return;
+    setIsMutating(true);
+    const originalRequest = { ...selectedRequest };
+    const originalRequests = [...requests];
+
+    // Optimistic UI update
+    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { ...r, status } : r));
+    setSelectedRequest(prev => prev ? { ...prev, status } : null);
+
     try {
       await updateScheduleStatus(selectedRequest.id, status);
       setToastMessage(`Schedule request status updated to ${status}.`);
+    } catch (err: any) {
+      console.error('Failed to update status:', err);
+      setRequests(originalRequests);
+      setSelectedRequest(originalRequest);
+      setToastMessage(`Error updating status: ${err.message || 'Failed.'}`);
+    } finally {
+      setIsMutating(false);
       void fetchRequests(true);
-    } catch (err) {
-      console.error(err);
     }
   };
 
   const handleProposeReschedule = async (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => {
     if (!selectedRequest) return;
+    setIsMutating(true);
+    const originalRequest = { ...selectedRequest };
+    const originalRequests = [...requests];
+
+    let timeStr = '09:00 AM';
+    if (payload.proposedStartDatetime.endsWith('10:30:00')) timeStr = '10:30 AM';
+    else if (payload.proposedStartDatetime.endsWith('13:30:00')) timeStr = '01:30 PM';
+    else if (payload.proposedStartDatetime.endsWith('15:00:00')) timeStr = '03:00 PM';
+
+    const preferredDate = new Date(payload.proposedDate).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    // Optimistic UI update
+    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { 
+      ...r, 
+      status: 'Tentative', 
+      proposedDate: preferredDate, 
+      proposedTime: timeStr, 
+      rescheduleReason: payload.reason 
+    } : r));
+    setSelectedRequest(prev => prev ? { 
+      ...prev, 
+      status: 'Tentative', 
+      proposedDate: preferredDate, 
+      proposedTime: timeStr, 
+      rescheduleReason: payload.reason 
+    } : null);
+
     try {
       await proposeReschedule(selectedRequest.id, payload);
       setToastMessage('Reschedule proposal sent successfully.');
+    } catch (err: any) {
+      console.error('Failed to propose reschedule:', err);
+      setRequests(originalRequests);
+      setSelectedRequest(originalRequest);
+      setToastMessage(`Error proposing reschedule: ${err.message || 'Failed.'}`);
+    } finally {
+      setIsMutating(false);
       void fetchRequests(true);
-    } catch (err) {
-      console.error(err);
     }
   };
 
-  const handleAssignPriest = async (priestId: string) => {
+  const handleAssignPriest = async (priestId: string, priestName: string) => {
     if (!selectedRequest) return;
+    setIsMutating(true);
+    const originalRequest = { ...selectedRequest };
+    const originalRequests = [...requests];
+
+    // Optimistic UI update
+    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { ...r, assignedPriest: priestName } : r));
+    setSelectedRequest(prev => prev ? { ...prev, assignedPriest: priestName } : null);
+
     try {
       await assignPriest(selectedRequest.id, priestId);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Failed to assign priest:', err);
+      setRequests(originalRequests);
+      setSelectedRequest(originalRequest);
+      setToastMessage(`Error assigning priest: ${err.message || 'Failed.'}`);
+    } finally {
+      setIsMutating(false);
+      void fetchRequests(true);
     }
   };
 

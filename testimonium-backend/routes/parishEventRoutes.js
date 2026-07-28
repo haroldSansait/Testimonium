@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { list, create, update, remove } from "../controllers/ParishEventController.js";
+import { list, create, update, remove, respondPriestAssignment } from "../controllers/ParishEventController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 
@@ -14,5 +14,8 @@ router.get("/:parishId", list);
 router.post("/", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), create);
 router.put("/:id", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), update);
 router.delete("/:id", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), remove);
+
+// Priest can accept/reject assignments to parish events (Sunday masses, etc.)
+router.post("/:id/priest-respond", checkRole(["PRIEST"]), respondPriestAssignment);
 
 export default router;

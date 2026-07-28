@@ -2,6 +2,8 @@ import { Router } from "express";
 import { list, updateStatus } from "../controllers/DocumentRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
+import { validateBody } from "../middlewares/validateRequest.js";
+import { updateRequestStatusSchema } from "../validators/requestSchemas.js";
 
 const router = Router();
 
@@ -11,7 +13,7 @@ router.use(authenticateFirebaseToken);
 router.use(checkRole(staffRoles));
 
 router.get("/", list);
-router.patch("/:id/status", updateStatus);
+router.patch("/:id/status", validateBody(updateRequestStatusSchema), updateStatus);
 
 export default router;
 

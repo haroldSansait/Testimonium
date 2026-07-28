@@ -68,3 +68,24 @@ export const restore = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const updateSettings = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { documentSettings, eventSettings, officeHours } = req.body;
+
+    const userRole = req.user?.role?.roleName;
+    const userParishId = req.user?.parishId;
+
+    if (userRole === "SECRETARY" && String(userParishId) !== String(id)) {
+      const err = new Error("Forbidden: You can only update settings for your assigned parish.");
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const data = await parishService.editParish(id, { documentSettings, eventSettings, officeHours }, req.user?.id);
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return next(err);
+  }
+};

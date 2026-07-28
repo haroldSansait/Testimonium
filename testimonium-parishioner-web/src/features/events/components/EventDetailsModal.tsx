@@ -17,7 +17,7 @@ interface EventDetailsModalProps {
 
 function buildEventIcs(event: Event): string {
   const now = new Date();
-  const stamp = now.toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const stamp = now.toISOString().replace(new RegExp('[-' + '.:]', 'g'), '').slice(0, 15) + 'Z';
   const startDate = event.startDate.replace(/-/g, '');
   const endDate = event.endDate.replace(/-/g, '');
 
@@ -82,15 +82,12 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
     switch (category) {
       case 'Holy Mass': return 'ready';
+      case 'Baptism': return 'pending';
+      case 'Wedding': return 'neutral';
+      case 'Confirmation': return 'under-review';
+      case 'Funeral': return 'rejected';
       case 'Fiesta': return 'under-review';
       case 'Seminar': return 'neutral';
-      case 'Youth': return 'pending';
-      case 'Formation': return 'neutral';
-      case 'Retreat': return 'under-review';
-      case 'Outreach': return 'ready';
-      case 'Community': return 'ready';
-      case 'Diocesan Event': return 'pending';
-      case 'Sacramental': return 'neutral';
       default: return 'neutral';
     }
   };
@@ -254,7 +251,7 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
                   <div className="flex items-start space-x-2">
                     <Phone size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold text-text-primary block text-[11px]">Contact Coordinator</span>
+                      <span className="font-bold text-text-primary block text-[11px]">Contact Secretary</span>
                       <span className="text-[11px]">{event.contactPerson}</span>
                       <span className="block text-[10px] font-mono text-text-muted mt-0.5">{event.contactNumber}</span>
                     </div>

@@ -1,22 +1,14 @@
 import { z } from "zod";
+import { DocumentType, DocumentRequestStatus } from "../shared/constants.js";
 
 export const createRequestSchema = z.object({
   parishId: z.coerce.number().int().positive("Parish ID must be a positive integer"),
   documentType: z.enum(
-    [
-      "BAPTISMAL_CERTIFICATE",
-      "CONFIRMATION_CERTIFICATE",
-      "MARRIAGE_CERTIFICATE",
-      "FIRST_COMMUNION_CERTIFICATE",
-      "MARRIAGE_BANNS",
-      "PERMIT_TO_MARRY",
-      "STATUS_OF_LIBERTY",
-      "ENDORSEMENT",
-    ],
+    Object.values(DocumentType),
     {
       errorMap: () => ({
         message:
-          "Document type must be one of the official 8 sacramental document types.",
+          "Document type must be one of the official sacramental document types.",
       }),
     }
   ),
@@ -31,18 +23,7 @@ export const createRequestSchema = z.object({
 
 export const updateRequestStatusSchema = z.object({
   status: z.enum(
-    [
-      "PENDING",
-      "UNDER_REVIEW",
-      "NEEDS_CORRECTION",
-      "PAYMENT_PENDING",
-      "PAYMENT_VERIFIED",
-      "PROCESSING",
-      "READY_FOR_PICKUP",
-      "COMPLETED",
-      "REJECTED",
-      "CANCELLED",
-    ],
+    Object.values(DocumentRequestStatus),
     {
       errorMap: () => ({
         message: "Invalid status value",
@@ -50,4 +31,6 @@ export const updateRequestStatusSchema = z.object({
     }
   ),
   remarks: z.string().optional().nullable(),
+  correctionRequirementIds: z.array(z.string()).optional().nullable(),
 });
+

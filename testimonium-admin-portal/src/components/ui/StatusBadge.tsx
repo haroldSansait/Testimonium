@@ -11,6 +11,8 @@ type StatusVariant = DocumentStatus | ScheduleStatus | ActivityStatus | Notifica
 const statusStyles: Record<string, string> = {
   // Document statuses
   'Pending Review': 'bg-amber-50 text-amber-700 border border-amber-200',
+  'Awaiting Payment Review': 'bg-purple-50 text-purple-700 border border-purple-200',
+  'Payment Needs Correction': 'bg-orange-50 text-orange-600 border border-orange-200',
   Processing: 'bg-blue-50 text-blue-700 border border-blue-200',
   'Ready for Pickup': 'bg-green-50 text-green-700 border border-green-200',
   Released: 'bg-gray-100 text-gray-500 border border-gray-200',
@@ -37,6 +39,8 @@ const statusStyles: Record<string, string> = {
 
 const dotStyles: Record<string, string> = {
   'Pending Review': 'bg-amber-500',
+  'Awaiting Payment Review': 'bg-purple-500',
+  'Payment Needs Correction': 'bg-orange-500',
   Processing: 'bg-blue-500',
   'Ready for Pickup': 'bg-green-500',
   Released: 'bg-gray-400',

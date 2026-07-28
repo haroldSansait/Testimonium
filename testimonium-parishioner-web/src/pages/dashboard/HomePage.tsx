@@ -118,6 +118,10 @@ export const HomePage: React.FC = () => {
   const eventsQuery = useEvents();
   const featuredEventsQuery = useFeaturedEvents();
 
+  // Filter States
+  const [filterParishId, setFilterParishId] = useState<string>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+
   // Modal State
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -268,6 +272,17 @@ export const HomePage: React.FC = () => {
     ? events.find(e => e.parishId === profile.parishId && e.status !== 'completed')
     : undefined;
 
+  // Filter featured events according to user selections & status === 'upcoming'
+  const filteredFeaturedEvents = featuredEvents.filter(e => {
+    // Show only public upcoming events
+    if (e.status !== 'upcoming') return false;
+    // Scope by Parish
+    if (filterParishId !== 'all' && e.parishId !== filterParishId) return false;
+    // Scope by Category
+    if (filterCategory !== 'all' && e.category.toLowerCase() !== filterCategory.toLowerCase()) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-8 pb-10" aria-live="polite">
       <PageHeader 
@@ -304,33 +319,59 @@ export const HomePage: React.FC = () => {
 
       {/* Hero: Upcoming Vicariate Events Carousel */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-text-primary uppercase tracking-widest">
-            Upcoming Vicariate Events
-          </h2>
-          <button 
-            onClick={() => navigate('/dashboard/events')}
-            className="text-xs font-bold text-crimson hover:underline flex items-center space-x-1 focus-ring"
-          >
-            <span>See All Events</span>
-            <ArrowRight size={14} />
-          </button>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h2 className="text-xs font-bold text-text-primary uppercase tracking-widest">
+              Upcoming Vicariate Events
+            </h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <select
+              value={filterParishId}
+              onChange={(e) => setFilterParishId(e.target.value)}
+              className="px-3 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer"
+            >
+              <option value="all">All Parishes</option>
+              {parishes.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="px-3 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer"
+            >
+              <option value="all">All Categories</option>
+              <option value="holy mass">Holy Mass</option>
+              <option value="baptism">Baptism</option>
+              <option value="wedding">Wedding</option>
+              <option value="confirmation">Confirmation</option>
+              <option value="funeral">Funeral</option>
+              <option value="fiesta">Fiesta</option>
+              <option value="seminar">Seminar</option>
+              <option value="other">Other</option>
+            </select>
+
+            <button 
+              onClick={() => navigate('/dashboard/parishes')}
+              className="text-xs font-bold text-crimson hover:underline flex items-center space-x-1 focus-ring ml-auto sm:ml-2"
+            >
+              <span>View Directory</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
         </div>
 
-        {featuredEvents.length === 0 ? (
+        {filteredFeaturedEvents.length === 0 ? (
           <EmptyState
-            title="No featured events scheduled"
-            description="There are currently no upcoming vicariate assemblies or parish seminars listed. You can browse individual parish schedules."
+            title="No events match your criteria"
+            description="Adjust your filters or browse the vicariate directory to find upcoming seminars or Masses."
             icon={<CalendarDays size={40} className="text-text-muted/40" />}
-            action={
-              <Button size="sm" onClick={() => navigate('/dashboard/parishes')} className="bg-crimson hover:bg-crimson-dark">
-                Browse Vicariate Directory
-              </Button>
-            }
           />
         ) : (
           <FeaturedEventsCarousel 
-            events={featuredEvents} 
+            events={filteredFeaturedEvents} 
             onViewDetails={handleViewEventDetails} 
           />
         )}

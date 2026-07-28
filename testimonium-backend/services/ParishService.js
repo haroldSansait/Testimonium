@@ -112,6 +112,16 @@ export class ParishService {
     if (data.status !== undefined) {
       updatePayload.isActive = data.status === "Active";
     }
+    if (data.documentSettings !== undefined) {
+      updatePayload.documentSettings = data.documentSettings && typeof data.documentSettings === "object" ? JSON.stringify(data.documentSettings) : data.documentSettings;
+    }
+    if (data.eventSettings !== undefined) {
+      updatePayload.eventSettings = data.eventSettings && typeof data.eventSettings === "object" ? JSON.stringify(data.eventSettings) : data.eventSettings;
+    }
+    if (data.officeHours !== undefined) {
+      updatePayload.officeHours = data.officeHours && typeof data.officeHours === "object" ? JSON.stringify(data.officeHours) : data.officeHours;
+    }
+
 
     const parish = await prisma.$transaction(async (tx) => {
       // 1. Fetch current parish state to verify it exists and get audit logs
@@ -324,6 +334,9 @@ export class ParishService {
       feastDay: p.feastDay || "",
       coverImage: p.coverImage || "",
       gallery: p.gallery || [],
+      documentSettings: p.documentSettings ? JSON.parse(p.documentSettings) : null,
+      eventSettings: p.eventSettings ? JSON.parse(p.eventSettings) : null,
+      officeHours: p.officeHours ? JSON.parse(p.officeHours) : null,
     };
   }
 

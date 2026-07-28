@@ -47,6 +47,10 @@ const mapBackendToFrontendStatus = (status: string): RequestStatus => {
       return 'under-review';
     case 'PAYMENT_PENDING':
       return 'payment-pending';
+    case 'PAYMENT_UNDER_REVIEW':
+      return 'payment-under-review';
+    case 'PAYMENT_NEEDS_CORRECTION':
+      return 'payment-needs-correction';
     case 'PAYMENT_VERIFIED':
       return 'payment-verification';
     case 'PROCESSING':
@@ -59,6 +63,8 @@ const mapBackendToFrontendStatus = (status: string): RequestStatus => {
       return 'rejected';
     case 'CANCELLED':
       return 'cancelled';
+    case 'NEEDS_CORRECTION':
+      return 'needs-correction';
     default:
       return status.toLowerCase().replace(/_/g, '-') as RequestStatus;
   }
@@ -75,6 +81,9 @@ const mapRequest = (req: any): SacramentalRequest => {
     submittedAt: req.dateRequested || req.createdAt,
     updatedAt: req.updatedAt || req.dateProcessed || req.createdAt,
     requirements: req.attachments?.map((a: any) => a.fileName) || [],
+    correctionRequirementIds: req.correctionRequirementIds || [],
+    correctionNote: req.correctionNote || null,
+    paymentCorrectionNote: req.paymentCorrectionNote || null,
   };
 };
 
@@ -137,10 +146,26 @@ export class ApiRequestProvider implements IRequestProvider {
     return client.post<RequestAttachment[]>(`/requests/${id}/files`, formData);
   }
 
-  async uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any }> {
+  async uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any; request?: SacramentalRequest }> {
     const formData = new FormData();
     formData.append("receipt", file);
 
-    return client.post<any>(`/requests/${id}/receipt`, formData);
+    const response = await client.post<any>(`/requests/${id}/receipt`, formData);
+    return {
+      autoVerified: response.autoVerified,
+      ocrResult: response.ocrResult,
+      request: response.request ? mapRequest(response.request) : undefined,
+    };
+  }
+
+  async getDocumentRequirements(type: string, parishId?: string): Promise<any> {
+    const backendType = mapFrontendToBackendDocType(type);
+    const response = await client.get<any>('/document-requirements', { type: backendType, parishId });
+    return response.data || response;
+  }
+
+  async resubmitCorrections(id: string): Promise<SacramentalRequest> {
+    const response = await client.post<any>(`/requests/${id}/resubmit-corrections`);
+    return mapRequest(response.data || response);
   }
 }

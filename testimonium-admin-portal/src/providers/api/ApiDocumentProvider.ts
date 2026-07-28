@@ -18,6 +18,9 @@ interface BackendDocumentRequestDTO {
   paymentQrReference: string | null;
   processedById: number | null;
   remarks: string | null;
+  correctionNote?: string | null;
+  paymentCorrectionNote?: string | null;
+  correctionRequirementIds?: string[];
   dateRequested: string;
   dateProcessed: string | null;
   createdAt: string;
@@ -95,6 +98,10 @@ const mapDocumentStatus = (status: string): DocumentStatus => {
       return 'Under Review';
     case 'PAYMENT_PENDING':
       return 'Payment Pending';
+    case 'PAYMENT_UNDER_REVIEW':
+      return 'Awaiting Payment Review';
+    case 'PAYMENT_NEEDS_CORRECTION':
+      return 'Payment Needs Correction';
     case 'PAYMENT_VERIFIED':
       return 'Payment Verified';
     case 'PROCESSING':
@@ -157,6 +164,7 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
 
   return {
     id: String(dbItem.id),
+    parishId: String(dbItem.parishId),
     referenceNo: dbItem.trackingNumber || `REQ-${new Date(dbItem.createdAt || dbItem.dateRequested).getFullYear()}-${String(dbItem.id).padStart(4, '0')}`,
     trackingNumber: dbItem.trackingNumber || '',
     applicantName: dbItem.applicantName || '',
@@ -168,12 +176,18 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
     purpose: dbItem.purpose || 'Official Use',
     paymentStatus: dbItem.paymentStatus === 'CONFIRMED' || dbItem.paymentStatus === 'PROOF_SUBMITTED' ? 'Paid' : 'Pending',
     requirements: ['Government Issued ID', 'Parishioner Certificate'],
+    correctionRequirementIds: dbItem.correctionRequirementIds || [],
+    correctionNote: dbItem.correctionNote || null,
+    paymentCorrectionNote: dbItem.paymentCorrectionNote || null,
     attachments: dbItem.attachments || [],
     paymentTransactions: dbItem.paymentTransactions || [],
     requestHistory: dbItem.requestHistory || [],
     timeline
   };
 };
+
+// Local optimistic cache
+const optimisticDocumentStatuses: Record<string, DocumentStatus> = {};
 
 export const ApiDocumentProvider: DocumentProvider = {
   async getDocumentRequests(
@@ -188,6 +202,8 @@ export const ApiDocumentProvider: DocumentProvider = {
       else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW' as any;
       else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION' as any;
       else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING' as any;
+      else if (status === 'Awaiting Payment Review') backendStatus = 'PAYMENT_UNDER_REVIEW' as any;
+      else if (status === 'Payment Needs Correction') backendStatus = 'PAYMENT_NEEDS_CORRECTION' as any;
       else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED' as any;
       else if (status === 'Processing') backendStatus = 'PROCESSING' as any;
       else if (status === 'Ready for Pickup') backendStatus = 'READY_FOR_PICKUP' as any;
@@ -213,8 +229,15 @@ export const ApiDocumentProvider: DocumentProvider = {
       },
     });
 
+    const mappedData = (response.data.data || []).map(mapToFrontend).map(item => {
+      if (optimisticDocumentStatuses[item.id]) {
+        return { ...item, status: optimisticDocumentStatuses[item.id] };
+      }
+      return item;
+    });
+
     return {
-      data: (response.data.data || []).map(mapToFrontend),
+      data: mappedData,
       total: response.data.pagination?.total || 0,
       page: response.data.pagination?.page || page,
       pageSize: response.data.pagination?.limit || pageSize,
@@ -222,12 +245,14 @@ export const ApiDocumentProvider: DocumentProvider = {
     };
   },
 
-  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string): Promise<DocumentRequest> {
+  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]): Promise<DocumentRequest> {
     let backendStatus = 'PENDING';
     if (status === 'Pending Review') backendStatus = 'PENDING';
     else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
     else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION';
     else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING';
+    else if (status === 'Awaiting Payment Review') backendStatus = 'PAYMENT_UNDER_REVIEW';
+    else if (status === 'Payment Needs Correction') backendStatus = 'PAYMENT_NEEDS_CORRECTION';
     else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED';
     else if (status === 'Processing') backendStatus = 'PROCESSING';
     else if (status === 'Ready for Pickup') backendStatus = 'READY_FOR_PICKUP';
@@ -235,8 +260,21 @@ export const ApiDocumentProvider: DocumentProvider = {
     else if (status === 'Rejected') backendStatus = 'REJECTED';
     else if (status === 'Cancelled') backendStatus = 'CANCELLED';
 
-    const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, { status: backendStatus, remarks });
-    return mapToFrontend(response.data.data);
+    optimisticDocumentStatuses[id] = status;
+
+    try {
+      const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, { status: backendStatus, remarks, correctionRequirementIds });
+      const updated = mapToFrontend(response.data.data);
+      return { ...updated, status };
+    } catch (error) {
+      delete optimisticDocumentStatuses[id];
+      throw error;
+    } finally {
+      setTimeout(() => {
+        delete optimisticDocumentStatuses[id];
+      }, 1500);
+    }
   }
 };
+
 

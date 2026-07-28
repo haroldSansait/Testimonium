@@ -3,6 +3,9 @@ import { ParishionerRequestRepository } from "../repositories/ParishionerRequest
 import { canTransition } from "./RequestStateMachine.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { DocumentRequirementService } from "./DocumentRequirementService.js";
+import { RecipientResolver } from "./RecipientResolver.js";
+
 
 export class ParishionerRequestService {
   constructor(parishionerRequestRepository = new ParishionerRequestRepository()) {
@@ -75,15 +78,20 @@ export class ParishionerRequestService {
         throw error;
       }
 
-      // Check if there are attachments uploaded (Optional but recommended validation)
-      const attachmentCount = await tx.requestAttachment.count({
-        where: { requestId },
-      });
+      // Check if there are attachments uploaded (conditional on requirements)
+      const reqConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
+      const requiredDocs = reqConfig?.requiredDocuments || [];
 
-      if (attachmentCount === 0) {
-        const error = new Error("Cannot submit request without supporting attachments.");
-        error.statusCode = 400;
-        throw error;
+      if (requiredDocs.length > 0) {
+        const attachmentCount = await tx.requestAttachment.count({
+          where: { requestId },
+        });
+
+        if (attachmentCount === 0) {
+          const error = new Error("Cannot submit request without supporting attachments.");
+          error.statusCode = 400;
+          throw error;
+        }
       }
 
       // Finalize and flip isDraft to false
@@ -223,5 +231,101 @@ export class ParishionerRequestService {
       throw error;
     }
     return request;
+  }
+
+  /**
+   * Resubmits corrected document requirements.
+   */
+  async resubmitCorrections(requestId, userId) {
+    return prisma.$transaction(async (tx) => {
+      // 1. Verify ownership
+      const request = await tx.documentRequest.findFirst({
+        where: { id: requestId, userId },
+      });
+
+      if (!request) {
+        const error = new Error("Request not found or does not belong to this user.");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      // 2. Verify request status is NEEDS_CORRECTION
+      if (request.status !== "NEEDS_CORRECTION") {
+        const error = new Error("Document request is not in NEEDS_CORRECTION status.");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // 3. Verify required replacements exist
+      const attachments = await tx.requestAttachment.findMany({
+        where: { requestId },
+      });
+      const attachmentCategories = attachments.map((a) => a.category);
+
+      for (const reqId of request.correctionRequirementIds) {
+        if (!attachmentCategories.includes(reqId)) {
+          const error = new Error(`Replacement file for requirement "${reqId}" is missing.`);
+          error.statusCode = 400;
+          throw error;
+        }
+      }
+
+      // 4. Transition request to UNDER_REVIEW
+      const updatedRequest = await tx.documentRequest.update({
+        where: { id: requestId },
+        data: {
+          status: "UNDER_REVIEW",
+          correctionRequirementIds: [],
+          correctionNote: null,
+        },
+      });
+
+      // 5. Create request history entry
+      await tx.requestHistory.create({
+        data: {
+          requestId,
+          actorId: userId,
+          action: "RESUBMITTED",
+          oldStatus: "NEEDS_CORRECTION",
+          newStatus: "UNDER_REVIEW",
+          remarks: "Parishioner resubmitted corrected documents.",
+        },
+      });
+
+      // 6. Log to audit trail
+      await AuditLogService.log(
+        userId,
+        `Resubmitted corrected documents for request ${request.trackingNumber}`,
+        tx
+      );
+
+      // 7. Notify Parishioner
+      await RequestNotificationService.send(
+        userId,
+        "Corrections Submitted",
+        "Your corrected documents have been submitted successfully and are awaiting review.",
+        "IN_APP",
+        "DOCUMENT_REQUEST",
+        requestId,
+        tx
+      );
+
+      // 8. Notify Admins (Secretaries & Coordinators)
+      const adminIds = await RecipientResolver.getAdminRecipients(request.parishId, tx);
+      for (const adminId of adminIds) {
+        if (adminId === userId) continue;
+        await RequestNotificationService.send(
+          adminId,
+          "Corrected Documents Resubmitted",
+          "Corrected documents have been resubmitted and are ready for review.",
+          "IN_APP",
+          "DOCUMENT_REQUEST",
+          requestId,
+          tx
+        );
+      }
+
+      return updatedRequest;
+    });
   }
 }

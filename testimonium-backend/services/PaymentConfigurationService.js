@@ -15,6 +15,18 @@ export class PaymentConfigurationService {
       parish = await this.paymentConfigurationRepository.findByParishId(parishId);
     }
 
+    let mayaEnabled = false;
+    if (parish && parish.documentSettings) {
+      try {
+        const settings = JSON.parse(parish.documentSettings);
+        if (settings.paymentMethods && settings.paymentMethods.maya !== undefined) {
+          mayaEnabled = !!settings.paymentMethods.maya;
+        }
+      } catch (e) {
+        console.error("Error parsing settings for payment config", e);
+      }
+    }
+
     if (parish) {
       return {
         gcash: {
@@ -22,26 +34,22 @@ export class PaymentConfigurationService {
           accountNumber: parish.contactNumber || "0917-111-2222",
           qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/gcash_qr.png"
         },
-        maya: {
+        maya: mayaEnabled ? {
           accountName: `${parish.parishName} Maya Registry`,
           accountNumber: parish.contactNumber || "0917-111-2222",
           qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/maya_qr.png"
-        }
+        } : null
       };
     }
 
-    // Default Diocesan configuration
+    // Default Diocesan configuration (Maya disabled by default)
     return {
       gcash: {
         accountName: "TESTIMONIUM Sacramental Registry",
         accountNumber: "09171234567",
         qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/gcash_qr.png"
       },
-      maya: {
-        accountName: "TESTIMONIUM Maya Registry",
-        accountNumber: "09171234567",
-        qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/maya_qr.png"
-      }
+      maya: null
     };
   }
 }

@@ -191,3 +191,34 @@ export const uploadReceipt = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const resubmitCorrections = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const requestId = parseInt(id, 10);
+
+    if (isNaN(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document request ID.",
+      });
+    }
+
+    const updated = await requestService.resubmitCorrections(requestId, userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Corrected documents resubmitted successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+      });
+    }
+    return next(err);
+  }
+};

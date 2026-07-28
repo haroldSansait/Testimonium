@@ -19,7 +19,8 @@ export async function getDocumentRequests(
 export async function updateDocumentStatus(
   id: string,
   status: DocumentStatus,
-  remarks?: string
+  remarks?: string,
+  correctionRequirementIds?: string[]
 ): Promise<DocumentRequest> {
-  return providerFactory.getDocumentProvider().updateDocumentStatus(id, status, remarks);
+  return providerFactory.getDocumentProvider().updateDocumentStatus(id, status, remarks, correctionRequirementIds);
 }

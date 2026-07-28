@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Copy } from 'lucide-react';
+import { CheckCircle, Copy, FileText } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes } from '../../hooks/useService';
 import type { SacramentalRequest } from '../../types';
@@ -12,8 +12,6 @@ import { Textarea } from '../../components/ui/Textarea';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
-import { FileDropzone } from '../../features/requests/components/FileDropzone';
-import { UploadPreview } from '../../features/requests/components/UploadPreview';
 
 export const SacramentalRequestPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -28,14 +26,14 @@ export const SacramentalRequestPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
 
   const ALL_DOCUMENT_TYPES = [
-    { type: 'BAPTISMAL_CERTIFICATE', title: 'Baptismal Certificate', reqs: 'Valid ID, GKK Endorsement Letter' },
-    { type: 'CONFIRMATION_CERTIFICATE', title: 'Confirmation Certificate', reqs: 'Valid ID, GKK Endorsement Letter' },
-    { type: 'MARRIAGE_CERTIFICATE', title: 'Marriage Certificate', reqs: 'Valid ID, GKK Endorsement Letter' },
-    { type: 'FIRST_COMMUNION_CERTIFICATE', title: 'First Communion Certificate', reqs: 'Parent/Guardian ID, GKK Endorsement Letter' },
-    { type: 'MARRIAGE_BANNS', title: 'Marriage Banns', reqs: 'Valid IDs, Baptismal & Confirmation Certs, Civil Marriage License, Pre-Cana, CENOMAR, Banns Clearance, GKK Endorsement' },
-    { type: 'PERMIT_TO_MARRY', title: 'Permit to Marry', reqs: 'Valid ID, Baptismal & Confirmation Certs, Civil Marriage License, Pre-Cana, CENOMAR, Canonical Interview, Banns Clearance, GKK Endorsement' },
-    { type: 'STATUS_OF_LIBERTY', title: 'Status of Liberty', reqs: 'Valid ID, Baptismal Cert, CENOMAR, Canonical Interview, GKK Endorsement' },
-    { type: 'ENDORSEMENT', title: 'GKK Endorsement', reqs: 'GKK Chapel Officer Recommendation Form' },
+    { type: 'BAPTISMAL_CERTIFICATE', title: 'Baptismal Certificate', desc: 'Baptism registry entry' },
+    { type: 'CONFIRMATION_CERTIFICATE', title: 'Confirmation Certificate', desc: 'Sacrament of Confirmation entry' },
+    { type: 'MARRIAGE_CERTIFICATE', title: 'Marriage Certificate', desc: 'Holy Matrimony registry entry' },
+    { type: 'FIRST_COMMUNION_CERTIFICATE', title: 'First Communion Certificate', desc: 'First Holy Communion entry' },
+    { type: 'MARRIAGE_BANNS', title: 'Marriage Banns', desc: 'Public notification of prospective marriage' },
+    { type: 'PERMIT_TO_MARRY', title: 'Permit to Marry', desc: 'Clearance to marry in another parish' },
+    { type: 'STATUS_OF_LIBERTY', title: 'Status of Liberty', desc: 'Attestation of canonical freedom to marry' },
+    { type: 'ENDORSEMENT', title: 'GKK Endorsement', desc: 'Recommendation from local GKK leader' },
   ];
 
   // Form State
@@ -45,8 +43,11 @@ export const SacramentalRequestPage: React.FC = () => {
   const [relationship, setRelationship] = useState('Self');
   const [purpose, setPurpose] = useState('');
   const [registryYear, setRegistryYear] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; size: number; progress?: number; id: string }>>([]);
-  const [rawFiles, setRawFiles] = useState<File[]>([]);
+
+  // Dynamic Requirements State
+  const [requirementsList, setRequirementsList] = useState<Array<{ id: string; label: string; required: boolean; description?: string }>>([]);
+  const [loadingReqs, setLoadingReqs] = useState(false);
+  const [uploadedFilesByReq, setUploadedFilesByReq] = useState<Record<string, File>>({});
 
   // Success State
   const [createdRequest, setCreatedRequest] = useState<SacramentalRequest | null>(null);
@@ -62,6 +63,24 @@ export const SacramentalRequestPage: React.FC = () => {
     }
   }, [queryParishId, parishes, selectedParishId]);
 
+  // Fetch dynamic requirements when step becomes upload step
+  useEffect(() => {
+    if (currentStep === 3) {
+      setLoadingReqs(true);
+      services.request.getDocumentRequirements(docType, selectedParishId)
+        .then(res => {
+          const reqs = res?.requiredDocuments || [];
+          setRequirementsList(reqs);
+          setLoadingReqs(false);
+        })
+        .catch(err => {
+          console.error("Failed to load document requirements:", err);
+          setRequirementsList([]);
+          setLoadingReqs(false);
+        });
+    }
+  }, [currentStep, docType, selectedParishId]);
+
   const steps = ['Select Parish', 'Document Details', 'Applicant Info', 'Upload Requirements', 'Confirmation'];
 
   const handleNext = () => {
@@ -76,40 +95,42 @@ export const SacramentalRequestPage: React.FC = () => {
     }
   };
 
-  const handleFilesSelected = (files: File[]) => {
-    const mapped = files.map(f => ({
-      name: f.name,
-      size: f.size,
-      progress: 100,
-      id: `${f.name}-${f.size}-${Date.now()}`
+  const handleUploadForReq = (reqId: string, file: File) => {
+    setUploadedFilesByReq(prev => ({
+      ...prev,
+      [reqId]: file
     }));
-    setSelectedFiles(prev => [...prev, ...mapped]);
-    setRawFiles(prev => [...prev, ...files]);
   };
 
-  const handleRemoveFile = (id: string) => {
-    const fileToRemove = selectedFiles.find(f => f.id === id);
-    setSelectedFiles(prev => prev.filter(f => f.id !== id));
-    if (fileToRemove) {
-      setRawFiles(prev => prev.filter(f => f.name !== fileToRemove.name));
-    }
+  const handleRemoveFileForReq = (reqId: string) => {
+    setUploadedFilesByReq(prev => {
+      const copy = { ...prev };
+      delete copy[reqId];
+      return copy;
+    });
   };
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
       // 1. Create request draft
+      // Append registry year to purpose to pass it along safely without schema adjustments
+      const finalPurpose = registryYear 
+        ? `${purpose} (Approximate Registry Year: ${registryYear})`
+        : purpose;
+
       const draft = await services.request.createRequest({
         parishId: selectedParishId,
         documentType: docType as any,
         applicantName,
         relationship,
-        purpose,
+        purpose: finalPurpose,
       });
 
-      // 2. Upload attached files
-      if (rawFiles.length > 0) {
-        await services.request.uploadFiles(draft.id, rawFiles, "supporting");
+      // 2. Upload requirements if any are present
+      const reqFiles = Object.entries(uploadedFilesByReq);
+      for (const [reqId, file] of reqFiles) {
+        await services.request.uploadFiles(draft.id, [file], reqId);
       }
 
       // 3. Finalize and submit the request
@@ -160,7 +181,6 @@ export const SacramentalRequestPage: React.FC = () => {
         />
         <Card>
           <CardContent className="pt-6 space-y-8">
-            {/* Stepper Skeleton */}
             <div className="flex justify-between items-center max-w-xl mx-auto">
               {[1, 2, 3, 4, 5].map(i => (
                 <div key={i} className="flex items-center space-x-2">
@@ -169,21 +189,18 @@ export const SacramentalRequestPage: React.FC = () => {
                 </div>
               ))}
             </div>
-
-            {/* Form Fields Skeletons */}
             <div className="space-y-4 max-w-xl mx-auto pt-4">
-              <Skeleton className="h-5 w-40 rounded animate-pulse" />
-              <Skeleton className="h-4 w-60 rounded animate-pulse" />
-              <Skeleton className="h-10 w-full rounded-button animate-pulse" />
-              <div className="flex justify-end pt-4">
-                <Skeleton className="h-10 w-28 rounded-button animate-pulse" />
-              </div>
+              <Skeleton className="h-5 w-40 rounded" />
+              <Skeleton className="h-4 w-60 rounded" />
+              <Skeleton className="h-10 w-full rounded" />
             </div>
           </CardContent>
         </Card>
       </div>
     );
   }
+
+  const allReqsUploaded = requirementsList.every(req => !req.required || !!uploadedFilesByReq[req.id]);
 
   return (
     <div className="space-y-6" aria-live="polite">
@@ -194,7 +211,7 @@ export const SacramentalRequestPage: React.FC = () => {
         breadcrumbs={['Home', 'Request Document']}
       />
 
-      <Card>
+      <Card className="shadow-sm border border-border">
         <CardContent className="pt-6 space-y-8">
           <Stepper steps={steps} currentStep={currentStep} />
 
@@ -202,7 +219,7 @@ export const SacramentalRequestPage: React.FC = () => {
           {currentStep === 0 && (
             <div className="space-y-4 max-w-xl mx-auto">
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
+                <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                   Target Parish Office
                 </label>
                 <p className="text-xs text-text-muted">Select the parish containing the original canonical record registry.</p>
@@ -214,7 +231,7 @@ export const SacramentalRequestPage: React.FC = () => {
               >
                 {parishes.map(parish => (
                   <option key={parish.id} value={parish.id}>
-                    {parish.name} — {parish.city}
+                    {parish.name} — {parish.address || parish.city}
                   </option>
                 ))}
               </select>
@@ -228,24 +245,24 @@ export const SacramentalRequestPage: React.FC = () => {
           {currentStep === 1 && (
             <div className="space-y-4 max-w-xl mx-auto">
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
+                <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                   Document Certificate Type
                 </label>
-                <p className="text-xs text-text-muted">Select from the 8 official sacramental document types.</p>
+                <p className="text-xs text-text-muted">Select from the official sacramental document types.</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {ALL_DOCUMENT_TYPES.map(doc => (
                   <button
                     key={doc.type}
                     onClick={() => setDocType(doc.type)}
-                    className={`p-3.5 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
+                    className={`p-4 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
                       docType === doc.type 
                         ? 'border-crimson bg-red-50/20 text-crimson font-bold shadow-sm' 
                         : 'border-border text-text-primary hover:bg-app-page'
                     }`}
                   >
                     <div className="font-serif font-bold text-sm leading-snug">{doc.title}</div>
-                    <div className="text-[10px] text-text-muted mt-1 font-sans font-normal truncate">{doc.reqs}</div>
+                    <div className="text-[10px] text-text-muted mt-1 font-sans font-normal truncate">{doc.desc}</div>
                   </button>
                 ))}
               </div>
@@ -266,16 +283,27 @@ export const SacramentalRequestPage: React.FC = () => {
                 onChange={e => setApplicantName(e.target.value)}
                 required
               />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="w-full mb-4">
+                  <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider mb-1.5">
+                    Relationship to Registrant
+                  </label>
+                  <select
+                    value={relationship}
+                    onChange={e => setRelationship(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors outline-none"
+                  >
+                    <option value="Self">Self</option>
+                    <option value="Parent">Parent</option>
+                    <option value="Child">Child</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Sibling">Sibling</option>
+                    <option value="Other Relative">Other Relative</option>
+                    <option value="Authorized Representative">Authorized Representative</option>
+                  </select>
+                </div>
                 <Input
-                  label="Relationship to Registrant"
-                  placeholder="e.g. Self, Parent, Sibling"
-                  value={relationship}
-                  onChange={e => setRelationship(e.target.value)}
-                  required
-                />
-                <Input
-                  label="Registry Year (Approximate)"
+                  label="Registry Year (Approximate, Optional)"
                   type="number"
                   placeholder="e.g. 1995"
                   value={registryYear}
@@ -298,30 +326,84 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Step 4: Upload Requirements */}
           {currentStep === 3 && (
-            <div className="space-y-4 max-w-xl mx-auto">
+            <div className="space-y-6 max-w-xl mx-auto">
               <div className="p-4 bg-app-page border border-border/80 rounded-card space-y-2">
-                <span className="text-[10px] font-bold text-crimson uppercase tracking-wider">Required Attachments for {ALL_DOCUMENT_TYPES.find(d => d.type === docType)?.title}</span>
-                <p className="text-xs text-text-primary font-medium">
-                  {ALL_DOCUMENT_TYPES.find(d => d.type === docType)?.reqs}
-                </p>
+                <span className="text-[10px] font-bold text-crimson uppercase tracking-wider">Attachments Checklist</span>
+                <h4 className="text-xs font-bold text-text-primary">
+                  Provide credentials supporting this request.
+                </h4>
                 <p className="text-[11px] text-text-muted">
-                  Please upload clear scans or legible photos of the specified files. Maximum 5MB per file (PNG, JPG, PDF).
+                  Upload file formats (PNG, JPG, PDF) under 5MB for each field.
                 </p>
               </div>
 
-              <FileDropzone
-                onFilesSelected={handleFilesSelected}
-                disabled={submitting}
-              />
+              {loadingReqs ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-20 w-full rounded" />
+                  <Skeleton className="h-20 w-full rounded" />
+                </div>
+              ) : requirementsList.length === 0 ? (
+                <div className="p-6 border border-dashed border-gray-200 rounded-button bg-gray-50 text-center space-y-2">
+                  <FileText className="w-8 h-8 text-gray-400 mx-auto" />
+                  <span className="text-sm font-semibold text-gray-700 block">No Upload Requirements</span>
+                  <p className="text-xs text-gray-400 max-w-xs mx-auto">
+                    This parish does not require any document attachments to process this certificate type. You can proceed.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {requirementsList.map(req => {
+                    const file = uploadedFilesByReq[req.id];
+                    return (
+                      <div key={req.id} className="p-4 border border-gray-150 rounded-button bg-gray-50/50 space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-xs font-bold text-text-primary block">{req.label}</span>
+                            {req.description && <p className="text-[10px] text-text-muted mt-0.5">{req.description}</p>}
+                          </div>
+                          {req.required && (
+                            <span className="text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              Required
+                            </span>
+                          )}
+                        </div>
 
-              <UploadPreview
-                files={selectedFiles}
-                onRemove={handleRemoveFile}
-              />
+                        {file ? (
+                          <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
+                            <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
+                              {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFileForReq(req.id)}
+                              className="text-crimson hover:underline font-bold text-xs cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white">
+                            <input
+                              type="file"
+                              onChange={(e) => {
+                                const selected = e.target.files?.[0];
+                                if (selected) handleUploadForReq(req.id, selected);
+                              }}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              accept=".png,.jpg,.jpeg,.pdf"
+                            />
+                            <span className="text-xs text-text-muted">Click or drag a file to upload</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev} disabled={submitting}>Back</Button>
-                <Button onClick={handleSubmit} loading={submitting}>Submit Request</Button>
+                <Button onClick={handleSubmit} loading={submitting} disabled={!allReqsUploaded}>Submit Request</Button>
               </div>
             </div>
           )}
@@ -341,7 +423,6 @@ export const SacramentalRequestPage: React.FC = () => {
                 </p>
               </div>
 
-              {/* Tracking ID Card */}
               <div className="p-4 bg-app-page border border-border rounded-card flex flex-col items-center space-y-2">
                 <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Tracking Reference Number</span>
                 <div className="flex items-center space-x-2">

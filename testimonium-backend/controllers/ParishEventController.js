@@ -1,4 +1,5 @@
 import { ParishEventService } from "../services/ParishEventService.js";
+import { prisma } from "../config/db.js";
 
 const service = new ParishEventService();
 
@@ -23,7 +24,14 @@ export const list = async (req, res, next) => {
 
 export const create = async (req, res, next) => {
   try {
-    const parishId = req.user.parish?.id;
+    let parishId = req.body.parishId || req.user.parish?.id;
+    if (req.user.role === "DIOCESE_COORDINATOR" && !parishId) {
+      const defaultParish = await prisma.parish.findFirst({ select: { id: true } });
+      if (defaultParish) {
+        parishId = defaultParish.id;
+      }
+    }
+
     if (!parishId) {
       return res.status(400).json({ success: false, message: "Parish ID is required for this action." });
     }
@@ -53,6 +61,38 @@ export const remove = async (req, res, next) => {
     const actorId = req.user.id;
     await service.deleteEvent(id, actorId);
     return res.status(200).json({ success: true, message: "Parish event deleted successfully." });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const respondPriestAssignment = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { status, reason } = req.body;
+    const priestId = req.user.id;
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid event ID.",
+      });
+    }
+
+    if (!status || !["ACCEPTED", "REJECTED"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required and must be either ACCEPTED or REJECTED.",
+      });
+    }
+
+    const updated = await service.respondPriestAssignment(id, priestId, status, reason);
+
+    return res.status(200).json({
+      success: true,
+      message: `Event assignment ${status.toLowerCase()} successfully.`,
+      data: updated,
+    });
   } catch (err) {
     return next(err);
   }

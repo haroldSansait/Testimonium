@@ -40,6 +40,9 @@ interface BackendScheduleRequestDTO {
     id: number;
     fullName: string;
   } | null;
+  priestResponseStatus?: string | null;
+  priestResponseReason?: string | null;
+  isParishEvent?: boolean;
 }
 
 const mapScheduleStatus = (status: string): ScheduleStatus => {
@@ -168,6 +171,9 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     proposedDate: proposedDateStr,
     proposedTime: proposedTimeStr,
     rescheduleReason: dbItem.rescheduleReason || undefined,
+    priestResponseStatus: dbItem.priestResponseStatus || undefined,
+    priestResponseReason: dbItem.priestResponseReason || undefined,
+    isParishEvent: dbItem.isParishEvent || false,
     timeline: [
       { status: 'Pending', date: preferredDate, note: 'Schedule request submitted.' },
       ...(dbItem.status === 'PROPOSED_RESCHEDULE' || dbItem.status === 'WAITING_PARISHIONER_RESPONSE' ? [{ status: 'Tentative', date: preferredDate, note: `Alternative date proposed: ${proposedDateStr} (${proposedTimeStr || ''}). Reason: ${dbItem.rescheduleReason || 'None'}` }] : []),
@@ -176,6 +182,80 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     ]
   };
 };
+
+const mapParishEventToFrontend = (e: any): ScheduleRequest => {
+  const preferredDate = new Date(e.eventDate).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  const preferredTime = `${e.startTime || '09:00 AM'} - ${e.endTime || '10:00 AM'}`;
+
+  return {
+    id: String(e.id + 100000),
+    referenceNo: `REQ-EVENT-${String(e.id).padStart(4, '0')}`,
+    parishionerName: e.createdBy?.fullName || 'Staff',
+    initials: 'ST',
+    avatarColor: 'bg-teal-500',
+    eventType: 'Other',
+    appointmentTitle: e.title,
+    preferredDate,
+    preferredTime,
+    status: 'Confirmed',
+    assignedPriest: e.assignedPriest?.fullName || 'TBD',
+    parish: e.parish?.parishName || 'Main Church',
+    parishId: String(e.parishId),
+    contactInfo: e.createdBy?.email || 'staff@diocese.org',
+    notes: e.description || 'No description provided.',
+    priestResponseStatus: e.priestResponseStatus || undefined,
+    priestResponseReason: e.priestResponseReason || undefined,
+    isParishEvent: true,
+  };
+};
+
+const mapMassTemplateToFrontend = (t: any): ScheduleRequest => {
+  const getNextDayOfWeek = (dayName: string) => {
+    const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const targetDay = days.indexOf(dayName);
+    if (targetDay === -1) return new Date();
+    const resultDate = new Date();
+    resultDate.setDate(resultDate.getDate() + (targetDay + 7 - resultDate.getDay()) % 7);
+    return resultDate;
+  };
+  const nextOccur = getNextDayOfWeek(t.dayType);
+
+  const preferredDate = nextOccur.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return {
+    id: String(t.id + 200000),
+    referenceNo: `REQ-MASS-${String(t.id).padStart(4, '0')}`,
+    parishionerName: 'Parish Staff',
+    initials: 'PS',
+    avatarColor: 'bg-purple-500',
+    eventType: 'Mass Intention',
+    appointmentTitle: `${t.label || "Holy Mass"} (${t.dayType})`,
+    preferredDate,
+    preferredTime: t.timeSlot,
+    status: 'Confirmed',
+    assignedPriest: t.assignedPriest?.fullName || 'TBD',
+    parish: t.parish?.parishName || 'Main Church',
+    parishId: String(t.parishId),
+    contactInfo: 'staff@diocese.org',
+    notes: `Time Slot: ${t.timeSlot}. Recurring Mass schedule on ${t.dayType}.`,
+    priestResponseStatus: t.priestResponseStatus || undefined,
+    priestResponseReason: t.priestResponseReason || undefined,
+    isParishEvent: true,
+  };
+};
+
+// Local optimistic caches
+const optimisticScheduleStatuses: Record<string, ScheduleStatus> = {};
+const optimisticSchedulePriests: Record<string, string> = {};
 
 export const ApiScheduleProvider: ScheduleProvider = {
   async getScheduleRequests(
@@ -198,8 +278,19 @@ export const ApiScheduleProvider: ScheduleProvider = {
       params,
     });
 
+    const mappedData = (response.data.data || []).map(mapToFrontend).map(item => {
+      const updated = { ...item };
+      if (optimisticScheduleStatuses[item.id]) {
+        updated.status = optimisticScheduleStatuses[item.id];
+      }
+      if (optimisticSchedulePriests[item.id]) {
+        updated.assignedPriest = optimisticSchedulePriests[item.id];
+      }
+      return updated;
+    });
+
     return {
-      data: (response.data.data || []).map(mapToFrontend),
+      data: mappedData,
       total: response.data.pagination?.total || 0,
       page: response.data.pagination?.page || page,
       pageSize: response.data.pagination?.limit || pageSize,
@@ -209,7 +300,14 @@ export const ApiScheduleProvider: ScheduleProvider = {
 
   async getScheduleRequest(id: string): Promise<ScheduleRequest> {
     const response = await api.get<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}`);
-    return mapToFrontend(response.data.data);
+    const item = mapToFrontend(response.data.data);
+    if (optimisticScheduleStatuses[id]) {
+      item.status = optimisticScheduleStatuses[id];
+    }
+    if (optimisticSchedulePriests[id]) {
+      item.assignedPriest = optimisticSchedulePriests[id];
+    }
+    return item;
   },
 
   async updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest> {
@@ -218,22 +316,85 @@ export const ApiScheduleProvider: ScheduleProvider = {
     else if (status === 'Cancelled') backendStatus = 'CANCELLED';
     else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
 
-    const response = await api.patch<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/status`, { status: backendStatus });
-    return mapToFrontend(response.data.data);
+    optimisticScheduleStatuses[id] = status;
+
+    try {
+      const response = await api.patch<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/status`, { status: backendStatus });
+      const updated = mapToFrontend(response.data.data);
+      return { ...updated, status };
+    } catch (error) {
+      delete optimisticScheduleStatuses[id];
+      throw error;
+    } finally {
+      setTimeout(() => {
+        delete optimisticScheduleStatuses[id];
+      }, 1500);
+    }
   },
 
   async proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest> {
-    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/propose-reschedule`, payload);
-    return mapToFrontend(response.data.data);
+    optimisticScheduleStatuses[id] = 'Tentative';
+    try {
+      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/propose-reschedule`, payload);
+      return mapToFrontend(response.data.data);
+    } catch (error) {
+      delete optimisticScheduleStatuses[id];
+      throw error;
+    } finally {
+      setTimeout(() => {
+        delete optimisticScheduleStatuses[id];
+      }, 1500);
+    }
   },
 
   async respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest> {
-    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/respond-reschedule`, { accept });
-    return mapToFrontend(response.data.data);
+    optimisticScheduleStatuses[id] = accept ? 'Confirmed' : 'Cancelled';
+    try {
+      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/respond-reschedule`, { accept });
+      return mapToFrontend(response.data.data);
+    } catch (error) {
+      delete optimisticScheduleStatuses[id];
+      throw error;
+    } finally {
+      setTimeout(() => {
+        delete optimisticScheduleStatuses[id];
+      }, 1500);
+    }
   },
 
   async assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
-    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-priest`, { priestId });
+    optimisticSchedulePriests[id] = 'Assigning...';
+    try {
+      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-priest`, { priestId });
+      const updated = mapToFrontend(response.data.data);
+      if (updated.assignedPriest) {
+        optimisticSchedulePriests[id] = updated.assignedPriest;
+      }
+      return updated;
+    } catch (error) {
+      delete optimisticSchedulePriests[id];
+      throw error;
+    } finally {
+      setTimeout(() => {
+        delete optimisticSchedulePriests[id];
+      }, 1500);
+    }
+  },
+
+  async respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest> {
+    const numId = parseInt(id, 10);
+    if (!isNaN(numId) && numId >= 200000) {
+      const realId = numId - 200000;
+      const response = await api.post<{ data: any }>(`/mass-schedules/${realId}/priest-respond`, { status, reason });
+      return mapMassTemplateToFrontend(response.data.data);
+    }
+    if (!isNaN(numId) && numId >= 100000) {
+      const realId = numId - 100000;
+      const response = await api.post<{ data: any }>(`/parish-events/${realId}/priest-respond`, { status, reason });
+      return mapParishEventToFrontend(response.data.data);
+    }
+    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/priest-respond`, { status, reason });
     return mapToFrontend(response.data.data);
   }
 };
+

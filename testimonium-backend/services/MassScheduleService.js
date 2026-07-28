@@ -1,5 +1,7 @@
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { NotificationDispatcher } from "./NotificationDispatcher.js";
+import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
 
 export class MassScheduleService {
   /**
@@ -36,15 +38,23 @@ export class MassScheduleService {
     const parsedParishId = parseInt(parishId, 10);
     const parsedPriestId = assignedPriestId ? parseInt(assignedPriestId, 10) : null;
     let template;
+    let priestChanged = false;
 
     if (id) {
       const parsedId = parseInt(id, 10);
       const original = await prisma.massScheduleTemplate.findUnique({
         where: { id: parsedId }
       });
+      priestChanged = original.assignedPriestId !== parsedPriestId;
+      const data = { dayType, timeSlot, label, assignedPriestId: parsedPriestId };
+      if (priestChanged) {
+        data.priestResponseStatus = parsedPriestId ? "PENDING" : null;
+        data.priestResponseReason = null;
+      }
+
       template = await prisma.massScheduleTemplate.update({
         where: { id: parsedId },
-        data: { dayType, timeSlot, label, assignedPriestId: parsedPriestId },
+        data,
         include: {
           assignedPriest: { select: { id: true, fullName: true, isAssistant: true } }
         }
@@ -65,6 +75,7 @@ export class MassScheduleService {
           timeSlot,
           label,
           assignedPriestId: parsedPriestId,
+          priestResponseStatus: parsedPriestId ? "PENDING" : null,
           isActive: true
         },
         include: {
@@ -77,6 +88,22 @@ export class MassScheduleService {
         affectedRecordId: template.id,
         parishId: parsedParishId,
         newValues: { dayType, timeSlot, label, assignedPriestId: parsedPriestId }
+      });
+    }
+
+    const newlyAssigned = id ? (priestChanged && parsedPriestId) : parsedPriestId;
+    if (newlyAssigned) {
+      const priest = await prisma.user.findUnique({
+        where: { id: parsedPriestId },
+        select: { fullName: true }
+      });
+      await NotificationDispatcher.notifyPriestAssigned({
+        parishionerId: null,
+        parishId: parsedParishId,
+        scheduleId: template.id + 200000,
+        displayTitle: `${label || "Holy Mass"} (${dayType} at ${timeSlot})`,
+        priestId: parsedPriestId,
+        priestName: priest?.fullName || "Priest",
       });
     }
 
@@ -163,5 +190,9 @@ export class MassScheduleService {
         })
       )
     );
+  }
+
+  async respondPriestAssignment(id, priestId, status, reason) {
+    return PriestAssignmentHandler.handleResponse(id, priestId, status, reason, "MASS");
   }
 }

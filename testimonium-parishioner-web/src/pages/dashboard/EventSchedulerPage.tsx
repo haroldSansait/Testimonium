@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Check } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes } from '../../hooks/useService';
 import type { Appointment } from '../../types';
@@ -28,6 +28,7 @@ export const EventSchedulerPage: React.FC = () => {
   const [selectedService, setSelectedService] = useState('Baptism Interview');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
+  const [venueAddress, setVenueAddress] = useState('');
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
@@ -61,7 +62,8 @@ export const EventSchedulerPage: React.FC = () => {
     'First Communion',
     'Mass of the Holy Spirit',
     'Confirmation',
-    'Confession'
+    'Confession',
+    'Baptism'
   ];
 
   const fetchActiveProposal = async () => {
@@ -104,7 +106,14 @@ export const EventSchedulerPage: React.FC = () => {
           const slots = await services.scheduler.getAvailableSlots(selectedParishId, selectedDate);
           setAvailableSlots(slots);
           if (slots.length > 0) {
-            setSelectedTimeSlot(slots[0]);
+            const isMarriage = selectedService.toLowerCase().includes('marriage') || selectedService.toLowerCase().includes('wedding');
+            const hasSixAm = slots.some(s => s.includes('06:00 AM'));
+            if (isMarriage && hasSixAm) {
+              const sixAmSlot = slots.find(s => s.includes('06:00 AM')) || slots[0];
+              setSelectedTimeSlot(sixAmSlot);
+            } else {
+              setSelectedTimeSlot(slots[0]);
+            }
           }
         } catch (err) {
           console.error(err);
@@ -114,7 +123,7 @@ export const EventSchedulerPage: React.FC = () => {
       };
       fetchSlots();
     }
-  }, [selectedParishId, selectedDate]);
+  }, [selectedParishId, selectedDate, selectedService]);
 
   const handleRespondProposal = async (accept: boolean) => {
     if (!activeProposal) return;
@@ -158,7 +167,8 @@ export const EventSchedulerPage: React.FC = () => {
         parishId: selectedParishId,
         serviceName: selectedService,
         date: selectedDate,
-        timeSlot: selectedTimeSlot
+        timeSlot: selectedTimeSlot,
+        location: venueAddress
       });
       setCreatedBooking(apt);
       setCurrentStep(4);
@@ -388,6 +398,19 @@ export const EventSchedulerPage: React.FC = () => {
                 </div>
               )}
 
+              <div className="space-y-2 mt-4 pt-4 border-t border-border/40">
+                <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
+                  Venue / Event Address (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Parish Main Church, Home, or Barangay Chapel Name/Address"
+                  value={venueAddress}
+                  onChange={e => setVenueAddress(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors outline-none"
+                />
+              </div>
+
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev} disabled={submitting}>Back</Button>
                 <Button onClick={handleBook} loading={submitting} disabled={!selectedTimeSlot}>
@@ -444,6 +467,7 @@ export const EventSchedulerPage: React.FC = () => {
       
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-emerald-700 text-white rounded-xl shadow-lg text-sm font-semibold animate-in slide-in-from-bottom-4">
+          <Check className="w-4 h-4" />
           {toastMessage}
         </div>
       )}

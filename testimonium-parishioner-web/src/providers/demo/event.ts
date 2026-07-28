@@ -1,11 +1,6 @@
 import type { IEventProvider } from '../types';
 import type { Event } from '../../types';
-
-import eventYouth from '../../assets/events/event-youth.png';
-import eventFiesta from '../../assets/events/event-fiesta.png';
-import eventSeminar from '../../assets/events/event-seminar.png';
-import eventRetreat from '../../assets/events/event-retreat.png';
-import eventCommunity from '../../assets/events/event-community.png';
+import { getParishImage } from '../../utils/parishImages';
 
 export class DemoEventProvider implements IEventProvider {
   private events: Event[] = [];
@@ -27,10 +22,10 @@ export class DemoEventProvider implements IEventProvider {
         id: 'ev-youth-day',
         title: 'Canlaon Diocesan Youth Assembly 2026',
         description: 'Join the annual gathering of Catholic youth across Negros Oriental parishes. A weekend filled with praise, fellowship workshops, spiritual guidance, and live musical worship.',
-        category: 'Youth',
+        category: 'Other',
         parishId: 'p1',
         parishName: 'San Isidro Labrador Parish',
-        coverImage: eventYouth,
+        coverImage: getParishImage('San Isidro Labrador Parish'),
         coverImageAlt: 'Christian youth assembly singing and raising hands in praise',
         startDate: formatDate(0), // Today
         endDate: formatDate(1),
@@ -53,7 +48,7 @@ export class DemoEventProvider implements IEventProvider {
         category: 'Fiesta',
         parishId: 'p1',
         parishName: 'San Isidro Labrador Parish',
-        coverImage: eventFiesta,
+        coverImage: getParishImage('San Isidro Labrador Parish'),
         coverImageAlt: 'Solemn street procession decorated with fiesta banners',
         startDate: formatDate(2), // In 2 days
         endDate: formatDate(2),
@@ -74,7 +69,7 @@ export class DemoEventProvider implements IEventProvider {
         category: 'Seminar',
         parishId: 'p2',
         parishName: 'St. Joseph the Worker Parish',
-        coverImage: eventSeminar,
+        coverImage: getParishImage('St. Joseph the Worker Parish'),
         coverImageAlt: 'Couples listening attentively during pre-cana lecture',
         startDate: formatDate(1), // Tomorrow
         endDate: formatDate(1),
@@ -94,10 +89,10 @@ export class DemoEventProvider implements IEventProvider {
         id: 'ev-outreach',
         title: 'Barangay Community Food Share & Outreach',
         description: 'Bringing care and packages of basic necessities to families in remote mountainous sectors of our vicariate. Volunteers and dry goods donations are highly welcomed.',
-        category: 'Outreach',
+        category: 'Other',
         parishId: 'p4',
         parishName: 'St. Vincent Ferrer Parish',
-        coverImage: eventCommunity,
+        coverImage: getParishImage('St. Vincent Ferrer Parish'),
         coverImageAlt: 'Volunteers distributing food relief boxes to local families',
         startDate: formatDate(5), // In 5 days
         endDate: formatDate(5),
@@ -105,7 +100,7 @@ export class DemoEventProvider implements IEventProvider {
         endTime: '12:00',
         location: 'Brgy. Upper Budlasan Covered Court',
         organizer: 'Social Action Center Office',
-        contactPerson: 'Sis. Clara Lopez',
+        contactPerson: 'Sis. Clara / Secretary',
         contactNumber: '+63 908 123 4567',
         featured: false,
         status: 'upcoming',
@@ -115,10 +110,10 @@ export class DemoEventProvider implements IEventProvider {
         id: 'ev-retreat',
         title: 'Advent Spiritual Recollection & Retreat',
         description: 'A quiet day of recollection, meditation, and sacramental confession to prepare our hearts for the holy season. Includes guided spiritual talks and silent adoration periods.',
-        category: 'Retreat',
+        category: 'Other',
         parishId: 'p5',
         parishName: 'Our Lady of Mount Carmel Parish',
-        coverImage: eventRetreat,
+        coverImage: getParishImage('Our Lady of Mount Carmel Parish'),
         coverImageAlt: 'Quiet sanctuary garden overlooking mountains under sunset',
         startDate: formatDate(7), // In 7 days
         endDate: formatDate(7),
@@ -141,7 +136,7 @@ export class DemoEventProvider implements IEventProvider {
         category: 'Holy Mass',
         parishId: 'p3',
         parishName: 'Holy Child Parish',
-        coverImage: eventRetreat, // Reusing retreat image for mass placeholder
+        coverImage: getParishImage('Holy Child Parish'),
         coverImageAlt: 'Altar sanctuary candlelit atmosphere',
         startDate: formatDate(3), // In 3 days
         endDate: formatDate(3),
@@ -159,10 +154,10 @@ export class DemoEventProvider implements IEventProvider {
         id: 'ev-completed-service',
         title: 'Summer Catechism for Children',
         description: 'A two-week spiritual education program for kids, teaching standard catechism, prayer recitation, and basic values. Concluded with a children choir performance.',
-        category: 'Formation',
+        category: 'Other',
         parishId: 'p6',
         parishName: 'St. John the Baptist Parish',
-        coverImage: eventYouth, // Reusing youth image
+        coverImage: getParishImage('St. John the Baptist Parish'),
         coverImageAlt: 'Children in class raising hands',
         startDate: formatDate(-4), // 4 days ago
         endDate: formatDate(-1),
@@ -180,10 +175,10 @@ export class DemoEventProvider implements IEventProvider {
         id: 'ev-formation',
         title: 'Catholic Social Teachings Lecture',
         description: 'An open lecture explaining the application of Catholic Social Teachings in modern work environments, societal justice, and political participation.',
-        category: 'Formation',
+        category: 'Other',
         parishId: 'p7',
         parishName: 'San Sebastian Parish',
-        coverImage: eventSeminar, // Reusing seminar image
+        coverImage: getParishImage('San Sebastian Parish'),
         coverImageAlt: 'Lecture meeting room setup',
         startDate: formatDate(10), // In 10 days
         endDate: formatDate(10),

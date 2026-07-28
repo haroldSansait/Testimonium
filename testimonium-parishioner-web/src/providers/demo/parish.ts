@@ -1,14 +1,6 @@
 import type { IParishProvider } from '../types';
 import type { Parish } from '../../types';
-
-// Import local placeholder images (temporary assets, to be replaced by actual parish photos)
-import p1Img from '../../assets/parishes/p1.png';
-import p2Img from '../../assets/parishes/p2.png';
-import p3Img from '../../assets/parishes/p3.png';
-import p4Img from '../../assets/parishes/p4.png';
-import p5Img from '../../assets/parishes/p5.png';
-import p6Img from '../../assets/parishes/p6.png';
-import p7Img from '../../assets/parishes/p7.png';
+import { getParishImage, getParishGallery } from '../../utils/parishImages';
 
 const DEMO_PARISHES: Parish[] = [
   {
@@ -18,8 +10,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'Canlaon City',
     province: 'Negros Oriental',
     coordinates: { lat: 10.3837, lng: 123.1972 },
-    coverImage: p1Img,
-    gallery: [p1Img],
+    coverImage: getParishImage({ id: 'p1', name: 'San Isidro Labrador Parish', address: 'National Highway, Poblacion, Canlaon City', city: 'Canlaon City' }),
+    gallery: getParishGallery({ id: 'p1', name: 'San Isidro Labrador Parish', address: 'National Highway, Poblacion, Canlaon City', city: 'Canlaon City' }),
     phone: '+63 917 123 4567',
     email: 'sanisidro.canlaon@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/sanisidrocanlaon',
@@ -48,8 +40,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'Canlaon City',
     province: 'Negros Oriental',
     coordinates: { lat: 10.4200, lng: 123.2300 },
-    coverImage: p2Img,
-    gallery: [p2Img],
+    coverImage: getParishImage({ id: 'p2', name: 'St. Joseph the Worker Parish', address: 'Brgy. Malaiba, Canlaon City', city: 'Canlaon City' }),
+    gallery: getParishGallery({ id: 'p2', name: 'St. Joseph the Worker Parish', address: 'Brgy. Malaiba, Canlaon City', city: 'Canlaon City' }),
     phone: '+63 918 222 3333',
     email: 'stjoseph.malaiba@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/stjosephmalaiba',
@@ -76,8 +68,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'Canlaon City',
     province: 'Negros Oriental',
     coordinates: { lat: 10.3750, lng: 123.1850 },
-    coverImage: p3Img,
-    gallery: [p3Img],
+    coverImage: getParishImage({ id: 'p3', name: 'Our Lady of Mount Carmel Parish', address: 'Brgy. Masulog, Canlaon City', city: 'Canlaon City' }),
+    gallery: getParishGallery({ id: 'p3', name: 'Our Lady of Mount Carmel Parish', address: 'Brgy. Masulog, Canlaon City', city: 'Canlaon City' }),
     phone: '+63 920 444 5555',
     email: 'mtcarmel.masulog@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/mtcarmelmasulog',
@@ -104,8 +96,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'Vallehermoso',
     province: 'Negros Oriental',
     coordinates: { lat: 10.3328, lng: 123.3278 },
-    coverImage: p4Img,
-    gallery: [p4Img],
+    coverImage: getParishImage({ id: 'p4', name: 'St. Francis Xavier Parish', address: 'Poblacion, Vallehermoso', city: 'Vallehermoso' }),
+    gallery: getParishGallery({ id: 'p4', name: 'St. Francis Xavier Parish', address: 'Poblacion, Vallehermoso', city: 'Vallehermoso' }),
     phone: '+63 919 987 6543',
     email: 'stfrancis.vallehermoso@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/stfrancisvallehermoso',
@@ -132,8 +124,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'Guihulngan City',
     province: 'Negros Oriental',
     coordinates: { lat: 10.1206, lng: 123.2725 },
-    coverImage: p5Img,
-    gallery: [p5Img],
+    coverImage: getParishImage({ id: 'p5', name: 'Our Lady of the Holy Rosary Parish', address: 'National Highway, Guihulngan City', city: 'Guihulngan City' }),
+    gallery: getParishGallery({ id: 'p5', name: 'Our Lady of the Holy Rosary Parish', address: 'National Highway, Guihulngan City', city: 'Guihulngan City' }),
     phone: '+63 939 111 2222',
     email: 'holyrosary.guihulngan@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/holyrosaryguihulngan',
@@ -161,8 +153,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'La Libertad',
     province: 'Negros Oriental',
     coordinates: { lat: 10.0244, lng: 123.2306 },
-    coverImage: p6Img,
-    gallery: [p6Img],
+    coverImage: getParishImage({ id: 'p6', name: 'St. Vincent Ferrer Parish', address: 'Poblacion, La Libertad', city: 'La Libertad' }),
+    gallery: getParishGallery({ id: 'p6', name: 'St. Vincent Ferrer Parish', address: 'Poblacion, La Libertad', city: 'La Libertad' }),
     phone: '+63 947 555 6666',
     email: 'stvincent.lalibertad@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/stvincentlalibertad',
@@ -189,8 +181,8 @@ const DEMO_PARISHES: Parish[] = [
     city: 'Jimalalud',
     province: 'Negros Oriental',
     coordinates: { lat: 9.9880, lng: 123.2010 },
-    coverImage: p7Img,
-    gallery: [p7Img],
+    coverImage: getParishImage({ id: 'p7', name: 'St. Augustine Parish', address: 'Poblacion, Jimalalud', city: 'Jimalalud' }),
+    gallery: getParishGallery({ id: 'p7', name: 'St. Augustine Parish', address: 'Poblacion, Jimalalud', city: 'Jimalalud' }),
     phone: '+63 956 777 8888',
     email: 'staugustine.jimalalud@diocesesancarlos.org',
     facebookPage: 'https://facebook.com/staugustinejimalalud',

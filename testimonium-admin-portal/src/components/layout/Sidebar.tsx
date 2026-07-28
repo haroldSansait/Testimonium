@@ -14,6 +14,7 @@ import {
   Clock,
   HelpCircle,
   Info,
+  Settings,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/utils/cn';
@@ -77,6 +78,12 @@ const ALL_NAV_ITEMS: NavItem[] = [
     label: 'My Leave Settings',
     icon: <Calendar className="w-4 h-4" />,
     permission: PERMISSIONS.MANAGE_MY_AVAILABILITY,
+  },
+  {
+    to: '/settings',
+    label: 'Parish Settings',
+    icon: <Settings className="w-4 h-4" />,
+    permission: PERMISSIONS.MANAGE_PARISH_SETTINGS,
   },
   // ── Diocese Coordinator only ──
   {

@@ -113,15 +113,12 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
   const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
     switch (category) {
       case 'Holy Mass': return 'ready';
+      case 'Baptism': return 'pending';
+      case 'Wedding': return 'neutral';
+      case 'Confirmation': return 'under-review';
+      case 'Funeral': return 'rejected';
       case 'Fiesta': return 'under-review';
       case 'Seminar': return 'neutral';
-      case 'Youth': return 'pending';
-      case 'Formation': return 'neutral';
-      case 'Retreat': return 'under-review';
-      case 'Outreach': return 'ready';
-      case 'Community': return 'ready';
-      case 'Diocesan Event': return 'pending';
-      case 'Sacramental': return 'neutral';
       default: return 'neutral';
     }
   };

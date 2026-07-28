@@ -14,6 +14,20 @@ function combineDateAndTime(date, timeStr) {
   }
 }
 
+function getThirdSaturdayOfMonth(year, month) {
+  const d = new Date(year, month, 1);
+  let saturdayCount = 0;
+  while (saturdayCount < 3) {
+    if (d.getDay() === 6) {
+      saturdayCount++;
+      if (saturdayCount === 3) {
+        return new Date(d);
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+}
+
 export class CalendarService {
   /**
    * Returns all schedule events for the given calendar month.
@@ -121,8 +135,41 @@ export class CalendarService {
         } : null,
         remarks: e.description,
         sourceType: "PARISH_EVENT",
+        location: e.location,
       };
     });
+
+    // Inject Vicariate Meeting on the third Saturday of Jan, Apr, Jul, Oct if not present in DB
+    const targetMonthIndex = parsedMonth - 1; // 0-indexed
+    if ([0, 3, 6, 9].includes(targetMonthIndex)) {
+      const thirdSatDate = getThirdSaturdayOfMonth(parsedYear, targetMonthIndex);
+      const hasVicariateMeeting = dbParishEvents.some(
+        (e) => e.eventType === "VICARIATE_MEETING" || e.title.includes("Vicariate Meeting")
+      );
+
+      if (!hasVicariateMeeting) {
+        const defaultParish = await prisma.parish.findFirst({ select: { id: true, parishName: true } });
+        const defaultParishId = defaultParish ? defaultParish.id : 1;
+        const defaultParishName = defaultParish ? defaultParish.parishName : "Vicariate Center";
+
+        eventsMapped.push({
+          id: `event-vicariate-meeting-${parsedYear}-${parsedMonth}`,
+          eventType: "OTHER",
+          displayTitle: "Vicariate Meeting",
+          requestedDate: thirdSatDate.toISOString(),
+          startDatetime: combineDateAndTime(thirdSatDate, "09:00 AM").toISOString(),
+          endDatetime: combineDateAndTime(thirdSatDate, "12:00 PM").toISOString(),
+          status: "CONFIRMED",
+          user: null,
+          parish: { parishName: defaultParishName },
+          processedBy: null,
+          assignedPriest: null,
+          remarks: "Quarterly assembly for vicariate coordinators and parish representatives.",
+          sourceType: "PARISH_EVENT",
+          location: "Vicariate Pastoral Center (Default)",
+        });
+      }
+    }
 
     // 3. Fetch recurring MassScheduleTemplates and expand
     const templateWhere = { isActive: true };

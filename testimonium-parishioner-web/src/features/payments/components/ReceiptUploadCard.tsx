@@ -7,7 +7,7 @@ import { Button } from '../../../components/ui/Button';
 interface ReceiptUploadCardProps {
   requestId: string;
   existingTransaction?: any;
-  onSuccess: () => void;
+  onSuccess: (updatedRequest?: any) => void;
 }
 
 export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
@@ -143,10 +143,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         autoVerified: result.autoVerified,
       });
 
-      // Introduce a 3-second delay so the user has time to read the success guidance before refresh
-      setTimeout(() => {
-        onSuccess();
-      }, 3000);
+      onSuccess(result.request);
     } catch (err: any) {
       clearInterval(interval);
       setIsUploading(false);

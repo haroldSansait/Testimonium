@@ -36,3 +36,7 @@ export async function respondReschedule(id: string, accept: boolean): Promise<Sc
 export async function assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
   return providerFactory.getScheduleProvider().assignPriest(id, priestId);
 }
+
+export async function respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest> {
+  return providerFactory.getScheduleProvider().respondPriestAssignment(id, status, reason);
+}

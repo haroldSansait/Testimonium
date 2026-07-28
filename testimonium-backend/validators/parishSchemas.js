@@ -11,6 +11,9 @@ export const createParishSchema = z.object({
   address: z.string().optional().nullable(),
   contactNumber: z.string().optional().nullable(),
   email: z.string().email("Invalid email format").optional().nullable().or(z.literal("")),
+  documentSettings: z.any().optional().nullable(),
+  eventSettings: z.any().optional().nullable(),
+  officeHours: z.any().optional().nullable(),
 });
 
 export const updateParishSchema = createParishSchema.partial().extend({

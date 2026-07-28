@@ -3,6 +3,7 @@ import { prisma } from "../config/db.js";
 import { canTransition } from "./RequestStateMachine.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { DocumentRequirementService } from "./DocumentRequirementService.js";
 
 export class DocumentRequestService {
   constructor(documentRequestRepository = new DocumentRequestRepository()) {
@@ -35,7 +36,7 @@ export class DocumentRequestService {
   /**
    * Updates the status of a document request.
    */
-  async updateStatus(requestId, targetStatus, remarks = "", actorId) {
+  async updateStatus(requestId, targetStatus, remarks = "", actorId, actorRole, actorParishId, correctionRequirementIds = []) {
     return prisma.$transaction(async (tx) => {
       const request = await tx.documentRequest.findUnique({
         where: { id: requestId },
@@ -49,6 +50,30 @@ export class DocumentRequestService {
 
       const currentStatus = request.status;
 
+      // Idempotency: if request is already in targetStatus, no-op
+      if (currentStatus === targetStatus) {
+        return request;
+      }
+
+      // Authorization & Ownership checks
+      if (actorRole === "PARISHIONER") {
+        if (targetStatus !== "CANCELLED" || request.userId !== actorId) {
+          const error = new Error("Unauthorized to perform this status update.");
+          error.statusCode = 403;
+          throw error;
+        }
+      } else if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
+        if (request.parishId !== actorParishId) {
+          const error = new Error("Unauthorized: Request belongs to a different parish.");
+          error.statusCode = 403;
+          throw error;
+        }
+      } else if (actorRole !== "DIOCESE_COORDINATOR") {
+        const error = new Error("Unauthorized role.");
+        error.statusCode = 403;
+        throw error;
+      }
+
       // Verify status change legality
       if (!canTransition(currentStatus, targetStatus)) {
         const error = new Error(`Cannot transition document request status from ${currentStatus} to ${targetStatus}`);
@@ -56,11 +81,71 @@ export class DocumentRequestService {
         throw error;
       }
 
+      // If Needs Correction, validate requirement IDs
+      if (targetStatus === "NEEDS_CORRECTION") {
+        if (!correctionRequirementIds || !Array.isArray(correctionRequirementIds) || correctionRequirementIds.length === 0) {
+          const error = new Error("At least one requirement must be selected for correction.");
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // Check for duplicates
+        const uniqueIds = new Set(correctionRequirementIds);
+        if (uniqueIds.size !== correctionRequirementIds.length) {
+          const error = new Error("Duplicate requirement IDs are not allowed.");
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // Fetch valid requirements for this document type
+        const requirementsConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
+        const validRequirementIds = (requirementsConfig.requiredDocuments || []).map(r => r.id);
+
+        for (const id of correctionRequirementIds) {
+          if (!validRequirementIds.includes(id)) {
+            const error = new Error(`Invalid requirement ID: "${id}" does not belong to document type "${request.documentType}".`);
+            error.statusCode = 400;
+            throw error;
+          }
+        }
+      }
+
       // Handle side-effects on Payment Transactions and Request paymentStatus
       let updatePayload = {
         status: targetStatus,
         remarks: remarks || request.remarks,
       };
+
+      if (targetStatus === "NEEDS_CORRECTION") {
+        updatePayload.correctionNote = remarks;
+        updatePayload.correctionRequirementIds = correctionRequirementIds;
+      }
+
+      if (targetStatus === "PAYMENT_NEEDS_CORRECTION") {
+        if (!remarks || typeof remarks !== "string" || remarks.trim() === "") {
+          const error = new Error("Payment correction note is required.");
+          error.statusCode = 400;
+          throw error;
+        }
+        updatePayload.paymentCorrectionNote = remarks.trim();
+
+        const pendingTx = await tx.paymentTransaction.findFirst({
+          where: { requestId, status: "PENDING" },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (pendingTx) {
+          await tx.paymentTransaction.update({
+            where: { id: pendingTx.id },
+            data: {
+              status: "REJECTED",
+              verifiedById: actorId,
+              verifiedAt: new Date(),
+            },
+          });
+        }
+        updatePayload.paymentStatus = "UNPAID";
+      }
 
       if (targetStatus === "PAYMENT_VERIFIED") {
         const pendingTx = await tx.paymentTransaction.findFirst({

@@ -113,5 +113,19 @@ export const DemoScheduleProvider: ScheduleProvider = {
     const updated = store.find(r => r.id === id);
     if (!updated) throw new Error(`Schedule request ${id} not found`);
     return updated;
+  },
+
+  async respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest> {
+    store = store.map(r => {
+      if (r.id !== id) return r;
+      return {
+        ...r,
+        priestResponseStatus: status,
+        priestResponseReason: reason || null,
+      };
+    });
+    const updated = store.find(r => r.id === id);
+    if (!updated) throw new Error(`Schedule request ${id} not found`);
+    return updated;
   }
 };

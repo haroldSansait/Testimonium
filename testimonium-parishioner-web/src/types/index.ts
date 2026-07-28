@@ -36,12 +36,16 @@ export type RequestStatus =
   | 'awaiting-information'
   | 'payment-pending'
   | 'payment-verification'
+  | 'payment-under-review'
+  | 'payment-needs-correction'
   | 'processing'
   | 'ready'
   | 'completed'
   | 'rejected'
   | 'cancelled'
-  | 'expired';
+  | 'expired'
+  | 'needs-correction'
+  | 'needs_correction';
 
 export interface RequestAttachment {
   id: number;
@@ -64,6 +68,26 @@ export interface PaymentTransaction {
   verifiedById?: number | null;
   verifiedAt?: string | null;
   createdAt: string;
+  receipts?: {
+    id: number;
+    paymentTransactionId: number;
+    r2ObjectKey: string;
+    fileName: string;
+    mimeType?: string | null;
+    fileSize?: number | null;
+    uploadedAt: string;
+    ocrResult?: {
+      id: number;
+      receiptUploadId: number;
+      referenceNumber?: string | null;
+      amount?: string | null;
+      paymentDate?: string | null;
+      provider?: string | null;
+      confidenceScore?: number | null;
+      rawText?: string | null;
+      processedAt: string;
+    } | null;
+  }[];
 }
 
 export interface RequestHistoryEntry {
@@ -100,6 +124,9 @@ export interface SacramentalRequest {
   paymentStatus?: 'unpaid' | 'proof-submitted' | 'confirmed' | 'UNPAID' | 'PROOF_SUBMITTED' | 'CONFIRMED';
   rejectionReason?: string;
   instructions?: string;
+  correctionRequirementIds?: string[];
+  correctionNote?: string | null;
+  paymentCorrectionNote?: string | null;
 }
 
 export interface Appointment {
@@ -166,7 +193,7 @@ export interface Event {
   id: string;
   title: string;
   description: string;
-  category: 'Holy Mass' | 'Fiesta' | 'Seminar' | 'Youth' | 'Formation' | 'Retreat' | 'Outreach' | 'Community' | 'Diocesan Event' | 'Sacramental';
+  category: 'Holy Mass' | 'Baptism' | 'Wedding' | 'Confirmation' | 'Funeral' | 'Fiesta' | 'Seminar' | 'Other';
   parishId: string;
   parishName: string;
   coverImage: string;

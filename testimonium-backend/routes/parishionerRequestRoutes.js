@@ -8,6 +8,7 @@ import {
   getByTracking,
   uploadFiles,
   uploadReceipt,
+  resubmitCorrections,
 } from "../controllers/ParishionerRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
@@ -34,5 +35,8 @@ router.post("/:id/files", uploadRequestFiles, uploadFiles);
 
 // Payment proof receipt upload (single file)
 router.post("/:id/receipt", uploadReceiptFile, uploadReceipt);
+
+// Resubmit corrected documents
+router.post("/:id/resubmit-corrections", resubmitCorrections);
 
 export default router;

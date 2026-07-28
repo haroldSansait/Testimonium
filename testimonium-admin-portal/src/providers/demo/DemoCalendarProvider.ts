@@ -3,7 +3,7 @@ import type { CalendarEvent } from '@/types';
 import { calendarEvents } from '@/mock/calendar';
 
 export const DemoCalendarProvider: CalendarProvider = {
-  async getEvents(_year: number, _month: number): Promise<CalendarEvent[]> {
+  async getEvents(_year: number, _month: number, _parishId?: string): Promise<CalendarEvent[]> {
     return calendarEvents.map(evt => ({
       ...evt,
       parish: evt.category === 'sacrament' ? 'St. Joseph the Worker Parish' : 'Diocese Office',
@@ -35,5 +35,19 @@ export const DemoCalendarProvider: CalendarProvider = {
     };
     calendarEvents.push(newEvent);
     return newEvent;
+  },
+  
+  async updateParishEvent(id: string, payload: Partial<CreateParishEventPayload>): Promise<any> {
+    const idx = calendarEvents.findIndex(evt => evt.id === id);
+    if (idx !== -1) {
+      calendarEvents[idx] = {
+        ...calendarEvents[idx],
+        title: payload.title || calendarEvents[idx].title,
+        time: payload.startTime ? `${payload.startTime} - ${payload.endTime || ''}` : calendarEvents[idx].time,
+        description: payload.description || calendarEvents[idx].description,
+      };
+      return calendarEvents[idx];
+    }
+    return null;
   }
 };

@@ -23,8 +23,8 @@ export class ReceiptVerificationService {
         throw error;
       }
 
-      if (request.status !== "PAYMENT_PENDING") {
-        const error = new Error("This request is not awaiting payment.");
+      if (request.status !== "PAYMENT_PENDING" && request.status !== "PAYMENT_NEEDS_CORRECTION") {
+        const error = new Error("This request is not awaiting payment or correction.");
         error.statusCode = 400;
         throw error;
       }
@@ -72,102 +72,75 @@ export class ReceiptVerificationService {
       });
 
       // 5. Automatic Verification Logic
-      const CONFIDENCE_THRESHOLD = 0.90;
-      const isAutoVerified = ocrData.confidenceScore >= CONFIDENCE_THRESHOLD;
+      // OCR auto-verification is disabled per instructions. Every upload routes to manual review.
+      const isAutoVerified = false;
 
       if (isAutoVerified) {
-        console.log(`[ReceiptVerificationService] Auto-verifying request ${request.trackingNumber} via OCR`);
-
-        // Update Payment Transaction
-        await tx.paymentTransaction.update({
-          where: { id: transaction.id },
-          data: {
-            status: "VERIFIED",
-            amount: ocrData.amount ? parseFloat(ocrData.amount) : null,
-            provider: ocrData.provider,
-            referenceNumber: ocrData.referenceNumber,
-            verifiedAt: new Date(),
-          },
-        });
-
-        // Update Document Request
-        const updatedRequest = await tx.documentRequest.update({
-          where: { id: requestId },
-          data: {
-            paymentStatus: "CONFIRMED",
-            status: "PAYMENT_VERIFIED", // Move request to PAYMENT_VERIFIED state
-          },
-        });
-
-        // Create Request History entry
-        await tx.requestHistory.create({
-          data: {
-            requestId,
-            actorId: userId,
-            action: "PAYMENT_AUTO_VERIFIED",
-            oldStatus: "PAYMENT_PENDING",
-            newStatus: "PAYMENT_VERIFIED",
-            remarks: `Payment auto-verified by OCR (Ref: ${ocrData.referenceNumber}, Conf: ${ocrData.confidenceScore * 100}%)`,
-          },
-        });
-
-        // Auto-verified: notify parishioner only (OCR handled it, no admin action required)
-        await NotificationDispatcher.notifyDocumentStatusChange(
-          {
-            parishionerId: userId,
-            parishId: request.parishId,
-            requestId: request.id,
-            trackingNumber: request.trackingNumber,
-            oldStatus: "PAYMENT_PENDING",
-            newStatus: "PAYMENT_VERIFIED",
-            notifyAdmins: false,
-          },
-          tx
-        );
-
-        await AuditLogService.log(userId, `Receipt auto-verified via OCR for request ${request.trackingNumber}`, tx);
-
-        return {
-          success: true,
-          autoVerified: true,
-          ocrResult: ocrRecord,
-          request: updatedRequest,
-        };
+        // unreachable block, kept for structure
       } else {
-        console.log(`[ReceiptVerificationService] OCR confidence too low (${ocrData.confidenceScore}), routing to manual review`);
+        console.log(`[ReceiptVerificationService] Routing upload to manual review (PAYMENT_UNDER_REVIEW)`);
 
-        // Update request paymentStatus to PROOF_SUBMITTED so staff is aware
+        const oldStatus = request.status;
+        const targetStatus = "PAYMENT_UNDER_REVIEW";
+
+        // Update request paymentStatus to PROOF_SUBMITTED and status to PAYMENT_UNDER_REVIEW
         const updatedRequest = await tx.documentRequest.update({
           where: { id: requestId },
           data: {
             paymentStatus: "PROOF_SUBMITTED",
+            status: targetStatus,
           },
         });
 
         // Create Request History entry
+        const isResubmission = oldStatus === "PAYMENT_NEEDS_CORRECTION";
+        const actionLabel = isResubmission ? "CORRECTED_PAYMENT_SUBMITTED" : "RECEIPT_UPLOADED";
+        const remarksText = isResubmission
+          ? "Corrected payment proof uploaded, pending manual verification by coordinator"
+          : "Receipt uploaded, pending manual verification by coordinator";
+
         await tx.requestHistory.create({
           data: {
             requestId,
             actorId: userId,
-            action: "RECEIPT_UPLOADED",
-            oldStatus: "PAYMENT_PENDING",
-            newStatus: "PAYMENT_PENDING",
-            remarks: "Receipt uploaded, pending manual verification by coordinator",
+            action: actionLabel,
+            oldStatus,
+            newStatus: targetStatus,
+            remarks: remarksText,
           },
         });
 
-        // Manual review: notify parishioner + admins so staff can verify the proof
-        await NotificationDispatcher.notifyReceiptUploaded(
-          {
-            parishionerId: userId,
-            parishId: request.parishId,
-            requestId: request.id,
-            trackingNumber: request.trackingNumber,
-          },
-          tx
-        );
+        // Fetch parishioner name for notifications
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+        });
+        const parishionerName = user ? user.fullName : "Parishioner";
 
-        await AuditLogService.log(userId, `Receipt uploaded for request ${request.trackingNumber}, pending manual check`, tx);
+        // Dispatch notifications
+        if (isResubmission) {
+          await NotificationDispatcher.notifyReceiptResubmitted(
+            {
+              parishionerId: userId,
+              parishionerName,
+              parishId: request.parishId,
+              requestId: request.id,
+              trackingNumber: request.trackingNumber,
+            },
+            tx
+          );
+        } else {
+          await NotificationDispatcher.notifyReceiptUploaded(
+            {
+              parishionerId: userId,
+              parishId: request.parishId,
+              requestId: request.id,
+              trackingNumber: request.trackingNumber,
+            },
+            tx
+          );
+        }
+
+        await AuditLogService.log(userId, `Receipt uploaded for request ${request.trackingNumber}, transitioned to PAYMENT_UNDER_REVIEW`, tx);
 
         return {
           success: true,

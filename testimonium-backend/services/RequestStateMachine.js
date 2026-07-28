@@ -3,6 +3,8 @@ export const DocumentRequestStatus = {
   UNDER_REVIEW: "UNDER_REVIEW",
   NEEDS_CORRECTION: "NEEDS_CORRECTION",
   PAYMENT_PENDING: "PAYMENT_PENDING",
+  PAYMENT_UNDER_REVIEW: "PAYMENT_UNDER_REVIEW",
+  PAYMENT_NEEDS_CORRECTION: "PAYMENT_NEEDS_CORRECTION",
   PAYMENT_VERIFIED: "PAYMENT_VERIFIED",
   PROCESSING: "PROCESSING",
   READY_FOR_PICKUP: "READY_FOR_PICKUP",
@@ -31,8 +33,18 @@ const TRANSITIONS = {
     DocumentRequestStatus.REJECTED,
   ],
   [DocumentRequestStatus.PAYMENT_PENDING]: [
-    DocumentRequestStatus.PAYMENT_VERIFIED,
+    DocumentRequestStatus.PAYMENT_UNDER_REVIEW,
     DocumentRequestStatus.CANCELLED,
+  ],
+  [DocumentRequestStatus.PAYMENT_UNDER_REVIEW]: [
+    DocumentRequestStatus.PAYMENT_VERIFIED,
+    DocumentRequestStatus.PAYMENT_NEEDS_CORRECTION,
+    DocumentRequestStatus.REJECTED,
+  ],
+  [DocumentRequestStatus.PAYMENT_NEEDS_CORRECTION]: [
+    DocumentRequestStatus.PAYMENT_UNDER_REVIEW,
+    DocumentRequestStatus.CANCELLED,
+    DocumentRequestStatus.REJECTED,
   ],
   [DocumentRequestStatus.PAYMENT_VERIFIED]: [
     DocumentRequestStatus.PROCESSING,

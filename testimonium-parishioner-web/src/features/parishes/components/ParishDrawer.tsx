@@ -34,25 +34,92 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
   // Calculate if the parish office is currently open based on current time
   const isOfficeOpen = () => {
     const now = new Date();
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDayName = daysOfWeek[now.getDay()]; // e.g. "Monday"
+    
+    let hoursObj: any = null;
+    if (parish.officeHours) {
+      if (typeof parish.officeHours === 'object') {
+        hoursObj = parish.officeHours;
+      } else {
+        try {
+          hoursObj = JSON.parse(parish.officeHours as any);
+        } catch (e) {
+          // ignore and fallback
+        }
+      }
+    }
+    
+    if (hoursObj && hoursObj[currentDayName]) {
+      const todayHours = hoursObj[currentDayName];
+      if (todayHours.isClosed) return false;
+      
+      const parseTime = (timeStr: string) => {
+        const match = timeStr.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+        if (!match) return { hour: 8, minute: 0 };
+        let h = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10);
+        const ampm = match[3].toUpperCase();
+        if (ampm === 'PM' && h < 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        return { hour: h, minute: m };
+      };
+      
+      const open = parseTime(todayHours.openTime);
+      const close = parseTime(todayHours.closeTime);
+      
+      const currentTotalMin = now.getHours() * 60 + now.getMinutes();
+      const openTotalMin = open.hour * 60 + open.minute;
+      const closeTotalMin = close.hour * 60 + close.minute;
+      
+      return currentTotalMin >= openTotalMin && currentTotalMin <= closeTotalMin;
+    }
+    
     const day = now.getDay(); // 0 is Sunday, 5 is Friday
     const hour = now.getHours();
     
-    // Check if day is within closed days
-    // Tuesday - Sunday schedules: Closed on Monday (1)
-    // Tuesday - Saturday schedules: Closed on Monday (1) & Sunday (0)
-    const hoursLower = parish.officeHours.toLowerCase();
+    const hoursLower = String(parish.officeHours || '').toLowerCase();
     const isClosedMonday = hoursLower.includes('tuesday -') || hoursLower.includes('tues -');
     const isClosedSunday = hoursLower.includes('tuesday - saturday') || hoursLower.includes('tue - sat');
     
     if (day === 1 && isClosedMonday) return false;
     if (day === 0 && isClosedSunday) return false;
     
-    // Check operating hours: typically 8:00 AM - 12:00 PM, 1:30 PM - 5:00 PM (or similar)
-    // For simplicity, check if current hour is 8-12 or 13-17
     return (hour >= 8 && hour < 12) || (hour >= 13 && hour < 17);
   };
 
+  const getOfficeHoursDisplay = (): string => {
+    if (!parish.officeHours) return "Closed";
+    
+    let hoursObj: any = null;
+    if (typeof parish.officeHours === 'object') {
+      hoursObj = parish.officeHours;
+    } else {
+      try {
+        hoursObj = JSON.parse(parish.officeHours);
+      } catch (e) {
+        return String(parish.officeHours);
+      }
+    }
+    
+    if (!hoursObj || typeof hoursObj !== 'object') return String(parish.officeHours);
+    
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const groups: string[] = [];
+    
+    days.forEach(day => {
+      const info = hoursObj[day];
+      if (info) {
+        const status = info.isClosed ? 'Closed' : `${info.openTime} - ${info.closeTime}`;
+        groups.push(`${day.substring(0, 3)}: ${status}`);
+      }
+    });
+    
+    return groups.length > 0 ? groups.join(' | ') : "Closed";
+  };
+
   const officeIsOpen = isOfficeOpen();
+  const officeHoursText = getOfficeHoursDisplay();
 
   return (
     <Card className="flex-grow flex flex-col h-full overflow-hidden border border-border shadow-card relative bg-white">
@@ -126,7 +193,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
               Office Hours
             </span>
             <p className="text-xs text-text-primary mt-1 font-medium leading-relaxed">
-              {parish.officeHours}
+              {officeHoursText}
             </p>
           </div>
           <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">

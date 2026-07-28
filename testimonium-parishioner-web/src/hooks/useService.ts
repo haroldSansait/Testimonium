@@ -7,16 +7,20 @@ export function useQuery<T>(queryFn: () => Promise<T>, deps: any[] = []) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>(undefined);
 
-  const refetch = useCallback(async () => {
-    setLoading(true);
+  const refetch = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     const startTime = Date.now();
     try {
       const res = await queryFn();
       
-      // Ensure minimum display duration of 300ms to prevent skeleton flickering
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 300) {
-        await new Promise(resolve => setTimeout(resolve, 300 - elapsed));
+      if (!silent) {
+        // Ensure minimum display duration of 300ms to prevent skeleton flickering
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 300) {
+          await new Promise(resolve => setTimeout(resolve, 300 - elapsed));
+        }
       }
       
       setData(res);
@@ -25,12 +29,30 @@ export function useQuery<T>(queryFn: () => Promise<T>, deps: any[] = []) {
       console.error("[useQuery Error] Failed query:", queryFn.toString(), err);
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, deps);
 
   useEffect(() => {
     refetch();
+  }, [refetch]);
+
+  useEffect(() => {
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refetch(true); // silent update on window focus / visibility change
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
   }, [refetch]);
 
   return { data, loading, error, setData, refetch };

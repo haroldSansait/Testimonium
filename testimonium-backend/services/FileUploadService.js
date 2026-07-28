@@ -25,6 +25,21 @@ export class FileUploadService {
       contentType: file.mimetype,
     });
 
+    // Clean up existing attachment for this category/requirement
+    const existing = await dbClient.requestAttachment.findFirst({
+      where: { requestId, category },
+    });
+    if (existing) {
+      try {
+        await r2Service.delete(existing.r2ObjectKey);
+      } catch (err) {
+        console.error(`Failed to delete old attachment key ${existing.r2ObjectKey} from R2:`, err);
+      }
+      await dbClient.requestAttachment.delete({
+        where: { id: existing.id },
+      });
+    }
+
     // Create DB record
     const attachment = await dbClient.requestAttachment.create({
       data: {

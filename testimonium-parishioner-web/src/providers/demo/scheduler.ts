@@ -48,16 +48,29 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     return [...this.appointments];
   }
 
-  async getAvailableSlots(_parishId: string, _date: string): Promise<string[]> {
+  async getAvailableSlots(_parishId: string, date: string): Promise<string[]> {
     await new Promise(resolve => setTimeout(resolve, 200));
-    return [
-      '08:30 AM - 09:30 AM',
-      '09:30 AM - 10:30 AM',
-      '10:30 AM - 11:30 AM',
-      '01:30 PM - 02:30 PM',
-      '02:30 PM - 03:30 PM',
-      '03:30 PM - 04:30 PM'
-    ];
+    const targetDate = new Date(date);
+    const isSaturday = targetDate.getDay() === 6;
+    const slots = isSaturday 
+      ? [
+          '06:00 AM',
+          '08:30 AM - 09:30 AM',
+          '09:30 AM - 10:30 AM',
+          '10:30 AM - 11:30 AM',
+          '01:30 PM - 02:30 PM',
+          '02:30 PM - 03:30 PM',
+          '03:30 PM - 04:30 PM'
+        ]
+      : [
+          '08:30 AM - 09:30 AM',
+          '09:30 AM - 10:30 AM',
+          '10:30 AM - 11:30 AM',
+          '01:30 PM - 02:30 PM',
+          '02:30 PM - 03:30 PM',
+          '03:30 PM - 04:30 PM'
+        ];
+    return slots;
   }
 
   async bookAppointment(appointment: {
@@ -65,6 +78,7 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     serviceName: string;
     date: string;
     timeSlot: string;
+    location?: string;
   }): Promise<Appointment> {
     await new Promise(resolve => setTimeout(resolve, 400));
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);

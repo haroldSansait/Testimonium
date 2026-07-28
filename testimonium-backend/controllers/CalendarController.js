@@ -5,7 +5,12 @@ const calendarService = new CalendarService();
 export const getEvents = async (req, res, next) => {
   try {
     const { year, month } = req.query;
-    const parishId = req.user.role !== "DIOCESE_COORDINATOR" ? req.user.parish?.id : undefined;
+    let parishId;
+    if (req.user.role === "DIOCESE_COORDINATOR") {
+      parishId = req.query.parishId ? parseInt(req.query.parishId, 10) : undefined;
+    } else {
+      parishId = req.user.parish?.id;
+    }
 
     if (!year || !month) {
       return res.status(400).json({

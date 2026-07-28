@@ -90,6 +90,7 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     serviceName: string;
     date: string;
     timeSlot: string;
+    location?: string;
   }): Promise<Appointment> {
     const payload = {
       parishId: parseInt(appointment.parishId, 10),
@@ -97,7 +98,7 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       displayTitle: appointment.serviceName,
       date: appointment.date,
       timeSlot: appointment.timeSlot,
-      remarks: "Parishioner Portal Request",
+      remarks: appointment.location ? `Venue: ${appointment.location}.` : "Parishioner Portal Request",
     };
 
     const data = await client.post<any>("/schedule-requests", payload);

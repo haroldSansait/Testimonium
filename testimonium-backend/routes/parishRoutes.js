@@ -6,6 +6,7 @@ import {
   update,
   archive,
   restore,
+  updateSettings,
 } from "../controllers/ParishController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
@@ -20,6 +21,7 @@ router.use(authenticateFirebaseToken);
 // Publicly read parishes for all authenticated users
 router.get("/", list);
 router.get("/:id", getById);
+router.put("/:id/settings", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), updateSettings);
 
 // Apply authorization middleware — only Diocese Coordinators can modify parishes
 router.use(checkRole(["DIOCESE_COORDINATOR"]));
