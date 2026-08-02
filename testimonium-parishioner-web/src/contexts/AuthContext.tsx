@@ -10,6 +10,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
+import { clearAllPollingTimers } from '../hooks/useService';
 
 interface AuthContextType {
   user: User | null;
@@ -69,6 +70,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       await signOut(auth);
+      clearAllPollingTimers();
+      localStorage.clear();
+      sessionStorage.clear();
     } finally {
       setLoading(false);
     }

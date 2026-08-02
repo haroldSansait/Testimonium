@@ -160,9 +160,21 @@ const seed = async () => {
   for (const parish of parishes) {
     const slug = generateSlug(parish.parishName);
     const parishWithSlug = { ...parish, slug };
+    const {
+      coverImage,
+      logoImage,
+      latitude,
+      longitude,
+      mapZoom,
+      pinColor,
+      showLabel,
+      directoryDescription,
+      ...staticData
+    } = parishWithSlug;
+
     await prisma.parish.upsert({
       where: { parishName: parish.parishName },
-      update: parishWithSlug,
+      update: staticData,
       create: parishWithSlug,
     });
   }
@@ -318,6 +330,69 @@ const seed = async () => {
         firebaseUid: null,
       },
     });
+  }
+
+  // Seed MassScheduleTemplate & ParishEvents for all parishes
+  const parishesList = await prisma.parish.findMany();
+  for (const parish of parishesList) {
+    // Delete existing templates/events for this parish to ensure correct state and idempotency
+    await prisma.massScheduleTemplate.deleteMany({
+      where: { parishId: parish.id }
+    });
+    await prisma.parishEvent.deleteMany({
+      where: { parishId: parish.id }
+    });
+
+    const templates = [
+      // Wednesdays
+      { dayType: "WEDNESDAY", timeSlot: "06:00 AM", label: "Morning Mass" },
+      { dayType: "WEDNESDAY", timeSlot: "05:15 PM", label: "Evening Mass" },
+      // Fridays
+      { dayType: "FRIDAY", timeSlot: "06:00 AM", label: "Morning Mass" },
+      { dayType: "FRIDAY", timeSlot: "05:15 PM", label: "Evening Mass" },
+      // Sundays
+      { dayType: "SUNDAY", timeSlot: "05:00 AM", label: "Sunday Early Mass" },
+      { dayType: "SUNDAY", timeSlot: "07:00 AM", label: "Sunday Morning Mass" },
+      { dayType: "SUNDAY", timeSlot: "09:00 AM", label: "Sunday High Mass" },
+      { dayType: "SUNDAY", timeSlot: "04:00 PM", label: "Sunday Afternoon Mass" },
+      { dayType: "SUNDAY", timeSlot: "06:00 PM", label: "Sunday Evening Mass" },
+    ];
+    for (const t of templates) {
+      await prisma.massScheduleTemplate.create({
+        data: {
+          parishId: parish.id,
+          dayType: t.dayType,
+          timeSlot: t.timeSlot,
+          label: t.label,
+          isActive: true,
+        }
+      });
+    }
+    console.log(`[SEED] Seeded mass templates for parish: ${parish.parishName}`);
+
+    // Seed deterministic ParishEvents
+    const events = [
+      { title: "Pre-Cana Marriage Seminar", eventType: "SEMINAR", description: "Mandatory marriage preparation course.", location: "Parish Hall", eventDate: new Date("2026-09-10"), startTime: "08:00 AM", endTime: "12:00 PM" },
+      { title: "Parish Fiesta Procession", eventType: "FIESTA", description: "Annual patronal procession.", location: "Parish Grounds", eventDate: new Date("2026-09-19"), startTime: "04:00 PM", endTime: "07:00 PM" },
+      { title: "Holy Hour Adoration", eventType: "OTHER", description: "Eucharistic Adoration and Benediction.", location: "Main Chapel", eventDate: new Date("2026-09-05"), startTime: "06:00 PM", endTime: "07:00 PM" },
+    ];
+
+    for (const evt of events) {
+      await prisma.parishEvent.create({
+        data: {
+          parishId: parish.id,
+          title: evt.title,
+          eventType: evt.eventType,
+          description: evt.description,
+          location: evt.location,
+          eventDate: evt.eventDate,
+          startTime: evt.startTime,
+          endTime: evt.endTime,
+          isActive: true,
+        }
+      });
+    }
+    console.log(`[SEED] Seeded sample events for parish: ${parish.parishName}`);
   }
 };
 

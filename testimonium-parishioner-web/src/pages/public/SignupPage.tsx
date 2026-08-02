@@ -4,6 +4,7 @@ import { ShieldAlert, UserPlus, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 export const SignupPage: React.FC = () => {
   const { signUpWithEmail, signInWithGoogle } = useAuth();
@@ -77,30 +78,30 @@ export const SignupPage: React.FC = () => {
   return (
     <div className="min-h-[calc(100vh-64px)] grid grid-cols-1 md:grid-cols-12 bg-app-base">
       {/* Left side - Branding (Hidden on mobile) */}
-      <div className="hidden md:flex md:col-span-5 bg-sidebar-bg text-white flex-col justify-between p-12 relative overflow-hidden">
-        <div className="absolute inset-0 bg-sidebar-dark/45 z-0" />
+      <div 
+        className="hidden md:flex md:col-span-5 text-white flex-col justify-center items-center text-center p-12 relative overflow-hidden"
+        style={{
+          backgroundImage: `linear-gradient(rgba(123, 28, 42, 0.88), rgba(123, 28, 42, 0.92)), url(${mtKanlaonImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
+      >
+        {/* Background Overlay */}
+        <div className="absolute inset-0 bg-black/10 z-0" />
         <div className="absolute -bottom-20 -left-20 w-84 h-84 border-4 border-white/5 rounded-full z-0" />
 
-        <div className="relative z-10 space-y-3">
-          <span className="text-[10px] font-bold tracking-widest text-white/60 uppercase">
-            Diocese Administration
-          </span>
-          <h2 className="text-3xl font-serif font-black tracking-wide">
-            TESTIMONIUM
-          </h2>
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <UserPlus size={48} className="text-white/80" />
-          <h3 className="text-2xl font-serif font-bold leading-snug">
+        <div className="relative z-10 space-y-6 max-w-md flex flex-col items-center animate-in fade-in duration-700">
+          <UserPlus size={56} className="text-white/85" />
+          <h3 className="text-3xl md:text-4xl font-serif font-bold leading-tight">
             Create Your Parishioner Account
           </h3>
-          <p className="text-xs text-white/60 max-w-sm leading-relaxed">
+          <p className="text-sm sm:text-base text-white/80 leading-relaxed font-normal">
             Gain immediate access to certificate request forms, booking services, and status updates for your records.
           </p>
         </div>
 
-        <div className="relative z-10 text-[10px] text-white/40">
+        <div className="absolute bottom-12 left-0 right-0 text-center z-10 text-[10px] text-white/40">
           Roman Catholic Diocese of San Carlos &copy; {new Date().getFullYear()}
         </div>
       </div>

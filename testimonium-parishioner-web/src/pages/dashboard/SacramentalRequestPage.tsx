@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, Copy, FileText } from 'lucide-react';
 import services from '../../providers/factory';
-import { useParishes } from '../../hooks/useService';
+import { useParishes, usePausePolling } from '../../hooks/useService';
 import type { SacramentalRequest } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -14,6 +14,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 
 export const SacramentalRequestPage: React.FC = () => {
+  usePausePolling(true);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryParishId = searchParams.get('parishId');
@@ -33,7 +34,6 @@ export const SacramentalRequestPage: React.FC = () => {
     { type: 'MARRIAGE_BANNS', title: 'Marriage Banns', desc: 'Public notification of prospective marriage' },
     { type: 'PERMIT_TO_MARRY', title: 'Permit to Marry', desc: 'Clearance to marry in another parish' },
     { type: 'STATUS_OF_LIBERTY', title: 'Status of Liberty', desc: 'Attestation of canonical freedom to marry' },
-    { type: 'ENDORSEMENT', title: 'GKK Endorsement', desc: 'Recommendation from local GKK leader' },
   ];
 
   // Form State
@@ -231,7 +231,7 @@ export const SacramentalRequestPage: React.FC = () => {
               >
                 {parishes.map(parish => (
                   <option key={parish.id} value={parish.id}>
-                    {parish.name} — {parish.address || parish.city}
+                    {parish.name}
                   </option>
                 ))}
               </select>

@@ -42,6 +42,7 @@ export const ParishDirectoryPage: React.FC = () => {
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,7 +209,7 @@ export const ParishDirectoryPage: React.FC = () => {
                 onClick={() => handleSelectParish(parish)}
                 className="p-3 hover:bg-app-page cursor-pointer transition-colors text-xs flex items-center space-x-2"
               >
-                <MapPin size={14} className="text-crimson" />
+                <MapPin size={14} className="text-[#7B1C2A]" />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-text-primary truncate">{parish.name}</h4>
                   <p className="text-[10px] text-text-muted truncate">{parish.address}</p>
@@ -244,12 +245,64 @@ export const ParishDirectoryPage: React.FC = () => {
               description="No canonical registry location matches your current search keyword. Try another parish name or vicariate city."
               icon={<MapIcon size={36} className="text-text-muted/40" />}
               action={
-                <Button size="sm" onClick={() => setSearchQuery('')} className="bg-crimson hover:bg-crimson-dark">
+                <Button size="sm" onClick={() => setSearchQuery('')} className="bg-[#7B1C2A] hover:bg-[#5C1520]">
                   Reset Search
                 </Button>
               }
             />
           </div>
+        )}
+
+        {/* Collapsible scrolling Parishes List sidebar overlay */}
+        <div className={`absolute left-4 top-4 bottom-4 w-72 bg-white/95 backdrop-blur-sm border border-border rounded-xl shadow-xl flex flex-col z-[1000] transition-all duration-350 pointer-events-auto ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-[290px]"
+        }`}>
+          {/* Header */}
+          <div className="p-3 border-b border-border/60 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+              <MapIcon size={14} className="text-[#7B1C2A]" />
+              Parish Directory ({displayParishes.length})
+            </h3>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded focus-ring"
+              title="Hide list"
+            >
+              <Minimize2 size={14} />
+            </button>
+          </div>
+          
+          {/* List */}
+          <div className="flex-grow overflow-y-auto divide-y divide-border/40 p-2 space-y-1">
+            {displayParishes.map(parish => (
+              <button
+                key={parish.id}
+                onClick={() => handleSelectParish(parish)}
+                className={`w-full text-left p-2.5 rounded-lg transition-all flex items-start gap-2.5 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#7B1C2A]/20 ${
+                  selectedParish?.id === parish.id ? "bg-[#7B1C2A]/5 border border-[#7B1C2A]/25 text-[#7B1C2A]" : "border border-transparent"
+                }`}
+              >
+                <MapPin size={14} className="text-[#7B1C2A] flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <h4 className="text-xs font-bold text-gray-900 truncate">{parish.name}</h4>
+                  <p className="text-[10px] text-gray-500 truncate mt-0.5">{parish.address}</p>
+                  <p className="text-[9px] text-gray-400 mt-1">Patron: {parish.patronSaint}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Trigger to show sidebar when collapsed */}
+        {!isSidebarOpen && (
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="absolute left-4 top-4 z-[1000] p-2.5 bg-white border border-border text-text-muted hover:text-[#7B1C2A] rounded-button shadow-md transition-all focus-ring flex items-center gap-1.5 text-xs font-bold pointer-events-auto"
+            title="Show list"
+          >
+            <Maximize2 size={14} />
+            <span>Show List</span>
+          </button>
         )}
 
         {/* Map Floating Control Controls */}
@@ -281,7 +334,9 @@ export const ParishDirectoryPage: React.FC = () => {
         {selectedParish && (
           <div className="absolute inset-0 pointer-events-none z-[1000]">
             {/* Desktop layout: floating overlay */}
-            <div className="hidden lg:block absolute left-4 top-4 bottom-4 w-96 pointer-events-auto overflow-y-auto animate-in slide-in-from-left duration-300">
+            <div className={`hidden lg:block absolute top-4 bottom-4 w-96 pointer-events-auto overflow-y-auto animate-in slide-in-from-left duration-300 transition-all ${
+              isSidebarOpen ? "left-[304px]" : "left-4"
+            }`}>
               <ParishDrawer 
                 parish={selectedParish}
                 onRequestDocument={handleRequestDocument}

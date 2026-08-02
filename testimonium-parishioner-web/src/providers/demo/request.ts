@@ -227,26 +227,22 @@ export class DemoRequestProvider implements IRequestProvider {
     const ALL_REQS: any = {
       'baptismal_certificate': {
         requiredDocuments: [
-          { id: 'valid_id', label: 'Valid ID', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement Letter', required: true }
+          { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'confirmation_certificate': {
         requiredDocuments: [
-          { id: 'valid_id', label: 'Valid ID', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement Letter', required: true }
+          { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'marriage_certificate': {
         requiredDocuments: [
-          { id: 'valid_id', label: 'Valid ID', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement Letter', required: true }
+          { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'first_communion_certificate': {
         requiredDocuments: [
-          { id: 'valid_id', label: 'Valid ID', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement Letter', required: true }
+          { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'marriage_banns': {
@@ -257,8 +253,7 @@ export class DemoRequestProvider implements IRequestProvider {
           { id: 'marriage_license', label: 'Civil Marriage License', required: true },
           { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate', required: true },
           { id: 'cenomar', label: 'PSA CENOMAR', required: true },
-          { id: 'banns_clearance', label: 'Banns Clearance Form', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement Letter', required: true }
+          { id: 'banns_clearance', label: 'Banns Clearance Form', required: true }
         ]
       },
       'permit_to_marry': {
@@ -270,8 +265,7 @@ export class DemoRequestProvider implements IRequestProvider {
           { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate', required: true },
           { id: 'cenomar', label: 'PSA CENOMAR', required: true },
           { id: 'canonical_interview', label: 'Canonical Interview Form', required: true },
-          { id: 'banns_clearance', label: 'Banns Clearance', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement', required: true }
+          { id: 'banns_clearance', label: 'Banns Clearance', required: true }
         ]
       },
       'status_of_liberty': {
@@ -279,13 +273,7 @@ export class DemoRequestProvider implements IRequestProvider {
           { id: 'valid_id', label: 'Valid Government ID', required: true },
           { id: 'baptismal_cert', label: 'Baptismal Certificate', required: true },
           { id: 'cenomar', label: 'PSA CENOMAR', required: true },
-          { id: 'canonical_interview', label: 'Canonical Interview Document', required: true },
-          { id: 'gkk_endorsement', label: 'GKK Endorsement', required: true }
-        ]
-      },
-      'endorsement': {
-        requiredDocuments: [
-          { id: 'gkk_endorsement', label: 'GKK Endorsement Form', required: true }
+          { id: 'canonical_interview', label: 'Canonical Interview Document', required: true }
         ]
       }
     };

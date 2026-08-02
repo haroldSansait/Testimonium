@@ -2,13 +2,14 @@ import { useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Info, Church, Mail, Phone, Globe, Shield } from 'lucide-react';
 import logoUrl from '@/assets/TESTIMONIUM_logo.png';
+import packageJson from '../../../package.json';
 
 // ─── Static system information ─────────────────────────────────────────────────
 
 const SYSTEM_INFO = {
   name: 'TESTIMONIUM',
   subtitle: 'Parish Administration and Services Platform',
-  version: '2.0.0',
+  version: packageJson.version || '0.0.0',
   buildDate: '2026',
   diocese: 'Diocese of San Carlos',
   vicariate: 'Canlaon Vicariate',

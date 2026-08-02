@@ -17,7 +17,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government / Student ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
-      { id: "gkk_endorsement", label: "GKK Endorsement Letter", category: "supporting", required: true, description: "Signed endorsement from your local GKK leader/chapel officer." },
     ],
   },
 
@@ -33,7 +32,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government / Student ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
-      { id: "gkk_endorsement", label: "GKK Endorsement Letter", category: "supporting", required: true, description: "Signed endorsement from your local GKK leader." },
     ],
   },
 
@@ -49,7 +47,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government ID of Requester", category: "primary", required: true, description: "Clear photo of valid ID." },
-      { id: "gkk_endorsement", label: "GKK Endorsement Letter", category: "supporting", required: true, description: "Signed GKK officer endorsement." },
     ],
   },
 
@@ -65,7 +62,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid ID of Parent / Guardian", category: "primary", required: true, description: "Clear photo of valid ID." },
-      { id: "gkk_endorsement", label: "GKK Endorsement Letter", category: "supporting", required: true, description: "Signed GKK endorsement." },
     ],
   },
 
@@ -87,7 +83,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
       { id: "precana_proof", label: "Pre-Cana Seminar Certificate", category: "supporting", required: true, description: "Proof of attendance." },
       { id: "cenomar", label: "PSA CENOMAR", category: "supporting", required: true, description: "Certificate of No Marriage Record from PSA." },
       { id: "banns_clearance", label: "Banns Clearance Form", category: "supporting", required: true, description: "From home parish." },
-      { id: "gkk_endorsement", label: "GKK Endorsement Letter", category: "supporting", required: true, description: "Signed GKK endorsement." },
     ],
   },
 
@@ -110,7 +105,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
       { id: "cenomar", label: "PSA CENOMAR", category: "supporting", required: true, description: "Certificate of No Marriage." },
       { id: "canonical_interview", label: "Canonical Interview Form", category: "supporting", required: true, description: "Signed interview clearance." },
       { id: "banns_clearance", label: "Banns Clearance", category: "supporting", required: true, description: "Published banns clearance." },
-      { id: "gkk_endorsement", label: "GKK Endorsement", category: "supporting", required: true, description: "Signed GKK endorsement." },
     ],
   },
 
@@ -129,22 +123,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
       { id: "baptismal_cert", label: "Baptismal Certificate", category: "supporting", required: true, description: "Recent baptismal record." },
       { id: "cenomar", label: "PSA CENOMAR", category: "supporting", required: true, description: "PSA Certificate of No Marriage Record." },
       { id: "canonical_interview", label: "Canonical Interview Document", category: "supporting", required: true, description: "Interview conducted by parish priest." },
-      { id: "gkk_endorsement", label: "GKK Endorsement", category: "supporting", required: true, description: "GKK Officer endorsement." },
-    ],
-  },
-
-  ENDORSEMENT: {
-    documentType: "ENDORSEMENT",
-    title: "GKK Endorsement",
-    description: "Ecclesial endorsement letter from your local GKK / Chapel Officer.",
-    estimatedProcessingDays: 2,
-    baseFee: 50.00,
-    requiredFields: [
-      { id: "applicantName", label: "Full Name of Applicant", type: "text", required: true },
-      { id: "purpose", label: "GKK Chapel & Intended Service", type: "text", required: true },
-    ],
-    requiredDocuments: [
-      { id: "gkk_endorsement", label: "GKK Endorsement Form / Recommendation", category: "primary", required: true, description: "Obtained from your local GKK Chapel officer." },
     ],
   },
 };

@@ -1,11 +1,16 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
 
 export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isLoginPage = location.pathname === '/login';
+  const isSignupPage = location.pathname === '/signup';
+  const isAuthPage = isLoginPage || isSignupPage;
 
   return (
     <div className="min-h-screen flex flex-col bg-app-base">
@@ -14,20 +19,32 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-3">
-              <Link to="/" className="flex items-center space-x-2.5 focus-ring rounded-md">
-                <span className="font-serif font-bold text-xl text-crimson tracking-wide">
+              <Link to="/" className="flex items-center focus-ring rounded-md text-left">
+                <span className="font-serif font-black text-2xl md:text-3xl text-crimson tracking-wider leading-none">
                   TESTIMONIUM
-                </span>
-                <span className="text-xs font-semibold px-2 py-0.5 bg-red-50 text-crimson rounded-full border border-crimson/10 uppercase tracking-wider hidden sm:inline-block">
-                  Parishioner Portal
                 </span>
               </Link>
             </div>
             <div className="flex items-center space-x-4">
-              {user ? (
-                <Button variant="ghost" size="sm" onClick={logout}>
-                  Sign Out
-                </Button>
+              {isAuthPage ? (
+                isLoginPage ? (
+                  <Button size="sm" onClick={() => navigate('/signup')}>
+                    Register
+                  </Button>
+                ) : (
+                  <Link to="/login" className="text-sm font-semibold text-crimson hover:underline px-2.5 py-1.5 focus-ring rounded-md">
+                    Log In
+                  </Link>
+                )
+              ) : user ? (
+                <div className="flex items-center space-x-3">
+                  <Button size="sm" variant="outline" onClick={() => navigate('/dashboard/home')}>
+                    Dashboard
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={logout}>
+                    Sign Out
+                  </Button>
+                </div>
               ) : (
                 <>
                   <Link to="/login" className="text-sm font-medium text-text-muted hover:text-text-primary focus-ring px-2.5 py-1.5 rounded-md">

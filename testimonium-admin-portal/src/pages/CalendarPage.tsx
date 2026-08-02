@@ -806,20 +806,43 @@ export function CalendarPage() {
   const [moreEventsDay, setMoreEventsDay] = useState<{ day: number; events: CalendarEvent[] } | null>(null);
   
   const [parishes, setParishes] = useState<Parish[]>([]);
-  const [selectedParishFilter, setSelectedParishFilter] = useState<string>('all');
+  const [selectedParishFilter, setSelectedParishFilter] = useState<string>(() => {
+    return localStorage.getItem('lastSelectedParishId') || '';
+  });
 
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
 
   useEffect(() => {
     if (applicationUser?.role === 'DIOCESE_COORDINATOR') {
-      void ParishManagementService.getParishes().then(setParishes).catch(err => {
+      void ParishManagementService.getParishes().then(loadedParishes => {
+        setParishes(loadedParishes);
+        if (loadedParishes.length > 0) {
+          const stored = localStorage.getItem('lastSelectedParishId');
+          const exists = loadedParishes.some(p => p.id === stored);
+          if (stored && exists) {
+            setSelectedParishFilter(stored);
+          } else {
+            localStorage.removeItem('lastSelectedParishId');
+            setSelectedParishFilter(loadedParishes[0].id);
+            localStorage.setItem('lastSelectedParishId', loadedParishes[0].id);
+          }
+        }
+      }).catch(err => {
         console.error('Failed to load parishes for filter:', err);
       });
     }
   }, [applicationUser]);
 
+  const handleParishChange = (val: string) => {
+    setSelectedParishFilter(val);
+    localStorage.setItem('lastSelectedParishId', val);
+  };
+
   const fetchCalendarEvents = useCallback(() => {
+    if (applicationUser?.role === 'DIOCESE_COORDINATOR' && !selectedParishFilter) {
+      return Promise.resolve();
+    }
     const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
     return CalendarService.getEvents(year, month, filterId).then(setEvents);
   }, [year, month, selectedParishFilter, applicationUser]);
@@ -917,7 +940,7 @@ export function CalendarPage() {
   return (
     <div>
       {/* Calendar Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div className="flex items-center gap-4 flex-wrap">
           <h1
             className="text-4xl font-bold text-gray-900"
@@ -930,10 +953,9 @@ export function CalendarPage() {
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Parish:</span>
               <select
                 value={selectedParishFilter}
-                onChange={(e) => setSelectedParishFilter(e.target.value)}
+                onChange={(e) => handleParishChange(e.target.value)}
                 className="px-3 py-1.5 text-xs font-semibold bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#7B1C2A] transition-colors shadow-sm"
               >
-                <option value="all">All Parishes</option>
                 {parishes.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}

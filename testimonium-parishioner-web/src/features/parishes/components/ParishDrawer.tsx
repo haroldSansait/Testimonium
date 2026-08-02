@@ -1,6 +1,5 @@
 import React from 'react';
 import { 
-  MapPin, 
   Clock, 
   User, 
   FileText, 
@@ -9,7 +8,9 @@ import {
   Mail, 
   Globe, 
   Compass, 
-  X
+  X,
+  Award,
+  Landmark
 } from 'lucide-react';
 import type { Parish } from '../../../types';
 import { Card } from '../../../components/ui/Card';
@@ -124,7 +125,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
   return (
     <Card className="flex-grow flex flex-col h-full overflow-hidden border border-border shadow-card relative bg-white">
       {/* Top Banner Image with Gradient Overlay */}
-      <div className="relative h-48 sm:h-56 w-full overflow-hidden flex-shrink-0">
+      <div className="relative h-48 sm:h-52 w-full flex-shrink-0 bg-gray-950">
         <img 
           src={parish.coverImage} 
           alt={parish.name} 
@@ -136,7 +137,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
             }
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
         
         {/* Close button (if onClose provided) */}
         {onClose && (
@@ -145,14 +146,31 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
             className="absolute top-3.5 right-3.5 bg-black/45 hover:bg-black/70 text-white rounded-full p-2.5 transition-colors z-20 focus-ring"
             aria-label="Close details"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         )}
 
-        {/* Floating Title & Address */}
-        <div className="absolute bottom-4 left-4 right-4 text-white space-y-1.5">
-          <div className="flex items-center space-x-2">
-            <h2 className="text-lg md:text-xl font-serif font-black tracking-tight leading-tight">
+        {/* Parish Logo overlap */}
+        <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-full border-4 border-white bg-white overflow-hidden shadow-md z-10">
+          {parish.logoImage ? (
+            <img
+              src={parish.logoImage}
+              alt={`${parish.name} Logo`}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 font-bold text-lg uppercase">
+              {parish.name.substring(0, 2)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Info Details Area (Scrollable) */}
+      <div className="flex-grow overflow-y-auto pt-10 px-5 pb-5 space-y-5 text-sm max-h-[50vh] sm:max-h-[60vh]">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-tight font-serif">
               {parish.name}
             </h2>
             <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 uppercase tracking-wider ${
@@ -161,24 +179,27 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
               {officeIsOpen ? 'Open Now' : 'Closed'}
             </span>
           </div>
-          <p className="text-xs text-white/80 flex items-center">
-            <MapPin size={12} className="mr-1 text-white/70 flex-shrink-0" />
-            <span className="truncate">{parish.address}</span>
-          </p>
-        </div>
-      </div>
-
-      {/* Main Info Details Area (Scrollable) */}
-      <div className="flex-grow overflow-y-auto p-5 space-y-5 text-sm max-h-[50vh] sm:max-h-[60vh]">
-        {/* Description & Saint History */}
-        <div className="space-y-2">
-          <p className="text-xs text-text-muted leading-relaxed italic">
-            "{parish.description}"
-          </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 border-t border-border/40 text-xs">
-            <span className="text-text-muted">
-              <strong className="text-text-primary font-medium">Patron Saint:</strong> {parish.patronSaint}
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs text-gray-500 font-medium">
+            <span className="flex items-center gap-1">
+              <Landmark className="w-3.5 h-3.5 text-[#7B1C2A]" />
+              Vicariate of Canlaon
             </span>
+            <span className="flex items-center gap-1">
+              <Award className="w-3.5 h-3.5 text-[#7B1C2A]" />
+              Patron: {parish.patronSaint}
+            </span>
+          </div>
+        </div>
+
+        {/* Description & Saint History */}
+        <div className="space-y-2 border-t border-gray-100 pt-4">
+          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+            About the Parish
+          </h3>
+          <p className="text-xs text-gray-650 leading-relaxed font-medium">
+            {parish.directoryDescription || parish.description || 'No description configured yet.'}
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
             <span className="text-text-muted">
               <strong className="text-text-primary font-medium">Feast Day:</strong> {parish.feastDay}
             </span>
@@ -186,10 +207,10 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         </div>
 
         {/* Grid info: Office Hours & Staff */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
           <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">
             <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <Clock size={12} className="mr-1.5 text-crimson" />
+              <Clock size={12} className="mr-1.5 text-[#7B1C2A]" />
               Office Hours
             </span>
             <p className="text-xs text-text-primary mt-1 font-medium leading-relaxed">
@@ -198,7 +219,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           </div>
           <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">
             <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <User size={12} className="mr-1.5 text-crimson" />
+              <User size={12} className="mr-1.5 text-[#7B1C2A]" />
               Parish Personnel
             </span>
             <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
@@ -212,11 +233,11 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="flex items-center space-x-2">
-              <Phone size={14} className="text-crimson/80 flex-shrink-0" />
+              <Phone size={14} className="text-[#7B1C2A]/80 flex-shrink-0" />
               <span className="truncate text-text-primary">{parish.phone}</span>
             </div>
             <div className="flex items-center space-x-2">
-              <Mail size={14} className="text-crimson/80 flex-shrink-0" />
+              <Mail size={14} className="text-[#7B1C2A]/80 flex-shrink-0" />
               <span className="truncate text-text-primary">{parish.email}</span>
             </div>
             {parish.facebookPage && (
@@ -224,7 +245,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
                 href={parish.facebookPage} 
                 target="_blank" 
                 rel="noreferrer" 
-                className="flex items-center space-x-2 text-crimson hover:underline"
+                className="flex items-center space-x-2 text-[#7B1C2A] hover:underline"
               >
                 <Globe size={14} className="flex-shrink-0" />
                 <span className="truncate">Facebook Page</span>
@@ -243,7 +264,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           </h4>
           <div className="flex flex-wrap gap-1.5">
             {parish.services.map(srv => (
-              <span key={srv} className="text-[10px] font-semibold px-2 py-0.5 bg-red-50 text-crimson border border-crimson/10 rounded-full">
+              <span key={srv} className="text-[10px] font-semibold px-2 py-0.5 bg-red-50 text-[#7B1C2A] border border-[#7B1C2A]/10 rounded-full">
                 {srv}
               </span>
             ))}
@@ -259,7 +280,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
             <ul className="text-xs space-y-1.5 text-text-primary">
               {parish.upcomingEvents.map((evt, idx) => (
                 <li key={idx} className="flex items-center space-x-2">
-                  <Calendar size={12} className="text-crimson flex-shrink-0" />
+                  <Calendar size={12} className="text-[#7B1C2A] flex-shrink-0" />
                   <span>{evt}</span>
                 </li>
               ))}
@@ -271,7 +292,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
       {/* Footer Actions (Pre-configured button links) */}
       <div className="p-3 border-t border-border flex flex-row gap-2 bg-app-page flex-shrink-0">
         <Button 
-          className="flex-1 flex items-center justify-center space-x-1 text-xs h-9 px-2"
+          className="flex-1 flex items-center justify-center space-x-1 text-xs h-9 px-2 bg-[#7B1C2A] hover:bg-[#5C1520]"
           onClick={() => onRequestDocument(parish.id)}
         >
           <FileText size={12} />
@@ -279,7 +300,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         </Button>
         <Button 
           variant="outline"
-          className="flex-1 flex items-center justify-center space-x-1 text-xs h-9 px-2 border-crimson text-crimson hover:bg-crimson/5"
+          className="flex-1 flex items-center justify-center space-x-1 text-xs h-9 px-2 border-[#7B1C2A] text-[#7B1C2A] hover:bg-[#7B1C2A]/5"
           onClick={() => onScheduleAppointment(parish.id)}
         >
           <Calendar size={12} />

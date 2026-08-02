@@ -7,19 +7,18 @@ import type { Parish } from '@/types';
 
 // Default Document Types and Requirements
 const DOC_TYPES = [
-  { id: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate', defaultPrice: 100, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'gkk_endorsement', label: 'GKK Endorsement Letter' }] },
-  { id: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate', defaultPrice: 100, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'gkk_endorsement', label: 'GKK Endorsement Letter' }] },
-  { id: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'gkk_endorsement', label: 'GKK Endorsement Letter' }] },
-  { id: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate', defaultPrice: 75, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'gkk_endorsement', label: 'GKK Endorsement Letter' }] },
-  { id: 'MARRIAGE_BANNS', label: 'Marriage Banns', defaultPrice: 200, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'confirmation_cert', label: 'Confirmation Certificate' }, { id: 'marriage_license', label: 'Civil Marriage License' }, { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'banns_clearance', label: 'Banns Clearance Form' }, { id: 'gkk_endorsement', label: 'GKK Endorsement Letter' }] },
-  { id: 'PERMIT_TO_MARRY', label: 'Permit to Marry', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid Government ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'confirmation_cert', label: 'Confirmation Certificate' }, { id: 'marriage_license', label: 'Civil Marriage License' }, { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'canonical_interview', label: 'Canonical Interview Form' }, { id: 'banns_clearance', label: 'Banns Clearance' }, { id: 'gkk_endorsement', label: 'GKK Endorsement' }] },
-  { id: 'STATUS_OF_LIBERTY', label: 'Status of Liberty Certificate', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid Government ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'canonical_interview', label: 'Canonical Interview Document' }, { id: 'gkk_endorsement', label: 'GKK Endorsement' }] },
-  { id: 'ENDORSEMENT', label: 'GKK Endorsement', defaultPrice: 50, requirements: [{ id: 'gkk_endorsement', label: 'GKK Endorsement Form' }] }
+  { id: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate', defaultPrice: 100, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
+  { id: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate', defaultPrice: 100, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
+  { id: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
+  { id: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate', defaultPrice: 75, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
+  { id: 'MARRIAGE_BANNS', label: 'Marriage Banns', defaultPrice: 200, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'confirmation_cert', label: 'Confirmation Certificate' }, { id: 'marriage_license', label: 'Civil Marriage License' }, { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'banns_clearance', label: 'Banns Clearance Form' }] },
+  { id: 'PERMIT_TO_MARRY', label: 'Permit to Marry', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid Government ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'confirmation_cert', label: 'Confirmation Certificate' }, { id: 'marriage_license', label: 'Civil Marriage License' }, { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'canonical_interview', label: 'Canonical Interview Form' }, { id: 'banns_clearance', label: 'Banns Clearance' }] },
+  { id: 'STATUS_OF_LIBERTY', label: 'Status of Liberty Certificate', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid Government ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'canonical_interview', label: 'Canonical Interview Document' }] }
 ];
 
 // Event types and possible requirements
 const EVENT_TYPES = [
-  { id: 'MARRIAGE_SPECIAL', label: 'Marriage (Special)', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'endorsement', label: 'GKK Endorsement' }] },
+  { id: 'MARRIAGE_SPECIAL', label: 'Marriage (Special)', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
   { id: 'WAKE_MASS', label: 'Wake Mass', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
   { id: 'FUNERAL', label: 'Funeral', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
   { id: 'PRIVATE_MASS', label: 'Private Mass', possibleReqs: [] },

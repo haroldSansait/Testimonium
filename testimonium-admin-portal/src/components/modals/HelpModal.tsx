@@ -4,12 +4,8 @@ import {
   X,
   HelpCircle,
   FileText,
-  Calendar,
   CalendarDays,
-  Clock,
-  Users,
   Church,
-  BarChart2,
   ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,151 +27,69 @@ interface HelpSection {
 
 const HELP_SECTIONS: HelpSection[] = [
   {
-    id: 'schedule',
-    icon: <CalendarDays className="w-4 h-4" />,
-    title: 'Schedule Requests',
-    roles: ['SECRETARY', 'DIOCESE_COORDINATOR'],
+    id: 'navigation',
+    icon: <ChevronRight className="w-4 h-4" />,
+    title: 'Navigation Guide',
+    roles: ['SECRETARY', 'PRIEST', 'DIOCESE_COORDINATOR'],
     items: [
       {
-        question: 'How do I approve a schedule request?',
-        answer:
-          'Open the Schedule Requests page, click on a Pending request to open the detail modal. Select a priest from the "Priest Assignment" dropdown, then click "Approve & Assign". The parishioner will be notified automatically.',
+        question: 'How do I navigate the admin portal?',
+        answer: 'You can use the sidebar on the left (which expands when you hover over it) to navigate to the Dashboard, Calendar, Document/Schedule Requests, and other administration pages. Common tools like Help and About are accessible at the top right in the Navbar.',
       },
       {
-        question: 'How do I propose a reschedule?',
-        answer:
-          'Open a schedule request, click "Propose Reschedule" in the modal footer. Enter the proposed date and time, provide a reason, then click "Send Proposal to Parishioner". The parishioner can accept or decline the proposal.',
+        question: 'How does the collapsible sidebar work?',
+        answer: 'The sidebar is collapsed by default to save screen space, displaying only icons. Hovering over it for 150ms will automatically expand it. You can also pin it to stay expanded across your sessions.',
+      }
+    ]
+  },
+  {
+    id: 'requests',
+    icon: <CalendarDays className="w-4 h-4" />,
+    title: 'Request Workflow',
+    roles: ['SECRETARY', 'PRIEST', 'DIOCESE_COORDINATOR'],
+    items: [
+      {
+        question: 'How do I approve scheduling requests?',
+        answer: 'Open the Schedule Requests page, select a pending request, choose an available priest, and approve the schedule. The system will check for potential conflicts and alert you if the priest is unavailable.',
       },
       {
-        question: 'What does the Tentative status mean?',
-        answer:
-          'Tentative means a scheduling conflict was detected (the priest is unavailable or another event overlaps). Review the conflict notice in the detail modal and either reassign a priest or propose an alternative date.',
+        question: 'How are corrections handled?',
+        answer: 'If a request needs corrections, mark the status as requiring correction and input the details. The parishioner will be notified immediately to re-upload or update information on the web portal.',
+      }
+    ]
+  },
+  {
+    id: 'map',
+    icon: <Church className="w-4 h-4" />,
+    title: 'Map Configuration Basics',
+    roles: ['DIOCESE_COORDINATOR'],
+    items: [
+      {
+        question: 'How do I configure parish map boundaries?',
+        answer: 'As a Diocese Coordinator, open the Map Configuration page. You can drag and position parish boundaries, manage geographic marker pins, and upload custom parish boundary shapes directly on the interactive map.',
       },
-    ],
+      {
+        question: 'What happens to unsaved map changes?',
+        answer: 'If you try to navigate away with unsaved map changes, a confirmation warning will ask if you want to discard them. Be sure to click save on the toolbar to persist changes.',
+      }
+    ]
   },
   {
     id: 'documents',
     icon: <FileText className="w-4 h-4" />,
-    title: 'Document Requests',
+    title: 'Document Management',
     roles: ['SECRETARY', 'DIOCESE_COORDINATOR'],
     items: [
       {
-        question: 'How do I process a document request?',
-        answer:
-          'Go to Document Requests and open a Pending request. Review the applicant details and attached requirements. Move it to Under Review once you begin processing, then to Payment Pending if fees apply. After payment is confirmed, set it to Ready for Pickup.',
+        question: 'How do I configure document requirements and fees?',
+        answer: 'Go to Parish Settings and select the Document Fees & Requirements tab. You can configure individual certificate pricing and select which file uploads (e.g. Valid ID) are mandatory for request submissions.',
       },
       {
-        question: 'How do I verify a payment submission?',
-        answer:
-          'When a parishioner submits proof of payment, the request status changes to Payment Pending. Open the request, review the uploaded payment proof in the attachments section, and click "Verify Payment" if it is correct.',
-      },
-      {
-        question: 'Can I reject a document request?',
-        answer:
-          'Yes. Open the request and click "Reject" in the action panel. You must provide a reason for rejection — this reason is sent to the parishioner as part of the notification.',
-      },
-    ],
-  },
-  {
-    id: 'mass',
-    icon: <Clock className="w-4 h-4" />,
-    title: 'Mass Schedule Settings',
-    roles: ['SECRETARY', 'DIOCESE_COORDINATOR'],
-    items: [
-      {
-        question: 'How do I add a new Mass time slot?',
-        answer:
-          'Go to Mass Schedule in the sidebar. Click "+ Add Time Slot", select the day type (Weekday, Sunday, Holiday, Special), enter the time and label (e.g. "Morning Mass"), and optionally assign a priest. Click Save.',
-      },
-      {
-        question: 'How do Mass slots appear on the calendar?',
-        answer:
-          'Active Mass schedule templates automatically generate recurring calendar events for the current month. Editing or disabling a template affects all future calendar entries — existing confirmed schedules are not affected.',
-      },
-      {
-        question: 'What is a "Holiday" or "Special" slot?',
-        answer:
-          'Holiday slots only generate events on official Philippine public holidays. Special slots are one-off entries you can manually assign to specific dates.',
-      },
-    ],
-  },
-  {
-    id: 'availability',
-    icon: <Calendar className="w-4 h-4" />,
-    title: 'Leave & Availability',
-    roles: ['SECRETARY', 'PRIEST', 'DIOCESE_COORDINATOR'],
-    items: [
-      {
-        question: 'How do I add a leave period for a priest?',
-        answer:
-          'Go to "My Leave Settings" in the sidebar. Click "+ Add Entry", select the type (Priest Leave, Secretary Leave, Parish Closed, Fully Booked), enter the date range and a description, then save. Leave periods prevent Mass slot generation for the affected priest on those dates.',
-      },
-      {
-        question: 'How do I mark the parish as closed?',
-        answer:
-          'In My Leave Settings, add an entry with type "Parish Closed". Set the start and end date to cover the closure period. The calendar will reflect the closure and no new schedules can be booked for those dates.',
-      },
-    ],
-  },
-  {
-    id: 'users',
-    icon: <Users className="w-4 h-4" />,
-    title: 'User Management',
-    roles: ['DIOCESE_COORDINATOR'],
-    items: [
-      {
-        question: 'How do I create a new staff account?',
-        answer:
-          'Go to User Management and click "+ Add Staff Member". Enter the staff member\'s name, email, role (Secretary, Priest, Assistant Priest), and assigned parish. Click Create — a secure onboarding link is generated and logged in the Activity Log.',
-      },
-      {
-        question: 'How do I reset a staff member\'s password?',
-        answer:
-          'Find the staff member in User Management, open their action menu, and click "Reset Password". A Firebase password reset link is generated. Share it with the staff member or check the Activity Log to retrieve the link.',
-      },
-      {
-        question: 'How do I disable a staff account?',
-        answer:
-          'Open the staff member\'s action menu in User Management and click "Disable Account". The account is immediately deactivated in both the application and Firebase. The staff member\'s data and history are preserved.',
-      },
-    ],
-  },
-  {
-    id: 'parishes',
-    icon: <Church className="w-4 h-4" />,
-    title: 'Parish Management',
-    roles: ['DIOCESE_COORDINATOR'],
-    items: [
-      {
-        question: 'How do I edit parish details?',
-        answer:
-          'Go to Parish Management, find the parish, and click the edit icon. You can update the parish name, address, contact number, patron saint, feast day, and cover image. Changes are reflected immediately in the parishioner portal.',
-      },
-      {
-        question: 'How do I assign a priest to a parish?',
-        answer:
-          'Parish-priest assignment is managed through User Management. Open the staff member\'s edit form and change their assigned parish. Both primary and assistant priests can be assigned to the same parish.',
-      },
-    ],
-  },
-  {
-    id: 'analytics',
-    icon: <BarChart2 className="w-4 h-4" />,
-    title: 'Analytics & Reports',
-    roles: ['DIOCESE_COORDINATOR'],
-    items: [
-      {
-        question: 'What data does the Analytics page show?',
-        answer:
-          'The Analytics page displays aggregate metrics across all Canlaon Vicariate parishes: total document requests by type, schedule request volume, parish activity comparisons, and monthly trend charts.',
-      },
-      {
-        question: 'How do I view the system activity log?',
-        answer:
-          'Go to Activity Log in the sidebar. All staff actions — user creation, status changes, account resets — are listed chronologically with timestamps, actor name, and affected record.',
-      },
-    ],
-  },
+        question: 'How do I verify GCash/Maya payment receipts?',
+        answer: 'Open a Payment Pending request to view the uploaded receipt image. The OCR service will extract the reference number and amount to cross-reference. Click Verify Payment to confirm and update status.',
+      }
+    ]
+  }
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────

@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Home, 
-  MapPin, 
-  FilePlus, 
-  ClipboardCheck, 
-  Calendar, 
   Bell, 
   User as UserIcon, 
   Menu, 
@@ -47,20 +43,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const navItems = [
-    { label: 'Home', path: '/dashboard/home', icon: <Home size={18} /> },
-    { label: 'Vicariate Directory', path: '/dashboard/parishes', icon: <MapPin size={18} /> },
-    { label: 'Request Document', path: '/dashboard/request', icon: <FilePlus size={18} /> },
-    { label: 'Track Request', path: '/dashboard/track', icon: <ClipboardCheck size={18} /> },
-    { label: 'Scheduler', path: '/dashboard/scheduler', icon: <Calendar size={18} /> },
-    { label: 'Notifications', path: '/dashboard/notifications', icon: <Bell size={18} /> },
-    { label: 'Profile', path: '/dashboard/profile', icon: <UserIcon size={18} /> },
-  ];
 
-  const getPageTitle = () => {
-    const activeItem = navItems.find(item => location.pathname.startsWith(item.path));
-    return activeItem ? activeItem.label : 'Dashboard';
-  };
 
   const userMenuItems: DropdownItem[] = [
     { 
@@ -80,8 +63,8 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       value: 'logout', 
       icon: <LogOut size={16} />,
       onClick: async () => {
+        navigate('/', { replace: true });
         await logout();
-        navigate('/');
       } 
     },
   ];
@@ -109,10 +92,6 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             >
               TESTIMONIUM
             </Link>
-            <span className="text-border hidden sm:inline">|</span>
-            <h2 className="text-sm font-medium text-text-muted hidden sm:inline-block pt-0.5">
-              {getPageTitle()}
-            </h2>
           </div>
         </div>
 
@@ -283,8 +262,8 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <button 
                 onClick={async () => {
                   setIsDrawerOpen(false);
+                  navigate('/', { replace: true });
                   await logout();
-                  navigate('/');
                 }}
                 className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-colors focus-ring text-left"
               >

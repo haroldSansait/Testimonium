@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, Calendar, Map, ClipboardCheck, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent } from '../../components/ui/Card';
+import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 // Admin Portal URL — update to production URL when deploying.
 // Intentionally external navigation (not React Router) because the Admin Portal
@@ -38,9 +39,17 @@ export const LandingPage: React.FC = () => {
   return (
     <div className="space-y-20 pb-20">
       {/* Hero Section */}
-      <section className="relative bg-white border-b border-border py-20 md:py-28 overflow-hidden">
+      <section
+        className="relative border-b border-border py-20 md:py-28 overflow-hidden"
+        style={{
+          backgroundImage: `linear-gradient(to bottom, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.95)), url(${mtKanlaonImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
+      >
         {/* Background graphic */}
-        <div className="absolute inset-0 opacity-[0.02] pointer-events-none flex items-center justify-center">
+        <div className="absolute inset-0 opacity-[0.01] pointer-events-none flex items-center justify-center">
           <div className="w-[800px] h-[800px] border-4 border-crimson rounded-full" />
         </div>
 

@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, HelpCircle, Settings } from 'lucide-react';
-import { Avatar } from '@/components/ui/Avatar';
+import { Bell, HelpCircle, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { DATA_PROVIDER } from '@/config/demo';
 import { NotificationService } from '@/services/NotificationService';
 import { useState, useEffect, useCallback } from 'react';
+import { HelpModal } from '@/components/modals/HelpModal';
+import { AboutModal } from '@/components/modals/AboutModal';
 
 const modeConfig = {
   api: {
@@ -35,13 +36,12 @@ export function Navbar({ className }: NavbarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const showSearchBar = pathname === '/notifications';
-  const showSearchIcon = !showSearchBar && pathname !== '/calendar' && pathname !== '/notifications';
-
   const mode = (DATA_PROVIDER || 'demo') as 'demo' | 'api' | 'hybrid';
   const cfg = modeConfig[mode] || modeConfig.demo;
 
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   const fetchUnread = useCallback(() => {
     NotificationService.getNotifications()
@@ -78,27 +78,6 @@ export function Navbar({ className }: NavbarProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
-        {showSearchBar && (
-          <div className="relative mr-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 transition-all w-56"
-            />
-          </div>
-        )}
-
-        {showSearchIcon && (
-          <button
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative"
-            aria-label="Search"
-            id="navbar-search"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-        )}
-
         <button
           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative"
           aria-label="Notifications"
@@ -115,22 +94,23 @@ export function Navbar({ className }: NavbarProps) {
           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
           aria-label="Help"
           id="navbar-help"
+          onClick={() => setShowHelp(true)}
         >
           <HelpCircle className="w-5 h-5" />
         </button>
 
-        {(pathname === '/calendar' || pathname === '/notifications') && (
-          <button
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-            aria-label="Settings"
-            id="navbar-settings"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-        )}
-
-        <Avatar initials="AD" bgColor="#7B1C2A" size="sm" className="ml-1 cursor-pointer" />
+        <button
+          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+          aria-label="About"
+          id="navbar-about"
+          onClick={() => setShowAbout(true)}
+        >
+          <Info className="w-5 h-5" />
+        </button>
       </div>
+
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
+      <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
     </header>
   );
 }
