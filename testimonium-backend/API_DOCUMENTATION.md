@@ -1,29 +1,29 @@
-# TESTIMONIUM Admin Portal API Documentation
+# TESTIMONIUM Backend REST API Reference Documentation
 
-This document describes the backend endpoints, validation rules, pagination behaviors, role-based authorization requirements, and error response formats for the TESTIMONIUM sacramental document processing backend.
+This document describes the backend endpoints, validation rules, pagination behaviors, role-based authorization requirements, and response formats for the TESTIMONIUM sacramental document processing backend.
 
 ---
 
 ## 1. Authentication & Security
 
-All routes (except health checkpoints) require authentication using **Firebase ID Tokens** passed in the `Authorization` header:
+All routes (except public health checkpoints) require authentication using **Firebase ID Tokens** passed in the `Authorization` header:
 
 ```http
 Authorization: Bearer <Firebase_ID_Token>
 ```
 
 ### Dev Auth Guard Bypass
-In `development` environments (when `ENABLE_DEV_AUTH=true`), endpoints can be accessed by passing a mock token:
-```http
-Authorization: Bearer test-token-coordinator
-```
-This maps the request to the `coordinator@testimonium.org` account profile.
+In `development` environments (when `ENABLE_DEV_AUTH=true`), endpoints can be accessed by passing a mock token matching pre-seeded profiles:
+*   `Authorization: Bearer test-token-coordinator` (maps context to `coordinator@testimonium.org`)
+*   `Authorization: Bearer test-token-secretary` (maps context to parish secretary)
+*   `Authorization: Bearer test-token-priest` (maps context to parish priest)
 
 ### Role Authorization
 Users are restricted to resources matching their assigned role:
-- **`DIOCESE_COORDINATOR`**: Full diocese administration, unrestricted reads and writes.
-- **`PRIEST`**: Scoped view/edit of their assigned parish database entries only.
-- **`SECRETARY`**: Scoped view/edit of their assigned parish document requests and schedules only.
+*   **`DIOCESE_COORDINATOR`**: Unrestricted reads/writes for parishes, users, analytics, and logs.
+*   **`PRIEST`**: Scoped view/edit of their assigned parish database entries and event responses.
+*   **`SECRETARY`**: Scoped view/edit of their assigned parish document requests, calendar, mass schedules, events, and availabilities.
+*   **`PARISHIONER`**: View/edit of their own document requests, appointment scheduling, and profile updates.
 
 ---
 
@@ -31,8 +31,7 @@ Users are restricted to resources matching their assigned role:
 
 All API responses follow a uniform JSON structure.
 
-### Success Envelope (Raw Data)
-### Standard Success Envelope (Collection/List)
+### Success Envelope (Collection/List)
 All collection and list endpoints return a standardized paginated envelope under the `data` property to support consistent scaling:
 
 ```json
@@ -47,9 +46,8 @@ All collection and list endpoints return a standardized paginated envelope under
   }
 }
 ```
-This avoids mixed return types (arrays vs. objects) and ensures future compatibility.
 
-### Standard Success Envelope (Single Resource)
+### Success Envelope (Single Resource)
 Single resource requests return the object directly:
 ```json
 {
@@ -58,7 +56,7 @@ Single resource requests return the object directly:
 }
 ```
 
-### Error Envelope (Standard & Validation Errors)
+### Error Envelope
 All validation failures, authentication/authorization failures, not found, or internal errors return:
 ```json
 {
@@ -77,18 +75,29 @@ All validation failures, authentication/authorization failures, not found, or in
 
 ## 3. Endpoint Specifications
 
-### 3.1 Authentication
+### 3.1 Authentication & Profile (`/api/v1/auth`)
 
-#### Get User Profile
-- **Route**: `GET /api/v1/auth/profile`
-- **Roles**: All logged-in users.
-- **Description**: Returns the active profile details.
-- **Response**:
+#### JIT Authentication & Login
+*   **Route**: `POST /api/v1/auth/login`
+*   **Roles**: All authenticated users.
+*   **Description**: Validates the Firebase token, links pre-provisioned staff UIDs on first login, and registers JIT parishioners. Supports `rememberMe` mapping to calculate session limits (30 days vs 1 day).
+*   **Request Body**:
+```json
+{
+  "rememberMe": true
+}
+```
+*   **Response**: `200 OK` with session DTO and user profile.
+
+#### Get Active Profile
+*   **Route**: `GET /api/v1/auth/profile`
+*   **Roles**: All authenticated users.
+*   **Response**:
 ```json
 {
   "success": true,
   "data": {
-    "id": "1",
+    "id": 1,
     "email": "coordinator@testimonium.org",
     "fullName": "Diocese Coordinator",
     "role": "DIOCESE_COORDINATOR",
@@ -97,87 +106,87 @@ All validation failures, authentication/authorization failures, not found, or in
 }
 ```
 
+#### Update Profile Details
+*   **Route**: `PUT /api/v1/auth/profile`
+*   **Roles**: All authenticated users.
+*   **Description**: Updates user fullName, contactNumber, or address.
+*   **Request Body**:
+```json
+{
+  "fullName": "Elena Cruz-Santos",
+  "contactNumber": "09171234567"
+}
+```
+
 ---
 
-### 3.2 Parish Management
+### 3.2 Parish Administration (`/api/v1/parishes`)
 
 #### List Parishes
-- **Route**: `GET /api/v1/parishes`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Parameters**:
-  - `page` (optional, default: `1`)
-  - `limit` (optional, default: `25`)
-  - `search` (optional) - partial match on name or patron saint
-  - `type` (optional) - `Parish`, `Quasi-Parish`, `Mission Station`
-  - `status` (optional) - `Active`, `Inactive`, `Archived` (defaults to active parishes if omitted to respect soft-delete)
-- **Response**: List of parish DTOs.
+*   **Route**: `GET /api/v1/parishes`
+*   **Roles**: All roles (public directory lists).
+*   **Parameters**: `page`, `limit`, `search`, `type`, `status`
+*   **Response**: List of parish metadata DTOs.
 
 #### Get Parish By ID
-- **Route**: `GET /api/v1/parishes/:id`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Response**: Single parish DTO.
+*   **Route**: `GET /api/v1/parishes/:id`
+*   **Roles**: All roles.
+*   **Response**: Single parish profile DTO.
+
+#### Update Parish Settings
+*   **Route**: `PUT /api/v1/parishes/:id/settings`
+*   **Roles**: `DIOCESE_COORDINATOR`, `SECRETARY` (only for their assigned parish)
+*   **Request Body**:
+```json
+{
+  "documentSettings": "{\"fee\": 100}",
+  "eventSettings": "{\"marriageFee\": 1500}",
+  "officeHours": "{\"monToFri\": \"08:00 AM - 05:00 PM\"}"
+}
+```
 
 #### Create Parish
-- **Route**: `POST /api/v1/parishes`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Validation Rules**:
-  - `name`: Required, non-empty string.
-  - `type`: Required, must be `Parish`, `Quasi-Parish`, or `Mission Station`.
-  - `email`: Optional, must be valid email format.
-- **Request Body**:
+*   **Route**: `POST /api/v1/parishes`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Request Body**:
 ```json
 {
   "name": "St. Joseph Parish",
   "type": "Parish",
-  "address": "La Castellana - Canlaon Road, Canlaon City",
+  "address": "Canlaon City",
   "patronSaint": "St. Joseph",
   "contactNumber": "09281234567",
-  "email": "stjoseph.canlaon@diocese.org"
+  "email": "stjoseph@testimonium.org"
 }
 ```
-- **Response**: `201 Created` with created parish DTO. Logs `Parish Created` in audit feed.
+*   **Response**: `201 Created`.
 
-#### Update Parish
-- **Route**: `PUT /api/v1/parishes/:id`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Validation Rules**: Partial updates of creation fields plus:
-  - `status`: Optional, must be `Active`, `Inactive`, or `Archived`.
-- **Response**: `200 OK` with updated parish DTO. Logs `Parish Updated` in audit feed.
+#### Update Parish Profile
+*   **Route**: `PUT /api/v1/parishes/:id`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Request Body**: Partial fields from creation schema, plus optional status ("Active", "Inactive", "Archived").
 
 #### Archive Parish
-- **Route**: `DELETE /api/v1/parishes/:id`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Response**: Standard success message. Logs `Parish Archived` in audit feed.
+*   **Route**: `DELETE /api/v1/parishes/:id`
+*   **Roles**: `DIOCESE_COORDINATOR`
 
 #### Restore Parish
-- **Route**: `POST /api/v1/parishes/:id/restore`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Response**: Restored parish DTO. Logs `Parish Restored` in audit feed.
+*   **Route**: `POST /api/v1/parishes/:id/restore`
+*   **Roles**: `DIOCESE_COORDINATOR`
 
 ---
 
-### 3.3 User Management
+### 3.3 Staff User Management (`/api/v1/users`)
 
 #### List Staff Users
-- **Route**: `GET /api/v1/users`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Parameters**:
-  - `page` (optional)
-  - `limit` (optional)
-  - `search` (optional) - matches full name, email, or parish name
-  - `role` (optional) - `DIOCESE_COORDINATOR`, `PRIEST`, `SECRETARY`
-  - `status` (optional) - `Active`, `Inactive`
-- **Response**: List of staff user DTOs.
+*   **Route**: `GET /api/v1/users`
+*   **Roles**: `DIOCESE_COORDINATOR` (all users), `SECRETARY`/`PRIEST` (only when filtering by `role=PRIEST` to show available event options)
+*   **Parameters**: `page`, `limit`, `search`, `role`, `status`
 
 #### Create Staff User
-- **Route**: `POST /api/v1/users`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Validation Rules**:
-  - `name`: Required, non-empty.
-  - `email`: Required, must be a valid unique email format.
-  - `role`: Required, must be `DIOCESE_COORDINATOR`, `PRIEST`, or `SECRETARY`.
-  - `parish`: Optional, must match an existing parish name (ignored for Diocese Coordinator).
-- **Request Body**:
+*   **Route**: `POST /api/v1/users`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Request Body**:
 ```json
 {
   "name": "Elena Cruz",
@@ -186,77 +195,319 @@ All validation failures, authentication/authorization failures, not found, or in
   "parish": "St. Joseph Parish"
 }
 ```
-- **Response**: `201 Created` with user DTO and Firebase password reset onboarding setup link. Logs `User Created` in audit feed.
+*   **Response**: `201 Created` with Firebase password reset link.
 
-#### Update User
-- **Route**: `PUT /api/v1/users/:id`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Validation Rules**: Partial updates of creation fields.
-- **Response**: Updated user DTO. Logs `User Updated` in audit feed.
+#### Update User Color preference
+*   **Route**: `PUT /api/v1/users/:id/color`
+*   **Roles**: `DIOCESE_COORDINATOR`, `SECRETARY`
+*   **Request Body**: `{"color": "#FF5733"}`
 
-#### Disable User
-- **Route**: `POST /api/v1/users/:id/disable`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Response**: Standard success message. Disables user in Firebase Auth and PostgreSQL. Logs `User Disabled` in audit feed.
+#### Update User Role/Profile
+*   **Route**: `PUT /api/v1/users/:id`
+*   **Roles**: `DIOCESE_COORDINATOR`
 
-#### Enable User
-- **Route**: `POST /api/v1/users/:id/enable`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Response**: Standard success message. Enables user in Firebase Auth and PostgreSQL. Logs `User Enabled` in audit feed.
+#### Disable / Enable User
+*   **Route**: `POST /api/v1/users/:id/disable` & `/api/v1/users/:id/enable`
+*   **Roles**: `DIOCESE_COORDINATOR`
 
-#### Trigger Reset Password Link
-- **Route**: `POST /api/v1/users/:id/reset-password`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Response**: Firebase reset link URL. Logs `Password Reset` in audit feed.
+#### Trigger Password Reset Link
+*   **Route**: `POST /api/v1/users/:id/reset-password`
+*   **Roles**: `DIOCESE_COORDINATOR`
 
 ---
 
-### 3.4 Transactional & Scoped Endpoints
+### 3.4 Dashboard & Scoped Feeds (`/api/v1/dashboard`, `/api/v1/calendar`)
 
-#### Document Requests
-- **Route**: `GET /api/v1/document-requests`
-- **Roles**: `DIOCESE_COORDINATOR`, `PRIEST`, `SECRETARY`
-- **Authorization Scoping**: Enforced database query level. Priests and Secretaries only see requests where `parishId` matches their profile's assigned parish. Diocese Coordinators see requests for all parishes.
-- **Parameters**: `page`, `limit`, `search`, `status`, `documentType`
-- **Response**: Paginated list of document requests.
+#### Get Dashboard Stats
+*   **Route**: `GET /api/v1/dashboard/stats`
+*   **Roles**: Authenticated staff (scoped by assigned parishId).
 
-#### Schedule Requests
-- **Route**: `GET /api/v1/schedule-requests`
-- **Roles**: `DIOCESE_COORDINATOR`, `PRIEST`, `SECRETARY`
-- **Authorization Scoping**: Scoped strictly by parish `parishId` for non-coordinators.
-- **Parameters**: `page`, `limit`, `search`, `status`
-- **Response**: Paginated list of schedule requests.
+#### Get Dashboard Schedule Feed
+*   **Route**: `GET /api/v1/dashboard/schedule`
+*   **Roles**: Authenticated staff. Retrieves upcoming weeks of calendar entries.
 
-#### Calendar Event List
-- **Route**: `GET /api/v1/calendar`
-- **Roles**: `DIOCESE_COORDINATOR`, `PRIEST`, `SECRETARY`
-- **Authorization Scoping**: Scoped strictly by parish `parishId` for non-coordinators.
-- **Parameters**:
-  - `year`: Required, e.g. `2026`
-  - `month`: Required, `1` - `12`
-- **Response**: List of schedule event objects.
+#### Get Dashboard Alerts
+*   **Route**: `GET /api/v1/dashboard/alerts`
+*   **Roles**: Authenticated staff. Fetches pending requests needing review or processing.
 
-#### Activity Logs
-- **Route**: `GET /api/v1/activity-log`
-- **Roles**: `DIOCESE_COORDINATOR`
-- **Parameters**: `page`, `limit`, `personnel` (name search), `action` (action string search), `startDate` (ISO string), `endDate` (ISO string)
-- **Response**: Paginated audit log records.
+#### Get Calendar Events List
+*   **Route**: `GET /api/v1/calendar/events`
+*   **Roles**: All authenticated staff.
+*   **Parameters**: `year` (e.g. `2026`), `month` (e.g. `7`)
+*   **Description**: Scopes scheduled appointments, holy days, and custom events. Automatically filters by assigned `parishId` for non-coordinators.
 
 ---
 
-### 3.5 General Notifications
+### 3.5 Parishioner Requests & Submissions (`/api/v1/requests`, `/api/v1/payment`, `/api/v1/document-requirements`)
 
-#### List Notifications
-- **Route**: `GET /api/v1/notifications`
-- **Roles**: All authenticated users.
-- **Response**: Notifications scoped to the active user.
+#### Get Requirements Checklist
+*   **Route**: `GET /api/v1/document-requirements` & `GET /api/v1/document-requirements/:type`
+*   **Parameters**: `type` (e.g. `BAPTISMAL_CERTIFICATE`), `parishId`
+*   **Description**: Pulls document requirement checklist metadata.
 
-#### Mark All Read
-- **Route**: `PATCH /api/v1/notifications/read-all`
-- **Roles**: All authenticated users.
-- **Response**: Standard success message.
+#### Create Draft Request
+*   **Route**: `POST /api/v1/requests`
+*   **Roles**: `PARISHIONER`
+*   **Request Body**:
+```json
+{
+  "parishId": 2,
+  "documentType": "BAPTISMAL_CERTIFICATE",
+  "applicantName": "Juan Dela Cruz",
+  "relationship": "Self",
+  "purpose": "Employment"
+}
+```
+*   **Response**: `201 Created` with request object.
 
-#### Mark One Read
-- **Route**: `PATCH /api/v1/notifications/:id/read`
-- **Roles**: All authenticated users.
-- **Response**: Standard success message.
+#### List / Get Own Requests
+*   **Route**: `GET /api/v1/requests` & `GET /api/v1/requests/:id`
+*   **Roles**: `PARISHIONER`
+
+#### Get Request By Tracking Number
+*   **Route**: `GET /api/v1/requests/tracking/:trackingNumber`
+*   **Roles**: `PARISHIONER`
+
+#### Submit Draft
+*   **Route**: `POST /api/v1/requests/:id/submit`
+*   **Roles**: `PARISHIONER`. Locks the draft request and flags it as `PENDING` for staff view.
+
+#### Cancel Request
+*   **Route**: `POST /api/v1/requests/:id/cancel`
+*   **Roles**: `PARISHIONER`
+
+#### Upload Document Attachments
+*   **Route**: `POST /api/v1/requests/:id/files`
+*   **Roles**: `PARISHIONER`
+*   **Headers**: `Content-Type: multipart/form-data`
+*   **Files**: Binary uploads containing checklist document requirements. Saves metadata and streams blobs to R2 storage.
+
+#### Upload Receipt & Verify GCash payment
+*   **Route**: `POST /api/v1/requests/:id/receipt`
+*   **Roles**: `PARISHIONER`
+*   **Headers**: `Content-Type: multipart/form-data`
+*   **Files**: Single screenshot receipt file.
+*   **Description**: Uploads screenshot proof, triggers Stub OCR analysis, saves details (amount, reference, date), transitions status to `PAYMENT_UNDER_REVIEW`, and dispatches notification to staff.
+
+#### Resubmit Corrected Requirements
+*   **Route**: `POST /api/v1/requests/:id/resubmit-corrections`
+*   **Roles**: `PARISHIONER`
+
+#### Get Payment Details Configuration
+*   **Route**: `GET /api/v1/payment/configuration`
+*   **Roles**: `PARISHIONER`
+
+---
+
+### 3.6 Secretary/Staff Request Processing (`/api/v1/document-requests`, `/api/v1/schedule-requests`)
+
+#### List Scoped Document Requests
+*   **Route**: `GET /api/v1/document-requests`
+*   **Roles**: `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`
+*   **Description**: Scopes list to requester's parish. Coordinates see all.
+*   **Parameters**: `page`, `limit`, `search`, `status`, `documentType`
+
+#### Update Document Request Status
+*   **Route**: `PATCH /api/v1/document-requests/:id/status`
+*   **Roles**: `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`
+*   **Request Body**:
+```json
+{
+  "status": "NEEDS_CORRECTION",
+  "remarks": "The uploaded GKK endorsement is blurry. Please upload a clear image.",
+  "correctionRequirementIds": ["gkk_endorsement"]
+}
+```
+
+#### List Scoped Schedule Requests
+*   **Route**: `GET /api/v1/schedule-requests`
+*   **Roles**: `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`
+
+#### Request Scheduling Appointment
+*   **Route**: `POST /api/v1/schedule-requests`
+*   **Roles**: `PARISHIONER`, `SECRETARY`
+*   **Request Body**:
+```json
+{
+  "parishId": 2,
+  "eventType": "WEDDING",
+  "date": "2026-08-15",
+  "timeSlot": "10:00 AM",
+  "displayTitle": "Santos-Cruz Wedding",
+  "remarks": "Nuptial Mass reservation"
+}
+```
+
+#### Get Booking Availability Slots
+*   **Route**: `GET /api/v1/schedule-requests/available-slots`
+*   **Parameters**: `parishId`, `date` (YYYY-MM-DD), `eventType`
+
+#### Update Schedule Appointment Status
+*   **Route**: `PATCH /api/v1/schedule-requests/:id/status`
+*   **Roles**: `SECRETARY`, `PRIEST`
+
+#### Propose Reschedule
+*   **Route**: `POST /api/v1/schedule-requests/:id/propose-reschedule`
+*   **Roles**: `SECRETARY`
+*   **Request Body**:
+```json
+{
+  "proposedDate": "2026-08-22",
+  "proposedTimeSlot": "09:00 AM",
+  "rescheduleReason": "Conflict with Bishop visit"
+}
+```
+
+#### Respond to proposed Reschedule
+*   **Route**: `POST /api/v1/schedule-requests/:id/respond-reschedule`
+*   **Roles**: `PARISHIONER`
+*   **Request Body**:
+```json
+{
+  "accept": true
+}
+```
+
+#### Assign Priest to Event Schedule
+*   **Route**: `POST /api/v1/schedule-requests/:id/assign-priest`
+*   **Roles**: `SECRETARY`
+*   **Request Body**: `{"assignedPriestId": 3}`
+
+#### Priest Respond to Event Assignment
+*   **Route**: `POST /api/v1/schedule-requests/:id/priest-respond`
+*   **Roles**: `PRIEST`
+*   **Request Body**:
+```json
+{
+  "status": "CONFIRMED", // or "REJECTED"
+  "reason": "Available to preside"
+}
+```
+
+---
+
+### 3.7 Mass Schedules, Parish Events, and Closures
+
+#### List Mass Templates
+*   **Route**: `GET /api/v1/mass-schedules/:parishId`
+*   **Roles**: Authenticated staff.
+
+#### Upsert / Delete Mass Schedule Templates
+*   **Route**: `POST /api/v1/mass-schedules/:parishId` & `DELETE /api/v1/mass-schedules/:id`
+*   **Roles**: `SECRETARY`
+*   **Request Body (POST)**:
+```json
+{
+  "dayType": "SUNDAY",
+  "timeSlot": "08:00 AM",
+  "label": "Sunday High Mass",
+  "assignedPriestId": 4
+}
+```
+
+#### Reset Mass Schedule templates
+*   **Route**: `POST /api/v1/mass-schedules/:parishId/reset`
+*   **Roles**: `SECRETARY`
+
+#### Priest Respond to Recurring Mass Template
+*   **Route**: `POST /api/v1/mass-schedules/:id/priest-respond`
+*   **Roles**: `PRIEST`
+*   **Request Body**: `{"status": "CONFIRMED", "reason": "Approved"}`
+
+#### List Parish Events
+*   **Route**: `GET /api/v1/parish-events/:parishId`
+*   **Roles**: Authenticated staff.
+
+#### Create / Update / Delete Parish Event
+*   **Route**: `POST /api/v1/parish-events` & `PUT /api/v1/parish-events/:id` & `DELETE /api/v1/parish-events/:id`
+*   **Roles**: `SECRETARY`, `DIOCESE_COORDINATOR`
+*   **Request Body (POST)**:
+```json
+{
+  "parishId": 2,
+  "title": "Parish Patronal Fiesta",
+  "eventType": "FIESTA",
+  "eventDate": "2026-09-15",
+  "startTime": "06:00 AM",
+  "endTime": "09:00 PM",
+  "assignedPriestId": 3
+}
+```
+
+#### Priest Respond to Parish Event
+*   **Route**: `POST /api/v1/parish-events/:id/priest-respond`
+*   **Roles**: `PRIEST`
+
+#### Define Availability / Closure Blocks
+*   **Route**: `POST /api/v1/parish-availabilities`
+*   **Roles**: `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`
+*   **Request Body**:
+```json
+{
+  "parishId": 2,
+  "type": "PARISH_CLOSED",
+  "startDate": "2026-11-01",
+  "endDate": "2026-11-02",
+  "title": "All Saints' Day closure",
+  "description": "Office closed for holidays"
+}
+```
+
+#### List / Delete Closures
+*   **Route**: `GET /api/v1/parish-availabilities` & `DELETE /api/v1/parish-availabilities/:id`
+
+---
+
+### 3.8 Diocese Coordinator Tools (`/api/v1/diocese`, `/api/v1/analytics`, `/api/v1/activity-log`)
+
+#### Get Diocese Stats
+*   **Route**: `GET /api/v1/diocese/stats`
+*   **Roles**: `DIOCESE_COORDINATOR`
+
+#### Get Diocese Activity Feed
+*   **Route**: `GET /api/v1/diocese/activity`
+*   **Roles**: `DIOCESE_COORDINATOR`
+
+#### Get Diocese Notifications Log
+*   **Route**: `GET /api/v1/diocese/notifications`
+*   **Roles**: `DIOCESE_COORDINATOR`
+
+#### Get Analytics Feeds
+*   **Routes**:
+    *   `GET /api/v1/analytics/overview` (overall statistics)
+    *   `GET /api/v1/analytics/sacraments` (sacrament counts)
+    *   `GET /api/v1/analytics/documents` (request status details)
+    *   `GET /api/v1/analytics/parishes` (comparison counts)
+*   **Roles**: `DIOCESE_COORDINATOR`
+
+#### List / Filter System Audit Logs
+*   **Route**: `GET /api/v1/activity-log`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Parameters**: `page`, `limit`, `personnel`, `action`, `startDate`, `endDate`
+
+#### Archive / Restore / Purge Logs
+*   **Routes**:
+    *   `POST /api/v1/activity-log/archive` (archive array of IDs)
+    *   `POST /api/v1/activity-log/archive-all` (archive all)
+    *   `POST /api/v1/activity-log/restore` (restore array of IDs)
+    *   `POST /api/v1/activity-log/restore-all` (restore all)
+    *   `POST /api/v1/activity-log/purge` (hard delete archived logs older than retention settings)
+*   **Roles**: `DIOCESE_COORDINATOR`
+
+---
+
+### 3.9 Notifications & System Checkpoints
+
+#### List User Notifications
+*   **Route**: `GET /api/v1/notifications`
+*   **Roles**: All authenticated users. Returns items scoped to active user ID.
+
+#### Mark Notifications Read
+*   **Route**: `PATCH /api/v1/notifications/read-all` & `PATCH /api/v1/notifications/:id/read`
+*   **Roles**: All authenticated users.
+
+#### Health Check
+*   **Route**: `GET /api/v1/health`
+*   **Roles**: Public (no token required).
+*   **Response**: `{"status": "ok"}`
+

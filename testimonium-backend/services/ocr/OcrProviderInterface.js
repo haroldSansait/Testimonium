@@ -1,19 +1,32 @@
 /**
  * Abstract class defining the OCR provider interface.
- * All OCR providers (Tesseract, Gemini, Google Vision, etc.) must implement this interface.
+ * All OCR providers (Stub, OCRSpace, Google Vision, Azure, etc.) must implement this interface.
+ *
+ * Contract:
+ *   - extractFromReceipt() receives a COMPRESSED buffer ready for API submission.
+ *   - The raw OCR text must be returned in rawText for ReceiptParser processing.
+ *   - Providers must NEVER auto-approve payments — only return raw extraction data.
  */
 export class OcrProviderInterface {
   /**
-   * Extracts data from a receipt image buffer.
-   * @param {Buffer} imageBuffer - File buffer of the receipt image.
-   * @param {string} mimeType - MIME type of the file.
+   * Returns the provider identifier string used for logging and audit records.
+   * @returns {string}
+   */
+  get providerName() {
+    throw new Error("Property 'providerName' must be implemented.");
+  }
+
+  /**
+   * Extracts raw OCR text from a receipt image buffer.
+   * Receives a compressed, OCR-optimized buffer (not the original upload).
+   *
+   * @param {Buffer} imageBuffer - Compressed image buffer for OCR submission.
+   * @param {string} mimeType    - MIME type of the compressed image ('image/jpeg').
    * @returns {Promise<{
-   *   referenceNumber: string|null,
-   *   amount: string|null,
-   *   paymentDate: string|null,
-   *   provider: string|null,
-   *   confidenceScore: number,
-   *   rawText: string
+   *   rawText: string,
+   *   ocrSuccess: boolean,
+   *   failureReason: string|null,
+   *   httpStatusCode: number|null
    * }>}
    */
   async extractFromReceipt(_imageBuffer, _mimeType) {

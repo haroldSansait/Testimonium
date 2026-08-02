@@ -9,28 +9,53 @@ interface MapMarkerProps {
   description?: string;
   children?: React.ReactNode;
   onClick?: () => void;
+  pinColor?: string;
+  showLabel?: boolean;
 }
 
-// Custom branded SVG church marker icon matching Testimonium branding (white church inside deep crimson circle)
-const customChurchIcon = L.divIcon({
-  html: `
-    <div style="background-color: #7B1C2A;" class="flex items-center justify-center w-8 h-8 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform duration-150 cursor-pointer">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px;">
-        <path d="M3 21h18" />
-        <path d="M12 2v4" />
-        <path d="M10 4h4" />
-        <path d="M12 8L4 14v7h16v-7z" />
-        <path d="M10 21v-4a2 2 0 0 1 4 0v4" />
-      </svg>
-    </div>
-  `,
-  className: 'custom-church-marker-div',
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
-  popupAnchor: [0, -16]
-});
+// Branded SVG teardrop pin icon matching coordinator portal
+const createBrandedIcon = (pinColor: string = '#7B1C2A', showLabel: boolean = true, title: string = '') => {
+  return L.divIcon({
+    html: `
+      <div class="relative w-10 h-10 flex flex-col items-center justify-center focus:outline-none hover:scale-110 transition-transform duration-150 cursor-pointer">
+        <svg
+          width="34"
+          height="40"
+          viewBox="0 0 34 40"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35));"
+        >
+          <path
+            d="M17 0C7.61 0 0 7.61 0 17C0 27.8 17 40 17 40C17 40 34 27.8 34 17C34 7.61 26.39 0 17 0Z"
+            fill="${pinColor}"
+          />
+          <circle cx="17" cy="16" r="6" fill="#FFFFFF" />
+        </svg>
 
-export const MapMarker: React.FC<MapMarkerProps> = ({ position, title, description, children, onClick }) => {
+        ${showLabel && title ? `
+          <div class="absolute top-10 whitespace-nowrap bg-gray-900/90 text-white text-[10px] px-1.5 py-0.5 rounded shadow border border-gray-700 pointer-events-none select-none font-medium z-[1001]">
+            ${title}
+          </div>
+        ` : ''}
+      </div>
+    `,
+    className: 'custom-church-marker-div',
+    iconSize: [40, 40],
+    iconAnchor: [20, 40],
+    popupAnchor: [0, -40]
+  });
+};
+
+export const MapMarker: React.FC<MapMarkerProps> = ({ 
+  position, 
+  title, 
+  description, 
+  children, 
+  onClick,
+  pinColor = '#7B1C2A',
+  showLabel = true
+}) => {
   const eventHandlers = React.useMemo(() => ({
     click() {
       if (onClick) {
@@ -39,8 +64,12 @@ export const MapMarker: React.FC<MapMarkerProps> = ({ position, title, descripti
     }
   }), [onClick]);
 
+  const dynamicIcon = React.useMemo(() => {
+    return createBrandedIcon(pinColor, showLabel, title);
+  }, [pinColor, showLabel, title]);
+
   return (
-    <Marker position={[position.lat, position.lng]} icon={customChurchIcon} eventHandlers={eventHandlers}>
+    <Marker position={[position.lat, position.lng]} icon={dynamicIcon} eventHandlers={eventHandlers}>
       {(title || description || children) && (
         <Popup>
           <div className="space-y-1 text-xs">

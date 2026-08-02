@@ -107,6 +107,14 @@ enum NotificationReferenceType {
   GENERAL
 }
 
+enum OcrStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+
 
 model Role {
   id          Int      @id @default(autoincrement()) @map("role_id")
@@ -132,6 +140,13 @@ model Parish {
   longitude        Float?
   feastDay         String?           @map("feast_day") @db.VarChar(100)
   coverImage       String?           @map("cover_image") @db.VarChar(255)
+  logoImage        String?           @map("logo_image") @db.VarChar(255)
+  mapZoom          Int?              @map("map_zoom")
+  pinColor         String?           @map("pin_color") @db.VarChar(20)
+  showLabel        Boolean           @default(true) @map("show_label")
+  directoryDescription String?       @map("directory_description") @db.Text
+  locationUpdatedBy Int?             @map("location_updated_by")
+  locationUpdatedAt DateTime?        @map("location_updated_at")
   gallery          String[]          @default([])
   isActive         Boolean           @default(true) @map("is_active")
   documentSettings String?           @map("document_settings") @db.Text
@@ -286,20 +301,41 @@ model ReceiptUpload {
 }
 
 model OcrResult {
-  id              Int           @id @default(autoincrement()) @map("ocr_id")
-  receiptUploadId Int           @unique @map("receipt_upload_id")
-  referenceNumber String?       @map("reference_number") @db.VarChar(100)
-  amount          String?       @db.VarChar(50)
-  paymentDate     String?       @map("payment_date") @db.VarChar(100)
-  provider        String?       @db.VarChar(50)
-  confidenceScore Float?        @map("confidence_score")
-  rawText         String?       @map("raw_text") @db.Text
-  processedAt     DateTime      @default(now()) @map("processed_at")
-  
-  receipt         ReceiptUpload @relation(fields: [receiptUploadId], references: [id], onDelete: Cascade)
+  id                 Int           @id @default(autoincrement()) @map("ocr_id")
+  receiptUploadId    Int           @unique @map("receipt_upload_id")
+  referenceNumber    String?       @map("reference_number") @db.VarChar(100)
+  amount             String?       @db.VarChar(50)
+  paymentDate        String?       @map("payment_date") @db.VarChar(100)
+  provider           String?       @db.VarChar(50)
+  confidenceScore    Float?        @map("confidence_score")
+  rawText            String?       @map("raw_text") @db.Text
+  processedAt        DateTime      @default(now()) @map("processed_at")
+  status             OcrStatus     @default(PENDING)
+  // Expanded OCR metadata fields
+  merchant           String?       @db.VarChar(100)
+  paymentTime        String?       @map("payment_time") @db.VarChar(50)
+  accountName        String?       @map("account_name") @db.VarChar(150)
+  ocrProvider        String?       @map("ocr_provider") @db.VarChar(50)
+  ocrDurationMs      Int?          @map("ocr_duration_ms")
+  originalFileSize   Int?          @map("original_file_size")
+  compressedFileSize Int?          @map("compressed_file_size")
+
+  // Phase 2 additions
+  ocrConfidence      Float?        @map("ocr_confidence")
+  parserConfidence   Float?        @map("parser_confidence")
+  finalConfidence    Float?        @map("final_confidence")
+  ocrEngine          String?       @map("ocr_engine") @db.VarChar(20)
+  ocrLanguage        String?       @map("ocr_language") @db.VarChar(20)
+  compressionWidth   Int?          @map("compression_width")
+  compressionQuality Int?          @map("compression_quality")
+  normalizedAmount   String?       @map("normalized_amount") @db.VarChar(50)
+  normalizedDate     String?       @map("normalized_date") @db.VarChar(30)
+
+  receipt            ReceiptUpload @relation(fields: [receiptUploadId], references: [id], onDelete: Cascade)
 
   @@map("ocr_results")
 }
+
 
 model RequestHistory {
   id          Int             @id @default(autoincrement()) @map("history_id")

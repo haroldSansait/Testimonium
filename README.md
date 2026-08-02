@@ -11,11 +11,12 @@ TESTIMONIUM is a diocesan-scale platform enabling parishioners to request sacram
 
 | Application | Description | Dev URL |
 |---|---|---|
-| **Backend API** | Node.js / Express REST API serving both portals | `http://localhost:5000` |
-| **Parishioner Web Portal** | React application for parishioners | `http://localhost:5173` |
-| **Admin Portal** | React management dashboard for parish staff and diocese administrators | `http://localhost:5174` |
+| **Backend API** | Node.js / Express REST API serving the suite | `http://localhost:5000` |
+| **Parishioner Web Portal** | React / Vite portal for parishioners | `http://localhost:5173` |
+| **Admin Portal** | React / Radix UI management dashboard for parish staff and diocese | `http://localhost:5174` |
+| **Parishioner Mobile App** | React Native / Expo mobile app scaffold | *Scaffold Only* |
 
-These are **three independent applications** that share the same backend API and Firebase project. They are orchestrated together from the root workspace but remain completely separate codebases with their own routing, authentication flows, layouts, and build pipelines.
+These are **independent applications** that share the same backend API and Firebase project. They are orchestrated together from the root workspace but remain completely separate codebases with their own routing, authentication flows, layouts, and build pipelines.
 
 ---
 
@@ -49,6 +50,11 @@ testimonium/
 │       ├── layouts/                    ← PublicLayout, DashboardLayout
 │       ├── components/                 ← Reusable UI components
 │       └── providers/                  ← Data provider architecture
+│
+├── testimonium-parishioner-app/        ← Parishioner Mobile App (Scaffold)
+│   ├── App.js                          ← Boilerplate entry point
+│   ├── app.json                        ← Native configuration file
+│   └── src/                            ← Screens, components, services scaffolds
 │
 └── testimonium-admin-portal/           ← Parish Admin Portal
     ├── .env.example                    ← Frontend environment template

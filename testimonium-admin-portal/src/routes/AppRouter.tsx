@@ -18,6 +18,7 @@ import { StaffAvailabilityPage } from '@/pages/StaffAvailabilityPage';
 import { PERMISSIONS } from '@/permissions/permissions';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { MapConfigurationPage } from '@/pages/MapConfigurationPage';
 
 
 export function AppRouter() {
@@ -84,6 +85,12 @@ export function AppRouter() {
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_PARISHES} />}>
         <Route element={<AdminLayout />}>
           <Route path="/parish-management" element={<ParishManagementPage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_MAP_CONFIG} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/map-configuration" element={<MapConfigurationPage />} />
         </Route>
       </Route>
 

@@ -15,6 +15,9 @@ const mapParish = (p: any): Parish => {
     city: p.city || p.municipalityCity || "",
   };
 
+  const mappedCover = p.coverImage || getParishImage(lookupData);
+  const mappedGallery = p.coverImage ? [p.coverImage] : getParishGallery(lookupData);
+
   return {
     id: String(p.id),
     name: lookupData.name,
@@ -22,20 +25,24 @@ const mapParish = (p: any): Parish => {
     city: lookupData.city,
     province: p.province || "",
     coordinates: (lat !== null && lng !== null) ? { lat, lng } : { lat: 10.3941, lng: 123.2163 },
-    coverImage: getParishImage(lookupData),
-    gallery: getParishGallery(lookupData),
-    phone: p.phone || p.contactNumber || "",
+    coverImage: mappedCover,
+    gallery: mappedGallery,
+    phone: p.contactNumber || p.phone || "",
     email: p.email || "",
     facebookPage: p.facebookPage || "",
     officeHours: p.officeHours || "8:00 AM - 5:00 PM",
     patronSaint: p.patronSaint || "",
     feastDay: p.feastDay || "",
-    description: p.description || `${lookupData.name || "Parish"} of Canlaon Vicariate.`,
+    description: p.directoryDescription || p.description || `${lookupData.name || "Parish"} of Canlaon Vicariate.`,
     assignedPriest: p.priest || "Unassigned",
     assignedSecretary: p.secretary || "Unassigned",
     massSchedules: p.massSchedules || ["Sunday: 6:00 AM, 8:00 AM, 5:00 PM"],
     upcomingEvents: p.upcomingEvents || [],
     services: p.services || ["Baptism", "Confirmation", "Marriage", "Mass Intention"],
+    logoImage: p.logoImage || "",
+    pinColor: p.pinColor || "#7B1C2A",
+    showLabel: p.showLabel ?? true,
+    directoryDescription: p.directoryDescription || "",
   };
 };
 

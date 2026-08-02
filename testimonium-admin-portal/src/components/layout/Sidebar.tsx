@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
   FileText,
@@ -15,6 +16,8 @@ import {
   HelpCircle,
   Info,
   Settings,
+  Map,
+  AlertTriangle,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/utils/cn';
@@ -99,6 +102,12 @@ const ALL_NAV_ITEMS: NavItem[] = [
     permission: PERMISSIONS.MANAGE_PARISHES,
   },
   {
+    to: '/map-configuration',
+    label: 'Map Configuration',
+    icon: <Map className="w-4 h-4" />,
+    permission: PERMISSIONS.MANAGE_MAP_CONFIG,
+  },
+  {
     to: '/user-management',
     label: 'User Management',
     icon: <Users className="w-4 h-4" />,
@@ -125,16 +134,74 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 
 // ─── Sidebar component ────────────────────────────────────────────────────────
 
+function ConfirmNavigationModal({
+  onConfirm,
+  onClose
+}: {
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-6 h-6 text-amber-600" />
+        </div>
+        <h3
+          className="text-base font-bold text-gray-900 mb-1"
+          style={{ fontFamily: 'Playfair Display, serif' }}
+        >
+          Discard Changes?
+        </h3>
+        <p className="text-xs text-gray-500 mb-6 leading-relaxed">
+          You have unsaved map configuration changes. Leaving this page will discard all edits permanently.
+        </p>
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-200 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 active:scale-95 transition-all"
+          >
+            Discard & Leave
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export function Sidebar() {
   const navigate = useNavigate();
   const { role, logout } = useAuth();
   const [showHelp, setShowHelp] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [pendingNav, setPendingNav] = useState<{ path?: string; action?: () => void } | null>(null);
 
   // Filter nav items to only those the current role has permission to see.
   const visibleNavItems = ALL_NAV_ITEMS.filter((item) =>
     item.permission ? hasPermission(role, item.permission) : true
   );
+
+  const confirmNavigation = (e: React.MouseEvent, path?: string, action?: () => void) => {
+    if ((window as any).hasUnsavedMapChanges) {
+      e.preventDefault();
+      setPendingNav({ path, action });
+      return false;
+    }
+    return true;
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -175,6 +242,7 @@ export function Sidebar() {
             to={item.to}
             className={navLinkClass}
             id={`nav-${item.to.replace('/', '')}`}
+            onClick={(e) => confirmNavigation(e, item.to)}
           >
             <span className="flex-shrink-0">{item.icon}</span>
             <span>{item.label}</span>
@@ -187,7 +255,11 @@ export function Sidebar() {
         <div className="h-px bg-white/10 mx-4 mb-3" />
         <div className="px-2 pb-6 space-y-0.5">
           <button
-            onClick={() => navigate('/profile')}
+            onClick={(e) => {
+              if (confirmNavigation(e, '/profile')) {
+                navigate('/profile');
+              }
+            }}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white/65 rounded-md hover:bg-white/10 hover:text-white transition-all duration-150 border-l-2 border-transparent pl-[10px]"
             id="nav-profile"
           >
@@ -211,7 +283,11 @@ export function Sidebar() {
             <span>About</span>
           </button>
           <button
-            onClick={handleLogout}
+            onClick={(e) => {
+              if (confirmNavigation(e, undefined, handleLogout)) {
+                handleLogout();
+              }
+            }}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white/65 rounded-md hover:bg-white/10 hover:text-white transition-all duration-150 border-l-2 border-transparent pl-[10px]"
             id="nav-logout"
           >
@@ -225,6 +301,23 @@ export function Sidebar() {
     {/* Modals rendered outside aside to escape stacking context */}
     <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
+
+    {/* Navigation confirmation popup modal */}
+    {pendingNav && (
+      <ConfirmNavigationModal
+        onConfirm={() => {
+          (window as any).hasUnsavedMapChanges = false;
+          const { path, action } = pendingNav;
+          setPendingNav(null);
+          if (action) {
+            action();
+          } else if (path) {
+            navigate(path);
+          }
+        }}
+        onClose={() => setPendingNav(null)}
+      />
+    )}
     </>
   );
 }

@@ -170,6 +170,22 @@ export interface ParishProvider {
   upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate>;
   deleteMassSchedule(id: string): Promise<void>;
   resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
+  getMapConfig(): Promise<Parish[]>;
+  batchUpdateMap(updates: {
+    id: string;
+    latitude: number;
+    longitude: number;
+    mapZoom?: number | null;
+    pinColor?: string;
+    showLabel?: boolean;
+    locationUpdatedAt?: string | null;
+  }[]): Promise<Parish[]>;
+  updateDirectorySettings(id: string, data: {
+    directoryDescription?: string | null;
+    contactNumber?: string | null;
+    email?: string | null;
+  }): Promise<Parish>;
+  uploadParishImage(id: string, type: 'cover' | 'logo', file: File): Promise<{ url: string; type: string }>;
 }
 
 export interface UserProvider {

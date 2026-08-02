@@ -406,10 +406,36 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
                   const receipt = tx.receipts?.[0];
                   const ocr = receipt?.ocrResult;
                   const receiptUrl = receipt ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${receipt.r2ObjectKey}` : null;
-                  const needsManual = tx.status === 'PENDING' && (!ocr || !ocr.confidenceScore || ocr.confidenceScore < 0.9);
+
+                  // Confidence display helpers
+                  const confidence = ocr?.confidenceScore != null ? Math.round(ocr.confidenceScore * 100) : null;
+                  const confidenceBadgeClass =
+                    confidence == null ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                    confidence >= 80 ? 'bg-green-50 text-green-700 border-green-200' :
+                    confidence >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    'bg-red-50 text-red-700 border-red-200';
+                  const confidenceLabel = confidence == null ? 'N/A' : `${confidence}%`;
+
+                  const hasOcrData = ocr && (ocr.merchant || ocr.referenceNumber || ocr.amount || ocr.paymentDate);
+                  const ocrProviderLabel = ocr?.ocrProvider
+                    ? ocr.ocrProvider === 'ocrspace'
+                      ? `OCR.space Engine ${ocr.ocrDurationMs != null ? `(${ocr.ocrDurationMs}ms)` : ''}`
+                      : ocr.ocrProvider
+                    : null;
+
+                  const ocrStatus = ocr?.status || (ocr ? 'COMPLETED' : null);
+                  const isOcrProcessing = ocrStatus === 'PENDING' || ocrStatus === 'PROCESSING';
+                  const isOcrFailed = ocrStatus === 'FAILED';
+
+                  const compRatio = ocr?.originalFileSize && ocr?.compressedFileSize
+                    ? (ocr.originalFileSize / ocr.compressedFileSize).toFixed(1)
+                    : null;
+                  const originalSizeMb = ocr?.originalFileSize ? (ocr.originalFileSize / (1024 * 1024)).toFixed(2) : null;
+                  const compressedSizeKb = ocr?.compressedFileSize ? (ocr.compressedFileSize / 1024).toFixed(0) : null;
 
                   return (
                     <div key={tx.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
+                      {/* Transaction header */}
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-gray-700 uppercase">Transaction</span>
                         <span className={cn(
@@ -422,44 +448,197 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <span className="text-[10px] text-gray-400 block uppercase">Provider</span>
-                          <span className="font-semibold text-gray-800">{tx.provider || ocr?.provider || 'GCash'}</span>
+                      {/* OCR Summary Card */}
+                      {/* OCR Summary Card */}
+                      {isOcrProcessing ? (
+                        <div className="border border-blue-100 rounded-lg bg-blue-50/30 p-3 space-y-2 animate-pulse">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">OCR Processing</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
+                              PROCESSING
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            Receipt details are being extracted in the background. Please wait...
+                          </p>
                         </div>
-                        <div>
-                          <span className="text-[10px] text-gray-400 block uppercase">Reference Number</span>
-                          <span className="font-semibold text-gray-800">{tx.referenceNumber || ocr?.referenceNumber || 'N/A'}</span>
+                      ) : isOcrFailed ? (
+                        <div className="border border-red-100 rounded-lg bg-red-50/30 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-red-700 uppercase tracking-widest">OCR Extraction Failed</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-red-50 text-red-700 border-red-200">
+                              FAILED
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {ocr?.rawText || 'An error occurred during OCR extraction. Manual verification is required.'}
+                          </p>
                         </div>
-                        <div>
-                          <span className="text-[10px] text-gray-400 block uppercase">Amount</span>
-                          <span className="font-semibold text-gray-800">₱{tx.amount || ocr?.amount || '0.00'}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-gray-400 block uppercase">OCR Confidence</span>
-                          <span className="font-semibold text-gray-800">
-                            {ocr?.confidenceScore ? `${(ocr.confidenceScore * 100).toFixed(0)}%` : 'N/A'}
-                          </span>
-                        </div>
-                      </div>
+                      ) : hasOcrData ? (
+                        <div className="border border-blue-100 rounded-lg bg-blue-50/30 p-3 space-y-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">OCR Summary</span>
+                            <div className="flex items-center gap-2">
+                              {ocrProviderLabel && (
+                                <span className="text-[9px] text-gray-400">
+                                  {ocrProviderLabel} {ocr?.ocrEngine ? `(Engine ${ocr.ocrEngine})` : ''}
+                                </span>
+                              )}
+                              <span className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                                confidenceBadgeClass
+                              )}>
+                                Confidence: {confidenceLabel}
+                              </span>
+                            </div>
+                          </div>
 
-                      {needsManual && (
-                        <div className="flex items-center gap-2 p-2.5 bg-amber-50/60 border border-amber-200/50 rounded-lg text-xs text-amber-800">
-                          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                          <span>Manual Review Required (OCR low confidence).</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {(ocr.merchant || tx.provider) && (
+                              <div>
+                                <span className="text-[10px] text-gray-400 block uppercase">Merchant</span>
+                                <span className="font-semibold text-gray-800">{ocr.merchant || tx.provider}</span>
+                              </div>
+                            )}
+                            {(ocr.referenceNumber || tx.referenceNumber) && (
+                              <div>
+                                <span className="text-[10px] text-gray-400 block uppercase">Reference No.</span>
+                                <span className="font-semibold text-gray-800 font-mono tracking-wide">
+                                  {ocr.referenceNumber || tx.referenceNumber}
+                                </span>
+                              </div>
+                            )}
+                            {(ocr.amount || tx.amount) && (
+                              <div>
+                                <span className="text-[10px] text-gray-400 block uppercase">Amount</span>
+                                <span className="font-semibold text-gray-800">
+                                  ₱{ocr.amount || tx.amount}
+                                </span>
+                              </div>
+                            )}
+                            {ocr.paymentDate && (
+                              <div>
+                                <span className="text-[10px] text-gray-400 block uppercase">Date</span>
+                                <span className="font-semibold text-gray-800">{ocr.paymentDate}</span>
+                              </div>
+                            )}
+                            {ocr.paymentTime && (
+                              <div>
+                                <span className="text-[10px] text-gray-400 block uppercase">Time</span>
+                                <span className="font-semibold text-gray-800">{ocr.paymentTime}</span>
+                              </div>
+                            )}
+                            {ocr.accountName && (
+                              <div className="col-span-2">
+                                <span className="text-[10px] text-gray-400 block uppercase">Account Name</span>
+                                <span className="font-semibold text-gray-800">{ocr.accountName}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Observability Details Grid */}
+                          <div className="mt-2 border-t border-blue-100/50 pt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] text-gray-400 font-mono">
+                            {ocr.parserConfidence != null && (
+                              <div>
+                                <span>Parser Conf: </span>
+                                <span className="font-semibold text-gray-600">{(ocr.parserConfidence * 100).toFixed(0)}%</span>
+                              </div>
+                            )}
+                            {ocr.ocrConfidence != null && (
+                              <div>
+                                <span>OCR Engine Conf: </span>
+                                <span className="font-semibold text-gray-600">{(ocr.ocrConfidence * 100).toFixed(0)}%</span>
+                              </div>
+                            )}
+                            {ocr.ocrDurationMs != null && (
+                              <div>
+                                <span>OCR Speed: </span>
+                                <span className="font-semibold text-gray-600">{ocr.ocrDurationMs}ms</span>
+                              </div>
+                            )}
+                            {compRatio && (
+                              <div>
+                                <span>Ratio: </span>
+                                <span className="font-semibold text-gray-600">{compRatio}x ({originalSizeMb}MB → {compressedSizeKb}KB)</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Collapsible raw text viewer */}
+                          {ocr.rawText && (
+                            <div className="mt-2 pt-1 border-t border-blue-100/50">
+                              <details className="text-[10px]">
+                                <summary className="cursor-pointer font-semibold text-blue-600 hover:text-blue-800 select-none">
+                                  View Raw OCR Text
+                                </summary>
+                                <pre className="mt-1.5 p-2 bg-gray-900 text-gray-100 text-[9px] rounded font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto read-only select-text">
+                                  {ocr.rawText}
+                                </pre>
+                              </details>
+                            </div>
+                          )}
+
+                          {/* Manual review notice — always shown regardless of confidence */}
+                          <div className="flex items-center gap-2 mt-1 p-2 bg-amber-50/70 border border-amber-200/60 rounded-lg text-xs text-amber-800">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                            <span className="text-[10px]">Manual review required. OCR assists verification — secretary approval is always mandatory.</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="border border-gray-100 rounded-lg p-3 bg-white/60 space-y-1">
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <AlertCircle className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <span className="text-[10px]">
+                              {ocr
+                                ? 'OCR could not extract receipt data. Manual verification required.'
+                                : 'No OCR data available for this receipt.'}
+                            </span>
+                          </div>
+                          {/* Still show manually entered transaction data if available */}
+                          {(tx.provider || tx.referenceNumber || tx.amount) && (
+                            <div className="grid grid-cols-2 gap-2 text-xs mt-2">
+                              {tx.provider && (
+                                <div>
+                                  <span className="text-[10px] text-gray-400 block uppercase">Provider</span>
+                                  <span className="font-semibold text-gray-800">{tx.provider}</span>
+                                </div>
+                              )}
+                              {tx.referenceNumber && (
+                                <div>
+                                  <span className="text-[10px] text-gray-400 block uppercase">Reference</span>
+                                  <span className="font-semibold text-gray-800">{tx.referenceNumber}</span>
+                                </div>
+                              )}
+                              {tx.amount && (
+                                <div>
+                                  <span className="text-[10px] text-gray-400 block uppercase">Amount</span>
+                                  <span className="font-semibold text-gray-800">₱{tx.amount}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 
+                      {/* Original receipt image — secretary always sees full quality */}
                       {receiptUrl && (
                         <div>
-                          <span className="text-[10px] text-gray-400 block uppercase mb-1">Receipt Image Preview</span>
-                          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-48 flex justify-center bg-gray-900">
+                          <span className="text-[10px] text-gray-400 block uppercase mb-1">Receipt Image (Original Quality)</span>
+                          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 flex justify-center bg-gray-900">
                             <img
                               src={receiptUrl}
                               alt="Receipt Proof"
-                              className="object-contain max-h-48"
+                              className="object-contain max-h-56"
                             />
                           </div>
+                          <a
+                            href={receiptUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1.5 inline-block text-[10px] text-blue-600 hover:underline"
+                          >
+                            Open full-size image ↗
+                          </a>
                         </div>
                       )}
                     </div>
@@ -470,6 +649,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
               <p className="text-xs text-gray-400 italic">No payment transactions recorded.</p>
             )}
           </div>
+
 
           {/* Timeline */}
           <div>

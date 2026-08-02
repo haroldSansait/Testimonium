@@ -6,16 +6,16 @@ This document compiles the master synchronization state and comprehensive archit
 
 ## 1. 📊 SYSTEM SNAPSHOT & METADATA
 
-*   **Generation Date/Time:** `2026-07-09T12:55:47+08:00` (Local Workspace Time)
+*   **Generation Date/Time:** `2026-07-31T21:44:00+08:00` (Local Workspace Time)
 *   **System Architecture:** Decoupled, multi-tenant / multi-parish row-level ring-fenced structure with roles-based access control (RBAC).
 
 ### Core Tech Stack
-*   **Backend:** Node.js, Express (ES Modules)
+*   **Backend:** Node.js, Express `v5.2.1` (ES Modules)
 *   **Database & ORM:** PostgreSQL (hosted on Supabase) accessed via **Prisma 7.8.0** with `@prisma/adapter-pg` driver adapter.
 *   **Identity & Access Management:** Firebase Auth Admin SDK (v14.1.0) with Just-In-Time (JIT) user auto-provisioning.
 *   **Cloud Storage:** Cloudflare R2 Object Storage utilizing the AWS S3-compatible SDK (`@aws-sdk/client-s3`) and memory-only `multer` upload streams.
 *   **Admin Portal Frontend:** React 19.x, Vite 8.x, TypeScript, TailwindCSS 3.4.x, React Router 7.x, Radix UI.
-*   **Parishioner Web Portal:** Baseline React boilerplate with Firebase Client Web SDK.
+*   **Parishioner Web Portal:** React 19.x, Vite 8.x, TypeScript, TailwindCSS 3.4.x, React Router 7.x, Leaflet maps.
 *   **Parishioner Mobile App:** Expo / React Native scaffolding.
 
 ---
@@ -45,9 +45,13 @@ testimonium/
 │       │   ├── DashboardPage.tsx
 │       │   ├── DocumentRequestsPage.tsx
 │       │   ├── LoginPage.tsx
+│       │   ├── MassSchedulePage.tsx
 │       │   ├── NotificationsPage.tsx
 │       │   ├── ParishManagementPage.tsx
+│       │   ├── ProfilePage.tsx
 │       │   ├── ScheduleRequestsPage.tsx
+│       │   ├── SettingsPage.tsx
+│       │   ├── StaffAvailabilityPage.tsx
 │       │   ├── UnauthorizedPage.tsx
 │       │   └── UserManagementPage.tsx
 │       ├── providers/                      # Data Provider Architecture (Demo/API/Hybrid)
@@ -72,10 +76,27 @@ testimonium/
 │   ├── repositories/                       # Prisma DB query layer
 │   ├── routes/                             # Express route endpoints
 │   ├── services/                           # Backend business logic
-│   └── validators/                         # Zod request validators
-├── testimonium-parishioner-web/            # Parishioner Web Portal (Scaffold)
+│   └── validators/                         # Zod Zod request validators
+├── testimonium-parishioner-web/            # Parishioner Web Portal
+│   ├── index.html
+│   ├── package.json
+│   ├── tailwind.config.js
+│   ├── vite.config.ts
 │   └── src/
-│       └── firebaseConfig.js               # Firebase web configuration
+│       ├── index.css
+│       ├── main.tsx
+│       ├── App.tsx
+│       ├── firebaseConfig.ts               # Firebase web configuration
+│       ├── api/                            # Axios API integrations
+│       ├── components/                     # Reusable UI widgets
+│       ├── contexts/                       # Auth & Notification states
+│       ├── layouts/                        # Public & Dashboard layouts
+│       ├── hooks/                          # Reusable custom hooks
+│       ├── pages/                          # Parishioner View-Layer Screens
+│       │   ├── public/                     # LandingPage, LoginPage, SignupPage
+│       │   └── dashboard/                  # HomePage, SacramentalRequestPage, RequestTrackingPage, EventSchedulerPage, ProfilePage, NotificationsPage, ParishDirectoryPage
+│       ├── providers/                      # Data Provider Architecture
+│       └── services/                       # Client business logic
 └── testimonium-parishioner-app/            # Parishioner Mobile App (Scaffold)
     ├── App.js                              # Empty boilerplate entry point
     ├── app.json                            # Empty native configuration file
@@ -92,34 +113,40 @@ testimonium/
 
 ## 3. 🗄️ DATABASE & SCHEMATIC ALIGNMENT
 
-The PostgreSQL database is managed via Prisma 7.8.0. Database schema changes are tracked via four migrations:
-1.  `init_testimonium_relational_schema`: Scaffolds the base relational models.
-2.  `rename_vicariate_admin_to_diocese_coordinator`: Renames roles to align with diocesan requirements.
-3.  `make_firebase_uid_optional`: Facilitates pre-provisioned staff record mapping.
-4.  `add_patron_saint_and_email_to_parish`: Expands parish profile fields.
+The PostgreSQL database is managed via Prisma 7.8.0. Database schema changes are tracked via migration history.
 
 ### Core Active Models & Relations
 *   **`Role`**: Authorization roles (`PARISHIONER`, `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`).
-*   **`Parish`**: Details parish structures (`PARISH`, `QUASI_PARISH`, `MISSION_STATION`).
-*   **`User`**: Core user accounts. Links to a single `Role` and optionally to an assigned `Parish` (staff roles).
-*   **`DocumentRequest`**: Sacrament certificate requests. Links a `User` (submitter), a `Parish` (receiver), and a `User` (processor).
-*   **`Requirement`**: Uploaded attachments supporting a document request. Points to keys in Cloudflare R2.
-*   **`Schedule`**: Event requests (weddings, baptisms, etc.) with dates and calendar allocations.
-*   **`Notification`**: Broadcasts/individual triggers (`PUSH`, `IN_APP`, `EMAIL`).
-*   **`FaqKnowledgeBase`**: Questions and answers utilized for chatbots and FAQ hubs.
+*   **`Parish`**: Details parish structures (`PARISH`, `QUASI_PARISH`, `MISSION_STATION`). Includes settings (`documentSettings`, `eventSettings`, `officeHours`), coordinates, Cover/Gallery links, and Slug details.
+*   **`User`**: Core user accounts. Links to a single `Role` and optionally to an assigned `Parish` (staff roles). Tracks color preferences and assistant flags.
+*   **`DocumentRequest`**: Sacrament certificate requests. Links a `User` (submitter), a `Parish` (receiver), and a `User` (processor). Supports tracking, drafts, payments, and correction notes.
+*   **`RequestAttachment`**: Uploaded attachments supporting a document request. Points to keys in Cloudflare R2.
+*   **`PaymentTransaction`**: Manages payment verification metadata for Gcash/etc. transfers.
+*   **`ReceiptUpload`**: Represents individual receipt image references stored in R2.
+*   **`OcrResult`**: Contains raw text and parsed reference data extracted from screenshots.
+*   **`RequestHistory`**: Audit trail of statuses, updates, and reasons for Document Requests.
+*   **`Schedule`**: Event requests (weddings, baptisms, etc.) with dates and calendar allocations. Tracks rescheduling states.
+*   **`ParishAvailability`**: Tracks unavailability ranges, office closures, and leaves for staff.
+*   **`Notification`**: Broadcasts/individual triggers (`PUSH`, `IN_APP`, `EMAIL`) with link details.
+*   **`FaqKnowledgeBase`**: Questions and answers utilized for FAQ hubs.
 *   **`ChatbotLog`**: Interaction transcripts between parishioners and the AI chatbot.
-*   **`ActivityLog`**: Audit tracking system logging staff database changes.
+*   **`ActivityLog`**: Audit tracking system logging staff database changes, capturing old/new values.
+*   **`MassScheduleTemplate`**: Templates for recurring Masses.
+*   **`ParishEvent`**: Custom parish activities like Masses, Fiestas, or blessings.
 
 ### Enum Values Enforced
 *   **`RoleName`**: `PARISHIONER`, `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`
 *   **`UserStatus`**: `ACTIVE`, `INACTIVE`
 *   **`ParishType`**: `PARISH`, `QUASI_PARISH`, `MISSION_STATION`
 *   **`DocumentType`**: `BAPTISMAL_CERTIFICATE`, `CONFIRMATION_CERTIFICATE`, `MARRIAGE_CERTIFICATE`, `FIRST_COMMUNION_CERTIFICATE`
-*   **`DocumentRequestStatus`**: `PENDING`, `UNDER_REVIEW`, `PAYMENT_PENDING`, `PAYMENT_VERIFIED`, `PROCESSING`, `READY_FOR_PICKUP`, `COMPLETED`, `REJECTED`, `CANCELLED`
+*   **`DocumentRequestStatus`**: `PENDING`, `UNDER_REVIEW`, `NEEDS_CORRECTION`, `PAYMENT_PENDING`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_NEEDS_CORRECTION`, `PAYMENT_VERIFIED`, `PROCESSING`, `READY_FOR_PICKUP`, `COMPLETED`, `REJECTED`, `CANCELLED`
 *   **`PaymentStatus`**: `UNPAID`, `PROOF_SUBMITTED`, `CONFIRMED`
-*   **`ScheduleEventType`**: `WEDDING`, `BAPTISM`, `CONFIRMATION`, `PRIVATE_MASS`, `MASS_INTENTION`
-*   **`ScheduleStatus`**: `PENDING`, `CONFIRMED`, `REJECTED`
+*   **`PaymentVerificationStatus`**: `PENDING`, `VERIFIED`, `REJECTED`
+*   **`ScheduleEventType`**: `WEDDING`, `BAPTISM`, `CONFIRMATION`, `PRIVATE_MASS`, `MASS_INTENTION`, `MARRIAGE_SPECIAL`, `WAKE_MASS`, `FUNERAL`, `ANOINTING_OF_THE_SICK`, `FIESTA`, `BLESSING`, `DELIVERANCE`, `THANKSGIVING`, `FIRST_COMMUNION`, `MASS_OF_HOLY_SPIRIT`, `CONFESSION`
+*   **`ScheduleStatus`**: `PENDING`, `REQUESTED`, `PROPOSED_RESCHEDULE`, `WAITING_PARISHIONER_RESPONSE`, `CONFIRMED`, `COMPLETED`, `CANCELLED`, `REJECTED`
+*   **`AvailabilityType`**: `PARISH_CLOSED`, `SECRETARY_LEAVE`, `PRIEST_LEAVE`, `FULLY_BOOKED`
 *   **`NotificationType`**: `PUSH`, `IN_APP`, `EMAIL`
+*   **`NotificationReferenceType`**: `DOCUMENT_REQUEST`, `SCHEDULE_REQUEST`, `GENERAL`
 
 ### Seeded Canlaon Vicariate Parishes
 The `prisma/seed.js` script successfully seeds the 7 official parish entities of the Canlaon Vicariate:
@@ -135,71 +162,65 @@ The `prisma/seed.js` script successfully seeds the 7 official parish entities of
 
 ---
 
-## 4. ⚙️ BACKEND API CORE STATUS (PHASES 1, 4, 5, 6 COMPLETE)
+## 4. ⚙️ BACKEND API CORE STATUS (ALL PHASES COMPLETE)
 
 The backend Express server is running on Port 5000 and connects to Supabase Postgres.
 
 ### Security & Middlewares
 *   **Helmet & Compression:** Headers secured and payloads compressed.
-*   **CORS Configuration:** Enforces dynamic origin authorization (`http://localhost:3000`, `http://localhost:3001`, `http://localhost:5173`).
+*   **CORS Configuration:** Enforces dynamic origin authorization matching environment properties.
 *   **Auth Middleware:** `authenticateFirebaseToken` extracts and verifies JWT ID tokens via the Firebase Admin SDK.
-*   **JIT Auto-Provisioning:** If an authenticated Firebase email does not exist in the database, a `PARISHIONER` profile is created automatically. If a pre-provisioned staff email matches, the `firebaseUid` is permanently linked.
+*   **JIT Auto-Provisioning:** Dynamically registers new `PARISHIONER` records or links pre-seeded staff users.
 *   **Role Middleware:** `checkRole(allowedRoles)` enforces RBAC.
 
 ### Completed API Modules
-*   **Login & Authentication (`/api/v1/auth/login`)**: Supports secure `rememberMe` checkbox parameter mapping, setting client-side persistence and returning calculated session durations (30 days vs 1 day).
-*   **Diocese Management (`/api/v1/diocese`)**: Scopes overview stats, notifications, and aggregated activities for Diocese Coordinators.
-*   **Parish CRUD (`/api/v1/parishes`)**: Full lifecycle management of parish endpoints.
-*   **User CRUD (`/api/v1/users`)**: Staff enablement, disabling, and Firebase password reset link generators.
-*   **Analytics (`/api/v1/analytics`)**: Live DB counts for sacrament trends, parish submissions, and payment statistics.
-*   **Calendar & Multi-Parish Scoping (`/api/v1/calendar/events`)**:
-    *   Retrieves event lists by year/month.
-    *   **Row-Level Scoping:** If the requester is not a `DIOCESE_COORDINATOR`, queries automatically inject the user's `parishId`. Priests and Secretaries are ring-fenced to see and edit only their own parish data.
-*   **Activity Logs & Audits (`/api/v1/activity-log`)**: Tracking log actions, supporting soft archiving, restores, and cron-like retention purges.
-*   **Cloudflare R2 Storage Service (`R2Service`)**: Configured S3-compatible endpoints for uploads, downloads, and deletes. Memory uploads are limited to 10MB via Multer memory storage buffers.
+*   **Login & Authentication (`/api/v1/auth`)**: Supports rememberMe configurations, session duration calculations, and profile updating.
+*   **Diocese Management (`/api/v1/diocese`)**: Scopes overview stats, notifications, and activities for Diocese Coordinators.
+*   **Parish CRUD & Settings (`/api/v1/parishes`)**: Full lifecycle and custom settings configuration (hours, requirements).
+*   **User CRUD (`/api/v1/users`)**: Staff enablement/disabling, password resets, and calendar color preferences.
+*   **Analytics (`/api/v1/analytics`)**: live counts of sacramental requests, parishes, and payments.
+*   **Calendar & Events (`/api/v1/calendar`, `/api/v1/parish-events`, `/api/v1/mass-schedules`)**:
+    *   Retrieves calendar feeds scoped to parish restrictions.
+    *   Creates parish-wide events and recurring mass schedule templates.
+    *   Allows priests to respond to assigned slots.
+*   **Parishioner Request Flow (`/api/v1/requests`, `/api/v1/payment`)**:
+    *   Creates request drafts and updates.
+    *   Handles Cloudflare R2 file attachments and metadata.
+    *   Processes payment proof submissions and triggers OCR scanning.
+*   **Secretary Management Flow (`/api/v1/document-requests`, `/api/v1/schedule-requests`)**:
+    *   Updates request statuses with comments and correction requirement targets.
+    *   Manages booking slots and proposes scheduling changes.
+*   **Parish Availability (`/api/v1/parish-availabilities`)**: Configures office closures and leave ranges.
+*   **Activity Logs & Audits (`/api/v1/activity-log`)**: Lists, archives, restores, and purges logging tables.
 
 ---
 
 ## 5. 🖥️ FRONTEND APPLICATIONS STATUS
 
 ### 1. `testimonium-parishioner-web`
-*   **Baseline Configuration:** The portal exists as a barebones scaffold.
-*   **File Readiness:** Only `src/firebaseConfig.js` is established, housing web api credentials (`projectId: testimonium-b46b0`).
-*   **Status:** Not yet ready; routers, pages, layouts, and components are pending initialization.
+*   **Portal Status:** Fully developed React 19.x / Vite 8.x app.
+*   **Routing & Page Screens:** Fully implements user landing pages, authentication (login, signup, onboarding), home dashboards, transactional workflows (document wizards, receipt uploads, request trackers), scheduling forms, notification logs, profile updating, and vicariate maps.
+*   **State & Services:** Leverages contexts (Auth, Theme, Notifications) and hooks for REST endpoints.
 
 ### 2. `testimonium-parishioner-app` (Expo Mobile App)
-*   **Entry Points:** `App.js` and `app.json` are present but exist as empty 0-byte placeholders.
-*   **Native Firebase Configuration:** `src/google-services.json` is configured, linking the Android package identifier `com.testimonium.app` to Firebase project `testimonium-b46b0`.
-*   **View-layer & Component Readiness:** All directories (`screens`, `navigation`, `components`, `services`) are created but currently remain empty scaffolds.
+*   **Status:** Scaffold baseline. Entry files and directories are provisioned but pages/logic are pending implementation.
 
 ---
 
-## 6. 🎯 ACTIVE SPRINT TRACKER & CURRENT ROADBLOCKS
+## 6. 🎯 ACTIVE SPRINT TRACKER & ROADMAP
 
 ### 100% Complete & Verified Tasks
-*   [x] Node.js Express scaffolding with health verification.
-*   [x] PostgreSQL schema migrations (4 runs successfully initialized/configured).
-*   [x] Cloudflare R2 bucket connection client (`R2Service.js`).
-*   [x] Firebase token verification and JIT profile mapping.
-*   [x] Role-Based Access Control checks (`checkRole`).
-*   [x] Diocese Coordinator dashboard integrations and analytics charts.
-*   [x] Parish and staff user lifecycle administration (CRUD, disable/enable, resets).
+*   [x] Express API scaffolding with health check.
+*   [x] PostgreSQL migrations and seeding (7 Canlaon parishes & staff).
+*   [x] Cloudflare R2 client integrations (`R2Service`).
+*   [x] Firebase token verification and JIT auto-provisioning.
 *   [x] Scoped calendar query handlers and multi-parish ring-fencing.
-*   [x] Audit activity log manager (list, filter, archive, purge).
-
-### Immediate Next Tasks (Roadmap)
-*   [ ] **Phase (?) Parishioner Transaction endpoints**:
-    *   Build document submission routes saving metadata to DB and file streams to R2.
-    *   Implement status update transitions (`PENDING` -> `UNDER_REVIEW` -> `PAYMENT_PENDING` -> `READY_FOR_PICKUP`).
-    *   Build scheduling forms and appointment validation routes to avoid calendar overlaps.
-*   [ ] **Multer Streaming Upload validation**:
-    *   Integrate backend file size and MIME-type validators for document requirement payloads.
-*   [ ] **OCR Integration for GCash Receipts**:
-    *   Establish scanning integration to parse GCash screenshot reference codes, amounts, and timestamps, automatically moving status to `PAYMENT_VERIFIED`.
+*   [x] Audit activity log manager (archiving, restores, purges).
+*   [x] Parishioner transactions: document submission, tracking, scheduling, and R2 uploads.
+*   [x] GCash receipt upload parsing with Stub OCR analysis.
+*   [x] Mass schedule template managers and priest response pipelines.
+*   [x] Parish availability blocks (leave lists, closures).
+*   [x] Parishioner Web Portal: Landing page, authentication, dashboard wizard, tracking, and maps.
 
 ### Active Dev Shortcuts & Environment Configurations
-*   **Dev Auth Guard Bypass:** Set `ENABLE_DEV_AUTH=true` in development environments. By sending the header:
-    ```http
-    Authorization: Bearer test-token-coordinator
-    ```
-    the auth middleware bypasses Firebase validation and maps the request context directly to the pre-seeded `coordinator@testimonium.org` profile to facilitate API testing.
+*   **Dev Auth Guard Bypass:** Set `ENABLE_DEV_AUTH=true` in development. By sending `Authorization: Bearer test-token-coordinator`, the auth middleware bypasses Firebase validation and maps the context to `coordinator@testimonium.org`.

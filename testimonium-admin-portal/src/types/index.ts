@@ -78,7 +78,25 @@ export interface DocumentRequest {
         provider?: string | null;
         confidenceScore?: number | null;
         rawText?: string | null;
-        processedAt: string;
+        status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+        // Expanded fields from OCR.space integration
+        merchant?: string | null;
+        paymentTime?: string | null;
+        accountName?: string | null;
+        ocrProvider?: string | null;
+        ocrDurationMs?: number | null;
+        originalFileSize?: number | null;
+        compressedFileSize?: number | null;
+        // Phase 2 additions
+        ocrConfidence?: number | null;
+        parserConfidence?: number | null;
+        finalConfidence?: number | null;
+        ocrEngine?: string | null;
+        ocrLanguage?: string | null;
+        normalizedAmount?: string | null;
+        normalizedDate?: string | null;
+        compressionWidth?: number | null;
+        compressionQuality?: number | null;
       } | null;
     }[];
   }[];
@@ -332,6 +350,16 @@ export interface Parish {
   address?: string;
   contactNumber?: string;
   email?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  logoImage?: string;
+  coverImage?: string;
+  mapZoom?: number | null;
+  pinColor?: string;
+  showLabel?: boolean;
+  directoryDescription?: string;
+  locationUpdatedAt?: string | null;
+  locationUpdatedBy?: number | null;
   documentSettings?: any;
   eventSettings?: any;
   officeHours?: any;

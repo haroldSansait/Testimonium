@@ -238,5 +238,77 @@ export const DemoParishProvider: ParishProvider = {
     massTemplates = massTemplates.map(t => t.parishId === parishId ? { ...t, isActive: false } : t);
     seedDemoMassTemplates(parishId);
     return this.getMassSchedule(parishId);
+  },
+
+  async getMapConfig(): Promise<Parish[]> {
+    return this.getParishes({});
+  },
+
+  async batchUpdateMap(updates: {
+    id: string;
+    latitude: number;
+    longitude: number;
+    mapZoom?: number | null;
+    pinColor?: string;
+    showLabel?: boolean;
+    locationUpdatedAt?: string | null;
+  }[]): Promise<Parish[]> {
+    for (const update of updates) {
+      store = store.map((p) => {
+        if (p.id === update.id) {
+          return {
+            ...p,
+            latitude: update.latitude,
+            longitude: update.longitude,
+            mapZoom: update.mapZoom !== undefined ? update.mapZoom : p.mapZoom,
+            pinColor: update.pinColor !== undefined ? update.pinColor : p.pinColor,
+            showLabel: update.showLabel !== undefined ? update.showLabel : p.showLabel,
+            locationUpdatedAt: new Date().toISOString(),
+          };
+        }
+        return p;
+      });
+    }
+    const updatedIds = updates.map((u) => u.id);
+    return store.filter((p) => updatedIds.includes(p.id));
+  },
+
+  async updateDirectorySettings(id: string, data: {
+    directoryDescription?: string | null;
+    contactNumber?: string | null;
+    email?: string | null;
+  }): Promise<Parish> {
+    store = store.map((p) => {
+      if (p.id === id) {
+        return {
+          ...p,
+          directoryDescription: data.directoryDescription !== undefined ? data.directoryDescription || undefined : p.directoryDescription,
+          contactNumber: data.contactNumber !== undefined ? data.contactNumber || undefined : p.contactNumber,
+          email: data.email !== undefined ? data.email || undefined : p.email,
+        };
+      }
+      return p;
+    });
+    const match = store.find((p) => p.id === id);
+    if (!match) throw new Error(`Parish ${id} not found`);
+    return match;
+  },
+
+  async uploadParishImage(id: string, type: 'cover' | 'logo', _file: File): Promise<{ url: string; type: string }> {
+    const fakeUrl = type === 'cover' 
+      ? "https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800"
+      : "https://images.unsplash.com/photo-1507038772120-7bef2c68207a?auto=format&fit=crop&q=80&w=800";
+    
+    store = store.map((p) => {
+      if (p.id === id) {
+        return {
+          ...p,
+          [type === 'cover' ? 'coverImage' : 'logoImage']: fakeUrl,
+        };
+      }
+      return p;
+    });
+
+    return { url: fakeUrl, type };
   }
 };

@@ -47,5 +47,48 @@ export const ApiParishProvider: ParishProvider = {
   async resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
     const response = await api.post<ApiResponseEnvelope<MassScheduleTemplate[]>>(`/mass-schedules/${parishId}/reset`);
     return response.data.data;
+  },
+
+  async getMapConfig(): Promise<Parish[]> {
+    const response = await api.get<ApiResponseEnvelope<Parish[]>>('/parishes/map-config');
+    return response.data.data;
+  },
+
+  async batchUpdateMap(updates: {
+    id: string;
+    latitude: number;
+    longitude: number;
+    mapZoom?: number | null;
+    pinColor?: string;
+    showLabel?: boolean;
+    locationUpdatedAt?: string | null;
+  }[]): Promise<Parish[]> {
+    const response = await api.patch<ApiResponseEnvelope<Parish[]>>('/parishes/map-config/batch', { updates });
+    return response.data.data;
+  },
+
+  async updateDirectorySettings(id: string, data: {
+    directoryDescription?: string | null;
+    contactNumber?: string | null;
+    email?: string | null;
+  }): Promise<Parish> {
+    const response = await api.patch<ApiResponseEnvelope<Parish>>(`/parishes/${id}/settings`, data);
+    return response.data.data;
+  },
+
+  async uploadParishImage(id: string, type: 'cover' | 'logo', file: File): Promise<{ url: string; type: string }> {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await api.post<ApiResponseEnvelope<{ url: string; type: string }>>(
+      `/parishes/${id}/images`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        params: { type },
+      }
+    );
+    return response.data.data;
   }
 };

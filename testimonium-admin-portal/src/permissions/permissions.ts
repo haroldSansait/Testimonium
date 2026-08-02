@@ -19,7 +19,8 @@ export type Permission =
   | 'VIEW_ACTIVITY_LOG'
   | 'MANAGE_MASS_SCHEDULE'
   | 'MANAGE_MY_AVAILABILITY'
-  | 'MANAGE_PARISH_SETTINGS';
+  | 'MANAGE_PARISH_SETTINGS'
+  | 'MANAGE_MAP_CONFIG';
 
 // ─── Convenience constants ────────────────────────────────────────────────────
 // Re-export each permission as a constant so callers can write
@@ -39,4 +40,5 @@ export const PERMISSIONS = {
   MANAGE_MASS_SCHEDULE: 'MANAGE_MASS_SCHEDULE' as const,
   MANAGE_MY_AVAILABILITY: 'MANAGE_MY_AVAILABILITY' as const,
   MANAGE_PARISH_SETTINGS: 'MANAGE_PARISH_SETTINGS' as const,
+  MANAGE_MAP_CONFIG: 'MANAGE_MAP_CONFIG' as const,
 } satisfies Record<Permission, Permission>;

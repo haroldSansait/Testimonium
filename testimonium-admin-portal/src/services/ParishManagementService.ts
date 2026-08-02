@@ -43,5 +43,33 @@ export const ParishManagementService = {
 
   async resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
     return providerFactory.getParishProvider().resetMassSchedule(parishId);
+  },
+
+  async getMapConfig(): Promise<Parish[]> {
+    return providerFactory.getParishProvider().getMapConfig();
+  },
+
+  async batchUpdateMap(updates: {
+    id: string;
+    latitude: number;
+    longitude: number;
+    mapZoom?: number | null;
+    pinColor?: string;
+    showLabel?: boolean;
+    locationUpdatedAt?: string | null;
+  }[]): Promise<Parish[]> {
+    return providerFactory.getParishProvider().batchUpdateMap(updates);
+  },
+
+  async updateDirectorySettings(id: string, data: {
+    directoryDescription?: string | null;
+    contactNumber?: string | null;
+    email?: string | null;
+  }): Promise<Parish> {
+    return providerFactory.getParishProvider().updateDirectorySettings(id, data);
+  },
+
+  async uploadParishImage(id: string, type: 'cover' | 'logo', file: File): Promise<{ url: string; type: string }> {
+    return providerFactory.getParishProvider().uploadParishImage(id, type, file);
   }
 };

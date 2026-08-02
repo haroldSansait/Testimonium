@@ -43,6 +43,20 @@ export const env = {
     bucketName: process.env.R2_BUCKET_NAME,
     publicUrl: process.env.R2_PUBLIC_URL,
   },
+  ocr: {
+    enabled: process.env.OCR_ENABLED !== "false",
+    provider: process.env.OCR_PROVIDER ?? "stub",
+    spaceApiKey: process.env.OCR_SPACE_API_KEY,
+    spaceEngine: process.env.OCR_SPACE_ENGINE ?? "2",
+    timeout: Number(process.env.OCR_TIMEOUT ?? 10000),
+    maxSizeKb: Number(process.env.OCR_MAX_SIZE_KB ?? 900),
+    compressionWidth: Number(process.env.OCR_COMPRESSION_WIDTH ?? 1200),
+    compressionQuality: Number(process.env.OCR_COMPRESSION_QUALITY ?? 80),
+    maxRetries: Number(process.env.OCR_MAX_RETRIES ?? 2),
+    retryBaseDelayMs: Number(process.env.OCR_RETRY_BASE_DELAY_MS ?? 1000),
+    cacheTtlMs: Number(process.env.OCR_CACHE_TTL_MS ?? 1800000),
+    cacheMaxEntries: Number(process.env.OCR_CACHE_MAX_ENTRIES ?? 200),
+  },
 };
 
 export const getMissingRequiredConfig = () => {

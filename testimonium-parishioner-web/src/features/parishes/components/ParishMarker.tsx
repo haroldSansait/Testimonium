@@ -14,6 +14,8 @@ export const ParishMarker: React.FC<ParishMarkerProps> = ({ parish, position, on
       position={position}
       title={parish.name}
       description={`Feast Day: ${parish.feastDay}`}
+      pinColor={parish.pinColor}
+      showLabel={parish.showLabel}
       onClick={onClick}
     />
   );

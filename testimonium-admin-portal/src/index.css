@@ -113,3 +113,17 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* Custom Leaflet Portal Marker styling */
+.custom-leaflet-portal-marker {
+  background: transparent !important;
+  border: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.marker-portal-root {
+  position: absolute;
+  transform: translate(-50%, -100%); /* Anchor pin bottom-center exactly on coords */
+}
+

@@ -28,6 +28,10 @@ export interface Parish {
   massSchedules: string[];
   upcomingEvents: string[];
   services: string[];
+  logoImage?: string;
+  pinColor?: string;
+  showLabel?: boolean;
+  directoryDescription?: string;
 }
 
 export type RequestStatus =

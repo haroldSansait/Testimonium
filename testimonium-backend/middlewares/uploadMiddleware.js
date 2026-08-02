@@ -1,6 +1,7 @@
 import multer from "multer";
 import path from "path";
 
+// Allowed MIME types for general document attachments (requirements, IDs, etc.)
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/png",
@@ -9,6 +10,12 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 const ALLOWED_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg", ".webp"];
+
+// Allowed MIME types for payment receipt uploads.
+// Restricted to JPEG and PNG only — required for OCR.space processing.
+// HEIC (iPhone) and PDF are NOT accepted at this stage.
+const RECEIPT_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
+const RECEIPT_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
 
 const storage = multer.memoryStorage();
 
@@ -73,9 +80,55 @@ export const uploadRequestFiles = (req, res, next) => {
   });
 };
 
+// Receipt-specific file filter: JPEG and PNG only.
+// Produces a user-friendly error for HEIC (common iPhone format).
+const receiptFileFilter = (req, file, cb) => {
+  const normalizedMime = (file.mimetype || "").toLowerCase();
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  // Detect HEIC/HEIF specifically for a helpful error message
+  if (normalizedMime === "image/heic" || normalizedMime === "image/heif" ||
+      ext === ".heic" || ext === ".heif") {
+    const err = new Error(
+      "HEIC/HEIF images (iPhone format) are not supported. " +
+      "Please convert your receipt image to JPEG or PNG before uploading."
+    );
+    err.statusCode = 415;
+    return cb(err, false);
+  }
+
+  if (!RECEIPT_MIME_TYPES.has(normalizedMime)) {
+    const err = new Error(
+      `Invalid file type for receipt: ${file.mimetype}. ` +
+      "Only JPEG and PNG images are accepted for payment receipts."
+    );
+    err.statusCode = 400;
+    return cb(err, false);
+  }
+
+  if (!RECEIPT_EXTENSIONS.has(ext)) {
+    const err = new Error(
+      `Invalid file extension: ${ext}. ` +
+      "Only .jpg, .jpeg, and .png files are accepted for payment receipts."
+    );
+    err.statusCode = 400;
+    return cb(err, false);
+  }
+
+  return cb(null, true);
+};
+
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20 MB — backend will compress before sending to OCR
+  },
+  fileFilter: receiptFileFilter,
+});
+
 // Middleware for single payment receipt upload
 export const uploadReceiptFile = (req, res, next) => {
-  const uploadSingle = upload.single("receipt");
+  const uploadSingle = receiptUpload.single("receipt");
   uploadSingle(req, res, (err) => {
     if (err) {
       const statusCode = err.statusCode || 400;

@@ -333,6 +333,13 @@ export class ParishService {
       longitude: p.longitude,
       feastDay: p.feastDay || "",
       coverImage: p.coverImage || "",
+      logoImage: p.logoImage || "",
+      mapZoom: p.mapZoom,
+      pinColor: p.pinColor || "#0d9488",
+      showLabel: p.showLabel ?? true,
+      directoryDescription: p.directoryDescription || "",
+      locationUpdatedAt: p.locationUpdatedAt ? p.locationUpdatedAt.toISOString() : null,
+      locationUpdatedBy: p.locationUpdatedBy,
       gallery: p.gallery || [],
       documentSettings: p.documentSettings ? JSON.parse(p.documentSettings) : null,
       eventSettings: p.eventSettings ? JSON.parse(p.eventSettings) : null,
@@ -389,5 +396,178 @@ export class ParishService {
     }
 
     return { municipalityCity, province };
+  }
+
+  /**
+   * Fetch all parishes for lightweight map configuration.
+   */
+  async getParishMapConfig() {
+    const parishes = await prisma.parish.findMany({
+      orderBy: { parishName: "asc" },
+      include: {
+        users: {
+          include: { role: true },
+        },
+      },
+    });
+    return parishes.map((p) => this.mapToDto(p));
+  }
+
+  /**
+   * Batch update map coordinates and zoom settings for parishes in a transaction.
+   * Includes validation, geographic boundary checks, and optimistic locking checks.
+   */
+  async batchUpdateMapCoordinates(updates, actorId) {
+    return await prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const update of updates) {
+        const parishId = parseInt(update.id, 10);
+        
+        // 1. Fetch current state to check existence and optimistic lock
+        const parish = await tx.parish.findUnique({
+          where: { id: parishId },
+        });
+
+        if (!parish) {
+          const err = new Error(`Parish with ID ${parishId} not found.`);
+          err.statusCode = 404;
+          throw err;
+        }
+
+        // Optimistic locking check
+        if (update.locationUpdatedAt && parish.locationUpdatedAt) {
+          const clientTime = new Date(update.locationUpdatedAt).getTime();
+          const dbTime = new Date(parish.locationUpdatedAt).getTime();
+          if (Math.abs(clientTime - dbTime) > 1000) {
+            const err = new Error(`Parish "${parish.parishName}" has been updated by another coordinator. Please refresh.`);
+            err.statusCode = 409;
+            throw err;
+          }
+        }
+
+        // 2. Prepare payload
+        const updatePayload = {
+          latitude: update.latitude,
+          longitude: update.longitude,
+          locationUpdatedBy: parseInt(actorId, 10),
+          locationUpdatedAt: new Date(),
+        };
+
+        if (update.mapZoom !== undefined) updatePayload.mapZoom = update.mapZoom;
+        if (update.pinColor !== undefined) updatePayload.pinColor = update.pinColor;
+        if (update.showLabel !== undefined) updatePayload.showLabel = update.showLabel;
+
+        // 3. Perform update
+        const updatedParish = await tx.parish.update({
+          where: { id: parishId },
+          data: updatePayload,
+          include: {
+            users: {
+              include: { role: true },
+            },
+          },
+        });
+
+        // 4. Activity Log
+        const oldCoords = `(${parish.latitude ?? "null"}, ${parish.longitude ?? "null"})`;
+        const newCoords = `(${update.latitude}, ${update.longitude})`;
+        await AuditLogService.log(
+          actorId,
+          `Parish Coordinates Configured: "${parish.parishName}" from ${oldCoords} to ${newCoords}`,
+          tx,
+          false,
+          {
+            affectedTable: "parishes",
+            affectedRecordId: parishId,
+            previousValues: {
+              latitude: parish.latitude,
+              longitude: parish.longitude,
+              mapZoom: parish.mapZoom,
+              pinColor: parish.pinColor,
+              showLabel: parish.showLabel,
+            },
+            newValues: {
+              latitude: update.latitude,
+              longitude: update.longitude,
+              mapZoom: update.mapZoom,
+              pinColor: update.pinColor,
+              showLabel: update.showLabel,
+            },
+          }
+        );
+
+        results.push(updatedParish);
+      }
+
+      return results.map((p) => this.mapToDto(p));
+    });
+  }
+
+  /**
+   * Update parish settings (description, email, contact number).
+   */
+  async updateDirectorySettings(parishId, data, actorId) {
+    const numericId = parseInt(parishId, 10);
+    if (isNaN(numericId)) {
+      const err = new Error("Invalid parish ID format.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const parish = await prisma.parish.findUnique({
+      where: { id: numericId },
+    });
+    if (!parish) {
+      const err = new Error("Parish not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // HTML sanitization helper
+    const sanitizeHtml = (str) => (str ? str.replace(/<[^>]*>/g, "") : str);
+
+    const updatePayload = {};
+    if (data.directoryDescription !== undefined) {
+      updatePayload.directoryDescription = sanitizeHtml(data.directoryDescription);
+    }
+    if (data.contactNumber !== undefined) {
+      updatePayload.contactNumber = data.contactNumber;
+    }
+    if (data.email !== undefined) {
+      updatePayload.email = data.email;
+    }
+
+    const updatedParish = await prisma.parish.update({
+      where: { id: numericId },
+      data: updatePayload,
+      include: {
+        users: {
+          include: { role: true },
+        },
+      },
+    });
+
+    await AuditLogService.log(
+      actorId,
+      `Parish Directory Settings Updated: "${parish.parishName}"`,
+      null,
+      false,
+      {
+        affectedTable: "parishes",
+        affectedRecordId: numericId,
+        previousValues: {
+          directoryDescription: parish.directoryDescription,
+          contactNumber: parish.contactNumber,
+          email: parish.email,
+        },
+        newValues: {
+          directoryDescription: updatedParish.directoryDescription,
+          contactNumber: updatedParish.contactNumber,
+          email: updatedParish.email,
+        },
+      }
+    );
+
+    return this.mapToDto(updatedParish);
   }
 }

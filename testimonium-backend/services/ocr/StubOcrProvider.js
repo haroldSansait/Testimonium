@@ -1,35 +1,50 @@
 import { OcrProviderInterface } from "./OcrProviderInterface.js";
 
+/**
+ * StubOcrProvider — development/testing implementation.
+ *
+ * Returns a zero-confidence result by default to force manual secretary review.
+ * If the filename contains "gcash" or "receipt_verified", simulates a successful
+ * extraction to support developer workflow testing without real API credentials.
+ *
+ * This provider is selected when OCR_PROVIDER is unset or set to "stub".
+ */
 export class StubOcrProvider extends OcrProviderInterface {
+  get providerName() {
+    return "stub";
+  }
+
   /**
-   * Stub implementation of receipt processing.
-   * Returns a low confidence score to trigger manual review by default,
-   * but supports mock parsing for developer testing if filename contains specific keywords.
+   * @param {Buffer} imageBuffer
+   * @param {string} mimeType
+   * @param {string} [fileName]
+   * @returns {Promise<{ rawText: string, ocrSuccess: boolean, failureReason: string|null }>}
    */
   async extractFromReceipt(imageBuffer, mimeType, fileName = "") {
-    console.log(`[StubOcrProvider] Analyzing receipt ${fileName} (${mimeType})`);
+    console.log(`[StubOcrProvider] Analyzing receipt (${mimeType}) — buffer size: ${imageBuffer?.length ?? 0} bytes`);
 
-    // Standard stub fallback (manual review required)
-    const result = {
-      referenceNumber: null,
-      amount: null,
-      paymentDate: null,
-      provider: null,
-      confidenceScore: 0.0,
-      rawText: "STUB OCR: Manual review required. Uploaded buffer size: " + (imageBuffer ? imageBuffer.length : 0),
-    };
+    const lowerName = (fileName || "").toLowerCase();
 
-    // If filename has test keywords, simulate highly-confident OCR extraction
-    const lowerName = fileName.toLowerCase();
+    // Simulate a successful GCash extraction for named test files
     if (lowerName.includes("gcash") || lowerName.includes("receipt_verified")) {
-      result.provider = "GCash";
-      result.referenceNumber = "901234567890";
-      result.amount = "100.00";
-      result.paymentDate = new Date().toISOString();
-      result.confidenceScore = 0.95; // High confidence to trigger auto-verify
-      result.rawText = `GCash Express Send. Amount: PHP 100.00. Ref No: 901234567890. Success.`;
+      const rawText = [
+        "GCash Express Send",
+        "Amount: PHP 100.00",
+        "Ref No: 901234567890",
+        `Date: ${new Date().toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}`,
+        "Time: 10:30 AM",
+        "Status: Successful",
+      ].join("\n");
+
+      return { rawText, ocrSuccess: true, failureReason: null, httpStatusCode: 200 };
     }
 
-    return result;
+    // Default: return empty text — triggers manual review
+    return {
+      rawText: `STUB OCR: Manual review required. Buffer size: ${imageBuffer?.length ?? 0}`,
+      ocrSuccess: false,
+      failureReason: "Stub provider — no real OCR performed",
+      httpStatusCode: 200,
+    };
   }
 }

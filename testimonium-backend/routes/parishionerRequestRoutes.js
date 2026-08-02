@@ -17,6 +17,7 @@ import {
   uploadRequestFiles,
   uploadReceiptFile,
 } from "../middlewares/uploadMiddleware.js";
+import { receiptUploadRateLimiter } from "../middlewares/rateLimit.js";
 
 const router = Router();
 
@@ -34,7 +35,7 @@ router.get("/:id", getById);
 router.post("/:id/files", uploadRequestFiles, uploadFiles);
 
 // Payment proof receipt upload (single file)
-router.post("/:id/receipt", uploadReceiptFile, uploadReceipt);
+router.post("/:id/receipt", receiptUploadRateLimiter, uploadReceiptFile, uploadReceipt);
 
 // Resubmit corrected documents
 router.post("/:id/resubmit-corrections", resubmitCorrections);

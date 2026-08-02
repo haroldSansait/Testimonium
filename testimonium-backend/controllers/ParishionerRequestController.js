@@ -172,19 +172,16 @@ export const uploadReceipt = async (req, res, next) => {
       req.file
     );
 
-    return res.status(200).json({
+    return res.status(202).json({
       success: true,
-      message: verificationResult.autoVerified
-        ? "Payment proof uploaded and auto-verified successfully."
-        : "Payment proof uploaded and is under manual review.",
+      receiptId: verificationResult.receiptId,
+      ocrStatus: "PENDING",
+      message: "Payment proof uploaded. OCR processing is in progress.",
       data: {
-        autoVerified: verificationResult.autoVerified,
-        ocrResult: {
-          confidenceScore: verificationResult.ocrResult.confidenceScore,
-          referenceNumber: verificationResult.ocrResult.referenceNumber,
-          amount: verificationResult.ocrResult.amount,
-          provider: verificationResult.ocrResult.provider,
-        },
+        autoVerified: false,
+        ocrPending: true,
+        receiptId: verificationResult.receiptId,
+        ocrStatus: "PENDING",
       },
     });
   } catch (err) {
