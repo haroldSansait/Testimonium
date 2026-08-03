@@ -1,6 +1,7 @@
 import { getFirebaseAuth } from "../config/firebase.js";
 import { AuthService } from "../services/AuthService.js";
 import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 
 const authService = new AuthService();
 
@@ -30,7 +31,7 @@ export const authenticateFirebaseToken = async (req, res, next) => {
       };
       applicationUser = await authService.getOrCreateApplicationUser(decodedToken);
     } else {
-      decodedToken = await getFirebaseAuth().verifyIdToken(token);
+      decodedToken = await getFirebaseAuth().verifyIdToken(token, true);
       applicationUser = await authService.getOrCreateApplicationUser(decodedToken);
     }
 
@@ -39,9 +40,7 @@ export const authenticateFirebaseToken = async (req, res, next) => {
 
     return next();
   } catch (error) {
-    console.error("========== FIREBASE AUTH ERROR ==========");
-    console.error(error);
-    console.error("=========================================");
+    logger.warn({ errMessage: error.message }, "[AuthMiddleware] Firebase authentication verification failed");
 
     return res.status(401).json({
       success: false,

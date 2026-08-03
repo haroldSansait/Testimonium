@@ -1,3 +1,6 @@
+import { logger } from "../config/logger.js";
+import { env } from "../config/env.js";
+
 export const notFoundHandler = (req, res) => {
   res.status(404).json({
     success: false,
@@ -6,19 +9,47 @@ export const notFoundHandler = (req, res) => {
   });
 };
 
-export const errorHandler = (err, _req, res, _next) => {
+export const errorHandler = (err, req, res, _next) => {
   const statusCode = Number.isInteger(err.statusCode) ? err.statusCode : 500;
+  const isProduction = env.nodeEnv === "production";
 
   if (statusCode >= 500) {
-    console.error("[TESTIMONIUM] Unexpected server error:", err.message);
+    logger.error(
+      {
+        err,
+        statusCode,
+        method: req.method,
+        url: req.originalUrl || req.url,
+        userId: req.user?.id || null,
+        clientIp: req.ip || req.headers["x-forwarded-for"],
+      },
+      `[TESTIMONIUM] Internal server error: ${err.message}`
+    );
+  } else {
+    logger.warn(
+      {
+        statusCode,
+        method: req.method,
+        url: req.originalUrl || req.url,
+        message: err.message,
+      },
+      `[TESTIMONIUM] Request handling warning: ${err.message}`
+    );
   }
 
-  res.status(statusCode).json({
+  const responseBody = {
     success: false,
     message:
-      statusCode >= 500
+      statusCode >= 500 && isProduction
         ? "TESTIMONIUM encountered an internal server error."
         : err.message,
     errors: err.errors || [],
-  });
+  };
+
+  if (!isProduction && err.stack) {
+    responseBody.stack = err.stack;
+  }
+
+  res.status(statusCode).json(responseBody);
 };
+

@@ -41,7 +41,7 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
                   <Button size="sm" variant="outline" onClick={() => navigate('/dashboard/home')}>
                     Dashboard
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={logout}>
+                  <Button variant="ghost" size="sm" onClick={() => logout()}>
                     Sign Out
                   </Button>
                 </div>

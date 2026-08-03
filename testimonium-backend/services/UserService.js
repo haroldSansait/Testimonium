@@ -1,3 +1,4 @@
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 import { UserRepository } from "../repositories/UserRepository.js";
 import { RoleRepository } from "../repositories/RoleRepository.js";
@@ -105,9 +106,9 @@ export class UserService {
       let setupLink = null;
       try {
         setupLink = await this.firebaseAdminService.generatePasswordResetLink(data.email);
-        console.log(`[TESTIMONIUM] Onboarding password setup link for ${data.email}: ${setupLink}`);
+        logger.info({ email: data.email }, "[TESTIMONIUM] Generated onboarding password setup link.");
       } catch (linkErr) {
-        console.error(`[TESTIMONIUM] Failed to generate setup link for ${data.email}:`, linkErr.message);
+        logger.error({ email: data.email, errMessage: linkErr.message }, "[TESTIMONIUM] Failed to generate setup link");
       }
 
       return {
@@ -119,9 +120,7 @@ export class UserService {
       try {
         await this.firebaseAdminService.deleteUser(firebaseUser.uid);
       } catch (fbRollbackError) {
-        console.error("========== FIREBASE ROLLBACK FAILURE ==========");
-        console.error(fbRollbackError);
-        console.error("===============================================");
+        logger.error({ err: fbRollbackError }, "[TESTIMONIUM] Firebase user creation rollback failure");
       }
       throw dbError;
     }
@@ -296,7 +295,7 @@ export class UserService {
     }
 
     const resetLink = await this.firebaseAdminService.generatePasswordResetLink(user.email);
-    console.log(`[TESTIMONIUM] Password reset link for ${user.email}: ${resetLink}`);
+    logger.info({ email: user.email }, "[TESTIMONIUM] Generated password reset link.");
     await AuditLogService.log(actorId, `Password Reset: ${user.email}`);
     return resetLink;
   }

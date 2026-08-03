@@ -2,6 +2,7 @@ import { AxiosError } from 'axios';
 import { auth } from '@/config/firebase';
 import api from '@/api/api';
 import type { ApiError } from '@/types/api';
+import { SessionService } from '@/services/SessionService';
 
 /**
  * Call this once at application startup (in main.tsx).
@@ -15,8 +16,12 @@ export function setupInterceptors(onUnauthorized?: () => void): void {
     async (config) => {
       const user = auth.currentUser;
       if (user) {
-        const token = await user.getIdToken();
-        config.headers.Authorization = `Bearer ${token}`;
+        try {
+          const token = await user.getIdToken();
+          config.headers.Authorization = `Bearer ${token}`;
+        } catch {
+          // Token fetch error — SessionService handles cleanup on 401
+        }
       }
       return config;
     },
@@ -34,14 +39,14 @@ export function setupInterceptors(onUnauthorized?: () => void): void {
           status,
           message:
             (data as { message?: string })?.message ??
-            error.message ??
-            'An unexpected error occurred.',
+            'Your session has expired for security reasons. Please sign in again.',
           code: (data as { code?: string })?.code,
         };
 
         if (status === 401) {
-          // Notify the AuthContext to clear session
+          // Perform one clean idempotent logout without cryptic errors or loops
           onUnauthorized?.();
+          SessionService.logout('expired');
           return Promise.reject(apiError);
         }
 

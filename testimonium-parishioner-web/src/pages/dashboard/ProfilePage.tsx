@@ -172,7 +172,7 @@ export const ProfilePage: React.FC = () => {
                 <p className="text-xs text-text-muted mt-0.5">{profile?.email}</p>
               </div>
               <div className="pt-2">
-                <Button variant="ghost" onClick={logout} className="w-full flex items-center justify-center space-x-2 text-status-rejected hover:bg-red-50/50">
+                <Button variant="ghost" onClick={() => logout()} className="w-full flex items-center justify-center space-x-2 text-status-rejected hover:bg-red-50/50">
                   <LogOut size={16} />
                   <span>Log Out of Profile</span>
                 </Button>

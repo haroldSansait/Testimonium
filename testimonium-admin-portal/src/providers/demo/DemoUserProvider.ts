@@ -87,7 +87,6 @@ export const DemoUserProvider: UserProvider = {
   },
 
   async resetPassword(id: string): Promise<string> {
-    console.log(`[DemoUserProvider] Password reset triggered for user ${id}`);
     return Promise.resolve(`https://demo.testimonium.org/__/auth/action?mode=resetPassword&oobCode=demo-reset-code-${id}`);
   },
 

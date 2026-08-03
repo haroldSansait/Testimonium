@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import { logger } from "../config/logger.js";
 
 /**
  * Configurable Sacramental Document Requirements Matrix
@@ -160,7 +161,7 @@ export class DocumentRequirementService {
             }
           }
         } catch (e) {
-          console.error("Error parsing documentSettings", e);
+          logger.error({ err: e }, "Error parsing documentSettings");
         }
       }
     }

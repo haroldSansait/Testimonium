@@ -1,3 +1,4 @@
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 import { FileUploadService } from "./FileUploadService.js";
 import { OcrProcessingService } from "./OcrProcessingService.js";
@@ -90,8 +91,9 @@ export class ReceiptVerificationService {
       });
 
       // ── Step 6: Always route to manual secretary review ─────────────────────
-      console.log(
-        `[ReceiptVerificationService] Routing request ${requestId} to manual review (PAYMENT_UNDER_REVIEW)`
+      logger.info(
+        { requestId },
+        "[ReceiptVerificationService] Routing request to manual review (PAYMENT_UNDER_REVIEW)"
       );
 
       const oldStatus = request.status;
@@ -171,9 +173,9 @@ export class ReceiptVerificationService {
     // Phase B: Asynchronous background processing (outside transaction)
     setImmediate(() => {
       OcrProcessingService.processAsync(result.receiptId).catch((err) => {
-        console.error(
-          `[ReceiptVerificationService] Background OCR dispatch error for receiptId ${result.receiptId}:`,
-          err.message
+        logger.error(
+          { err, receiptId: result.receiptId },
+          "[ReceiptVerificationService] Background OCR dispatch error for receiptId"
         );
       });
     });

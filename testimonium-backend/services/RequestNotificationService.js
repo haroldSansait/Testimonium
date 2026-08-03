@@ -1,5 +1,6 @@
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { prisma } from "../config/db.js";
+import { logger } from "../config/logger.js";
 
 /**
  * RequestNotificationService — Compatibility shim.
@@ -60,9 +61,9 @@ export class RequestNotificationService {
         },
       });
     } catch (err) {
-      console.error(
-        `[TESTIMONIUM] Failed to create notification for user ${userId}:`,
-        err.message
+      logger.error(
+        { err, userId },
+        "[TESTIMONIUM] Failed to create notification for user"
       );
     }
   }

@@ -1,3 +1,5 @@
+import { logger } from "../../config/logger.js";
+
 /**
  * OcrLogger - Handles structured, production-friendly logging for OCR activities.
  * Ensures that no sensitive information (API keys, PII, raw text) is ever logged.
@@ -37,7 +39,6 @@ export class OcrLogger {
     } = params;
 
     const logPayload = {
-      timestamp: new Date().toISOString(),
       receiptId,
       requestId,
       provider,
@@ -53,10 +54,10 @@ export class OcrLogger {
     };
 
     if (ocrStatus === "FAILED" || failureReason) {
-      // Failures must be logged using [OCR-FAIL] prefix
-      console.error(`[OCR-FAIL] ${JSON.stringify(logPayload)}`);
+      logger.error(logPayload, "[OCR-FAIL] OCR processing failed");
     } else {
-      console.info(`[OCR] ${JSON.stringify(logPayload)}`);
+      logger.info(logPayload, "[OCR] OCR processing metric");
     }
   }
 }
+

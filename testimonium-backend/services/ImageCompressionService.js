@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 
 // Disable Sharp's internal cache to prevent native memory fragmentation
 // during concurrent image uploads from multiple parishioners.
@@ -97,7 +98,7 @@ export class ImageCompressionService {
       // Final fallback — log a warning if still over limit, but continue
       if (compressedBuffer.length > maxSizeBytes) {
         const finalKb = Math.round(compressedBuffer.length / 1024);
-        console.warn(
+        logger.warn(
           `[ImageCompressionService] Could not compress image below ${env.ocr.maxSizeKb} KB. ` +
           `Final size: ${finalKb} KB. Proceeding with best effort.`
         );
@@ -107,10 +108,13 @@ export class ImageCompressionService {
     const compressionDurationMs = Date.now() - startTime;
     const compressedSize = compressedBuffer.length;
 
-    console.log(
-      `[ImageCompressionService] Compressed: ` +
-      `${Math.round(originalSize / 1024)} KB → ${Math.round(compressedSize / 1024)} KB ` +
-      `in ${compressionDurationMs}ms`
+    logger.info(
+      {
+        originalKb: Math.round(originalSize / 1024),
+        compressedKb: Math.round(compressedSize / 1024),
+        durationMs: compressionDurationMs,
+      },
+      "[ImageCompressionService] Image compressed successfully"
     );
 
     return {

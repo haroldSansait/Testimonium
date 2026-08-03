@@ -1,4 +1,5 @@
 import { OcrProviderInterface } from "./OcrProviderInterface.js";
+import { logger } from "../../config/logger.js";
 
 /**
  * StubOcrProvider — development/testing implementation.
@@ -21,7 +22,7 @@ export class StubOcrProvider extends OcrProviderInterface {
    * @returns {Promise<{ rawText: string, ocrSuccess: boolean, failureReason: string|null }>}
    */
   async extractFromReceipt(imageBuffer, mimeType, fileName = "") {
-    console.log(`[StubOcrProvider] Analyzing receipt (${mimeType}) — buffer size: ${imageBuffer?.length ?? 0} bytes`);
+    logger.debug({ mimeType, bufferSize: imageBuffer?.length ?? 0 }, "[StubOcrProvider] Analyzing receipt");
 
     const lowerName = (fileName || "").toLowerCase();
 

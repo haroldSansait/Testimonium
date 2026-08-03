@@ -1,3 +1,4 @@
+import { logger } from "../config/logger.js";
 import { PaymentConfigurationRepository } from "../repositories/PaymentConfigurationRepository.js";
 
 export class PaymentConfigurationService {
@@ -23,7 +24,7 @@ export class PaymentConfigurationService {
           mayaEnabled = !!settings.paymentMethods.maya;
         }
       } catch (e) {
-        console.error("Error parsing settings for payment config", e);
+        logger.error({ err: e }, "Error parsing settings for payment config");
       }
     }
 

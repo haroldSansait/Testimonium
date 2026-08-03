@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import { logger } from "../config/logger.js";
 import { R2Service } from "./R2Service.js";
 import { ImageCompressionService } from "./ImageCompressionService.js";
 import { OcrProviderFactory } from "./ocr/OcrProviderFactory.js";
@@ -164,7 +165,7 @@ export class OcrProcessingService {
         }
       } else {
         // Cache Hit
-        console.log(`[OcrProcessingService] Cache hit for receiptId ${receiptId} (hash: ${imageHash.slice(0, 10)}...)`);
+        logger.info({ receiptId, imageHashPrefix: imageHash.slice(0, 10) }, "[OcrProcessingService] Cache hit for receipt OCR");
       }
 
       // ── Step 7: Parse and Sanitize extracted text ──────────────────────────
@@ -244,9 +245,9 @@ export class OcrProcessingService {
       const totalAsyncDurationMs = Date.now() - startTime;
       const failureReason = err.message || "Unknown background OCR error";
 
-      console.error(
-        `[OcrProcessingService] Background processing failed for receiptId ${receiptId}:`,
-        err
+      logger.error(
+        { err, receiptId },
+        "[OcrProcessingService] Background processing failed for receiptId"
       );
 
       try {
@@ -258,9 +259,9 @@ export class OcrProcessingService {
           },
         });
       } catch (dbErr) {
-        console.error(
-          `[OcrProcessingService] Failed to set status to FAILED in DB for receiptId ${receiptId}:`,
-          dbErr.message
+        logger.error(
+          { err: dbErr, receiptId },
+          "[OcrProcessingService] Failed to set status to FAILED in DB for receiptId"
         );
       }
 

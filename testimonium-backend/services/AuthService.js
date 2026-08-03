@@ -1,3 +1,4 @@
+import { logger } from "../config/logger.js";
 import { RoleRepository } from "../repositories/RoleRepository.js";
 import { UserRepository } from "../repositories/UserRepository.js";
 
@@ -52,7 +53,7 @@ export class AuthService {
       } catch (error) {
         // Handle concurrent linking race condition (P2002 unique constraint failure)
         if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
-          console.log(`[AuthService] JIT email-linking race condition detected for ${firebaseUid}. Retrying lookup...`);
+          logger.warn({ firebaseUid, email }, "[AuthService] JIT email-linking race condition detected. Retrying lookup...");
           const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) || 
                        (await this.userRepository.findByEmail(email));
           if (user) {
@@ -86,7 +87,7 @@ export class AuthService {
     } catch (error) {
       // Handle concurrent user JIT creation race condition (P2002 unique constraint failure)
       if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
-        console.log(`[AuthService] JIT creation race condition detected for ${firebaseUid}. Retrying lookup...`);
+        logger.warn({ firebaseUid, email }, "[AuthService] JIT creation race condition detected. Retrying lookup...");
         const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) || 
                      (await this.userRepository.findByEmail(email));
         if (user) {

@@ -1,3 +1,4 @@
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 import { R2Service } from "./R2Service.js";
 
@@ -33,7 +34,7 @@ export class FileUploadService {
       try {
         await r2Service.delete(existing.r2ObjectKey);
       } catch (err) {
-        console.error(`Failed to delete old attachment key ${existing.r2ObjectKey} from R2:`, err);
+        logger.error({ err, r2ObjectKey: existing.r2ObjectKey }, "Failed to delete old attachment key from R2");
       }
       await dbClient.requestAttachment.delete({
         where: { id: existing.id },

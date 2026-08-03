@@ -1,5 +1,6 @@
 import { prisma } from "../config/db.js";
 import { RecipientResolver } from "./RecipientResolver.js";
+import { logger } from "../config/logger.js";
 
 // ---------------------------------------------------------------------------
 // Message Template Factories
@@ -572,7 +573,7 @@ export class NotificationDispatcher {
     try {
       await client.notification.createMany({ data: unique });
     } catch (err) {
-      console.error("[NotificationDispatcher] Failed to persist notifications:", err.message);
+      logger.error({ err }, "[NotificationDispatcher] Failed to persist notifications");
     }
   }
 }

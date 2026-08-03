@@ -220,10 +220,8 @@ export class DemoRequestProvider implements IRequestProvider {
   }
 
   async getDocumentRequirements(type: string, parishId?: string): Promise<any> {
-    // Reference parishId to prevent unused parameter warnings
-    if (parishId) {
-      console.log("Loading settings for parish:", parishId);
-    }
+    // Suppress unused parameter warning
+    void parishId;
     const ALL_REQS: any = {
       'baptismal_certificate': {
         requiredDocuments: [

@@ -2,12 +2,19 @@ import compression from "compression";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import morgan from "morgan";
 import fs from "fs";
 import path from "path";
 import { prisma } from "./config/db.js";
 import { env, getMissingRequiredConfig } from "./config/env.js";
+import { logger } from "./config/logger.js";
+import { httpLogger } from "./middlewares/httpLogger.js";
+import {
+  globalApiRateLimiter,
+  adaptiveReadRateLimiter,
+  adaptiveWriteRateLimiter,
+} from "./middlewares/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
+
 import activityLogRoutes from "./routes/activityLogRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import calendarRoutes from "./routes/calendarRoutes.js";
@@ -30,10 +37,14 @@ import parishEventRoutes from "./routes/parishEventRoutes.js";
 const app = express();
 const apiVersion = "/api/v1";
 
+if (env.trustProxy !== false) {
+  app.set("trust proxy", env.trustProxy);
+}
+
 const missingConfig = getMissingRequiredConfig();
 if (missingConfig.length > 0) {
-  console.warn(
-    `[TESTIMONIUM] Missing configuration keys: ${missingConfig.join(", ")}`,
+  logger.warn(
+    `[TESTIMONIUM] Missing environment configuration keys: ${missingConfig.join(", ")}`
   );
 }
 
@@ -42,7 +53,6 @@ const corsOptions = {
     if (!origin || env.corsOrigins.includes(origin)) {
       return callback(null, true);
     }
-
     return callback(new Error("Origin is not allowed by TESTIMONIUM CORS."));
   },
   credentials: true,
@@ -53,10 +63,7 @@ app.use(compression());
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
-
-if (env.nodeEnv === "development") {
-  app.use(morgan("dev"));
-}
+app.use(httpLogger);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -66,6 +73,12 @@ app.get("/", (_req, res) => {
   });
 });
 
+// Apply Layer 1 Global & Layer 3 Adaptive Rate Limiters across API routes
+app.use(apiVersion, globalApiRateLimiter);
+app.use(apiVersion, adaptiveReadRateLimiter);
+app.use(apiVersion, adaptiveWriteRateLimiter);
+
+// API Routes
 app.use(`${apiVersion}/health`, healthRoutes);
 app.use(`${apiVersion}/auth`, authRoutes);
 app.use(`${apiVersion}/dashboard`, dashboardRoutes);
@@ -95,59 +108,137 @@ const validateParishesOnStartup = async () => {
   try {
     const mdPath = path.join(process.cwd(), "address_parishes.md");
     if (!fs.existsSync(mdPath)) {
-      console.warn(`[Startup Validation] address_parishes.md not found at ${mdPath}`);
+      logger.warn(`[Startup Validation] address_parishes.md not found at ${mdPath}`);
       return;
     }
     const content = fs.readFileSync(mdPath, "utf-8");
-    const expectedNames = [...content.matchAll(/^\d+\.\s+(.+)$/gm)].map(m => m[1].trim());
+    const expectedNames = [...content.matchAll(/^\d+\.\s+(.+)$/gm)].map((m) => m[1].trim());
 
     if (expectedNames.length === 0) {
-      console.warn("[Startup Validation] Could not parse any parish names from address_parishes.md");
+      logger.warn("[Startup Validation] Could not parse any parish names from address_parishes.md");
       return;
     }
 
     const dbParishes = await prisma.parish.findMany();
 
     if (dbParishes.length !== expectedNames.length) {
-      console.warn(`[Startup Validation] WARNING: Database contains ${dbParishes.length} parishes, but address_parishes.md specifies ${expectedNames.length}!`);
+      logger.warn(
+        `[Startup Validation] WARNING: Database contains ${dbParishes.length} parishes, but address_parishes.md specifies ${expectedNames.length}!`
+      );
     }
 
     for (const expectedName of expectedNames) {
-      const dbParish = dbParishes.find(p => p.parishName === expectedName);
+      const dbParish = dbParishes.find((p) => p.parishName === expectedName);
       if (!dbParish) {
-        console.warn(`[Startup Validation] WARNING: Parish from canonical dataset not found in database: "${expectedName}"`);
+        logger.warn(
+          `[Startup Validation] WARNING: Parish from canonical dataset not found in database: "${expectedName}"`
+        );
         continue;
       }
 
-      if (dbParish.latitude === null || dbParish.latitude === undefined || dbParish.longitude === null || dbParish.longitude === undefined) {
-        console.warn(`[Startup Validation] Missing coordinates:\n${dbParish.parishName}`);
+      if (
+        dbParish.latitude === null ||
+        dbParish.latitude === undefined ||
+        dbParish.longitude === null ||
+        dbParish.longitude === undefined
+      ) {
+        logger.warn(`[Startup Validation] Missing coordinates for: ${dbParish.parishName}`);
       } else {
-        if (dbParish.latitude < -90 || dbParish.latitude > 90 || dbParish.longitude < -180 || dbParish.longitude > 180) {
-          console.warn(`[Startup Validation] Invalid coordinate range:\n${dbParish.parishName}`);
+        if (
+          dbParish.latitude < -90 ||
+          dbParish.latitude > 90 ||
+          dbParish.longitude < -180 ||
+          dbParish.longitude > 180
+        ) {
+          logger.warn(`[Startup Validation] Invalid coordinate range for: ${dbParish.parishName}`);
         } else if (dbParish.latitude === 0 && dbParish.longitude === 0) {
-          console.warn(`[Startup Validation] WARNING: Coordinates are set to (0,0) (potential stub value):\n${dbParish.parishName}`);
+          logger.warn(
+            `[Startup Validation] WARNING: Coordinates are set to (0,0) (potential stub value) for: ${dbParish.parishName}`
+          );
         }
       }
 
       if (!dbParish.feastDay) {
-        console.warn(`[Startup Validation] Missing feast day:\n${dbParish.parishName}`);
+        logger.warn(`[Startup Validation] Missing feast day for: ${dbParish.parishName}`);
       }
 
       if (!dbParish.coverImage) {
-        console.warn(`[Startup Validation] WARNING: Missing cover image:\n${dbParish.parishName}`);
+        logger.warn(`[Startup Validation] WARNING: Missing cover image for: ${dbParish.parishName}`);
       }
     }
   } catch (err) {
-    console.error("[Startup Validation] Error during startup validation:", err);
+    logger.error({ err }, "[Startup Validation] Error during startup validation");
   }
 };
 
-app.listen(env.port, () => {
-  console.log(`[TESTIMONIUM] API server listening on port ${env.port}`);
+const logRateLimitSummary = () => {
+  logger.info(
+    {
+      global: `${env.rateLimits.globalMax} / 15m`,
+      authRead: `${env.rateLimits.authReadMax} / 15m`,
+      authWrite: `${env.rateLimits.authWriteMax} / 15m`,
+      anonRead: `${env.rateLimits.anonReadMax} / 15m`,
+      anonWrite: `${env.rateLimits.anonWriteMax} / 15m`,
+      login: `${env.rateLimits.authLoginMax} / 15m`,
+      passwordReset: `${env.rateLimits.passwordResetMax} / 1h`,
+      userCreation: `${env.rateLimits.userCreationMax} / 1h`,
+      ocr: `${env.rateLimits.ocrMax} / 10m`,
+      receiptUpload: `${env.rateLimits.receiptUploadMax} / 15m`,
+      imageUpload: `${env.rateLimits.imageUploadMax} / 1m`,
+      mapSave: `${env.rateLimits.mapSaveMax} / 1m`,
+      storeBackend: `${env.rateLimits.storeType}Store (${env.nodeEnv})`,
+    },
+    "[RateLimit] Effective rate limiting configuration active"
+  );
+};
+
+const server = app.listen(env.port, () => {
+  logger.info(`[TESTIMONIUM] API server listening on port ${env.port} (${env.nodeEnv})`);
+  logRateLimitSummary();
   validateParishesOnStartup();
 });
 
+// Graceful Shutdown Management
+let isShuttingDown = false;
+
+const gracefulShutdown = async (signal, exitCode = 0) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  logger.info(`[TESTIMONIUM] Shutdown signal received (${signal}). Gracefully stopping server...`);
+
+  server.close(async () => {
+    logger.info("[TESTIMONIUM] HTTP server closed.");
+    try {
+      await prisma.$disconnect();
+      logger.info("[TESTIMONIUM] Prisma DB connection closed.");
+    } catch (err) {
+      logger.error({ err }, "[TESTIMONIUM] Error closing Prisma DB connection.");
+    } finally {
+      if (typeof logger.flush === "function") {
+        logger.flush();
+      }
+      process.exit(exitCode);
+    }
+  });
+
+  setTimeout(() => {
+    logger.error("[TESTIMONIUM] Forced shutdown after timeout.");
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT", 0));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM", 0));
+
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "[TESTIMONIUM] Fatal Uncaught Exception encountered.");
+  gracefulShutdown("uncaughtException", 1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.fatal({ err: reason }, "[TESTIMONIUM] Unhandled Promise Rejection encountered.");
+  gracefulShutdown("unhandledRejection", 1);
+});
+
 export default app;
-// Force nodemon reload to reload fresh prisma client again after killing background port conflict
-
-

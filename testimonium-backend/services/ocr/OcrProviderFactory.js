@@ -1,4 +1,5 @@
 import { env } from "../../config/env.js";
+import { logger } from "../../config/logger.js";
 import { StubOcrProvider } from "./StubOcrProvider.js";
 import { OCRSpaceProvider } from "./OCRSpaceProvider.js";
 
@@ -34,11 +35,12 @@ export class OcrProviderFactory {
         return new StubOcrProvider();
 
       default:
-        console.warn(
-          `[OcrProviderFactory] Unknown OCR_PROVIDER="${providerName}". ` +
-          `Falling back to StubOcrProvider. Valid options: ocrspace, stub.`
+        logger.warn(
+          { providerName },
+          "[OcrProviderFactory] Unknown OCR_PROVIDER. Falling back to StubOcrProvider. Valid options: ocrspace, stub."
         );
         return new StubOcrProvider();
     }
   }
 }
+

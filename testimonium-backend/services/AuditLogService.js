@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import { logger } from "../config/logger.js";
 
 export class AuditLogService {
   /**
@@ -7,7 +8,7 @@ export class AuditLogService {
    */
   static async log(userId, action, tx = null, isSystem = false, extra = {}) {
     if (!userId && !isSystem) {
-      console.warn(`[TESTIMONIUM] Attempted to log action "${action}" without a userId.`);
+      logger.warn({ action }, '[AuditLogService] Attempted to log action without a userId');
       return;
     }
     try {
@@ -45,7 +46,8 @@ export class AuditLogService {
 
       await client.activityLog.create({ data });
     } catch (err) {
-      console.error("[TESTIMONIUM] Failed to write audit log entry:", err.message);
+      logger.error({ err, action }, "[AuditLogService] Failed to write audit log entry");
     }
   }
 }
+

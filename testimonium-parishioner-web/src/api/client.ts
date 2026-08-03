@@ -1,4 +1,5 @@
 import { auth } from "../firebaseConfig";
+import { SessionService } from "../services/SessionService";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
 
@@ -70,8 +71,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   if (!isOk) {
+    if (response.status === 401) {
+      // Trigger clean idempotent logout on 401 unauth response
+      SessionService.logout('expired');
+    }
+
     throw new ApiError(
-      responseData.message || "An error occurred during the API request.",
+      responseData.message || "Your session has expired for security reasons. Please sign in again.",
       response.status,
       responseData.errors || []
     );

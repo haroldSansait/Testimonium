@@ -1,15 +1,11 @@
-import {
-  signInWithEmailAndPassword,
-  signOut,
-  setPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence,
-  type User as FirebaseUser,
-} from 'firebase/auth';
+import { signInWithEmailAndPassword, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import api from '@/api/api';
 import type { ApplicationUser, BackendUserDTO } from '@/types/auth';
 import type { ApiResponseEnvelope } from '@/types/api';
+import { SessionService } from '@/services/SessionService';
+import { logSessionEvent } from '@/utils/sessionLogger';
+import { SESSION_CONFIG } from '@/config/sessionConfig';
 
 /**
  * AuthService — all Firebase and backend authentication logic lives here.
@@ -21,13 +17,19 @@ import type { ApiResponseEnvelope } from '@/types/api';
 export const AuthService = {
   /**
    * Sign in with email/password via Firebase.
-   * Then fetches the backend application profile.
+   * Enforces role-aware browserSessionPersistence for Staff.
    */
   async signIn(email: string, password: string, rememberMe = false): Promise<ApplicationUser> {
-    await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+    await SessionService.enforceSessionPersistence();
     await signInWithEmailAndPassword(auth, email, password);
+
+    // Record session start timestamp
+    localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
+
     // Send login info to the backend
     await api.post('/auth/login', { rememberMe });
+    logSessionEvent('Session Started', { email });
+
     return AuthService.getApplicationUser();
   },
 
@@ -49,16 +51,19 @@ export const AuthService = {
 
   /**
    * Retrieve the current Firebase ID token.
-   * Pass forceRefresh=true to get a fresh token (e.g. after role changes).
+   * Leverages SessionService for deduplicated token refresh when needed.
    */
-  async getIdToken(user: FirebaseUser, forceRefresh = false): Promise<string> {
-    return user.getIdToken(forceRefresh);
+  async getIdToken(_user: FirebaseUser, forceRefresh = false): Promise<string> {
+    await SessionService.refreshToken(forceRefresh);
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) throw new Error('No active user session');
+    return token;
   },
 
   /**
-   * Sign out from Firebase.
+   * Centralized idempotent sign out.
    */
-  async logout(): Promise<void> {
-    await signOut(auth);
+  async logout(reason = 'manual'): Promise<void> {
+    await SessionService.logout(reason as any);
   },
 };

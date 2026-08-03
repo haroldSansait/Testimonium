@@ -12,6 +12,7 @@ import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
 import { createUserSchema, updateUserSchema } from "../validators/userSchemas.js";
+import { userCreationRateLimiter, passwordResetRateLimiter } from "../middlewares/rateLimit.js";
 
 const router = Router();
 
@@ -33,11 +34,12 @@ router.get("/", (req, res, next) => {
   });
 }, list);
 
-router.post("/", checkRole(["DIOCESE_COORDINATOR"]), validateBody(createUserSchema), create);
+router.post("/", userCreationRateLimiter, checkRole(["DIOCESE_COORDINATOR"]), validateBody(createUserSchema), create);
 router.put("/:id/color", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), updateColor);
 router.put("/:id", checkRole(["DIOCESE_COORDINATOR"]), validateBody(updateUserSchema), update);
 router.post("/:id/disable", checkRole(["DIOCESE_COORDINATOR"]), disable);
 router.post("/:id/enable", checkRole(["DIOCESE_COORDINATOR"]), enable);
-router.post("/:id/reset-password", checkRole(["DIOCESE_COORDINATOR"]), resetPassword);
+router.post("/:id/reset-password", passwordResetRateLimiter, checkRole(["DIOCESE_COORDINATOR"]), resetPassword);
 
 export default router;
+

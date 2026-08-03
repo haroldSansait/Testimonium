@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { R2Service } from "./R2Service.js";
 import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 
 const r2Service = new R2Service();
 
@@ -102,7 +103,7 @@ export class ParishImageService {
         contentType: file.mimetype,
       });
     } catch (err) {
-      console.error("[TESTIMONIUM] Failed to upload image to R2:", err);
+      logger.error({ err }, "[ParishImageService] Failed to upload image to R2");
       const uploadErr = new Error("Failed to upload image to R2 storage.");
       uploadErr.statusCode = 500;
       throw uploadErr;
@@ -120,11 +121,11 @@ export class ParishImageService {
       });
     } catch (dbErr) {
       // 3. Rollback: delete the newly uploaded object from R2
-      console.error("[TESTIMONIUM] Database update failed, rolling back R2 upload:", dbErr);
+      logger.error({ err: dbErr }, "[ParishImageService] Database update failed, rolling back R2 upload");
       try {
         await r2Service.delete(newKey);
       } catch (delErr) {
-        console.error(`[TESTIMONIUM] Failed to clean up R2 key ${newKey} during rollback:`, delErr);
+        logger.error({ err: delErr, key: newKey }, "[ParishImageService] Failed to clean up R2 key during rollback");
       }
       throw dbErr;
     }
@@ -134,10 +135,11 @@ export class ParishImageService {
       try {
         await r2Service.delete(oldKey);
       } catch (err) {
-        console.error(`[TESTIMONIUM] Failed to delete old image ${oldKey} from R2:`, err);
+        logger.error({ err, oldKey }, "[ParishImageService] Failed to delete old image from R2");
       }
     }
 
     return publicUrl;
   }
 }
+
