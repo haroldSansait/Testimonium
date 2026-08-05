@@ -33,8 +33,11 @@ function resolveErrorMessage(err: unknown): string {
   // Backend API errors
   if (err && typeof err === 'object' && 'status' in err) {
     const apiErr = err as ApiError;
+    if (apiErr.code === 'EMAIL_NOT_VERIFIED') {
+      return apiErr.message || 'Please verify your email address before signing in.';
+    }
     if (apiErr.status === 403) {
-      return 'Your account does not have access to the Admin Portal.';
+      return apiErr.message || 'Your account does not have access to the Admin Portal.';
     }
     if (apiErr.message) return apiErr.message;
   }

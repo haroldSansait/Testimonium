@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldAlert, BookOpen, Eye, EyeOff } from 'lucide-react';
+import { ShieldAlert, BookOpen, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
+import { LegalAcceptanceModal } from '../../components/modals/LegalAcceptanceModal';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 export const LoginPage: React.FC = () => {
@@ -15,41 +16,67 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  
   const [loading, setLoading] = useState(false);
+  const [submitCooldown, setSubmitCooldown] = useState(false);
   const [error, setError] = useState('');
+  const [unverifiedEmailError, setUnverifiedEmailError] = useState(false);
+
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitCooldown || loading) return;
+
     if (!email || !password) {
       setError('Please fill in all fields.');
       return;
     }
 
     setLoading(true);
+    setSubmitCooldown(true);
     setError('');
+    setUnverifiedEmailError(false);
+
+    // Activate 2.5s submit cooldown
+    setTimeout(() => setSubmitCooldown(false), 2500);
 
     try {
       await signInWithEmail(email, password);
+      // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
-      setError(err?.message || 'Authentication failed. Please verify your credentials.');
+      if (err?.code === 'EMAIL_NOT_VERIFIED' || err?.message?.includes('verify your email')) {
+        setUnverifiedEmailError(true);
+        setError('Please verify your email address before signing in.');
+      } else if (err?.code === 'ACCOUNT_EXISTS_WITH_GOOGLE') {
+        setError('This email is registered using Google Sign-In. Please click "Sign In with Google".');
+      } else {
+        setError(err?.message || 'Authentication failed. Please verify your credentials.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleExecuteGoogleSignIn = async (legalPayload?: any) => {
+    setIsLegalModalOpen(false);
     setLoading(true);
     setError('');
+    setUnverifiedEmailError(false);
+
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(legalPayload);
+      // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
-      if (err?.code === 'auth/account-exists-with-different-credential' || err?.code === 'auth/email-already-in-use') {
-        setError('An account with this email address already exists. Please log in using your primary sign-in method.');
+      if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED') {
+        setIsLegalModalOpen(true);
+      } else if (err?.code === 'ACCOUNT_EXISTS_WITH_PASSWORD') {
+        setError('This email already has a password account. Please sign in using your password.');
       } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        setError('Sign-in cancelled. Feel free to try again when you are ready.');
+        setError('Sign-in cancelled. Feel free to try again when ready.');
       } else {
         setError(err?.message || 'Google Sign-In failed.');
       }
@@ -70,7 +97,6 @@ export const LoginPage: React.FC = () => {
           backgroundRepeat: 'no-repeat'
         }}
       >
-        {/* Background Overlay */}
         <div className="absolute inset-0 bg-black/10 z-0" />
         <div className="absolute -bottom-20 -left-20 w-84 h-84 border-4 border-white/5 rounded-full z-0" />
 
@@ -101,12 +127,31 @@ export const LoginPage: React.FC = () => {
             </p>
           </div>
 
-          {error && (
-            <div className="p-3.5 bg-red-50 border border-status-rejected/25 text-status-rejected rounded-button flex items-start space-x-2.5 text-xs font-medium animate-in fade-in duration-fast">
-              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+          {unverifiedEmailError ? (
+            <div className="p-4 bg-amber-50 border border-amber-300 text-amber-950 rounded-xl space-y-3 shadow-sm animate-in fade-in">
+              <div className="flex items-start space-x-2.5 text-xs font-bold text-amber-950">
+                <ShieldAlert size={18} className="mt-0.5 flex-shrink-0 text-amber-700" />
+                <span>Email Verification Required</span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                Your email address has not been verified yet. Please check your email inbox or resend the verification link.
+              </p>
+              <div className="pt-1">
+                <Button
+                  onClick={() => navigate('/verify-email')}
+                  className="w-full text-xs py-2 bg-amber-700 hover:bg-amber-800 text-white flex items-center justify-center space-x-1.5 font-semibold shadow-sm"
+                >
+                  <span>Go to Email Verification</span>
+                  <ArrowRight size={14} />
+                </Button>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="p-3.5 bg-red-50 border border-red-300 text-red-900 rounded-button flex items-start space-x-2.5 text-xs font-semibold shadow-sm animate-in fade-in">
+              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0 text-red-600" />
               <span>{error}</span>
             </div>
-          )}
+          ) : null}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
@@ -159,8 +204,13 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
 
-            <Button type="submit" loading={loading} className="w-full pt-2.5 pb-2.5 mt-2">
-              Log In
+            <Button 
+              type="submit" 
+              loading={loading} 
+              disabled={submitCooldown}
+              className="w-full pt-2.5 pb-2.5 mt-2"
+            >
+              {submitCooldown ? 'Verifying...' : 'Log In'}
             </Button>
           </form>
 
@@ -172,11 +222,10 @@ export const LoginPage: React.FC = () => {
 
           <Button
             variant="outline"
-            onClick={handleGoogleSignIn}
+            onClick={() => handleExecuteGoogleSignIn()}
             disabled={loading}
             className="w-full flex items-center justify-center space-x-2"
           >
-            {/* Google Icon SVG */}
             <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -195,7 +244,7 @@ export const LoginPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Forgot Password Modal (Informational Only for Phase 7A) */}
+      {/* Forgot Password Modal */}
       <Modal
         isOpen={isForgotModalOpen}
         onClose={() => setIsForgotModalOpen(false)}
@@ -215,7 +264,20 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Pre-Google Sign-In Legal Modal (Shown only for new users registering via Google from login page) */}
+      <LegalAcceptanceModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        onAccept={() => handleExecuteGoogleSignIn({
+          termsAccepted: true,
+          privacyAccepted: true,
+          termsVersion: 'v1.0',
+          privacyVersion: 'v1.0',
+        })}
+      />
     </div>
   );
 };
+
 export default LoginPage;

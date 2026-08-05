@@ -363,11 +363,16 @@ export interface Parish {
   documentSettings?: any;
   eventSettings?: any;
   officeHours?: any;
+  paymentQrImage?: string | null;
+  paymentQrEnabled?: boolean;
+  paymentQrUpdatedAt?: string | null;
+  paymentQrUpdatedBy?: number | null;
+  availableDocuments?: string[] | null;
 }
 
 // ─── User Management ──────────────────────────────────────────────────────────
 
-export type ManagedUserRole = 'DIOCESE_COORDINATOR' | 'SECRETARY' | 'PRIEST' | 'ASSISTANT_PRIEST';
+export type ManagedUserRole = 'DIOCESE_COORDINATOR' | 'SECRETARY' | 'PRIEST' | 'ASSISTANT_PRIEST' | 'PARISHIONER';
 export type ManagedUserStatus = 'Active' | 'Inactive' | 'Disabled';
 
 export interface ManagedUser {

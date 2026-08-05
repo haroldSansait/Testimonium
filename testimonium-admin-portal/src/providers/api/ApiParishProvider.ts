@@ -21,8 +21,24 @@ export const ApiParishProvider: ParishProvider = {
     return response.data.data;
   },
 
-  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish> {
-    const response = await api.put<ApiResponseEnvelope<Parish>>(`/parishes/${id}/settings`, data);
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean }): Promise<Parish> {
+    const response = await api.patch<ApiResponseEnvelope<Parish>>(`/parishes/${id}/settings`, data);
+    return response.data.data;
+  },
+
+  async uploadPaymentQr(id: string, file: File): Promise<Parish> {
+    const formData = new FormData();
+    formData.append('qrImage', file);
+    const response = await api.post<ApiResponseEnvelope<Parish>>(`/parishes/${id}/payment-qr`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data.data;
+  },
+
+  async deletePaymentQr(id: string): Promise<Parish> {
+    const response = await api.delete<ApiResponseEnvelope<Parish>>(`/parishes/${id}/payment-qr`);
     return response.data.data;
   },
 

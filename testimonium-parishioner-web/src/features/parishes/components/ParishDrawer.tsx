@@ -210,16 +210,16 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
           <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">
             <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <Clock size={12} className="mr-1.5 text-[#7B1C2A]" />
+              <Clock size={12} className="mr-1.5 text-[#7B1C2A] flex-shrink-0" />
               Office Hours
             </span>
-            <p className="text-xs text-text-primary mt-1 font-medium leading-relaxed">
+            <p className="text-xs text-text-primary mt-1 font-medium leading-relaxed break-words">
               {officeHoursText}
             </p>
           </div>
           <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">
             <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <User size={12} className="mr-1.5 text-[#7B1C2A]" />
+              <User size={12} className="mr-1.5 text-[#7B1C2A] flex-shrink-0" />
               Parish Personnel
             </span>
             <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
@@ -231,24 +231,24 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           <h4 className="text-[10px] font-bold uppercase tracking-wider text-text-primary mb-2.5">
             Contact Information
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="flex items-center space-x-2">
-              <Phone size={14} className="text-[#7B1C2A]/80 flex-shrink-0" />
-              <span className="truncate text-text-primary">{parish.phone}</span>
+          <div className="grid grid-cols-1 gap-2.5">
+            <div className="flex items-start space-x-2">
+              <Phone size={14} className="text-[#7B1C2A]/80 flex-shrink-0 mt-0.5" />
+              <span className="text-text-primary font-medium break-all">{parish.phone || 'No phone listed'}</span>
             </div>
-            <div className="flex items-center space-x-2">
-              <Mail size={14} className="text-[#7B1C2A]/80 flex-shrink-0" />
-              <span className="truncate text-text-primary">{parish.email}</span>
+            <div className="flex items-start space-x-2">
+              <Mail size={14} className="text-[#7B1C2A]/80 flex-shrink-0 mt-0.5" />
+              <span className="text-text-primary font-medium break-all">{parish.email || 'No email listed'}</span>
             </div>
             {parish.facebookPage && (
               <a 
                 href={parish.facebookPage} 
                 target="_blank" 
                 rel="noreferrer" 
-                className="flex items-center space-x-2 text-[#7B1C2A] hover:underline"
+                className="flex items-center space-x-2 text-[#7B1C2A] hover:underline font-medium"
               >
                 <Globe size={14} className="flex-shrink-0" />
-                <span className="truncate">Facebook Page</span>
+                <span className="break-all">Facebook Page</span>
               </a>
             )}
           </div>

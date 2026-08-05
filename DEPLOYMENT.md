@@ -57,6 +57,15 @@ This manual provides a comprehensive, step-by-step guide for deploying the TESTI
 | `OCR_ENABLED` | Optional | Enable/disable OCR processing | `true` |
 | `OCR_PROVIDER` | Optional | Provider selection (`ocrspace` or `stub`) | `ocrspace` |
 | `OCR_SPACE_API_KEY` | Conditional | API key if `OCR_PROVIDER=ocrspace` | `K888888888888` |
+| `OCR_SPACE_ENGINE` | Optional | OCR.Space engine mode (`1` or `2`) | `2` |
+| `OCR_TIMEOUT` | Optional | OCR API call timeout in ms | `10000` |
+| `OCR_MAX_SIZE_KB` | Optional | Maximum image payload size in KB | `900` |
+| `OCR_COMPRESSION_WIDTH` | Optional | Sharp resize width target | `1200` |
+| `OCR_COMPRESSION_QUALITY` | Optional | Sharp JPEG compression quality | `80` |
+| `OCR_MAX_RETRIES` | Optional | Maximum OCR API retry attempts | `2` |
+| `OCR_RETRY_BASE_DELAY_MS` | Optional | Exponential backoff delay base | `1000` |
+| `OCR_CACHE_TTL_MS` | Optional | In-memory OCR cache TTL in ms | `1800000` |
+| `OCR_CACHE_MAX_ENTRIES` | Optional | Maximum entries in OCR cache | `200` |
 | `LOG_LEVEL` | Optional | Pino logger minimum level | `info` |
 
 ### Admin Portal (`testimonium-admin-portal/.env`)

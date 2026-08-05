@@ -63,6 +63,20 @@ export const SacramentalRequestPage: React.FC = () => {
     }
   }, [queryParishId, parishes, selectedParishId]);
 
+  const selectedParish = parishes.find((p) => String(p.id) === String(selectedParishId));
+  const availableDocList = selectedParish?.availableDocuments;
+  const filteredDocTypes =
+    availableDocList && Array.isArray(availableDocList) && availableDocList.length > 0
+      ? ALL_DOCUMENT_TYPES.filter((doc) => availableDocList.includes(doc.type))
+      : ALL_DOCUMENT_TYPES;
+
+  // Auto-reset docType if selected parish doesn't offer current docType
+  useEffect(() => {
+    if (filteredDocTypes.length > 0 && !filteredDocTypes.some((d) => d.type === docType)) {
+      setDocType(filteredDocTypes[0].type);
+    }
+  }, [selectedParishId, filteredDocTypes, docType]);
+
   // Fetch dynamic requirements when step becomes upload step
   useEffect(() => {
     if (currentStep === 3) {
@@ -251,7 +265,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 <p className="text-xs text-text-muted">Select from the official sacramental document types.</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {ALL_DOCUMENT_TYPES.map(doc => (
+                {filteredDocTypes.map(doc => (
                   <button
                     key={doc.type}
                     onClick={() => setDocType(doc.type)}

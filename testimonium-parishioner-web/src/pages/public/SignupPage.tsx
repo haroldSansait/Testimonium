@@ -4,25 +4,60 @@ import { ShieldAlert, UserPlus, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { LegalAcceptanceModal } from '../../components/modals/LegalAcceptanceModal';
+import { TermsModal } from '../../components/modals/TermsModal';
+import { PrivacyModal } from '../../components/modals/PrivacyModal';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 export const SignupPage: React.FC = () => {
   const { signUpWithEmail, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
-  const [name, setName] = useState('');
+  // Structured name fields
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [suffix, setSuffix] = useState('');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Legal compliance checkboxes
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+
+  // Cooldown and UI states
   const [loading, setLoading] = useState(false);
+  const [submitCooldown, setSubmitCooldown] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Modal states
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+
+
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !password || !confirmPassword) {
-      setError('Please fill in all fields.');
+
+    if (submitCooldown || loading) return;
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('First Name and Last Name are required.');
+      return;
+    }
+
+    if (!email || !password || !confirmPassword) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+
+    if (!termsAccepted || !privacyAccepted) {
+      setError('You must accept both the Terms of Service and Privacy Policy to create an account.');
       return;
     }
 
@@ -37,18 +72,37 @@ export const SignupPage: React.FC = () => {
     }
 
     setLoading(true);
+    setSubmitCooldown(true);
     setError('');
 
+    // Activate 2.5s submit cooldown to prevent duplicate registration requests
+    setTimeout(() => setSubmitCooldown(false), 2500);
+
     try {
-      await signUpWithEmail(email, password, name);
-      setSuccessMessage('Account registered successfully! Redirecting to complete your profile...');
+      await signUpWithEmail(
+        email, 
+        password, 
+        {
+          firstName: firstName.trim(),
+          middleName: middleName.trim() || undefined,
+          lastName: lastName.trim(),
+          suffix: suffix.trim() || undefined,
+        },
+        {
+          termsAccepted: true,
+          privacyAccepted: true,
+          termsVersion: 'v1.0',
+          privacyVersion: 'v1.0',
+        }
+      );
+
+      setSuccessMessage('Registration successful! Redirecting to email verification...');
       setTimeout(() => {
-        navigate('/dashboard/profile', { state: { isNewUser: true } });
-      }, 1500);
+        navigate('/verify-email');
+      }, 1000);
     } catch (err: any) {
-      if (err?.code === 'auth/email-already-in-use') {
-        setError('An account with this email address already exists. Redirecting to Login...');
-        setTimeout(() => navigate('/login'), 2000);
+      if (err?.code === 'ACCOUNT_EXISTS_WITH_GOOGLE' || err?.code === 'auth/email-already-in-use') {
+        setError(err?.message || 'An account with this email address already exists. Please sign in instead.');
       } else {
         setError(err?.message || 'Registration failed. Please check your inputs.');
       }
@@ -57,16 +111,22 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleExecuteGoogleSignIn = async () => {
+    setIsLegalModalOpen(false);
     setLoading(true);
     setError('');
+
     try {
       await signInWithGoogle();
-      navigate('/dashboard/profile', { state: { isNewUser: true } });
+      // ProtectedRoute is single routing authority for dashboard vs profile completion
+      navigate('/dashboard/home');
     } catch (err: any) {
-      if (err?.code === 'auth/account-exists-with-different-credential' || err?.code === 'auth/email-already-in-use') {
-        setError('An account with this email address already exists. Please log in using your primary sign-in method.');
-        setTimeout(() => navigate('/login'), 2000);
+      if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED') {
+        setIsLegalModalOpen(true);
+      } else if (err?.code === 'ACCOUNT_EXISTS_WITH_PASSWORD') {
+        setError('This email already has a password account. Please sign in using your password.');
+      } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        setError('Sign-in cancelled. Feel free to try again when ready.');
       } else {
         setError(err?.message || 'Google Sign-In failed.');
       }
@@ -75,19 +135,19 @@ export const SignupPage: React.FC = () => {
     }
   };
 
+  const isFormValid = termsAccepted && privacyAccepted && firstName.trim() !== '' && lastName.trim() !== '' && !loading && !submitCooldown;
+
   return (
     <div className="min-h-[calc(100vh-64px)] grid grid-cols-1 md:grid-cols-12 bg-app-base">
-      {/* Left side - Branding (Hidden on mobile) */}
+      {/* Left side - Branding */}
       <div 
         className="hidden md:flex md:col-span-5 text-white flex-col justify-center items-center text-center p-12 relative overflow-hidden"
         style={{
           backgroundImage: `linear-gradient(rgba(123, 28, 42, 0.88), rgba(123, 28, 42, 0.92)), url(${mtKanlaonImage})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat'
         }}
       >
-        {/* Background Overlay */}
         <div className="absolute inset-0 bg-black/10 z-0" />
         <div className="absolute -bottom-20 -left-20 w-84 h-84 border-4 border-white/5 rounded-full z-0" />
 
@@ -119,47 +179,83 @@ export const SignupPage: React.FC = () => {
           </div>
 
           {successMessage && (
-            <div className="p-3.5 bg-green-50 border border-green-300 text-green-800 rounded-button flex items-start space-x-2.5 text-xs font-medium animate-in fade-in duration-fast">
-              <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-600" />
+            <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-button flex items-start space-x-2.5 text-xs font-semibold shadow-sm animate-in fade-in">
+              <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-emerald-600" />
               <span>{successMessage}</span>
             </div>
           )}
 
           {error && (
-            <div className="p-3.5 bg-red-50 border border-status-rejected/25 text-status-rejected rounded-button flex items-start space-x-2.5 text-xs font-medium animate-in fade-in duration-fast">
-              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+            <div className="p-3.5 bg-red-50 border border-red-300 text-red-900 rounded-button flex items-start space-x-2.5 text-xs font-semibold shadow-sm animate-in fade-in">
+              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0 text-red-600" />
               <span>{error}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="First Name *"
+                type="text"
+                placeholder="Juan"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+                disabled={loading}
+                className="w-full"
+              />
+              <Input
+                label="Middle Name"
+                type="text"
+                placeholder="Santos (Optional)"
+                value={middleName}
+                onChange={(e) => setMiddleName(e.target.value)}
+                disabled={loading}
+                className="w-full"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <Input
+                  label="Last Name *"
+                  type="text"
+                  placeholder="dela Cruz"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="w-full"
+                />
+              </div>
+              <Input
+                label="Suffix"
+                type="text"
+                placeholder="Jr. (Opt.)"
+                value={suffix}
+                onChange={(e) => setSuffix(e.target.value)}
+                disabled={loading}
+                className="w-full"
+              />
+            </div>
+
             <Input
-              label="Full Name"
-              type="text"
-              placeholder="e.g. Juan dela Cruz"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-              disabled={loading}
-              className="w-full"
-            />
-            <Input
-              label="Email Address"
+              label="Email Address *"
               type="email"
               placeholder="e.g. name@email.com"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
               className="w-full"
             />
             <div className="relative">
               <Input
-                label="Password (min. 6 characters)"
-                type={showPassword ? "text" : "password"}
+                label="Password (min. 6 characters) *"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
                 className="w-full pr-10"
@@ -168,26 +264,72 @@ export const SignupPage: React.FC = () => {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-8 text-text-muted hover:text-text-primary transition-colors focus:outline-none"
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
             <div className="relative">
               <Input
-                label="Confirm Password"
-                type={showPassword ? "text" : "password"}
+                label="Confirm Password *"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 disabled={loading}
                 className="w-full pr-10"
               />
             </div>
 
-            <Button type="submit" loading={loading} className="w-full pt-2.5 pb-2.5 mt-4">
-              Register Account
+            {/* Mandatory Legal Compliance Checkboxes */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm space-y-3 pt-3">
+              <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus:ring-crimson cursor-pointer"
+                />
+                <span className="text-xs text-gray-900 font-medium leading-snug">
+                  I agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsTermsModalOpen(true)}
+                    className="font-bold text-crimson hover:underline focus:outline-none"
+                  >
+                    Terms of Service
+                  </button>
+                </span>
+              </label>
+
+              <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus:ring-crimson cursor-pointer"
+                />
+                <span className="text-xs text-gray-900 font-medium leading-snug">
+                  I acknowledge the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivacyModalOpen(true)}
+                    className="font-bold text-crimson hover:underline focus:outline-none"
+                  >
+                    Privacy Policy
+                  </button>
+                </span>
+              </label>
+            </div>
+
+            <Button
+              type="submit"
+              loading={loading}
+              disabled={!isFormValid}
+              className="w-full pt-2.5 pb-2.5 mt-4"
+            >
+              {submitCooldown ? 'Processing...' : 'Register Account'}
             </Button>
           </form>
 
@@ -199,11 +341,10 @@ export const SignupPage: React.FC = () => {
 
           <Button
             variant="outline"
-            onClick={handleGoogleSignIn}
+            onClick={handleExecuteGoogleSignIn}
             disabled={loading}
             className="w-full flex items-center justify-center space-x-2"
           >
-            {/* Google Icon SVG */}
             <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -221,7 +362,24 @@ export const SignupPage: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Legal Modals */}
+      <TermsModal
+        isOpen={isTermsModalOpen}
+        onClose={() => setIsTermsModalOpen(false)}
+      />
+      <PrivacyModal
+        isOpen={isPrivacyModalOpen}
+        onClose={() => setIsPrivacyModalOpen(false)}
+      />
+      <LegalAcceptanceModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        onAccept={handleExecuteGoogleSignIn}
+      />
     </div>
   );
 };
+
 export default SignupPage;
+

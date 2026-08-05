@@ -164,7 +164,9 @@ export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
   addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish>;
   editParish(id: string, data: Partial<Parish>): Promise<Parish>;
-  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish>;
+  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean }): Promise<Parish>;
+  uploadPaymentQr(id: string, file: File): Promise<Parish>;
+  deletePaymentQr(id: string): Promise<Parish>;
   archiveParish(id: string): Promise<void>;
   getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
   upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate>;

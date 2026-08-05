@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { SubmissionProtectionProvider } from './contexts/SubmissionProtectionContext';
+import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -12,6 +13,9 @@ import { SessionWarningModal } from './components/modals/SessionWarningModal';
 import LandingPage from './pages/public/LandingPage';
 import LoginPage from './pages/public/LoginPage';
 import SignupPage from './pages/public/SignupPage';
+import TermsPage from './pages/public/TermsPage';
+import PrivacyPage from './pages/public/PrivacyPage';
+import VerifyEmailPage from './pages/public/VerifyEmailPage';
 
 // Authenticated Pages
 import HomePage from './pages/dashboard/HomePage';
@@ -55,6 +59,9 @@ const AppWithSessionModal: React.FC = () => {
         <Route path="/" element={<PublicRoute element={<LandingPage />} />} />
         <Route path="/login" element={<PublicRoute element={<LoginPage />} />} />
         <Route path="/signup" element={<PublicRoute element={<SignupPage />} />} />
+        <Route path="/terms" element={<PublicRoute element={<TermsPage />} />} />
+        <Route path="/privacy" element={<PublicRoute element={<PrivacyPage />} />} />
+        <Route path="/verify-email" element={<PublicRoute element={<VerifyEmailPage />} />} />
 
         {/* Authenticated Dashboard Routes */}
         <Route element={<ProtectedRoute />}>
@@ -93,13 +100,15 @@ const AppWithSessionModal: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <SubmissionProtectionProvider>
-        <AuthProvider>
-          <NotificationProvider>
-            <AppWithSessionModal />
-          </NotificationProvider>
-        </AuthProvider>
-      </SubmissionProtectionProvider>
+      <ToastProvider>
+        <SubmissionProtectionProvider>
+          <AuthProvider>
+            <NotificationProvider>
+              <AppWithSessionModal />
+            </NotificationProvider>
+          </AuthProvider>
+        </SubmissionProtectionProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 };

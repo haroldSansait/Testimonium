@@ -194,6 +194,23 @@ export const userCreationRateLimiter = rateLimit({
     ),
 });
 
+// 2.3.1 Resend Verification Limiter — Strictly IP-based (3/hour/IP)
+export const resendVerificationRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createRateLimitStore("l2:resendverif:"),
+  keyGenerator: (req) => getRateLimitKey(req, "l2:resendverif:", true),
+  handler: (req, res) =>
+    handleRateLimitExceeded(
+      req,
+      res,
+      "resendVerificationRateLimiter",
+      "Too many verification email resend requests. Maximum 3 requests per hour allowed."
+    ),
+});
+
 // 2.4 OCR Processing Limiter
 export const ocrRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes

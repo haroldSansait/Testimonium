@@ -1,5 +1,7 @@
 import { ParishRepository } from "../repositories/ParishRepository.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { R2Service } from "./R2Service.js";
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 
 export class ParishService {
@@ -120,6 +122,53 @@ export class ParishService {
     }
     if (data.officeHours !== undefined) {
       updatePayload.officeHours = data.officeHours && typeof data.officeHours === "object" ? JSON.stringify(data.officeHours) : data.officeHours;
+    }
+    if (data.paymentQrEnabled !== undefined) {
+      updatePayload.paymentQrEnabled = Boolean(data.paymentQrEnabled);
+      updatePayload.paymentQrUpdatedAt = new Date();
+      if (actorId) updatePayload.paymentQrUpdatedBy = parseInt(actorId, 10);
+    }
+    if (data.paymentQrImage !== undefined) {
+      updatePayload.paymentQrImage = data.paymentQrImage;
+      updatePayload.paymentQrUpdatedAt = new Date();
+      if (actorId) updatePayload.paymentQrUpdatedBy = parseInt(actorId, 10);
+    }
+    if (data.availableDocuments !== undefined) {
+      let docs = data.availableDocuments;
+      if (typeof docs === "string") {
+        try {
+          docs = JSON.parse(docs);
+        } catch (e) {
+          const err = new Error("Invalid JSON format for availableDocuments.");
+          err.statusCode = 400;
+          throw err;
+        }
+      }
+      if (!Array.isArray(docs)) {
+        const err = new Error("availableDocuments must be an array of document types.");
+        err.statusCode = 400;
+        throw err;
+      }
+      const ALLOWED_DOC_TYPES = [
+        "BAPTISMAL_CERTIFICATE",
+        "CONFIRMATION_CERTIFICATE",
+        "MARRIAGE_CERTIFICATE",
+        "FIRST_COMMUNION_CERTIFICATE",
+      ];
+      const normalizedDocs = docs.map((doc) => {
+        let d = String(doc).toUpperCase().trim();
+        if (d === "BAPTISM") d = "BAPTISMAL_CERTIFICATE";
+        if (d === "CONFIRMATION") d = "CONFIRMATION_CERTIFICATE";
+        if (d === "MARRIAGE") d = "MARRIAGE_CERTIFICATE";
+        if (d === "FIRST_COMMUNION") d = "FIRST_COMMUNION_CERTIFICATE";
+        if (!ALLOWED_DOC_TYPES.includes(d)) {
+          const err = new Error(`Invalid document type "${doc}" in availableDocuments.`);
+          err.statusCode = 400;
+          throw err;
+        }
+        return d;
+      });
+      updatePayload.availableDocuments = normalizedDocs;
     }
 
 
@@ -341,9 +390,24 @@ export class ParishService {
       locationUpdatedAt: p.locationUpdatedAt ? p.locationUpdatedAt.toISOString() : null,
       locationUpdatedBy: p.locationUpdatedBy,
       gallery: p.gallery || [],
-      documentSettings: p.documentSettings ? JSON.parse(p.documentSettings) : null,
-      eventSettings: p.eventSettings ? JSON.parse(p.eventSettings) : null,
-      officeHours: p.officeHours ? JSON.parse(p.officeHours) : null,
+      documentSettings: p.documentSettings
+        ? (() => { try { return typeof p.documentSettings === 'string' ? JSON.parse(p.documentSettings) : p.documentSettings; } catch (e) { return p.documentSettings; } })()
+        : null,
+      eventSettings: p.eventSettings
+        ? (() => { try { return typeof p.eventSettings === 'string' ? JSON.parse(p.eventSettings) : p.eventSettings; } catch (e) { return p.eventSettings; } })()
+        : null,
+      officeHours: p.officeHours
+        ? (() => { try { return typeof p.officeHours === 'string' ? JSON.parse(p.officeHours) : p.officeHours; } catch (e) { return p.officeHours; } })()
+        : null,
+      paymentQrImage: p.paymentQrImage || null,
+      paymentQrEnabled: Boolean(p.paymentQrEnabled),
+      paymentQrUpdatedAt: p.paymentQrUpdatedAt ? p.paymentQrUpdatedAt.toISOString() : null,
+      paymentQrUpdatedBy: p.paymentQrUpdatedBy || null,
+      availableDocuments: p.availableDocuments
+        ? (typeof p.availableDocuments === "string"
+            ? JSON.parse(p.availableDocuments)
+            : p.availableDocuments)
+        : null,
     };
   }
 
@@ -569,5 +633,127 @@ export class ParishService {
     );
 
     return this.mapToDto(updatedParish);
+  }
+
+  /**
+   * Uploads and updates Parish Payment QR image with R2 rollback on DB failure.
+   */
+  async uploadPaymentQr(parishId, file, actorId) {
+    const numericId = parseInt(parishId, 10);
+    if (isNaN(numericId)) {
+      const err = new Error("Invalid parish ID format.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!file || !file.buffer) {
+      const err = new Error("No image file provided.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 1. File size check (2 MB limit)
+    const MAX_SIZE = 2 * 1024 * 1024;
+    if (file.buffer.length > MAX_SIZE) {
+      const err = new Error("File size exceeds 2 MB limit.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 2. MIME type & extension check
+    const allowedMimeTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      const err = new Error("Invalid file type. Only PNG, JPEG, and WEBP images are allowed.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 3. File signature (magic bytes) validation to prevent SVG, executables, scripts
+    const buf = file.buffer;
+    const isPng = buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+    const isJpeg = buf.length >= 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+    const isWebp = buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+                   buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
+
+    if (!isPng && !isJpeg && !isWebp) {
+      const err = new Error("File signature validation failed. Uploaded file is not a valid PNG, JPEG, or WEBP image.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 4. Upload to Cloudflare R2
+    const ext = isPng ? "png" : isJpeg ? "jpg" : "webp";
+    const objectKey = `parishes/${numericId}/payment_qr_${Date.now()}.${ext}`;
+    const r2Service = new R2Service();
+
+    let uploadedUrl;
+    try {
+      uploadedUrl = await r2Service.upload({
+        key: objectKey,
+        body: file.buffer,
+        contentType: file.mimetype,
+      });
+    } catch (uploadErr) {
+      logger.error({ err: uploadErr }, "[ParishService] R2 upload failed for Payment QR");
+      const err = new Error("Failed to upload Payment QR image to storage.");
+      err.statusCode = 500;
+      throw err;
+    }
+
+    // 5. Update Database record with Rollback handling
+    try {
+      const parish = await prisma.parish.update({
+        where: { id: numericId },
+        data: {
+          paymentQrImage: uploadedUrl,
+          paymentQrEnabled: true,
+          paymentQrUpdatedAt: new Date(),
+          paymentQrUpdatedBy: actorId ? parseInt(actorId, 10) : null,
+        },
+        include: {
+          users: { include: { role: true } },
+        },
+      });
+
+      await AuditLogService.log(actorId, `Payment QR uploaded for parish "${parish.parishName}"`);
+      return this.mapToDto(parish);
+    } catch (dbErr) {
+      // Rollback: delete uploaded file from Cloudflare R2
+      logger.error({ err: dbErr, objectKey }, "[ParishService] DB update failed. Rolling back R2 object...");
+      try {
+        await r2Service.delete(objectKey);
+      } catch (rollbackErr) {
+        logger.error({ err: rollbackErr, objectKey }, "[ParishService] R2 rollback deletion failed");
+      }
+      throw dbErr;
+    }
+  }
+
+  /**
+   * Deletes Parish Payment QR image.
+   */
+  async deletePaymentQr(parishId, actorId) {
+    const numericId = parseInt(parishId, 10);
+    if (isNaN(numericId)) {
+      const err = new Error("Invalid parish ID format.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const parish = await prisma.parish.update({
+      where: { id: numericId },
+      data: {
+        paymentQrImage: null,
+        paymentQrEnabled: false,
+        paymentQrUpdatedAt: new Date(),
+        paymentQrUpdatedBy: actorId ? parseInt(actorId, 10) : null,
+      },
+      include: {
+        users: { include: { role: true } },
+      },
+    });
+
+    await AuditLogService.log(actorId, `Payment QR deleted for parish "${parish.parishName}"`);
+    return this.mapToDto(parish);
   }
 }

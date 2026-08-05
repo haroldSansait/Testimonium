@@ -35,7 +35,10 @@ export const ParishDirectoryPage: React.FC = () => {
   const parishes = parishesQuery.data || EMPTY_PARISHES_ARRAY;
   const { loading, error, refetch } = parishesQuery;
 
-  const [selectedParish, setSelectedParish] = useState<Parish | null>(null);
+  const [selectedParishId, setSelectedParishId] = useState<string | null>(null);
+  const selectedParish = selectedParishId
+    ? parishes.find(parish => parish.id === selectedParishId) || null
+    : null;
 
   // Map state
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
@@ -69,7 +72,7 @@ export const ParishDirectoryPage: React.FC = () => {
   }, [searchQuery, parishes]);
 
   const handleSelectParish = (parish: Parish) => {
-    setSelectedParish(parish);
+    setSelectedParishId(parish.id);
     setMapCenter(parish.coordinates);
     setMapZoom(14);
     setSearchQuery('');
@@ -102,7 +105,7 @@ export const ParishDirectoryPage: React.FC = () => {
   const handleResetView = () => {
     setMapCenter(DEFAULT_CENTER);
     setMapZoom(DEFAULT_ZOOM);
-    setSelectedParish(null);
+    setSelectedParishId(null);
     setSearchQuery('');
   };
 
@@ -115,7 +118,7 @@ export const ParishDirectoryPage: React.FC = () => {
   };
 
   const handleRefresh = () => {
-    setSelectedParish(null);
+    setSelectedParishId(null);
     setSearchQuery('');
     refetch();
   };
@@ -341,7 +344,7 @@ export const ParishDirectoryPage: React.FC = () => {
                 parish={selectedParish}
                 onRequestDocument={handleRequestDocument}
                 onScheduleAppointment={handleScheduleAppointment}
-                onClose={() => setSelectedParish(null)}
+                onClose={() => setSelectedParishId(null)}
               />
             </div>
 
@@ -351,7 +354,7 @@ export const ParishDirectoryPage: React.FC = () => {
                 parish={selectedParish}
                 onRequestDocument={handleRequestDocument}
                 onScheduleAppointment={handleScheduleAppointment}
-                onClose={() => setSelectedParish(null)}
+                onClose={() => setSelectedParishId(null)}
               />
             </div>
           </div>

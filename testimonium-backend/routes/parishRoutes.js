@@ -7,6 +7,8 @@ import {
   archive,
   restore,
   updateSettings,
+  uploadPaymentQr,
+  deletePaymentQr,
 } from "../controllers/ParishController.js";
 import {
   getMapConfig,
@@ -36,6 +38,12 @@ const memoryUpload = multer({
     fileSize: 5 * 1024 * 1024, // 5MB
   },
 });
+const memoryUpload2MB = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB max for QR codes
+  },
+});
 
 // Apply authentication middleware
 router.use(authenticateFirebaseToken);
@@ -47,7 +55,12 @@ router.patch("/map-config/batch", checkRole(["DIOCESE_COORDINATOR"]), mapSaveRat
 // Publicly read parishes for all authenticated users
 router.get("/", list);
 router.get("/:id", getById);
-router.put("/:id/settings", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), updateSettings);
+
+// Parish Settings & Payment QR management (Accessible by DIOCESE_COORDINATOR, SECRETARY, PRIEST)
+router.put("/:id/settings", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", "PRIEST"]), updateSettings);
+router.patch("/:id/settings", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", "PRIEST"]), updateSettings);
+router.post("/:id/payment-qr", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", "PRIEST"]), parishImageUploadRateLimiter, memoryUpload2MB.single("qrImage"), uploadPaymentQr);
+router.delete("/:id/payment-qr", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", "PRIEST"]), deletePaymentQr);
 
 // Apply authorization middleware — only Diocese Coordinators can modify parishes
 router.use(checkRole(["DIOCESE_COORDINATOR"]));

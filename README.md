@@ -335,11 +335,13 @@ Do not change the Vite ports without also updating:
 | Layer | Technology |
 |---|---|
 | Backend runtime | Node.js `v20.x`, Express `v5.x`, ES Modules |
-| Database | PostgreSQL (Supabase), Prisma `v7.8.0` |
+| Database | PostgreSQL (Supabase), Prisma `v7.8.0` (`@prisma/adapter-pg`) |
 | Authentication | Firebase Auth (Admin SDK `v14.x` + Client SDK `v12.x`) |
 | File storage | Cloudflare R2 (S3-compatible via `@aws-sdk/client-s3`) |
+| Image & OCR Pipeline | Sharp `v0.35.x` image optimization, OCR.Space API + Fallback Stub OCR |
+| Logging & Monitoring | Pino `v10.x` structured logger with `pino-http` middleware |
 | Admin Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4`, Radix UI |
-| Parishioner Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4` |
+| Parishioner Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4`, Leaflet Maps |
 
 ---
 

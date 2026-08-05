@@ -10,7 +10,9 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isLoginPage = location.pathname === '/login';
   const isSignupPage = location.pathname === '/signup';
+  const isVerifyEmailPage = location.pathname === '/verify-email';
   const isAuthPage = isLoginPage || isSignupPage;
+  const canAccessDashboard = Boolean(user && user.emailVerified && !isVerifyEmailPage);
 
   return (
     <div className="min-h-screen flex flex-col bg-app-base">
@@ -38,9 +40,11 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
                 )
               ) : user ? (
                 <div className="flex items-center space-x-3">
-                  <Button size="sm" variant="outline" onClick={() => navigate('/dashboard/home')}>
-                    Dashboard
-                  </Button>
+                  {canAccessDashboard && (
+                    <Button size="sm" variant="outline" onClick={() => navigate('/dashboard/home')}>
+                      Dashboard
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => logout()}>
                     Sign Out
                   </Button>

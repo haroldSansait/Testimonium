@@ -32,6 +32,9 @@ export interface Parish {
   pinColor?: string;
   showLabel?: boolean;
   directoryDescription?: string;
+  paymentQrImage?: string | null;
+  paymentQrEnabled?: boolean;
+  availableDocuments?: string[] | null;
 }
 
 export type RequestStatus =

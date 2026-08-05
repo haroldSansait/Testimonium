@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Check, AlertCircle, Clock, FileText, CalendarDays } from 'lucide-react';
+import { Save, Check, AlertCircle, Clock, FileText, CalendarDays, QrCode, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ParishManagementService } from '@/services/ParishManagementService';
@@ -46,7 +46,7 @@ export function SettingsPage() {
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [selectedParishId, setSelectedParishId] = useState<string>('');
   
-  const [activeTab, setActiveTab] = useState<'documents' | 'events' | 'hours'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'events' | 'hours' | 'qr'>('documents');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -55,6 +55,15 @@ export function SettingsPage() {
   const [documentSettings, setDocumentSettings] = useState<any>({});
   const [eventSettings, setEventSettings] = useState<Record<string, { requirements: Record<string, boolean> }>>({});
   const [officeHours, setOfficeHours] = useState<Record<string, { openTime: string; closeTime: string; isClosed: boolean }>>({});
+  const [paymentQrImage, setPaymentQrImage] = useState<string | null>(null);
+  const [paymentQrEnabled, setPaymentQrEnabled] = useState<boolean>(false);
+  const [availableDocuments, setAvailableDocuments] = useState<string[]>([
+    'BAPTISMAL_CERTIFICATE',
+    'CONFIRMATION_CERTIFICATE',
+    'MARRIAGE_CERTIFICATE',
+    'FIRST_COMMUNION_CERTIFICATE',
+  ]);
+  const [uploadingQr, setUploadingQr] = useState(false);
 
   // Initialize office hours default settings
   const initDefaultOfficeHours = () => {
@@ -67,6 +76,23 @@ export function SettingsPage() {
       };
     });
     return hours;
+  };
+
+  const parseOfficeHours = (rawHours: any) => {
+    const defaultHours = initDefaultOfficeHours();
+    if (!rawHours) return defaultHours;
+    let obj: any = rawHours;
+    if (typeof rawHours === 'string') {
+      try {
+        obj = JSON.parse(rawHours);
+      } catch (e) {
+        return defaultHours;
+      }
+    }
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      return { ...defaultHours, ...obj };
+    }
+    return defaultHours;
   };
 
   // Initialize document settings default configurations
@@ -137,9 +163,67 @@ export function SettingsPage() {
       }
       setDocumentSettings(docSettingsMerged);
       setEventSettings(parish.eventSettings || initDefaultEventSettings());
-      setOfficeHours(parish.officeHours || initDefaultOfficeHours());
+      setOfficeHours(parseOfficeHours(parish.officeHours));
+      setPaymentQrImage(parish.paymentQrImage || null);
+      setPaymentQrEnabled(Boolean(parish.paymentQrEnabled));
+      setAvailableDocuments(
+        parish.availableDocuments && Array.isArray(parish.availableDocuments)
+          ? parish.availableDocuments
+          : ['BAPTISMAL_CERTIFICATE', 'CONFIRMATION_CERTIFICATE', 'MARRIAGE_CERTIFICATE', 'FIRST_COMMUNION_CERTIFICATE']
+      );
     }
   }, [selectedParishId, parishes]);
+
+  const handleToggleAvailableDocument = (docType: string) => {
+    setAvailableDocuments((prev) => {
+      if (prev.includes(docType)) {
+        return prev.filter((d) => d !== docType);
+      } else {
+        return [...prev, docType];
+      }
+    });
+  };
+
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedParishId) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setToast({ message: 'File size exceeds 2 MB limit.', type: 'error' });
+      return;
+    }
+
+    setUploadingQr(true);
+    try {
+      const updatedParish = await ParishManagementService.uploadPaymentQr(selectedParishId, file);
+      setPaymentQrImage(updatedParish.paymentQrImage || null);
+      setPaymentQrEnabled(Boolean(updatedParish.paymentQrEnabled));
+      setParishes((prev) => prev.map((p) => (p.id === selectedParishId ? updatedParish : p)));
+      setToast({ message: 'Payment QR uploaded successfully.', type: 'success' });
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to upload Payment QR image.', type: 'error' });
+    } finally {
+      setUploadingQr(false);
+    }
+  };
+
+  const handleDeleteQr = async () => {
+    if (!selectedParishId) return;
+    setUploadingQr(true);
+    try {
+      const updatedParish = await ParishManagementService.deletePaymentQr(selectedParishId);
+      setPaymentQrImage(null);
+      setPaymentQrEnabled(false);
+      setParishes((prev) => prev.map((p) => (p.id === selectedParishId ? updatedParish : p)));
+      setToast({ message: 'Payment QR deleted successfully.', type: 'success' });
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to delete Payment QR image.', type: 'error' });
+    } finally {
+      setUploadingQr(false);
+    }
+  };
 
   // Dismiss Toast
   useEffect(() => {
@@ -189,9 +273,10 @@ export function SettingsPage() {
 
   const handleOfficeHoursChange = (day: string, field: 'openTime' | 'closeTime' | 'isClosed', value: any) => {
     setOfficeHours((prev: any) => {
-      const dayConf = prev[day] || { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false };
+      const baseObj = (prev && typeof prev === 'object' && !Array.isArray(prev)) ? prev : parseOfficeHours(prev);
+      const dayConf = baseObj[day] || { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false };
       return {
-        ...prev,
+        ...baseObj,
         [day]: {
           ...dayConf,
           [field]: value
@@ -207,14 +292,16 @@ export function SettingsPage() {
       await ParishManagementService.editParishSettings(selectedParishId, {
         documentSettings,
         eventSettings,
-        officeHours
+        officeHours,
+        availableDocuments,
+        paymentQrEnabled,
       });
       // Update local cache
-      setParishes(prev => prev.map(p => p.id === selectedParishId ? { ...p, documentSettings, eventSettings, officeHours } : p));
+      setParishes(prev => prev.map(p => p.id === selectedParishId ? { ...p, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled } : p));
       setToast({ message: 'Parish configuration saved successfully.', type: 'success' });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save settings:', err);
-      setToast({ message: 'Failed to update parish configurations.', type: 'error' });
+      setToast({ message: err?.message || 'Failed to update parish configurations.', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -306,6 +393,17 @@ export function SettingsPage() {
             <Clock className="w-4 h-4" />
             Office Operating Hours
           </button>
+          <button
+            onClick={() => setActiveTab('qr')}
+            className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
+              activeTab === 'qr'
+                ? 'border-crimson-700 text-crimson-700 bg-white'
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
+            }`}
+          >
+            <QrCode className="w-4 h-4" />
+            Payment QR Configuration
+          </button>
         </div>
 
         {/* Configurations Body */}
@@ -318,6 +416,35 @@ export function SettingsPage() {
                 <p className="text-xs text-gray-500 mt-0.5">
                   Set prices and check which attachments parishioners must upload to submit a request.
                 </p>
+              </div>
+
+              {/* Configurable Document Availability */}
+              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50/50 space-y-3">
+                <div>
+                  <span className="text-sm font-bold text-gray-900">Available Sacramental Documents</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Select which sacramental document requests are enabled for parishioners in this parish.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  {[
+                    { id: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
+                    { id: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
+                    { id: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
+                    { id: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
+                  ].map((doc) => {
+                    const isEnabled = availableDocuments.includes(doc.id);
+                    return (
+                      <label key={doc.id} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={() => handleToggleAvailableDocument(doc.id)}
+                          className="w-4 h-4 text-crimson-700 border-gray-300 rounded focus:ring-crimson-700"
+                        />
+                        <span className="text-xs font-semibold text-gray-800">{doc.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Supported Payment Channels */}
@@ -531,6 +658,95 @@ export function SettingsPage() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 4: Payment QR Configuration */}
+          {activeTab === 'qr' && (
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-base font-bold text-gray-900">Parish Payment QR Code</h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Upload a payment QR code image (GCash/Maya/Bank) to display on parishioner document request payment steps.
+                </p>
+              </div>
+
+              {/* Enable / Disable Toggle */}
+              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50/50 flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-bold text-gray-900">Enable Payment QR Code</span>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    When enabled, parishioners will see this QR code during payment submission for document requests.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentQrEnabled}
+                    onChange={(e) => setPaymentQrEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-crimson-700"></div>
+                </label>
+              </div>
+
+              {/* QR Upload & Preview */}
+              <div className="p-6 border border-dashed border-gray-300 rounded-xl bg-white flex flex-col items-center justify-center text-center space-y-4">
+                {paymentQrImage ? (
+                  <div className="space-y-4 flex flex-col items-center">
+                    <div className="relative group p-2 border border-gray-200 rounded-xl bg-white shadow-sm">
+                      <img
+                        src={paymentQrImage}
+                        alt="Parish Payment QR"
+                        className="w-48 h-48 object-contain rounded-lg"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      <label className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+                        <Upload className="w-4 h-4" />
+                        {uploadingQr ? 'Uploading...' : 'Replace QR Image'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={handleQrUpload}
+                          disabled={uploadingQr}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleDeleteQr}
+                        disabled={uploadingQr}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete QR Image
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 py-4 flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
+                      <ImageIcon className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold text-gray-700">No Payment QR uploaded</span>
+                      <p className="text-xs text-gray-400 mt-1">Upload a PNG, JPEG, or WEBP image file (Max 2 MB).</p>
+                    </div>
+                    <label className="flex items-center gap-2 px-5 py-2.5 bg-crimson-700 hover:bg-crimson-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors shadow">
+                      <Upload className="w-4 h-4" />
+                      {uploadingQr ? 'Uploading...' : 'Upload Payment QR'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleQrUpload}
+                        disabled={uploadingQr}
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
           )}

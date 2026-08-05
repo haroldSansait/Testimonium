@@ -18,6 +18,16 @@ const mapParish = (p: any): Parish => {
   const mappedCover = p.coverImage || getParishImage(lookupData);
   const mappedGallery = p.coverImage ? [p.coverImage] : getParishGallery(lookupData);
 
+  const defaultOfficeHours = {
+    Monday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
+    Tuesday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
+    Wednesday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
+    Thursday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
+    Friday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
+    Saturday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
+    Sunday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: true },
+  };
+
   return {
     id: String(p.id),
     name: lookupData.name,
@@ -30,7 +40,7 @@ const mapParish = (p: any): Parish => {
     phone: p.contactNumber || p.phone || "",
     email: p.email || "",
     facebookPage: p.facebookPage || "",
-    officeHours: p.officeHours || "8:00 AM - 5:00 PM",
+    officeHours: p.officeHours || defaultOfficeHours,
     patronSaint: p.patronSaint || "",
     feastDay: p.feastDay || "",
     description: p.directoryDescription || p.description || `${lookupData.name || "Parish"} of Canlaon Vicariate.`,
@@ -43,6 +53,13 @@ const mapParish = (p: any): Parish => {
     pinColor: p.pinColor || "#7B1C2A",
     showLabel: p.showLabel ?? true,
     directoryDescription: p.directoryDescription || "",
+    paymentQrImage: p.paymentQrImage || null,
+    paymentQrEnabled: Boolean(p.paymentQrEnabled),
+    availableDocuments: p.availableDocuments
+      ? typeof p.availableDocuments === "string"
+        ? JSON.parse(p.availableDocuments)
+        : p.availableDocuments
+      : null,
   };
 };
 

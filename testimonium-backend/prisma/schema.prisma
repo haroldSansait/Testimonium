@@ -152,6 +152,11 @@ model Parish {
   documentSettings String?           @map("document_settings") @db.Text
   eventSettings    String?           @map("event_settings") @db.Text
   officeHours      String?           @map("office_hours") @db.Text
+  paymentQrImage   String?           @map("payment_qr_image") @db.VarChar(255)
+  paymentQrEnabled Boolean           @default(false) @map("payment_qr_enabled")
+  paymentQrUpdatedAt DateTime?       @map("payment_qr_updated_at")
+  paymentQrUpdatedBy Int?            @map("payment_qr_updated_by")
+  availableDocuments Json?           @map("available_documents")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   users            User[]
@@ -182,6 +187,12 @@ model User {
   isVerified                Boolean            @default(false) @map("is_verified")
   status                    UserStatus         @default(ACTIVE)
   color                     String?            @db.VarChar(50)
+  termsAcceptedAt           DateTime?          @map("terms_accepted_at")
+  privacyAcceptedAt         DateTime?          @map("privacy_accepted_at")
+  termsVersion              String?            @map("terms_version") @db.VarChar(20)
+  privacyVersion            String?            @map("privacy_version") @db.VarChar(20)
+  lastVerificationResentAt  DateTime?          @map("last_verification_resent_at")
+  verificationResentCount   Int                @default(0) @map("verification_resent_count")
   createdAt                 DateTime           @default(now()) @map("created_at")
   updatedAt                 DateTime           @updatedAt @map("updated_at")
   role                      Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)

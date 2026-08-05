@@ -150,7 +150,7 @@ export const DemoParishProvider: ParishProvider = {
     return updated;
   },
 
-  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any }): Promise<Parish> {
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean }): Promise<Parish> {
     store = store.map((p) => {
       if (p.id === id) {
         return {
@@ -158,6 +158,8 @@ export const DemoParishProvider: ParishProvider = {
           documentSettings: data.documentSettings !== undefined ? data.documentSettings : p.documentSettings,
           eventSettings: data.eventSettings !== undefined ? data.eventSettings : p.eventSettings,
           officeHours: data.officeHours !== undefined ? data.officeHours : p.officeHours,
+          availableDocuments: data.availableDocuments !== undefined ? data.availableDocuments : p.availableDocuments,
+          paymentQrEnabled: data.paymentQrEnabled !== undefined ? data.paymentQrEnabled : p.paymentQrEnabled,
         };
       }
       return p;
@@ -165,6 +167,21 @@ export const DemoParishProvider: ParishProvider = {
     const updated = store.find((p) => p.id === id);
     if (!updated) throw new Error(`Parish ${id} not found`);
     return updated;
+  },
+
+  async uploadPaymentQr(id: string, _file: File): Promise<Parish> {
+    const fakeUrl = "https://images.unsplash.com/photo-1548625361-155de0cbb55a?auto=format&fit=crop&q=80&w=800";
+    store = store.map((p) => (p.id === id ? { ...p, paymentQrImage: fakeUrl, paymentQrEnabled: true } : p));
+    const match = store.find((p) => p.id === id);
+    if (!match) throw new Error(`Parish ${id} not found`);
+    return match;
+  },
+
+  async deletePaymentQr(id: string): Promise<Parish> {
+    store = store.map((p) => (p.id === id ? { ...p, paymentQrImage: null, paymentQrEnabled: false } : p));
+    const match = store.find((p) => p.id === id);
+    if (!match) throw new Error(`Parish ${id} not found`);
+    return match;
   },
 
   async archiveParish(id: string): Promise<void> {

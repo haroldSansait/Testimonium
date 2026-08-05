@@ -35,6 +35,16 @@ import massScheduleRoutes from "./routes/massScheduleRoutes.js";
 import parishEventRoutes from "./routes/parishEventRoutes.js";
 
 const app = express();
+app.set("etag", false);
+
+// Disable client caching for dynamic API endpoints to prevent 304 stale data
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
+
 const apiVersion = "/api/v1";
 
 if (env.trustProxy !== false) {
@@ -192,8 +202,41 @@ const logRateLimitSummary = () => {
   );
 };
 
+export const logAuthenticationPolicy = () => {
+  const isProd = env.nodeEnv === "production";
+  const staffVerificationState = (!isProd && !env.adminEmailVerificationRequired) ? "DISABLED" : "REQUIRED";
+
+  if (isProd && process.env.ADMIN_EMAIL_VERIFICATION_REQUIRED === "false") {
+    logger.warn(
+      "[SECURITY WARNING] ADMIN_EMAIL_VERIFICATION_REQUIRED=false configured in PRODUCTION environment! Email verification bypass is disabled for production safety."
+    );
+  }
+
+  const envDisplay = env.nodeEnv.toUpperCase();
+
+  console.log("====================================");
+  console.log("Authentication Policy");
+  console.log("------------------------------------");
+  console.log(`Environment: ${envDisplay}`);
+  console.log("Parishioner Verification : REQUIRED");
+  console.log(`Staff Verification       : ${staffVerificationState}`);
+  console.log("Provider Override        : Google Always Verified");
+  console.log("====================================");
+
+  logger.info(
+    {
+      environment: envDisplay,
+      parishionerVerification: "REQUIRED",
+      staffVerification: staffVerificationState,
+      providerOverride: "Google Always Verified",
+    },
+    "[AuthPolicy] Effective authentication verification policy active"
+  );
+};
+
 const server = app.listen(env.port, () => {
   logger.info(`[TESTIMONIUM] API server listening on port ${env.port} (${env.nodeEnv})`);
+  logAuthenticationPolicy();
   logRateLimitSummary();
   validateParishesOnStartup();
 });

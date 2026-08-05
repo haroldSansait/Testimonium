@@ -22,6 +22,21 @@ const parsePositiveInt = (value, defaultValue, name) => {
   return parsed;
 };
 
+const parseBoolean = (value, defaultValue, name) => {
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+  const clean = String(value).trim().toLowerCase();
+  if (["true", "1", "yes"].includes(clean)) {
+    return true;
+  }
+  if (["false", "0", "no"].includes(clean)) {
+    return false;
+  }
+  console.warn(`[Config] Invalid ${name} value "${value}". Falling back to production default (${defaultValue}).`);
+  return defaultValue;
+};
+
 const getDatabaseUrl = () =>
   process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL;
 
@@ -56,6 +71,11 @@ const parseCorsOrigins = () => {
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   enableDevAuth: process.env.ENABLE_DEV_AUTH === "true",
+  adminEmailVerificationRequired: parseBoolean(
+    process.env.ADMIN_EMAIL_VERIFICATION_REQUIRED,
+    true,
+    "ADMIN_EMAIL_VERIFICATION_REQUIRED"
+  ),
   port: Number(process.env.PORT ?? 5000),
   trustProxy: parseTrustProxy(),
   databaseUrl: getDatabaseUrl(),

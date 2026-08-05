@@ -6,7 +6,7 @@ This document compiles the master synchronization state and comprehensive archit
 
 ## 1. 📊 SYSTEM SNAPSHOT & METADATA
 
-*   **Generation Date/Time:** `2026-07-31T21:44:00+08:00` (Local Workspace Time)
+*   **Generation Date/Time:** `2026-08-04T17:03:00+08:00` (Local Workspace Time)
 *   **System Architecture:** Decoupled, multi-tenant / multi-parish row-level ring-fenced structure with roles-based access control (RBAC).
 
 ### Core Tech Stack
@@ -117,20 +117,20 @@ The PostgreSQL database is managed via Prisma 7.8.0. Database schema changes are
 
 ### Core Active Models & Relations
 *   **`Role`**: Authorization roles (`PARISHIONER`, `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`).
-*   **`Parish`**: Details parish structures (`PARISH`, `QUASI_PARISH`, `MISSION_STATION`). Includes settings (`documentSettings`, `eventSettings`, `officeHours`), coordinates, Cover/Gallery links, and Slug details.
+*   **`Parish`**: Details parish structures (`PARISH`, `QUASI_PARISH`, `MISSION_STATION`). Includes settings (`documentSettings`, `eventSettings`, `officeHours`), map display metadata (`mapZoom`, `pinColor`, `showLabel`), location update audits (`locationUpdatedBy`, `locationUpdatedAt`), directory details (`directoryDescription`), coordinates, Cover/Logo/Gallery links, and Slug details.
 *   **`User`**: Core user accounts. Links to a single `Role` and optionally to an assigned `Parish` (staff roles). Tracks color preferences and assistant flags.
 *   **`DocumentRequest`**: Sacrament certificate requests. Links a `User` (submitter), a `Parish` (receiver), and a `User` (processor). Supports tracking, drafts, payments, and correction notes.
 *   **`RequestAttachment`**: Uploaded attachments supporting a document request. Points to keys in Cloudflare R2.
-*   **`PaymentTransaction`**: Manages payment verification metadata for Gcash/etc. transfers.
+*   **`PaymentTransaction`**: Manages payment verification metadata for GCash/etc. transfers.
 *   **`ReceiptUpload`**: Represents individual receipt image references stored in R2.
-*   **`OcrResult`**: Contains raw text and parsed reference data extracted from screenshots.
+*   **`OcrResult`**: Contains raw text, extracted reference data, multi-tiered confidence metrics (`ocrConfidence`, `parserConfidence`, `finalConfidence`), normalized values (`normalizedAmount`, `normalizedDate`), engine parameters (`ocrEngine`, `ocrLanguage`, `compressionWidth`, `compressionQuality`), and performance telemetry from GCash screenshots.
 *   **`RequestHistory`**: Audit trail of statuses, updates, and reasons for Document Requests.
 *   **`Schedule`**: Event requests (weddings, baptisms, etc.) with dates and calendar allocations. Tracks rescheduling states.
 *   **`ParishAvailability`**: Tracks unavailability ranges, office closures, and leaves for staff.
 *   **`Notification`**: Broadcasts/individual triggers (`PUSH`, `IN_APP`, `EMAIL`) with link details.
 *   **`FaqKnowledgeBase`**: Questions and answers utilized for FAQ hubs.
 *   **`ChatbotLog`**: Interaction transcripts between parishioners and the AI chatbot.
-*   **`ActivityLog`**: Audit tracking system logging staff database changes, capturing old/new values.
+*   **`ActivityLog`**: Audit tracking system logging staff database changes, capturing old/new values (`previousValues`, `newValues`), system flags, archiving state (`archivedAt`, `archivedBy`), and metadata JSON snapshots.
 *   **`MassScheduleTemplate`**: Templates for recurring Masses.
 *   **`ParishEvent`**: Custom parish activities like Masses, Fiestas, or blessings.
 
@@ -147,6 +147,7 @@ The PostgreSQL database is managed via Prisma 7.8.0. Database schema changes are
 *   **`AvailabilityType`**: `PARISH_CLOSED`, `SECRETARY_LEAVE`, `PRIEST_LEAVE`, `FULLY_BOOKED`
 *   **`NotificationType`**: `PUSH`, `IN_APP`, `EMAIL`
 *   **`NotificationReferenceType`**: `DOCUMENT_REQUEST`, `SCHEDULE_REQUEST`, `GENERAL`
+*   **`OcrStatus`**: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`
 
 ### Seeded Canlaon Vicariate Parishes
 The `prisma/seed.js` script successfully seeds the 7 official parish entities of the Canlaon Vicariate:
@@ -186,7 +187,7 @@ The backend Express server is running on Port 5000 and connects to Supabase Post
 *   **Parishioner Request Flow (`/api/v1/requests`, `/api/v1/payment`)**:
     *   Creates request drafts and updates.
     *   Handles Cloudflare R2 file attachments and metadata.
-    *   Processes payment proof submissions and triggers OCR scanning.
+    *   Processes payment proof submissions, executes Sharp image optimization (EXIF rotation, max 1200px width, quality 80 JPEG compression), and triggers OCR analysis (OCR.Space Engine 2 or Stub fallback).
 *   **Secretary Management Flow (`/api/v1/document-requests`, `/api/v1/schedule-requests`)**:
     *   Updates request statuses with comments and correction requirement targets.
     *   Manages booking slots and proposes scheduling changes.
@@ -217,7 +218,7 @@ The backend Express server is running on Port 5000 and connects to Supabase Post
 *   [x] Scoped calendar query handlers and multi-parish ring-fencing.
 *   [x] Audit activity log manager (archiving, restores, purges).
 *   [x] Parishioner transactions: document submission, tracking, scheduling, and R2 uploads.
-*   [x] GCash receipt upload parsing with Stub OCR analysis.
+*   [x] GCash receipt upload parsing with dual OCR engines (OCR.Space API + Stub OCR) and Sharp image optimization.
 *   [x] Mass schedule template managers and priest response pipelines.
 *   [x] Parish availability blocks (leave lists, closures).
 *   [x] Parishioner Web Portal: Landing page, authentication, dashboard wizard, tracking, and maps.

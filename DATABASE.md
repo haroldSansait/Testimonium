@@ -6,7 +6,7 @@ This guide details database schema migration management, canonical parish seedin
 
 ## 1. Database Connection Architecture
 
-TESTIMONIUM uses PostgreSQL (hosted on Supabase) via Prisma ORM (`@prisma/client` and `@prisma/adapter-pg`).
+TESTIMONIUM uses PostgreSQL (hosted on Supabase) via Prisma ORM (`@prisma/client` `v7.8.0` and `@prisma/adapter-pg` driver adapter).
 
 ### Connection String Format
 
@@ -46,21 +46,27 @@ npx prisma migrate deploy
 
 ### Database Seeding
 
-To populate default roles (`DIOCESE_COORDINATOR`, `PARISH_ADMIN`, `PRIEST`, `SECRETARY`, `PARISHIONER`), dioceses, and canonical parishes:
+To populate default roles (`DIOCESE_COORDINATOR`, `PRIEST`, `SECRETARY`, `PARISHIONER`), vicariate parishes, pre-provisioned staff, mass schedule templates, and parish events:
 
 ```bash
 cd testimonium-backend
 npx prisma db seed
+# Or using node directly:
+node prisma/seed.js
 ```
 
-### Canonical Parish Dataset Validation
+### Seeded Canlaon Vicariate Dataset
 
-TESTIMONIUM maintains a canonical dataset of 28 archdiocesan parishes in `address_parishes.md`. On non-production startup, `server.js` executes automatic data integrity checks:
+TESTIMONIUM maintains a seeded canonical dataset of the 7 official parishes/stations in the Canlaon Vicariate:
+1. **Our Lady of the Mountains Quasi-Parish** (San Carlos City)
+2. **St. Joseph Parish** (Canlaon City)
+3. **Our Lady of the Miraculous Medal Parish** (Don Salvador Benedicto)
+4. **Nuestra Señora De Las Flores Mission Station** (Canlaon City)
+5. **Our Lady of Peace and Good Voyage Quasi-Parish** (San Carlos City)
+6. **Holy Child Parish** (San Carlos City)
+7. **Our Lady of Guadalupe Parish** (Vallehermoso)
 
-- Validates total parish count against canonical dataset (28 parishes).
-- Checks for missing geographical coordinates (`latitude`, `longitude`).
-- Rejects stub `(0, 0)` coordinates.
-- Validates feast day and cover image presence.
+Pre-provisioned staff accounts (Priest & Secretary per parish, plus Diocese Coordinator) are initialized with `firebaseUid: null` and dynamically linked on first login via Just-In-Time (JIT) authentication.
 
 ---
 

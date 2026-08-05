@@ -36,6 +36,10 @@ export class UserRepository {
     roleId,
     parishId = null,
     isAssistant = false,
+    termsAcceptedAt = null,
+    privacyAcceptedAt = null,
+    termsVersion = null,
+    privacyVersion = null,
   }) {
     return prisma.user.create({
       data: {
@@ -46,6 +50,10 @@ export class UserRepository {
         roleId,
         parishId,
         isAssistant,
+        termsAcceptedAt,
+        privacyAcceptedAt,
+        termsVersion,
+        privacyVersion,
       },
       include: profileInclude,
     });
@@ -57,6 +65,10 @@ export class UserRepository {
     fullName,
     isVerified,
     roleId,
+    termsAcceptedAt = null,
+    privacyAcceptedAt = null,
+    termsVersion = null,
+    privacyVersion = null,
   }) {
     return this.create({
       firebaseUid,
@@ -65,6 +77,10 @@ export class UserRepository {
       isVerified,
       roleId,
       parishId: null,
+      termsAcceptedAt,
+      privacyAcceptedAt,
+      termsVersion,
+      privacyVersion,
     });
   }
 
@@ -79,7 +95,7 @@ export class UserRepository {
       {
         role: {
           roleName: {
-            in: ["DIOCESE_COORDINATOR", "PRIEST", "SECRETARY"],
+            in: ["DIOCESE_COORDINATOR", "PRIEST", "SECRETARY", "PARISHIONER"],
           },
         },
       },
@@ -192,6 +208,13 @@ export class UserRepository {
     if (data.address !== undefined) updateData.address = data.address;
     if (data.isAssistant !== undefined) updateData.isAssistant = data.isAssistant;
     if (data.color !== undefined) updateData.color = data.color;
+    if (data.isVerified !== undefined) updateData.isVerified = data.isVerified;
+    if (data.termsAcceptedAt !== undefined) updateData.termsAcceptedAt = data.termsAcceptedAt;
+    if (data.privacyAcceptedAt !== undefined) updateData.privacyAcceptedAt = data.privacyAcceptedAt;
+    if (data.termsVersion !== undefined) updateData.termsVersion = data.termsVersion;
+    if (data.privacyVersion !== undefined) updateData.privacyVersion = data.privacyVersion;
+    if (data.lastVerificationResentAt !== undefined) updateData.lastVerificationResentAt = data.lastVerificationResentAt;
+    if (data.verificationResentCount !== undefined) updateData.verificationResentCount = data.verificationResentCount;
 
     return prisma.user.update({
       where: { id },

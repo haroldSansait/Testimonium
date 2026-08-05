@@ -4,6 +4,7 @@ import { User, Bell, Shield, LogOut, Info } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { useProfile } from '../../hooks/useService';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
@@ -14,7 +15,8 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 
 export const ProfilePage: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshProfile } = useAuth();
+  const toast = useToast();
   const location = useLocation();
   const isNewUser = (location.state as any)?.isNewUser || false;
   
@@ -26,7 +28,6 @@ export const ProfilePage: React.FC = () => {
   const [address, setAddress] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [smsNotifications, setSmsNotifications] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [resetSending, setResetSending] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
@@ -41,8 +42,10 @@ export const ProfilePage: React.FC = () => {
     try {
       await sendPasswordResetEmail(auth, user.email);
       setResetMessage('Verification email dispatched! Please check your inbox.');
+      toast.success('Verification email dispatched! Please check your inbox.');
     } catch (err: any) {
       setResetMessage(err.message || 'Failed to dispatch verification email.');
+      toast.error(err.message || 'Failed to dispatch verification email.');
     } finally {
       setResetSending(false);
     }
@@ -60,6 +63,7 @@ export const ProfilePage: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     try {
       await updateProfile({
@@ -68,10 +72,11 @@ export const ProfilePage: React.FC = () => {
         address,
         notificationsEnabled: emailNotifications
       });
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    } catch (err) {
+      await refreshProfile();
+      toast.success('Profile updated successfully.');
+    } catch (err: any) {
       console.error(err);
+      toast.error(err?.message || 'Failed to update profile. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -288,15 +293,8 @@ export const ProfilePage: React.FC = () => {
             </Card>
 
             {/* Save Status Bar */}
-            <div className="flex items-center justify-between">
-              {isSaved ? (
-                <span className="text-xs font-semibold text-green-600 animate-fade-in">
-                  Changes saved successfully.
-                </span>
-              ) : (
-                <div />
-              )}
-              <Button type="submit" loading={saving}>Save Settings</Button>
+            <div className="flex items-center justify-end">
+              <Button type="submit" loading={saving} disabled={saving}>Save Settings</Button>
             </div>
           </form>
         </div>

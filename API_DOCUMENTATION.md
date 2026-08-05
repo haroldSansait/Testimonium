@@ -164,7 +164,25 @@ All validation failures, authentication/authorization failures, not found, or in
 #### Update Parish Profile
 *   **Route**: `PUT /api/v1/parishes/:id`
 *   **Roles**: `DIOCESE_COORDINATOR`
-*   **Request Body**: Partial fields from creation schema, plus optional status ("Active", "Inactive", "Archived").
+*   **Request Body**: Partial fields from creation schema, plus optional status (`ACTIVE`, `INACTIVE`), `latitude`, `longitude`, `mapZoom`, `pinColor`, `showLabel`, `directoryDescription`, and `gallery` array.
+
+#### Get Vicariate Map Config
+*   **Route**: `GET /api/v1/parishes/map-config`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Response**: `200 OK` returning all parish map marker locations, custom pin colors, zoom thresholds, and label visibility.
+
+#### Batch Update Vicariate Map Config
+*   **Route**: `PATCH /api/v1/parishes/map-config/batch`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Rate Limit**: `MAP_SAVE_RATE_LIMIT_MAX` (20/min)
+*   **Request Body**: Array of parish coordinate/marker updates.
+
+#### Upload Parish Cover or Logo Image
+*   **Route**: `POST /api/v1/parishes/:id/images`
+*   **Roles**: `DIOCESE_COORDINATOR`
+*   **Rate Limit**: `PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX` (5/min)
+*   **Headers**: `Content-Type: multipart/form-data`
+*   **Description**: Uploads parish cover or logo image to Cloudflare R2 bucket (`parishes/parish_{id}/...`).
 
 #### Archive Parish
 *   **Route**: `DELETE /api/v1/parishes/:id`
@@ -285,9 +303,10 @@ All validation failures, authentication/authorization failures, not found, or in
 #### Upload Receipt & Verify GCash payment
 *   **Route**: `POST /api/v1/requests/:id/receipt`
 *   **Roles**: `PARISHIONER`
+*   **Rate Limit**: `RECEIPT_UPLOAD_RATE_LIMIT_MAX` (5 per 15 min)
 *   **Headers**: `Content-Type: multipart/form-data`
-*   **Files**: Single screenshot receipt file.
-*   **Description**: Uploads screenshot proof, triggers Stub OCR analysis, saves details (amount, reference, date), transitions status to `PAYMENT_UNDER_REVIEW`, and dispatches notification to staff.
+*   **Files**: Single screenshot receipt file (`receiptImage`).
+*   **Description**: Uploads original receipt image to Cloudflare R2, executes Sharp pre-processing (EXIF auto-rotation, 1200px width normalization, quality 80 JPEG compression), runs OCR engine (OCR.Space Engine 2 or Stub fallback), calculates confidence metrics (`ocrConfidence`, `parserConfidence`, `finalConfidence`), normalizes payment amount and date, updates request status to `PAYMENT_UNDER_REVIEW`, and returns full `OcrResult` object.
 
 #### Resubmit Corrected Requirements
 *   **Route**: `POST /api/v1/requests/:id/resubmit-corrections`

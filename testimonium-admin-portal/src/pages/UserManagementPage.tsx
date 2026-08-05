@@ -48,6 +48,7 @@ const roleLabels: Record<ManagedUserRole, string> = {
   SECRETARY: 'Secretary',
   PRIEST: 'Parish Priest',
   ASSISTANT_PRIEST: 'Assistant Priest',
+  PARISHIONER: 'Parishioner',
 };
 
 const roleStyles: Record<ManagedUserRole, string> = {
@@ -55,6 +56,7 @@ const roleStyles: Record<ManagedUserRole, string> = {
   SECRETARY: 'bg-blue-50 text-blue-700',
   PRIEST: 'bg-purple-50 text-purple-700',
   ASSISTANT_PRIEST: 'bg-indigo-50 text-indigo-700',
+  PARISHIONER: 'bg-emerald-50 text-emerald-700',
 };
 
 function RoleBadge({ role }: { role: ManagedUserRole }) {
@@ -97,6 +99,7 @@ function UserStatusBadge({ status }: { status: ManagedUserStatus }) {
 
 const ROLE_OPTIONS = [
   { label: 'All Roles', value: 'all' },
+  { label: 'Parishioners', value: 'PARISHIONER' },
   { label: 'Diocese Coordinator', value: 'DIOCESE_COORDINATOR' },
   { label: 'Secretary', value: 'SECRETARY' },
   { label: 'Parish Priest', value: 'PRIEST' },

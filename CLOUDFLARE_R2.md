@@ -77,6 +77,7 @@ To allow direct file uploads or preview rendering from web browsers (Admin Porta
 | :--- | :--- | :--- | :--- |
 | `parishes/parish_{id}/cover/{uuid}_{filename}` | Parish Cover Photo | Public Read via CDN | Persistent (Overwritten/Replaced) |
 | `parishes/parish_{id}/logo/{uuid}_{filename}` | Parish Logo Image | Public Read via CDN | Persistent (Overwritten/Replaced) |
+| `parishes/parish_{id}/gallery/{uuid}_{filename}` | Parish Gallery Image | Public Read via CDN | Persistent |
 | `documents/req_{id}/supporting/{timestamp}_{filename}` | Requirement File | Authenticated / Signed URL | Retained during request lifecycle |
 | `documents/req_{id}/receipts/{timestamp}_{filename}` | Payment Proof | Authenticated / Signed URL | Audit-locked evidence |
 
