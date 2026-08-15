@@ -11,15 +11,30 @@ import { Avatar } from '@/components/ui/Avatar';
 
 const PAGE_SIZE = 4;
 
-const actionTypeOptions = [
+const DEFAULT_ACTION_TYPES = [
   'All Actions',
-  'Authentication',
-  'Parish Management',
-  'User Management',
-  'Staff Assignment',
-  'Document Management',
-  'System',
-  'Activity Logs',
+  'User Login',
+  'User Logout',
+  'Email Verified',
+  'Profile Completed',
+  'Profile Updated',
+  'Google Existing User',
+  'Admin Email Verification Bypassed',
+  'Password Reset',
+  'User Created',
+  'User Updated',
+  'User Disabled',
+  'User Enabled',
+  'Role Updated',
+  'Parish Created',
+  'Parish Updated',
+  'Parish Archived',
+  'Parish Restored',
+  'Payment QR uploaded',
+  'Payment QR deleted',
+  'Available Documents Updated',
+  'Terms Accepted',
+  'Privacy Accepted',
 ];
 
 interface DetailModalProps {
@@ -240,6 +255,7 @@ export function ActivityLogPage() {
   });
   const [role, setRole] = useState('All Roles');
   const [actionType, setActionType] = useState('All Actions');
+  const [actionTypeOptions, setActionTypeOptions] = useState<string[]>(DEFAULT_ACTION_TYPES);
   const [status, setStatus] = useState<'All' | 'Active' | 'Archived'>('Active');
   const [page, setPage] = useState(1);
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
@@ -252,6 +268,20 @@ export function ActivityLogPage() {
   const [confirmModal, setConfirmModal] = useState<ConfirmType>('none');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Fetch dynamic action types on mount
+  useEffect(() => {
+    ActivityLogService.getActionTypes()
+      .then((types) => {
+        if (Array.isArray(types) && types.length > 0) {
+          const list = ['All Actions', ...types.filter((t) => t !== 'All Actions')];
+          setActionTypeOptions(list);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load dynamic action types, using defaults:', err);
+      });
+  }, []);
 
   const fetchLog = useCallback(async () => {
     setLoading(true);

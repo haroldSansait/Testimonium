@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ShieldAlert, BookOpen, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { mapAuthError } from '../../utils/authErrorMapper';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
@@ -50,10 +51,8 @@ export const LoginPage: React.FC = () => {
       if (err?.code === 'EMAIL_NOT_VERIFIED' || err?.message?.includes('verify your email')) {
         setUnverifiedEmailError(true);
         setError('Please verify your email address before signing in.');
-      } else if (err?.code === 'ACCOUNT_EXISTS_WITH_GOOGLE') {
-        setError('This email is registered using Google Sign-In. Please click "Sign In with Google".');
       } else {
-        setError(err?.message || 'Authentication failed. Please verify your credentials.');
+        setError(mapAuthError(err, 'Authentication failed. Please verify your credentials.'));
       }
     } finally {
       setLoading(false);
@@ -73,12 +72,8 @@ export const LoginPage: React.FC = () => {
     } catch (err: any) {
       if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED') {
         setIsLegalModalOpen(true);
-      } else if (err?.code === 'ACCOUNT_EXISTS_WITH_PASSWORD') {
-        setError('This email already has a password account. Please sign in using your password.');
-      } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        setError('Sign-in cancelled. Feel free to try again when ready.');
       } else {
-        setError(err?.message || 'Google Sign-In failed.');
+        setError(mapAuthError(err, 'Google Sign-In failed.'));
       }
     } finally {
       setLoading(false);

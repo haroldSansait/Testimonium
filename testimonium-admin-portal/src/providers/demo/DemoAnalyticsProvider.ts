@@ -1,5 +1,5 @@
 import type { AnalyticsProvider } from '../interfaces';
-import { sacramentStats, documentStats, parishStats, financialStats } from '@/mock/analytics';
+import { sacramentStats, documentStats, parishStats } from '@/mock/analytics';
 
 export const DemoAnalyticsProvider: AnalyticsProvider = {
   async getOverviewStats() {
@@ -19,7 +19,4 @@ export const DemoAnalyticsProvider: AnalyticsProvider = {
   async getParishStats() {
     return [...parishStats];
   },
-  async getFinancialStats() {
-    return [...financialStats];
-  }
 };

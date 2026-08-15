@@ -3,6 +3,12 @@ import { AuditLogService } from "./AuditLogService.js";
 import { R2Service } from "./R2Service.js";
 import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
+import {
+  CANONICAL_DOCUMENT_TYPES,
+  DEFAULT_OFFERED_DOCUMENTS,
+  normalizeAvailableDocumentsForSave,
+  getEffectiveOfferedDocuments,
+} from "../config/documents.js";
 
 export class ParishService {
   constructor(parishRepository = new ParishRepository()) {
@@ -121,6 +127,7 @@ export class ParishService {
       updatePayload.eventSettings = data.eventSettings && typeof data.eventSettings === "object" ? JSON.stringify(data.eventSettings) : data.eventSettings;
     }
     if (data.officeHours !== undefined) {
+      this.validateOfficeHours(data.officeHours);
       updatePayload.officeHours = data.officeHours && typeof data.officeHours === "object" ? JSON.stringify(data.officeHours) : data.officeHours;
     }
     if (data.paymentQrEnabled !== undefined) {
@@ -134,41 +141,7 @@ export class ParishService {
       if (actorId) updatePayload.paymentQrUpdatedBy = parseInt(actorId, 10);
     }
     if (data.availableDocuments !== undefined) {
-      let docs = data.availableDocuments;
-      if (typeof docs === "string") {
-        try {
-          docs = JSON.parse(docs);
-        } catch (e) {
-          const err = new Error("Invalid JSON format for availableDocuments.");
-          err.statusCode = 400;
-          throw err;
-        }
-      }
-      if (!Array.isArray(docs)) {
-        const err = new Error("availableDocuments must be an array of document types.");
-        err.statusCode = 400;
-        throw err;
-      }
-      const ALLOWED_DOC_TYPES = [
-        "BAPTISMAL_CERTIFICATE",
-        "CONFIRMATION_CERTIFICATE",
-        "MARRIAGE_CERTIFICATE",
-        "FIRST_COMMUNION_CERTIFICATE",
-      ];
-      const normalizedDocs = docs.map((doc) => {
-        let d = String(doc).toUpperCase().trim();
-        if (d === "BAPTISM") d = "BAPTISMAL_CERTIFICATE";
-        if (d === "CONFIRMATION") d = "CONFIRMATION_CERTIFICATE";
-        if (d === "MARRIAGE") d = "MARRIAGE_CERTIFICATE";
-        if (d === "FIRST_COMMUNION") d = "FIRST_COMMUNION_CERTIFICATE";
-        if (!ALLOWED_DOC_TYPES.includes(d)) {
-          const err = new Error(`Invalid document type "${doc}" in availableDocuments.`);
-          err.statusCode = 400;
-          throw err;
-        }
-        return d;
-      });
-      updatePayload.availableDocuments = normalizedDocs;
+      updatePayload.availableDocuments = normalizeAvailableDocumentsForSave(data.availableDocuments);
     }
 
 
@@ -403,11 +376,10 @@ export class ParishService {
       paymentQrEnabled: Boolean(p.paymentQrEnabled),
       paymentQrUpdatedAt: p.paymentQrUpdatedAt ? p.paymentQrUpdatedAt.toISOString() : null,
       paymentQrUpdatedBy: p.paymentQrUpdatedBy || null,
-      availableDocuments: p.availableDocuments
-        ? (typeof p.availableDocuments === "string"
-            ? JSON.parse(p.availableDocuments)
-            : p.availableDocuments)
-        : null,
+      availableDocuments:
+        p.availableDocuments !== null && p.availableDocuments !== undefined
+          ? getEffectiveOfferedDocuments(p.availableDocuments)
+          : [...DEFAULT_OFFERED_DOCUMENTS],
     };
   }
 
@@ -755,5 +727,52 @@ export class ParishService {
 
     await AuditLogService.log(actorId, `Payment QR deleted for parish "${parish.parishName}"`);
     return this.mapToDto(parish);
+  }
+
+  /**
+   * Validates office hours format and ensures openTime < closeTime for active days.
+   */
+  validateOfficeHours(officeHours) {
+    if (!officeHours) return;
+    let obj = officeHours;
+    if (typeof obj === "string") {
+      try {
+        obj = JSON.parse(obj);
+      } catch (e) {
+        return; // Legacy text format fallback
+      }
+    }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+
+    const parseToMinutes = (timeStr) => {
+      if (!timeStr || typeof timeStr !== "string") return null;
+      const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+      if (!match) return null;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const ampm = match[3] ? match[3].toUpperCase() : null;
+      if (ampm === "PM" && h < 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    for (const day of DAYS) {
+      const conf = obj[day];
+      if (conf && !conf.isClosed) {
+        const openMin = parseToMinutes(conf.openTime);
+        const closeMin = parseToMinutes(conf.closeTime);
+        if (openMin === null || closeMin === null) {
+          const err = new Error(`Invalid time format for ${day}. Expected format: 'HH:MM AM/PM' or 'HH:MM'.`);
+          err.statusCode = 400;
+          throw err;
+        }
+        if (openMin >= closeMin) {
+          const err = new Error(`${day}: Opening time must be earlier than closing time.`);
+          err.statusCode = 400;
+          throw err;
+        }
+      }
+    }
   }
 }

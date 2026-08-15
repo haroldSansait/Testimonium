@@ -55,6 +55,9 @@ export const login = async (req, res, next) => {
       );
     }
 
+    // Log explicit user login event
+    await AuditLogService.log(req.user.id, "User Login", null, false);
+
     const rememberMe = req.body.rememberMe ?? false;
     const durationDays = rememberMe ? 30 : 1;
     const expiresInSeconds = durationDays * 24 * 60 * 60;

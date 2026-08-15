@@ -46,8 +46,6 @@ export class AuthService {
         existingUser = await this.recordLegalAcceptanceUser(existingUser, legalAcceptance);
       }
 
-      await AuditLogService.log(existingUser.id, provider === "google.com" ? "Google Existing User" : "User Login", null, false);
-
       return this.toApplicationProfile(existingUser, decodedToken);
     }
 

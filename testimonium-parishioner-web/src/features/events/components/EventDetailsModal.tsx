@@ -66,10 +66,6 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   onClose,
   onViewParish
 }) => {
-  if (!event) return null;
-
-  const countdown = getEventCountdownLabel(event.startDate);
-
   // Per-action inline feedback states (no browser alert())
   const [calendarFeedback, setCalendarFeedback] = useState<FeedbackState>('idle');
   const [shareFeedback, setShareFeedback] = useState<FeedbackState>('idle');
@@ -79,20 +75,8 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
     setTimeout(() => setter('idle'), 2500);
   };
 
-  const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
-    switch (category) {
-      case 'Holy Mass': return 'ready';
-      case 'Baptism': return 'pending';
-      case 'Wedding': return 'neutral';
-      case 'Confirmation': return 'under-review';
-      case 'Funeral': return 'rejected';
-      case 'Fiesta': return 'under-review';
-      case 'Seminar': return 'neutral';
-      default: return 'neutral';
-    }
-  };
-
   const handleAddToCalendar = useCallback(() => {
+    if (!event) return;
     try {
       downloadEventIcs(event);
       setCalendarFeedback('success');
@@ -104,6 +88,7 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   }, [event]);
 
   const handleShare = useCallback(() => {
+    if (!event) return;
     const url = `${window.location.origin}/dashboard/events?id=${event.id}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(
@@ -123,7 +108,24 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
       setShareError('Clipboard not supported in this browser.');
       resetFeedback(setShareFeedback);
     }
-  }, [event.id]);
+  }, [event]);
+
+  if (!event) return null;
+
+  const countdown = getEventCountdownLabel(event.startDate);
+
+  const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
+    switch (category) {
+      case 'Holy Mass': return 'ready';
+      case 'Baptism': return 'pending';
+      case 'Wedding': return 'neutral';
+      case 'Confirmation': return 'under-review';
+      case 'Funeral': return 'rejected';
+      case 'Fiesta': return 'under-review';
+      case 'Seminar': return 'neutral';
+      default: return 'neutral';
+    }
+  };
 
   const handleDirections = () => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location + ', ' + event.parishName)}`;

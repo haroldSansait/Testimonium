@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { Mail, Lock, Eye, EyeOff, LogIn, KeyRound } from 'lucide-react';
 import logoUrl from '@/assets/TESTIMONIUM_logo.png';
 import { useAuth } from '@/hooks/useAuth';
-import type { ApiError } from '@/types/api';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -16,34 +15,7 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-function resolveErrorMessage(err: unknown): string {
-  // Firebase auth errors
-  if (err && typeof err === 'object' && 'code' in err) {
-    const code = (err as { code: string }).code;
-    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-      return 'Invalid email or password. Please try again.';
-    }
-    if (code === 'auth/too-many-requests') {
-      return 'Too many failed attempts. Please wait a moment and try again.';
-    }
-    if (code === 'auth/network-request-failed') {
-      return 'Network error. Please check your connection.';
-    }
-  }
-  // Backend API errors
-  if (err && typeof err === 'object' && 'status' in err) {
-    const apiErr = err as ApiError;
-    if (apiErr.code === 'EMAIL_NOT_VERIFIED') {
-      return apiErr.message || 'Please verify your email address before signing in.';
-    }
-    if (apiErr.status === 403) {
-      return apiErr.message || 'Your account does not have access to the Admin Portal.';
-    }
-    if (apiErr.message) return apiErr.message;
-  }
-  if (err instanceof Error) return err.message;
-  return 'An unexpected error occurred. Please try again.';
-}
+import { mapAuthError } from '@/utils/authErrorMapper';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -72,7 +44,7 @@ export function LoginPage() {
       await signIn(data.email, data.password, data.rememberMe);
       navigate('/dashboard');
     } catch (err: unknown) {
-      setServerError(resolveErrorMessage(err));
+      setServerError(mapAuthError(err));
     }
   };
 

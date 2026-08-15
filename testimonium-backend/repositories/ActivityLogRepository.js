@@ -223,4 +223,46 @@ export class ActivityLogRepository {
       },
     });
   }
+
+  async getActionTypes() {
+    const records = await prisma.activityLog.findMany({
+      select: { action: true },
+      distinct: ['action'],
+      where: {
+        action: { not: '' },
+      },
+    });
+
+    const canonicalActions = [
+      'User Login',
+      'User Logout',
+      'Email Verified',
+      'Profile Completed',
+      'Profile Updated',
+      'Google Existing User',
+      'Admin Email Verification Bypassed',
+      'Admin Verification Bypassed',
+      'Password Reset',
+      'User Created',
+      'User Updated',
+      'User Disabled',
+      'User Enabled',
+      'Role Updated',
+      'Parish Created',
+      'Parish Updated',
+      'Parish Archived',
+      'Parish Restored',
+      'Payment QR uploaded',
+      'Payment QR deleted',
+      'Available Documents Updated',
+      'Terms Accepted',
+      'Privacy Accepted',
+    ];
+
+    const dbActions = records.map((r) => r.action).filter(Boolean);
+    const combined = Array.from(new Set([...canonicalActions, ...dbActions])).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    return combined;
+  }
 }

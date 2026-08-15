@@ -1,20 +1,29 @@
-import { useState, useEffect } from 'react';
-import { Save, Check, AlertCircle, Clock, FileText, CalendarDays, QrCode, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Save,
+  Check,
+  AlertCircle,
+  Clock,
+  FileText,
+  CalendarDays,
+  QrCode,
+  Upload,
+  Trash2,
+  Image as ImageIcon,
+  RotateCcw,
+  AlertTriangle,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ParishManagementService } from '@/services/ParishManagementService';
+import {
+  CANONICAL_DOCUMENT_TYPES,
+  DEFAULT_OFFERED_DOCUMENTS,
+} from '@/config/documents';
+import { cn } from '@/utils/cn';
 import type { Parish } from '@/types';
-
-// Default Document Types and Requirements
-const DOC_TYPES = [
-  { id: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate', defaultPrice: 100, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
-  { id: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate', defaultPrice: 100, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
-  { id: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
-  { id: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate', defaultPrice: 75, requirements: [{ id: 'valid_id', label: 'Valid ID' }] },
-  { id: 'MARRIAGE_BANNS', label: 'Marriage Banns', defaultPrice: 200, requirements: [{ id: 'valid_id', label: 'Valid ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'confirmation_cert', label: 'Confirmation Certificate' }, { id: 'marriage_license', label: 'Civil Marriage License' }, { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'banns_clearance', label: 'Banns Clearance Form' }] },
-  { id: 'PERMIT_TO_MARRY', label: 'Permit to Marry', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid Government ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'confirmation_cert', label: 'Confirmation Certificate' }, { id: 'marriage_license', label: 'Civil Marriage License' }, { id: 'precana_proof', label: 'Pre-Cana Seminar Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'canonical_interview', label: 'Canonical Interview Form' }, { id: 'banns_clearance', label: 'Banns Clearance' }] },
-  { id: 'STATUS_OF_LIBERTY', label: 'Status of Liberty Certificate', defaultPrice: 150, requirements: [{ id: 'valid_id', label: 'Valid Government ID' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }, { id: 'cenomar', label: 'PSA CENOMAR' }, { id: 'canonical_interview', label: 'Canonical Interview Document' }] }
-];
 
 // Event types and possible requirements
 const EVENT_TYPES = [
@@ -36,9 +45,55 @@ const EVENT_TYPES = [
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+// Time conversion helpers
+function to24Hour(time12h?: string): string {
+  if (!time12h) return '08:00';
+  const clean = time12h.trim().toUpperCase();
+  const match = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+  if (!match) return '08:00';
+  let hour = parseInt(match[1], 10);
+  const minute = match[2];
+  const ampm = match[3];
+  if (ampm === 'PM' && hour < 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, '0')}:${minute}`;
+}
+
+function to12Hour(time24h: string): string {
+  if (!time24h) return '08:00 AM';
+  const [hStr, mStr] = time24h.split(':');
+  let hour = parseInt(hStr, 10);
+  const minute = mStr || '00';
+  if (isNaN(hour)) return '08:00 AM';
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  if (hour > 12) hour -= 12;
+  if (hour === 0) hour = 12;
+  return `${String(hour).padStart(2, '0')}:${minute} ${ampm}`;
+}
+
+function parseTimeToMinutes(timeStr?: string): number | null {
+  if (!timeStr) return null;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const ampm = match[3] ? match[3].toUpperCase() : null;
+  if (ampm === 'PM' && h < 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
 interface ToastState {
   message: string;
   type: 'success' | 'error';
+}
+
+interface ParishConfigSnapshot {
+  documentSettings: any;
+  eventSettings: any;
+  officeHours: any;
+  availableDocuments: string[];
+  paymentQrEnabled: boolean;
 }
 
 export function SettingsPage() {
@@ -57,16 +112,16 @@ export function SettingsPage() {
   const [officeHours, setOfficeHours] = useState<Record<string, { openTime: string; closeTime: string; isClosed: boolean }>>({});
   const [paymentQrImage, setPaymentQrImage] = useState<string | null>(null);
   const [paymentQrEnabled, setPaymentQrEnabled] = useState<boolean>(false);
-  const [availableDocuments, setAvailableDocuments] = useState<string[]>([
-    'BAPTISMAL_CERTIFICATE',
-    'CONFIRMATION_CERTIFICATE',
-    'MARRIAGE_CERTIFICATE',
-    'FIRST_COMMUNION_CERTIFICATE',
-  ]);
+  const [availableDocuments, setAvailableDocuments] = useState<string[]>([...DEFAULT_OFFERED_DOCUMENTS]);
   const [uploadingQr, setUploadingQr] = useState(false);
 
+  // Original snapshot for change detection
+  const [originalSnapshot, setOriginalSnapshot] = useState<ParishConfigSnapshot | null>(null);
+  const [pendingParishId, setPendingParishId] = useState<string | null>(null);
+  const [showSwitchConfirmModal, setShowSwitchConfirmModal] = useState(false);
+
   // Initialize office hours default settings
-  const initDefaultOfficeHours = () => {
+  const initDefaultOfficeHours = useCallback(() => {
     const hours: any = {};
     DAYS_OF_WEEK.forEach(day => {
       hours[day] = {
@@ -76,16 +131,16 @@ export function SettingsPage() {
       };
     });
     return hours;
-  };
+  }, []);
 
-  const parseOfficeHours = (rawHours: any) => {
+  const parseOfficeHours = useCallback((rawHours: any) => {
     const defaultHours = initDefaultOfficeHours();
     if (!rawHours) return defaultHours;
     let obj: any = rawHours;
     if (typeof rawHours === 'string') {
       try {
         obj = JSON.parse(rawHours);
-      } catch (e) {
+      } catch {
         return defaultHours;
       }
     }
@@ -93,17 +148,17 @@ export function SettingsPage() {
       return { ...defaultHours, ...obj };
     }
     return defaultHours;
-  };
+  }, [initDefaultOfficeHours]);
 
   // Initialize document settings default configurations
-  const initDefaultDocSettings = () => {
+  const initDefaultDocSettings = useCallback(() => {
     const docs: any = {
       paymentMethods: { gcash: true, maya: false }
     };
-    DOC_TYPES.forEach(doc => {
+    CANONICAL_DOCUMENT_TYPES.forEach(doc => {
       const reqs: any = {};
       doc.requirements.forEach(r => {
-        reqs[r.id] = true; // require all by default
+        reqs[r.id] = true;
       });
       docs[doc.id] = {
         price: doc.defaultPrice,
@@ -111,10 +166,10 @@ export function SettingsPage() {
       };
     });
     return docs;
-  };
+  }, []);
 
   // Initialize event settings default configurations
-  const initDefaultEventSettings = () => {
+  const initDefaultEventSettings = useCallback(() => {
     const evts: any = {};
     EVENT_TYPES.forEach(evt => {
       const reqs: any = {};
@@ -126,7 +181,7 @@ export function SettingsPage() {
       };
     });
     return evts;
-  };
+  }, []);
 
   // Fetch parishes
   useEffect(() => {
@@ -161,18 +216,85 @@ export function SettingsPage() {
       if (!docSettingsMerged.paymentMethods) {
         docSettingsMerged.paymentMethods = { gcash: true, maya: false };
       }
+      const evSettingsMerged = parish.eventSettings || initDefaultEventSettings();
+      const parsedHours = parseOfficeHours(parish.officeHours);
+      const parsedDocs = parish.availableDocuments && Array.isArray(parish.availableDocuments)
+        ? parish.availableDocuments
+        : [...DEFAULT_OFFERED_DOCUMENTS];
+      const qrEnabled = Boolean(parish.paymentQrEnabled);
+
       setDocumentSettings(docSettingsMerged);
-      setEventSettings(parish.eventSettings || initDefaultEventSettings());
-      setOfficeHours(parseOfficeHours(parish.officeHours));
+      setEventSettings(evSettingsMerged);
+      setOfficeHours(parsedHours);
       setPaymentQrImage(parish.paymentQrImage || null);
-      setPaymentQrEnabled(Boolean(parish.paymentQrEnabled));
-      setAvailableDocuments(
-        parish.availableDocuments && Array.isArray(parish.availableDocuments)
-          ? parish.availableDocuments
-          : ['BAPTISMAL_CERTIFICATE', 'CONFIRMATION_CERTIFICATE', 'MARRIAGE_CERTIFICATE', 'FIRST_COMMUNION_CERTIFICATE']
-      );
+      setPaymentQrEnabled(qrEnabled);
+      setAvailableDocuments(parsedDocs);
+
+      // Snapshot for unsaved changes detection
+      setOriginalSnapshot({
+        documentSettings: docSettingsMerged,
+        eventSettings: evSettingsMerged,
+        officeHours: parsedHours,
+        availableDocuments: parsedDocs,
+        paymentQrEnabled: qrEnabled,
+      });
+      (window as any).hasUnsavedSettingsChanges = false;
     }
-  }, [selectedParishId, parishes]);
+  }, [selectedParishId, parishes, initDefaultDocSettings, initDefaultEventSettings, parseOfficeHours]);
+
+  // Determine dirty state using deep comparison
+  const isDirty = useMemo(() => {
+    if (!originalSnapshot) return false;
+    const currentSnapshot: ParishConfigSnapshot = {
+      documentSettings,
+      eventSettings,
+      officeHours,
+      availableDocuments,
+      paymentQrEnabled,
+    };
+    return JSON.stringify(currentSnapshot) !== JSON.stringify(originalSnapshot);
+  }, [originalSnapshot, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled]);
+
+  // Browser refresh/close guard & sync window flag
+  useUnsavedChanges({ isDirty });
+
+  // Clean up global window flag on unmount
+  useEffect(() => {
+    return () => {
+      (window as any).hasUnsavedSettingsChanges = false;
+    };
+  }, []);
+
+  // Discard changes
+  const handleDiscardChanges = () => {
+    if (!originalSnapshot) return;
+    setDocumentSettings(JSON.parse(JSON.stringify(originalSnapshot.documentSettings)));
+    setEventSettings(JSON.parse(JSON.stringify(originalSnapshot.eventSettings)));
+    setOfficeHours(JSON.parse(JSON.stringify(originalSnapshot.officeHours)));
+    setAvailableDocuments([...originalSnapshot.availableDocuments]);
+    setPaymentQrEnabled(originalSnapshot.paymentQrEnabled);
+    (window as any).hasUnsavedSettingsChanges = false;
+    setToast({ message: 'Unsaved changes discarded.', type: 'success' });
+  };
+
+  // Parish selector switch with guard
+  const handleParishSelectChange = (newParishId: string) => {
+    if (newParishId === selectedParishId) return;
+    if (isDirty) {
+      setPendingParishId(newParishId);
+      setShowSwitchConfirmModal(true);
+    } else {
+      setSelectedParishId(newParishId);
+    }
+  };
+
+  const handleConfirmSwitchParish = () => {
+    if (pendingParishId) {
+      setSelectedParishId(pendingParishId);
+      setPendingParishId(null);
+    }
+    setShowSwitchConfirmModal(false);
+  };
 
   const handleToggleAvailableDocument = (docType: string) => {
     setAvailableDocuments((prev) => {
@@ -285,19 +407,68 @@ export function SettingsPage() {
     });
   };
 
+  // Validate Office Hours
+  const validateOfficeHours = (): string | null => {
+    for (const day of DAYS_OF_WEEK) {
+      const conf = officeHours[day];
+      if (conf && !conf.isClosed) {
+        const openMin = parseTimeToMinutes(conf.openTime);
+        const closeMin = parseTimeToMinutes(conf.closeTime);
+        if (openMin === null || closeMin === null) {
+          return `${day}: Please select valid opening and closing times.`;
+        }
+        if (openMin >= closeMin) {
+          return `${day}: Opening time (${conf.openTime}) must be earlier than closing time (${conf.closeTime}).`;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleSaveSettings = async () => {
     if (!selectedParishId) return;
+
+    // Validate Office Hours
+    const hoursError = validateOfficeHours();
+    if (hoursError) {
+      setToast({ message: hoursError, type: 'error' });
+      return;
+    }
+
     setSaving(true);
     try {
-      await ParishManagementService.editParishSettings(selectedParishId, {
+      const updatedParish = await ParishManagementService.editParishSettings(selectedParishId, {
         documentSettings,
         eventSettings,
         officeHours,
         availableDocuments,
         paymentQrEnabled,
       });
+
+      const updatedDocs = updatedParish?.availableDocuments && Array.isArray(updatedParish.availableDocuments)
+        ? updatedParish.availableDocuments
+        : availableDocuments;
+
       // Update local cache
-      setParishes(prev => prev.map(p => p.id === selectedParishId ? { ...p, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled } : p));
+      setParishes(prev => prev.map(p => p.id === selectedParishId ? { 
+        ...p, 
+        documentSettings, 
+        eventSettings, 
+        officeHours, 
+        availableDocuments: updatedDocs, 
+        paymentQrEnabled 
+      } : p));
+      
+      // Update snapshot to establish clean baseline
+      setOriginalSnapshot({
+        documentSettings,
+        eventSettings,
+        officeHours,
+        availableDocuments: updatedDocs,
+        paymentQrEnabled,
+      });
+      (window as any).hasUnsavedSettingsChanges = false;
+
       setToast({ message: 'Parish configuration saved successfully.', type: 'success' });
     } catch (err: any) {
       console.error('Failed to save settings:', err);
@@ -311,12 +482,14 @@ export function SettingsPage() {
     return (
       <div className="space-y-6">
         <PageHeader title="Parish Settings" subtitle="Configure pricing, scheduling requirements, and office availability." />
-        <div className="bg-white border border-gray-250 rounded-xl h-60 animate-pulse" />
+        <div className="bg-white border border-gray-200 rounded-xl h-60 animate-pulse" />
       </div>
     );
   }
 
   const isCoordinator = role === 'DIOCESE_COORDINATOR';
+  const selectedParish = parishes.find((p) => p.id === selectedParishId);
+  const pendingParish = parishes.find((p) => p.id === pendingParishId);
 
   return (
     <div className="space-y-6 pb-12">
@@ -326,8 +499,8 @@ export function SettingsPage() {
         actions={
           <button
             onClick={() => void handleSaveSettings()}
-            disabled={saving || !selectedParishId}
-            className="flex items-center gap-2 px-5 py-2.5 bg-crimson-700 hover:bg-crimson-800 text-white text-sm font-semibold rounded-lg shadow disabled:opacity-50 transition-colors"
+            disabled={saving || !selectedParishId || !isDirty}
+            className="flex items-center gap-2 px-5 py-2.5 bg-crimson-700 hover:bg-crimson-800 text-white text-sm font-semibold rounded-lg shadow disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Saving...' : 'Save Configurations'}
@@ -335,203 +508,219 @@ export function SettingsPage() {
         }
       />
 
+      {/* Unsaved Changes Banner */}
+      {isDirty && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-amber-900">You have unsaved changes</p>
+              <p className="text-xs text-amber-700">
+                Changes made to <span className="font-semibold">{selectedParish?.name || 'this parish'}</span> have not been saved yet.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDiscardChanges}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Discard
+            </button>
+            <button
+              onClick={() => void handleSaveSettings()}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg transition-colors shadow-sm cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {saving ? 'Saving...' : 'Save Now'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Parish Selector (Diocese Coordinator Only) */}
       {isCoordinator && (
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h3 className="text-sm font-bold text-gray-900">Manage Parish Context</h3>
-            <p className="text-xs text-gray-500">Select which parish's settings you want to modify.</p>
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-1">
+              Active Configuration Target
+            </span>
+            <h3 className="text-lg font-bold text-gray-900 font-serif">
+              {selectedParish?.name || 'Select a Parish'}
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Diocese Coordinators can configure fees, requirements, and office hours across all parishes.
+            </p>
           </div>
-          <select
-            value={selectedParishId}
-            onChange={(e) => setSelectedParishId(e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
-          >
-            {parishes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+
+          <div className="flex items-center gap-3">
+            <label htmlFor="parish-selector" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+              Switch Parish:
+            </label>
+            <select
+              id="parish-selector"
+              value={selectedParishId}
+              onChange={(e) => handleParishSelectChange(e.target.value)}
+              className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 font-medium min-w-[240px]"
+            >
+              {parishes.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 
-      {/* Main Configurations Card */}
+      {/* Settings Container */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
         {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-100 bg-gray-50">
+        <div className="flex border-b border-gray-200 bg-gray-50/50 overflow-x-auto">
           <button
             onClick={() => setActiveTab('documents')}
-            className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
+            className={cn(
+              'flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer',
               activeTab === 'documents'
                 ? 'border-crimson-700 text-crimson-700 bg-white'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
-            }`}
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+            )}
           >
             <FileText className="w-4 h-4" />
-            Document Fees & Requirements
+            Document Pricing & Requirements
           </button>
           <button
             onClick={() => setActiveTab('events')}
-            className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
+            className={cn(
+              'flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer',
               activeTab === 'events'
                 ? 'border-crimson-700 text-crimson-700 bg-white'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
-            }`}
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+            )}
           >
             <CalendarDays className="w-4 h-4" />
-            Event Scheduling Requirements
+            Sacramental Scheduling
           </button>
           <button
             onClick={() => setActiveTab('hours')}
-            className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
+            className={cn(
+              'flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer',
               activeTab === 'hours'
                 ? 'border-crimson-700 text-crimson-700 bg-white'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
-            }`}
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+            )}
           >
             <Clock className="w-4 h-4" />
             Office Operating Hours
           </button>
           <button
             onClick={() => setActiveTab('qr')}
-            className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
+            className={cn(
+              'flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer',
               activeTab === 'qr'
                 ? 'border-crimson-700 text-crimson-700 bg-white'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
-            }`}
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+            )}
           >
             <QrCode className="w-4 h-4" />
-            Payment QR Configuration
+            Payment QR Code
           </button>
         </div>
 
-        {/* Configurations Body */}
+        {/* Tab Contents */}
         <div className="p-6">
-          {/* Tab 1: Document settings */}
+          {/* Tab 1: Document Pricing & Requirements */}
           {activeTab === 'documents' && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-bold text-gray-900">Document Processing Fees & Requirements</h4>
+                <h4 className="text-base font-bold text-gray-900">Document Certificates & Requirements</h4>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Set prices and check which attachments parishioners must upload to submit a request.
+                  Configure certificate pricing and prerequisite requirement documents required from parishioners.
                 </p>
               </div>
 
-              {/* Configurable Document Availability */}
-              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50/50 space-y-3">
-                <div>
-                  <span className="text-sm font-bold text-gray-900">Available Sacramental Documents</span>
-                  <p className="text-xs text-gray-500 mt-0.5">Select which sacramental document requests are enabled for parishioners in this parish.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  {[
-                    { id: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
-                    { id: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
-                    { id: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
-                    { id: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
-                  ].map((doc) => {
-                    const isEnabled = availableDocuments.includes(doc.id);
+              {/* Available Documents Toggle Section */}
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200/60">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">
+                  Offered Document Certificates
+                </span>
+                <p className="text-xs text-gray-500 mb-3">
+                  Uncheck any document type that this parish does not currently issue to parishioners.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {CANONICAL_DOCUMENT_TYPES.map((doc) => {
+                    const isOffered = availableDocuments.includes(doc.id);
                     return (
-                      <label key={doc.id} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer transition-colors">
+                      <label
+                        key={doc.id}
+                        className={cn(
+                          'flex items-center gap-2.5 p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all',
+                          isOffered
+                            ? 'bg-white border-crimson-700/30 text-gray-900 shadow-sm'
+                            : 'bg-gray-100/60 border-gray-200 text-gray-400'
+                        )}
+                      >
                         <input
                           type="checkbox"
-                          checked={isEnabled}
+                          checked={isOffered}
                           onChange={() => handleToggleAvailableDocument(doc.id)}
                           className="w-4 h-4 text-crimson-700 border-gray-300 rounded focus:ring-crimson-700"
                         />
-                        <span className="text-xs font-semibold text-gray-800">{doc.label}</span>
+                        <span>{doc.label}</span>
                       </label>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Supported Payment Channels */}
-              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <span className="text-sm font-bold text-gray-900">Supported Payment Channels</span>
-                  <p className="text-xs text-gray-500 mt-0.5">Toggle available payment options for parishioners. GCash is enabled by default.</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked disabled className="rounded text-crimson-700" />
-                    <span className="text-xs font-semibold text-gray-700 uppercase">GCash (Default)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="toggle-maya"
-                      checked={!!documentSettings.paymentMethods?.maya}
-                      onChange={(e) => {
-                        setDocumentSettings((prev: any) => {
-                          const methods = prev.paymentMethods || { gcash: true, maya: false };
-                          return {
-                            ...prev,
-                            paymentMethods: {
-                              ...methods,
-                              maya: e.target.checked
-                            }
-                          };
-                        });
-                      }}
-                      className="rounded text-crimson-750 focus:ring-crimson-700 cursor-pointer"
-                    />
-                    <label htmlFor="toggle-maya" className="text-xs font-semibold text-gray-700 uppercase cursor-pointer">PayMaya</label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-5">
-                {DOC_TYPES.map(doc => {
-                  const docConf = documentSettings[doc.id] || { price: doc.defaultPrice, requirements: {} };
+              {/* Detailed Config Table */}
+              <div className="divide-y divide-gray-200 border border-gray-200 rounded-xl overflow-hidden">
+                {CANONICAL_DOCUMENT_TYPES.filter((doc) => availableDocuments.includes(doc.id)).map((doc) => {
+                  const conf = documentSettings[doc.id] || { price: doc.defaultPrice, requirements: {} };
                   return (
-                    <div key={doc.id} className="p-4 border border-gray-100 rounded-lg hover:border-gray-200 transition-colors bg-gray-50/30">
-                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-gray-100/70">
-                        <div>
-                          <span className="text-sm font-bold text-gray-900">{doc.label}</span>
-                          <span className="block text-[10px] font-mono text-gray-400 mt-0.5">{doc.id}</span>
-                        </div>
+                    <div key={doc.id} className="p-4 bg-white hover:bg-gray-50/40 transition-colors">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                        <span className="font-bold text-gray-900 text-sm">{doc.label}</span>
                         <div className="flex items-center gap-2">
-                          <label className="text-xs font-semibold text-gray-500 uppercase">Processing Fee:</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">₱</span>
-                            <input
-                              type="number"
-                              value={docConf.price}
-                              onChange={(e) => handlePriceChange(doc.id, parseFloat(e.target.value))}
-                              className="pl-7 pr-3 py-1.5 w-28 border border-gray-200 rounded-md text-sm text-right focus:ring-1 focus:ring-crimson-700 focus:border-crimson-700 outline-none"
-                            />
-                          </div>
+                          <span className="text-xs font-semibold text-gray-500">Fee (PHP):</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="10"
+                            value={conf.price}
+                            onChange={(e) => handlePriceChange(doc.id, parseFloat(e.target.value))}
+                            className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
+                          />
                         </div>
                       </div>
 
-                      {/* Requirements Checklist */}
-                      <div className="pt-4">
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Required Upload Attachments</label>
-                        {doc.requirements.length === 0 ? (
-                          <span className="text-xs text-gray-400 italic">No attachments supported for this request.</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-3">
-                            {doc.requirements.map(req => {
-                              const isChecked = !!docConf.requirements[req.id];
-                              return (
-                                <button
-                                  key={req.id}
-                                  onClick={() => handleDocRequirementToggle(doc.id, req.id)}
-                                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                                    isChecked
-                                      ? 'bg-crimson-50 border-crimson-200 text-crimson-800'
-                                      : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                                  }`}
-                                >
-                                  <span className={`w-2 h-2 rounded-full ${isChecked ? 'bg-crimson-700' : 'bg-gray-300'}`} />
-                                  {req.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
+                      <div className="pl-2">
+                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                          Prerequisite Requirements
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {doc.requirements.map((req) => {
+                            const isReq = conf.requirements?.[req.id] ?? true;
+                            return (
+                              <button
+                                key={req.id}
+                                type="button"
+                                onClick={() => handleDocRequirementToggle(doc.id, req.id)}
+                                className={cn(
+                                  'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
+                                  isReq
+                                    ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
+                                    : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
+                                )}
+                              >
+                                {isReq ? '✓ ' : '+ '}
+                                {req.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );
@@ -540,53 +729,52 @@ export function SettingsPage() {
             </div>
           )}
 
-          {/* Tab 2: Event Settings */}
+          {/* Tab 2: Sacramental Scheduling */}
           {activeTab === 'events' && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-bold text-gray-900">Event Scheduling Requirements</h4>
+                <h4 className="text-base font-bold text-gray-900">Sacramental Scheduling Requirements</h4>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Configure requirement rules that parishioners must upload before scheduling sacramental appointments.
+                  Set mandatory documentation required when parishioners schedule parish sacraments and special masses.
                 </p>
               </div>
 
-              <div className="grid gap-5">
-                {EVENT_TYPES.map(evt => {
-                  const evtConf = eventSettings[evt.id] || { requirements: {} };
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {EVENT_TYPES.map((evt) => {
+                  const conf = eventSettings[evt.id] || { requirements: {} };
                   return (
-                    <div key={evt.id} className="p-4 border border-gray-100 rounded-lg hover:border-gray-200 transition-colors bg-gray-50/30">
-                      <div className="pb-3 border-b border-gray-100/70">
-                        <span className="text-sm font-bold text-gray-900">{evt.label}</span>
-                        <span className="block text-[10px] font-mono text-gray-400 mt-0.5">{evt.id}</span>
-                      </div>
-
-                      {/* Requirements List */}
-                      <div className="pt-3">
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Required Files / Documents</label>
-                        {evt.possibleReqs.length === 0 ? (
-                          <span className="text-xs text-gray-400 italic">No scheduling attachments required.</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-3">
-                            {evt.possibleReqs.map(req => {
-                              const isChecked = !!evtConf.requirements[req.id];
+                    <div key={evt.id} className="p-4 bg-white border border-gray-200 rounded-xl space-y-2.5">
+                      <span className="font-bold text-gray-900 text-sm block">{evt.label}</span>
+                      {evt.possibleReqs.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
+                            Required Documents
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {evt.possibleReqs.map((req) => {
+                              const isReq = conf.requirements?.[req.id] ?? true;
                               return (
                                 <button
                                   key={req.id}
+                                  type="button"
                                   onClick={() => handleEventRequirementToggle(evt.id, req.id)}
-                                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                                    isChecked
-                                      ? 'bg-crimson-50 border-crimson-200 text-crimson-800'
-                                      : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                                  }`}
+                                  className={cn(
+                                    'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
+                                    isReq
+                                      ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
+                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
+                                  )}
                                 >
-                                  <span className={`w-2 h-2 rounded-full ${isChecked ? 'bg-crimson-700' : 'bg-gray-300'}`} />
+                                  {isReq ? '✓ ' : '+ '}
                                   {req.label}
                                 </button>
                               );
                             })}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No prerequisite files required for this sacrament.</p>
+                      )}
                     </div>
                   );
                 })}
@@ -594,7 +782,7 @@ export function SettingsPage() {
             </div>
           )}
 
-          {/* Tab 3: Office Hours */}
+          {/* Tab 3: Office Operating Hours (Time Picker with Validation) */}
           {activeTab === 'hours' && (
             <div className="space-y-6">
               <div>
@@ -604,56 +792,96 @@ export function SettingsPage() {
                 </p>
               </div>
 
-              <div className="bg-gray-50 border border-gray-150 rounded-xl overflow-hidden divide-y divide-gray-200/60">
-                {DAYS_OF_WEEK.map(day => {
-                  const dayConf = officeHours[day] || { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false };
+              <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-200/60 shadow-sm">
+                {DAYS_OF_WEEK.map((day) => {
+                  const dayConf = officeHours[day] || {
+                    openTime: '08:00 AM',
+                    closeTime: '05:00 PM',
+                    isClosed: false,
+                  };
                   return (
-                    <div key={day} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 bg-white">
+                    <div
+                      key={day}
+                      className={cn(
+                        'flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 transition-colors',
+                        dayConf.isClosed ? 'bg-gray-50/60' : 'bg-white'
+                      )}
+                    >
                       <div className="w-32 flex-shrink-0">
-                        <span className="text-sm font-semibold text-gray-900">{day}</span>
+                        <span className={cn('text-sm font-bold', dayConf.isClosed ? 'text-gray-400' : 'text-gray-900')}>
+                          {day}
+                        </span>
                       </div>
 
                       <div className="flex-1 flex flex-wrap items-center gap-6">
-                        {/* Status Toggle */}
-                        <div className="flex items-center gap-2">
+                        {/* Status Checkbox */}
+                        <label
+                          htmlFor={`hours-closed-${day}`}
+                          className="flex items-center gap-2 cursor-pointer select-none"
+                        >
                           <input
                             type="checkbox"
                             id={`hours-closed-${day}`}
                             checked={!dayConf.isClosed}
                             onChange={(e) => handleOfficeHoursChange(day, 'isClosed', !e.target.checked)}
-                            className="w-4.5 h-4.5 text-crimson-700 border-gray-350 focus:ring-crimson-700 rounded"
+                            className="w-4.5 h-4.5 text-crimson-700 border-gray-300 focus:ring-crimson-700 rounded cursor-pointer"
                           />
-                          <label htmlFor={`hours-closed-${day}`} className="text-xs font-semibold text-gray-700 uppercase">
+                          <span className={cn('text-xs font-semibold uppercase', dayConf.isClosed ? 'text-gray-400' : 'text-emerald-700')}>
                             {dayConf.isClosed ? 'Office Closed' : 'Office Open'}
-                          </label>
-                        </div>
+                          </span>
+                        </label>
 
-                        {/* Open Time Dropdown */}
-                        {!dayConf.isClosed && (
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium text-gray-400">Opens:</span>
-                              <input
-                                type="text"
-                                placeholder="e.g. 08:00 AM"
-                                value={dayConf.openTime}
-                                onChange={(e) => handleOfficeHoursChange(day, 'openTime', e.target.value)}
-                                className="px-2.5 py-1 border border-gray-200 rounded text-xs w-28 bg-white focus:ring-1 focus:ring-crimson-700 outline-none text-center font-mono"
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium text-gray-400">Closes:</span>
-                              <input
-                                type="text"
-                                placeholder="e.g. 05:00 PM"
-                                value={dayConf.closeTime}
-                                onChange={(e) => handleOfficeHoursChange(day, 'closeTime', e.target.value)}
-                                className="px-2.5 py-1 border border-gray-200 rounded text-xs w-28 bg-white focus:ring-1 focus:ring-crimson-700 outline-none text-center font-mono"
-                              />
-                            </div>
+                        {/* Open and Close Time Pickers (HTML5 Time Input with step=900) */}
+                        <div className="flex items-center gap-4 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn('text-xs font-medium', dayConf.isClosed ? 'text-gray-300' : 'text-gray-500')}>
+                              Opens:
+                            </span>
+                            <input
+                              type="time"
+                              step="900"
+                              disabled={dayConf.isClosed}
+                              value={to24Hour(dayConf.openTime)}
+                              onChange={(e) =>
+                                handleOfficeHoursChange(day, 'openTime', to12Hour(e.target.value))
+                              }
+                              className={cn(
+                                'px-3 py-1.5 border rounded-lg text-xs font-mono outline-none transition-all',
+                                dayConf.isClosed
+                                  ? 'bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed opacity-60'
+                                  : 'bg-white border-gray-250 text-gray-800 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700'
+                              )}
+                            />
                           </div>
-                        )}
+
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn('text-xs font-medium', dayConf.isClosed ? 'text-gray-300' : 'text-gray-500')}>
+                              Closes:
+                            </span>
+                            <input
+                              type="time"
+                              step="900"
+                              disabled={dayConf.isClosed}
+                              value={to24Hour(dayConf.closeTime)}
+                              onChange={(e) =>
+                                handleOfficeHoursChange(day, 'closeTime', to12Hour(e.target.value))
+                              }
+                              className={cn(
+                                'px-3 py-1.5 border rounded-lg text-xs font-mono outline-none transition-all',
+                                dayConf.isClosed
+                                  ? 'bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed opacity-60'
+                                  : 'bg-white border-gray-250 text-gray-800 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700'
+                              )}
+                            />
+                          </div>
+
+                          {/* Display 12h label badge */}
+                          {!dayConf.isClosed && (
+                            <span className="text-[11px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                              {dayConf.openTime} – {dayConf.closeTime}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -718,7 +946,7 @@ export function SettingsPage() {
                         type="button"
                         onClick={handleDeleteQr}
                         disabled={uploadingQr}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                         Delete QR Image
@@ -753,12 +981,50 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {/* Parish Switch Confirmation Modal */}
+      {showSwitchConfirmModal && (
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            onClick={(e) => e.target === e.currentTarget && setShowSwitchConfirmModal(false)}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150">
+              <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
+                Leave without saving?
+              </h3>
+              <p className="text-xs text-gray-500 mb-6 leading-relaxed">
+                You have unsaved changes in <span className="font-semibold text-gray-800">{selectedParish?.name}</span>. Switching to <span className="font-semibold text-gray-800">{pendingParish?.name}</span> will discard your changes.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowSwitchConfirmModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  Stay on Page
+                </button>
+                <button
+                  onClick={handleConfirmSwitchParish}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors cursor-pointer"
+                >
+                  Discard & Switch
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      )}
+
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold animate-in slide-in-from-bottom-4 ${
+          className={cn(
+            'fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold animate-in slide-in-from-bottom-4',
             toast.type === 'success' ? 'bg-emerald-700 text-white' : 'bg-red-700 text-white'
-          }`}
+          )}
         >
           {toast.type === 'success' ? (
             <Check className="w-4 h-4 flex-shrink-0" />

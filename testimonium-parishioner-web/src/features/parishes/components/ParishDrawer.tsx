@@ -10,11 +10,17 @@ import {
   Compass, 
   X,
   Award,
-  Landmark
+  Landmark,
+  MapPin,
+  FileCheck
 } from 'lucide-react';
 import type { Parish } from '../../../types';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
+import {
+  CANONICAL_DOCUMENT_TYPES,
+  DEFAULT_OFFERED_DOCUMENTS,
+} from '../../../config/documents';
 import { ParishPersonnelList } from './ParishPersonnelList';
 import { ParishMassSchedule } from './ParishMassSchedule';
 
@@ -24,6 +30,24 @@ interface ParishDrawerProps {
   onScheduleAppointment: (parishId: string) => void;
   onClose?: () => void;
 }
+
+interface DaySchedule {
+  day: string;
+  fullDay: string;
+  hours: string;
+  isClosed: boolean;
+}
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+const DAY_ABBR: Record<string, string> = {
+  Monday: 'Mon',
+  Tuesday: 'Tue',
+  Wednesday: 'Wed',
+  Thursday: 'Thu',
+  Friday: 'Fri',
+  Saturday: 'Sat',
+  Sunday: 'Sun',
+};
 
 export const ParishDrawer: React.FC<ParishDrawerProps> = ({ 
   parish, 
@@ -45,7 +69,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
       } else {
         try {
           hoursObj = JSON.parse(parish.officeHours as any);
-        } catch (e) {
+        } catch {
           // ignore and fallback
         }
       }
@@ -89,38 +113,54 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
     return (hour >= 8 && hour < 12) || (hour >= 13 && hour < 17);
   };
 
-  const getOfficeHoursDisplay = (): string => {
-    if (!parish.officeHours) return "Closed";
-    
+  const getOfficeHoursSchedule = (): DaySchedule[] => {
     let hoursObj: any = null;
-    if (typeof parish.officeHours === 'object') {
-      hoursObj = parish.officeHours;
-    } else {
-      try {
-        hoursObj = JSON.parse(parish.officeHours);
-      } catch (e) {
-        return String(parish.officeHours);
+    if (parish.officeHours) {
+      if (typeof parish.officeHours === 'object') {
+        hoursObj = parish.officeHours;
+      } else {
+        try {
+          hoursObj = JSON.parse(parish.officeHours);
+        } catch {
+          hoursObj = null;
+        }
       }
     }
-    
-    if (!hoursObj || typeof hoursObj !== 'object') return String(parish.officeHours);
-    
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const groups: string[] = [];
-    
-    days.forEach(day => {
-      const info = hoursObj[day];
-      if (info) {
-        const status = info.isClosed ? 'Closed' : `${info.openTime} - ${info.closeTime}`;
-        groups.push(`${day.substring(0, 3)}: ${status}`);
+
+    if (hoursObj && typeof hoursObj === 'object') {
+      return DAYS.map((day) => {
+        const info = hoursObj[day];
+        if (!info || info.isClosed) {
+          return { day: DAY_ABBR[day], fullDay: day, hours: 'Closed', isClosed: true };
+        }
+        const open = info.openTime || '08:00 AM';
+        const close = info.closeTime || '05:00 PM';
+        return { day: DAY_ABBR[day], fullDay: day, hours: `${open} – ${close}`, isClosed: false };
+      });
+    }
+
+    // Fallback parsing for legacy text format
+    const text = String(parish.officeHours || '').trim();
+    const lower = text.toLowerCase();
+    const isClosedMon = lower.includes('tuesday -') || lower.includes('tues -') || lower.includes('tue -');
+    const isClosedSun = lower.includes('saturday') && !lower.includes('sunday');
+
+    return DAYS.map((day) => {
+      if (day === 'Sunday' && isClosedSun) {
+        return { day: DAY_ABBR[day], fullDay: day, hours: 'Closed', isClosed: true };
       }
+      if (day === 'Monday' && isClosedMon) {
+        return { day: DAY_ABBR[day], fullDay: day, hours: 'Closed', isClosed: true };
+      }
+      if (day === 'Saturday' && (lower.includes('12:00 pm') || lower.includes('half day'))) {
+        return { day: DAY_ABBR[day], fullDay: day, hours: '08:00 AM – 12:00 PM', isClosed: false };
+      }
+      return { day: DAY_ABBR[day], fullDay: day, hours: '08:00 AM – 05:00 PM', isClosed: false };
     });
-    
-    return groups.length > 0 ? groups.join(' | ') : "Closed";
   };
 
   const officeIsOpen = isOfficeOpen();
-  const officeHoursText = getOfficeHoursDisplay();
+  const officeSchedule = getOfficeHoursSchedule();
 
   return (
     <Card className="flex-grow flex flex-col h-full overflow-hidden border border-border shadow-card relative bg-white">
@@ -143,7 +183,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         {onClose && (
           <button
             onClick={onClose}
-            className="absolute top-3.5 right-3.5 bg-black/45 hover:bg-black/70 text-white rounded-full p-2.5 transition-colors z-20 focus-ring"
+            className="absolute top-3.5 right-3.5 bg-black/45 hover:bg-black/70 text-white rounded-full p-2.5 transition-colors z-20 focus-ring cursor-pointer"
             aria-label="Close details"
           >
             <X size={16} />
@@ -166,8 +206,9 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         </div>
       </div>
 
-      {/* Main Info Details Area (Scrollable) */}
+      {/* Main Info Details Area (Scrollable Hierarchy) */}
       <div className="flex-grow overflow-y-auto pt-10 px-5 pb-5 space-y-5 text-sm max-h-[50vh] sm:max-h-[60vh]">
+        {/* 1. Header & Identity */}
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-tight font-serif">
@@ -191,55 +232,25 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           </div>
         </div>
 
-        {/* Description & Saint History */}
-        <div className="space-y-2 border-t border-gray-100 pt-4">
-          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-            About the Parish
-          </h3>
-          <p className="text-xs text-gray-650 leading-relaxed font-medium">
-            {parish.directoryDescription || parish.description || 'No description configured yet.'}
-          </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
-            <span className="text-text-muted">
-              <strong className="text-text-primary font-medium">Feast Day:</strong> {parish.feastDay}
-            </span>
-          </div>
-        </div>
-
-        {/* Grid info: Office Hours & Staff */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
-          <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">
-            <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <Clock size={12} className="mr-1.5 text-[#7B1C2A] flex-shrink-0" />
-              Office Hours
-            </span>
-            <p className="text-xs text-text-primary mt-1 font-medium leading-relaxed break-words">
-              {officeHoursText}
-            </p>
-          </div>
-          <div className="space-y-1 bg-app-page p-3.5 rounded-button border border-border/40">
-            <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <User size={12} className="mr-1.5 text-[#7B1C2A] flex-shrink-0" />
-              Parish Personnel
-            </span>
-            <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
-          </div>
-        </div>
-
-        {/* Contact details */}
-        <div className="space-y-2 bg-app-page p-4 rounded-button border border-border/40 text-xs text-text-muted">
-          <h4 className="text-[10px] font-bold uppercase tracking-wider text-text-primary mb-2.5">
-            Contact Information
-          </h4>
-          <div className="grid grid-cols-1 gap-2.5">
+        {/* 2. Address & Contact details */}
+        <div className="space-y-2 bg-app-page p-3.5 rounded-xl border border-border/40 text-xs text-text-muted">
+          <div className="grid grid-cols-1 gap-2">
             <div className="flex items-start space-x-2">
-              <Phone size={14} className="text-[#7B1C2A]/80 flex-shrink-0 mt-0.5" />
-              <span className="text-text-primary font-medium break-all">{parish.phone || 'No phone listed'}</span>
+              <MapPin size={14} className="text-[#7B1C2A] flex-shrink-0 mt-0.5" />
+              <span className="text-text-primary font-medium">{parish.address}</span>
             </div>
-            <div className="flex items-start space-x-2">
-              <Mail size={14} className="text-[#7B1C2A]/80 flex-shrink-0 mt-0.5" />
-              <span className="text-text-primary font-medium break-all">{parish.email || 'No email listed'}</span>
-            </div>
+            {parish.phone && (
+              <div className="flex items-start space-x-2">
+                <Phone size={14} className="text-[#7B1C2A] flex-shrink-0 mt-0.5" />
+                <span className="text-text-primary font-medium break-all">{parish.phone}</span>
+              </div>
+            )}
+            {parish.email && (
+              <div className="flex items-start space-x-2">
+                <Mail size={14} className="text-[#7B1C2A] flex-shrink-0 mt-0.5" />
+                <span className="text-text-primary font-medium break-all">{parish.email}</span>
+              </div>
+            )}
             {parish.facebookPage && (
               <a 
                 href={parish.facebookPage} 
@@ -254,11 +265,99 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           </div>
         </div>
 
-        {/* Mass Schedule */}
+        {/* 3. Description & Saint History */}
+        <div className="space-y-2 border-t border-gray-100 pt-4">
+          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+            About the Parish
+          </h3>
+          <p className="text-xs text-gray-600 leading-relaxed font-medium">
+            {parish.directoryDescription || parish.description || 'No description configured yet.'}
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
+            <span className="text-text-muted">
+              <strong className="text-text-primary font-medium">Feast Day:</strong> {parish.feastDay}
+            </span>
+          </div>
+        </div>
+
+        {/* 4. Two-Column Office Hours & Personnel Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+          {/* Office Hours 2-Column Schedule */}
+          <div className="space-y-2 bg-app-page p-3.5 rounded-xl border border-border/40">
+            <div className="flex items-center justify-between pb-1.5 border-b border-gray-200/50">
+              <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
+                <Clock size={12} className="mr-1.5 text-[#7B1C2A] flex-shrink-0" />
+                Office Hours
+              </span>
+              <span className="text-[10px] text-gray-400 font-medium">Weekly Schedule</span>
+            </div>
+            <div className="space-y-1 pt-0.5 text-xs">
+              {officeSchedule.map((item) => (
+                <div key={item.day} className="flex items-center justify-between py-0.5">
+                  <span className="font-semibold text-gray-700 w-10 text-xs">{item.day}</span>
+                  <span
+                    className={
+                      item.isClosed
+                        ? 'text-gray-400 font-normal text-xs'
+                        : 'text-gray-900 font-medium font-mono text-[11px]'
+                    }
+                  >
+                    {item.hours}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Parish Personnel */}
+          <div className="space-y-1 bg-app-page p-3.5 rounded-xl border border-border/40 flex flex-col">
+            <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider pb-1.5 border-b border-gray-200/50">
+              <User size={12} className="mr-1.5 text-[#7B1C2A] flex-shrink-0" />
+              Parish Personnel
+            </span>
+            <div className="pt-1 flex-1">
+              <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Mass Schedule */}
         <ParishMassSchedule massSchedules={parish.massSchedules} />
 
-        {/* Available Services */}
-        <div className="space-y-2">
+        {/* 6. Available Documents */}
+        {(() => {
+          const effectiveDocs = parish.availableDocuments !== null && parish.availableDocuments !== undefined
+            ? parish.availableDocuments
+            : DEFAULT_OFFERED_DOCUMENTS;
+
+          if (!Array.isArray(effectiveDocs) || effectiveDocs.length === 0) return null;
+
+          return (
+            <div className="space-y-2 border-t border-gray-100 pt-4">
+              <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                <FileCheck size={13} className="text-[#7B1C2A]" />
+                Available Documents
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {effectiveDocs.map((docId) => {
+                  const docDef = CANONICAL_DOCUMENT_TYPES.find((d) => d.id === docId);
+                  const label = docDef ? docDef.label : docId;
+                  return (
+                    <span
+                      key={docId}
+                      className="text-[10px] font-medium px-2.5 py-1 bg-gray-100 text-gray-700 rounded-md border border-gray-200/60"
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 7. Available Sacramental Services */}
+        <div className="space-y-2 border-t border-gray-100 pt-4">
           <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">
             Available Sacramental Services
           </h4>
@@ -271,9 +370,9 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           </div>
         </div>
 
-        {/* Upcoming Events */}
+        {/* 8. Upcoming Events */}
         {parish.upcomingEvents && parish.upcomingEvents.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2 border-t border-gray-100 pt-4">
             <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">
               Upcoming Parish Events
             </h4>
@@ -289,7 +388,7 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         )}
       </div>
 
-      {/* Footer Actions (Pre-configured button links) */}
+      {/* 9. Footer Actions (Pre-configured button links) */}
       <div className="p-3 border-t border-border flex flex-row gap-2 bg-app-page flex-shrink-0">
         <Button 
           className="flex-1 flex items-center justify-center space-x-1 text-xs h-9 px-2 bg-[#7B1C2A] hover:bg-[#5C1520]"

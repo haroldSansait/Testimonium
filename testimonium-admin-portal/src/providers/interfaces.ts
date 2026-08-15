@@ -16,7 +16,6 @@ import type {
   SacramentStat,
   DocumentAnalyticsStat,
   ParishAnalyticsStat,
-  FinancialStat,
   Parish,
   ManagedUser
 } from '@/types';
@@ -129,6 +128,7 @@ export interface ActivityLogProvider {
   restoreSelected(ids: string[]): Promise<void>;
   restoreAll(): Promise<void>;
   purgeArchived(): Promise<void>;
+  getActionTypes(): Promise<string[]>;
 }
 
 export interface DioceseDashboardProvider {
@@ -142,7 +142,6 @@ export interface AnalyticsProvider {
   getSacramentStats(): Promise<SacramentStat[]>;
   getDocumentStats(): Promise<DocumentAnalyticsStat[]>;
   getParishStats(): Promise<ParishAnalyticsStat[]>;
-  getFinancialStats(): Promise<FinancialStat[]>;
 }
 
 export interface MassScheduleTemplate {

@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/Input';
 import { LegalAcceptanceModal } from '../../components/modals/LegalAcceptanceModal';
 import { TermsModal } from '../../components/modals/TermsModal';
 import { PrivacyModal } from '../../components/modals/PrivacyModal';
+import { mapAuthError } from '../../utils/authErrorMapper';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 export const SignupPage: React.FC = () => {
@@ -101,11 +102,7 @@ export const SignupPage: React.FC = () => {
         navigate('/verify-email');
       }, 1000);
     } catch (err: any) {
-      if (err?.code === 'ACCOUNT_EXISTS_WITH_GOOGLE' || err?.code === 'auth/email-already-in-use') {
-        setError(err?.message || 'An account with this email address already exists. Please sign in instead.');
-      } else {
-        setError(err?.message || 'Registration failed. Please check your inputs.');
-      }
+      setError(mapAuthError(err, 'Registration failed. Please check your inputs.'));
     } finally {
       setLoading(false);
     }
@@ -123,12 +120,8 @@ export const SignupPage: React.FC = () => {
     } catch (err: any) {
       if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED') {
         setIsLegalModalOpen(true);
-      } else if (err?.code === 'ACCOUNT_EXISTS_WITH_PASSWORD') {
-        setError('This email already has a password account. Please sign in using your password.');
-      } else if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        setError('Sign-in cancelled. Feel free to try again when ready.');
       } else {
-        setError(err?.message || 'Google Sign-In failed.');
+        setError(mapAuthError(err, 'Google Sign-In failed.'));
       }
     } finally {
       setLoading(false);

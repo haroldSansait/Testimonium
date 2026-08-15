@@ -102,7 +102,17 @@ export class UserRepository {
     ];
 
     if (role && role !== "all") {
-      if (role === "ASSISTANT_PRIEST") {
+      if (role === "PARISHIONER") {
+        andConditions.push({ role: { roleName: "PARISHIONER" } });
+      } else if (role === "staff") {
+        andConditions.push({
+          role: {
+            roleName: {
+              in: ["DIOCESE_COORDINATOR", "PRIEST", "SECRETARY"],
+            },
+          },
+        });
+      } else if (role === "ASSISTANT_PRIEST") {
         andConditions.push({ role: { roleName: "PRIEST" }, isAssistant: true });
       } else if (role === "PRIEST") {
         andConditions.push({ role: { roleName: "PRIEST" } });

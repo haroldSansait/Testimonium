@@ -36,5 +36,9 @@ export const ActivityLogService = {
 
   async purgeArchived(): Promise<void> {
     return providerFactory.getActivityLogProvider().purgeArchived();
+  },
+
+  async getActionTypes(): Promise<string[]> {
+    return providerFactory.getActivityLogProvider().getActionTypes();
   }
 };

@@ -174,10 +174,10 @@ function ConfirmNavigationModal({
           className="text-base font-bold text-gray-900 mb-1"
           style={{ fontFamily: 'Playfair Display, serif' }}
         >
-          Discard Changes?
+          Leave without saving?
         </h3>
         <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-          You have unsaved map configuration changes. Leaving this page will discard all edits permanently.
+          You have unsaved changes. Leaving this page will discard your changes.
         </p>
         <div className="flex gap-3 justify-center">
           <button
@@ -282,7 +282,8 @@ export function Sidebar() {
   }).filter((cat) => cat.items.length > 0);
 
   const confirmNavigation = (e: React.MouseEvent, path?: string, action?: () => void) => {
-    if ((window as any).hasUnsavedMapChanges) {
+    const hasUnsaved = (window as any).hasUnsavedMapChanges || (window as any).hasUnsavedSettingsChanges;
+    if (hasUnsaved) {
       e.preventDefault();
       setPendingNav({ path, action });
       return false;
@@ -291,6 +292,8 @@ export function Sidebar() {
   };
 
   const handleLogout = async () => {
+    (window as any).hasUnsavedMapChanges = false;
+    (window as any).hasUnsavedSettingsChanges = false;
     await logout();
     navigate('/');
   };
@@ -440,6 +443,7 @@ export function Sidebar() {
         <ConfirmNavigationModal
           onConfirm={() => {
             (window as any).hasUnsavedMapChanges = false;
+            (window as any).hasUnsavedSettingsChanges = false;
             const { path, action } = pendingNav;
             setPendingNav(null);
             if (action) {

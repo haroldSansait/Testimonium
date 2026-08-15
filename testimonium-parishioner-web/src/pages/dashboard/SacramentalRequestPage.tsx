@@ -4,6 +4,10 @@ import { CheckCircle, Copy, FileText } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes, usePausePolling } from '../../hooks/useService';
 import type { SacramentalRequest } from '../../types';
+import {
+  CANONICAL_DOCUMENT_TYPES,
+  DEFAULT_OFFERED_DOCUMENTS,
+} from '../../config/documents';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -25,16 +29,6 @@ export const SacramentalRequestPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-
-  const ALL_DOCUMENT_TYPES = [
-    { type: 'BAPTISMAL_CERTIFICATE', title: 'Baptismal Certificate', desc: 'Baptism registry entry' },
-    { type: 'CONFIRMATION_CERTIFICATE', title: 'Confirmation Certificate', desc: 'Sacrament of Confirmation entry' },
-    { type: 'MARRIAGE_CERTIFICATE', title: 'Marriage Certificate', desc: 'Holy Matrimony registry entry' },
-    { type: 'FIRST_COMMUNION_CERTIFICATE', title: 'First Communion Certificate', desc: 'First Holy Communion entry' },
-    { type: 'MARRIAGE_BANNS', title: 'Marriage Banns', desc: 'Public notification of prospective marriage' },
-    { type: 'PERMIT_TO_MARRY', title: 'Permit to Marry', desc: 'Clearance to marry in another parish' },
-    { type: 'STATUS_OF_LIBERTY', title: 'Status of Liberty', desc: 'Attestation of canonical freedom to marry' },
-  ];
 
   // Form State
   const [selectedParishId, setSelectedParishId] = useState('');
@@ -64,16 +58,22 @@ export const SacramentalRequestPage: React.FC = () => {
   }, [queryParishId, parishes, selectedParishId]);
 
   const selectedParish = parishes.find((p) => String(p.id) === String(selectedParishId));
-  const availableDocList = selectedParish?.availableDocuments;
-  const filteredDocTypes =
-    availableDocList && Array.isArray(availableDocList) && availableDocList.length > 0
-      ? ALL_DOCUMENT_TYPES.filter((doc) => availableDocList.includes(doc.type))
-      : ALL_DOCUMENT_TYPES;
+  const availableDocList = selectedParish
+    ? (selectedParish.availableDocuments !== null && selectedParish.availableDocuments !== undefined
+        ? selectedParish.availableDocuments
+        : DEFAULT_OFFERED_DOCUMENTS)
+    : DEFAULT_OFFERED_DOCUMENTS;
+
+  const filteredDocTypes = Array.isArray(availableDocList)
+    ? CANONICAL_DOCUMENT_TYPES.filter((doc) => availableDocList.includes(doc.type))
+    : CANONICAL_DOCUMENT_TYPES;
 
   // Auto-reset docType if selected parish doesn't offer current docType
   useEffect(() => {
     if (filteredDocTypes.length > 0 && !filteredDocTypes.some((d) => d.type === docType)) {
       setDocType(filteredDocTypes[0].type);
+    } else if (filteredDocTypes.length === 0) {
+      setDocType('');
     }
   }, [selectedParishId, filteredDocTypes, docType]);
 

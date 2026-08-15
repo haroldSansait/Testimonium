@@ -11,7 +11,11 @@ export const DemoUserProvider: UserProvider = {
     let result = [...store];
 
     if (role !== 'all') {
-      result = result.filter((u) => u.role === role);
+      if (role === 'staff') {
+        result = result.filter((u) => u.role !== 'PARISHIONER');
+      } else {
+        result = result.filter((u) => u.role === role);
+      }
     }
 
     if (parishId) {

@@ -6,7 +6,6 @@ import {
   Cross,
   FileText,
   Church,
-  CreditCard,
   Clock,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -18,7 +17,6 @@ import type {
   SacramentStat,
   DocumentAnalyticsStat,
   ParishAnalyticsStat,
-  FinancialStat,
 } from '@/types';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -51,7 +49,6 @@ const TABS = [
   { id: 'sacraments', label: 'Sacraments',  icon: <Cross className="w-4 h-4" /> },
   { id: 'documents',  label: 'Documents',   icon: <FileText className="w-4 h-4" /> },
   { id: 'parishes',   label: 'Parishes',    icon: <Church className="w-4 h-4" /> },
-  { id: 'financial',  label: 'Financial',   icon: <CreditCard className="w-4 h-4" /> },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -248,51 +245,6 @@ function ParishesTab({ data }: { data: ParishAnalyticsStat[] }) {
   );
 }
 
-// ─── Financial tab ────────────────────────────────────────────────────────────
-
-function FinancialTab({ data }: { data: FinancialStat[] }) {
-  return (
-    <div className="space-y-4">
-      <SectionCard
-        title="Financial Overview"
-        subtitle="QR Payment collections, OCR-reported receipts, and outstanding balances"
-      >
-        <div className="grid grid-cols-2 gap-4">
-          {data.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-5 flex flex-col gap-2"
-            >
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
-                {stat.label}
-              </p>
-              <p
-                className="text-2xl font-bold text-gray-400"
-                style={{ fontFamily: 'Playfair Display, serif' }}
-              >
-                {stat.value}
-              </p>
-              <p className="text-xs text-gray-400 italic">{stat.note}</p>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-        <CreditCard className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-semibold text-amber-800">Financial reporting is pending backend integration</p>
-          <p className="text-xs text-amber-700 mt-0.5">
-            QR Payment collections and OCR-reported receipt data will be displayed here once the
-            Phase 6 Diocese Financial APIs are connected. All card slots are pre-wired for
-            seamless replacement.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── AnalyticsPage ────────────────────────────────────────────────────────────
 
 export function AnalyticsPage() {
@@ -300,7 +252,6 @@ export function AnalyticsPage() {
   const [sacramentData, setSacramentData] = useState<SacramentStat[]>([]);
   const [documentData, setDocumentData] = useState<DocumentAnalyticsStat[]>([]);
   const [parishData, setParishData] = useState<ParishAnalyticsStat[]>([]);
-  const [financialData, setFinancialData] = useState<FinancialStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -311,13 +262,11 @@ export function AnalyticsPage() {
       AnalyticsService.getSacramentStats(),
       AnalyticsService.getDocumentStats(),
       AnalyticsService.getParishStats(),
-      AnalyticsService.getFinancialStats(),
     ])
-      .then(([sacraments, documents, parishes, financial]) => {
+      .then(([sacraments, documents, parishes]) => {
         setSacramentData(sacraments);
         setDocumentData(documents);
         setParishData(parishes);
-        setFinancialData(financial);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -335,7 +284,7 @@ export function AnalyticsPage() {
     <div>
       <PageHeader
         title="Analytics"
-        subtitle="Diocese-wide sacramental, document, parish, and financial analytics."
+        subtitle="Diocese-wide sacramental, document, and parish analytics."
       />
 
       {/* Tab Bar */}
@@ -368,7 +317,6 @@ export function AnalyticsPage() {
           {activeTab === 'sacraments' && <SacramentsTab data={sacramentData} />}
           {activeTab === 'documents'  && <DocumentsTab data={documentData} />}
           {activeTab === 'parishes'   && <ParishesTab data={parishData} />}
-          {activeTab === 'financial'  && <FinancialTab data={financialData} />}
         </>
       )}
     </div>

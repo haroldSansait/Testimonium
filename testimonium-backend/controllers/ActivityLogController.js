@@ -129,3 +129,15 @@ export const purge = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const getActionTypes = async (req, res, next) => {
+  try {
+    const actionTypes = await activityLogService.getActionTypes();
+    return res.status(200).json({
+      success: true,
+      data: actionTypes,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};

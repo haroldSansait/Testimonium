@@ -148,6 +148,37 @@ export class UserService {
       throw err;
     }
 
+    const isParishioner = user.role?.roleName === "PARISHIONER";
+
+    let finalName = data.name || data.fullName;
+    if (data.firstName && data.lastName) {
+      const clean = (val) => (val ? String(val).trim().replace(/\s+/g, " ") : "");
+      finalName = [clean(data.firstName), clean(data.middleName), clean(data.lastName), clean(data.suffix)].filter(Boolean).join(" ");
+    }
+
+    if (isParishioner) {
+      // Parishioner security enforcement:
+      // Email, role, parish, and Firebase identity are immutable for parishioners
+      const updated = await this.userRepository.update(numericId, {
+        fullName: finalName || user.fullName,
+        contactNumber: data.contactNumber !== undefined ? data.contactNumber : user.contactNumber,
+        address: data.address !== undefined ? data.address : user.address,
+      });
+
+      await AuditLogService.log(actorId, `User Updated: ${user.email} (Parishioner Profile)`, null, false, {
+        affectedTable: "User",
+        affectedRecordId: updated.id,
+        newValues: {
+          name: updated.fullName,
+          contactNumber: updated.contactNumber,
+          address: updated.address,
+        },
+      });
+
+      return this.mapToDto(updated);
+    }
+
+    // Staff user editing:
     // Email duplicate check if changing email
     if (data.email && data.email !== user.email) {
       const existing = await this.userRepository.findByEmail(data.email);
@@ -194,17 +225,19 @@ export class UserService {
     if (user.firebaseUid) {
       await this.firebaseAdminService.updateUser(user.firebaseUid, {
         email: data.email,
-        displayName: data.name,
+        displayName: finalName || data.name,
       });
     }
 
     // Update in PostgreSQL
     const updated = await this.userRepository.update(numericId, {
-      fullName: data.name,
+      fullName: finalName || data.name,
       email: data.email,
       roleId,
       parishId,
       isAssistant,
+      contactNumber: data.contactNumber !== undefined ? data.contactNumber : undefined,
+      address: data.address !== undefined ? data.address : undefined,
     });
 
     await AuditLogService.log(actorId, `User Updated: ${updated.email} (Role: ${data.role || 'unchanged'})`, null, false, {
@@ -356,6 +389,7 @@ export class UserService {
   mapToDto(u) {
     return {
       id: String(u.id),
+      firebaseUid: u.firebaseUid || null,
       name: u.fullName,
       email: u.email,
       role: u.isAssistant ? "ASSISTANT_PRIEST" : u.role.roleName,
@@ -364,6 +398,10 @@ export class UserService {
       status: u.status === "ACTIVE" ? "Active" : "Disabled",
       isAssistant: u.isAssistant,
       color: u.color || null,
+      contactNumber: u.contactNumber || null,
+      address: u.address || null,
+      createdAt: u.createdAt ? u.createdAt.toISOString() : null,
+      registrationDate: u.createdAt ? u.createdAt.toISOString() : null,
       avatarInitials: this.getInitials(u.fullName),
       avatarColor: this.getActorColor(u.fullName),
     };

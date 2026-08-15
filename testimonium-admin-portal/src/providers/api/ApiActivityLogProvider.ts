@@ -1,7 +1,7 @@
 import api from '@/api/api';
 import type { ActivityLogProvider, ActivityLogFilters } from '../interfaces';
 import type { ActivityLogEntry, ActivityStatus } from '@/types';
-import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
+import type { PaginatedResponse, BackendPaginatedResponse, ApiResponseEnvelope } from '@/types/api';
 
 interface BackendActivityLogDTO {
   id: number;
@@ -152,5 +152,10 @@ export const ApiActivityLogProvider: ActivityLogProvider = {
 
   async purgeArchived(): Promise<void> {
     await api.post('/activity-log/purge');
+  },
+
+  async getActionTypes(): Promise<string[]> {
+    const response = await api.get<ApiResponseEnvelope<string[]>>('/activity-log/action-types');
+    return response.data.data;
   }
 };

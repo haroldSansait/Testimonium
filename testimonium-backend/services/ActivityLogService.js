@@ -117,4 +117,8 @@ export class ActivityLogService {
       await AuditLogService.log(actorId, `Purged ${result.count} archived activity logs older than ${retentionDays} days`, tx, true);
     });
   }
+
+  async getActionTypes() {
+    return this.activityLogRepository.getActionTypes();
+  }
 }

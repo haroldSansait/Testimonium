@@ -5,6 +5,11 @@ import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { DocumentRequirementService } from "./DocumentRequirementService.js";
 import { RecipientResolver } from "./RecipientResolver.js";
+import {
+  CANONICAL_DOCUMENT_TYPES,
+  normalizeDocumentType,
+  getEffectiveOfferedDocuments,
+} from "../config/documents.js";
 
 
 export class ParishionerRequestService {
@@ -16,13 +21,46 @@ export class ParishionerRequestService {
    * Creates a new request in Draft state.
    */
   async createDraft(userId, requestData) {
+    const normalizedDocType = normalizeDocumentType(requestData.documentType);
+    if (!normalizedDocType) {
+      const error = new Error(`Unsupported document type "${requestData.documentType}".`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const numericParishId = parseInt(requestData.parishId, 10);
+    if (isNaN(numericParishId)) {
+      const error = new Error("Invalid parish ID.");
+      error.statusCode = 400;
+      throw error;
+    }
+
     return prisma.$transaction(async (tx) => {
+      const parish = await tx.parish.findUnique({
+        where: { id: numericParishId },
+      });
+
+      if (!parish) {
+        const error = new Error("Selected parish does not exist.");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const effectiveOffered = getEffectiveOfferedDocuments(parish.availableDocuments);
+      if (!effectiveOffered.includes(normalizedDocType)) {
+        const error = new Error(
+          `The requested document type "${normalizedDocType}" is not currently offered by ${parish.parishName}.`
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
       // Create request with isDraft: true
       const draft = await tx.documentRequest.create({
         data: {
           userId,
-          parishId: requestData.parishId,
-          documentType: requestData.documentType,
+          parishId: numericParishId,
+          documentType: normalizedDocType,
           applicantName: requestData.applicantName,
           relationship: requestData.relationship || "Self",
           purpose: requestData.purpose || "",

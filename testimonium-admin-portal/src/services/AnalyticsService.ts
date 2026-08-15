@@ -3,7 +3,6 @@ import type {
   SacramentStat,
   DocumentAnalyticsStat,
   ParishAnalyticsStat,
-  FinancialStat,
 } from '@/types';
 
 export const AnalyticsService = {
@@ -21,9 +20,5 @@ export const AnalyticsService = {
 
   async getParishStats(): Promise<ParishAnalyticsStat[]> {
     return providerFactory.getAnalyticsProvider().getParishStats();
-  },
-
-  async getFinancialStats(): Promise<FinancialStat[]> {
-    return providerFactory.getAnalyticsProvider().getFinancialStats();
   },
 };

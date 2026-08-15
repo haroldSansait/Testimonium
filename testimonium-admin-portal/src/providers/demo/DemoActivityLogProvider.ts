@@ -130,5 +130,30 @@ export const DemoActivityLogProvider: ActivityLogProvider = {
 
   async purgeArchived(): Promise<void> {
     store = store.filter(log => log.archivedAt === null);
+  },
+
+  async getActionTypes(): Promise<string[]> {
+    return [
+      'User Login',
+      'User Logout',
+      'Email Verified',
+      'Profile Completed',
+      'Profile Updated',
+      'Google Existing User',
+      'Admin Verification Bypassed',
+      'Password Reset',
+      'User Created',
+      'User Updated',
+      'User Disabled',
+      'User Enabled',
+      'Role Updated',
+      'Parish Created',
+      'Parish Updated',
+      'Parish Archived',
+      'Parish Restored',
+      'Payment QR uploaded',
+      'Payment QR deleted',
+      'Available Documents Updated',
+    ];
   }
 };

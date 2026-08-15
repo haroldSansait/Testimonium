@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { list, archive, archiveAll, restore, restoreAll, purge } from "../controllers/ActivityLogController.js";
+import { list, archive, archiveAll, restore, restoreAll, purge, getActionTypes } from "../controllers/ActivityLogController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 
@@ -9,6 +9,7 @@ const router = Router();
 router.use(authenticateFirebaseToken);
 router.use(checkRole(["DIOCESE_COORDINATOR"]));
 
+router.get("/action-types", getActionTypes);
 router.get("/", list);
 router.post("/archive", archive);
 router.post("/archive-all", archiveAll);

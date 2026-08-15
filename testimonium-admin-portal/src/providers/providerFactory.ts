@@ -89,9 +89,6 @@ export const providerFactory = {
       getParishStats: () => {
         return resolveProvider('analytics', demo, api).getParishStats();
       },
-      getFinancialStats: () => {
-        return resolveProvider('financialAnalytics', demo, api).getFinancialStats();
-      }
     };
   },
   getParishProvider(): ParishProvider {

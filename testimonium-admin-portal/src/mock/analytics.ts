@@ -2,7 +2,6 @@ import type {
   SacramentStat,
   DocumentAnalyticsStat,
   ParishAnalyticsStat,
-  FinancialStat,
 } from '@/types';
 
 // ─── Sacrament analytics ──────────────────────────────────────────────────────
@@ -35,16 +34,4 @@ export const parishStats: ParishAnalyticsStat[] = [
   { parish: 'Our Lady of Peace and Good Voyage Quasi-Parish', requestCount: 118, activeParishioners: 1450, newRegistrations: 15 },
   { parish: 'Holy Child Parish',                              requestCount: 76,  activeParishioners: 980,  newRegistrations: 11 },
   { parish: 'Our Lady of Guadalupe Parish',                   requestCount: 48,  activeParishioners: 560,  newRegistrations: 7  },
-];
-
-// ─── Financial analytics (placeholder — QR + OCR-ready) ─────────────────────
-// These values are placeholder stubs.
-// When the QR Payment and OCR reporting APIs are live, replace the mock
-// data here with DioceseDashboardService / FinancialService API calls.
-
-export const financialStats: FinancialStat[] = [
-  { label: 'Total Payments Collected',  value: '—',      note: 'QR Payment integration pending' },
-  { label: 'QR Transactions (Month)',   value: '—',      note: 'QR Payment integration pending' },
-  { label: 'Collections via OCR',       value: '—',      note: 'OCR reporting integration pending' },
-  { label: 'Outstanding Balances',      value: '—',      note: 'QR Payment integration pending' },
 ];

@@ -386,6 +386,18 @@ export interface ManagedUser {
   avatarInitials: string;
   avatarColor: string;
   color?: string | null;
+  firebaseUid?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  suffix?: string | null;
+  contactNumber?: string | null;
+  address?: string | null;
+  barangay?: string | null;
+  municipality?: string | null;
+  province?: string | null;
+  registrationDate?: string | null;
+  createdAt?: string | null;
 }
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
@@ -408,10 +420,4 @@ export interface ParishAnalyticsStat {
   requestCount: number;
   activeParishioners: number;
   newRegistrations: number;
-}
-
-export interface FinancialStat {
-  label: string;
-  value: string; // formatted display string e.g. "₱12,500"
-  note: string;
 }
