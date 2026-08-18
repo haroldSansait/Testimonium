@@ -428,7 +428,7 @@ export function MapConfigurationPage() {
           {loading ? (
             <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400 font-medium">
               <div className="flex flex-col items-center gap-2">
-                <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-crimson-700 border-t-transparent rounded-full animate-spin"></div>
                 Loading Vicariate Map...
               </div>
             </div>
@@ -456,7 +456,7 @@ export function MapConfigurationPage() {
           <div className="w-full h-full bg-white/90 backdrop-blur-md border border-gray-200/80 rounded-2xl shadow-xl flex flex-col overflow-hidden">
             <div className="p-3.5 border-b border-gray-150 bg-gray-50/75 backdrop-blur-sm flex items-center justify-between flex-shrink-0">
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Parishes List</span>
-              <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2.5 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold text-crimson-700 bg-red-50 px-2.5 py-0.5 rounded-full">
                 {filteredParishes.length} found
               </span>
             </div>
@@ -464,7 +464,7 @@ export function MapConfigurationPage() {
             <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
               {loading ? (
                 <div className="p-8 text-center text-xs text-gray-500 font-medium flex flex-col items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-crimson-700 border-t-transparent rounded-full animate-spin"></div>
                   Loading list...
                 </div>
               ) : sortedParishes.length === 0 ? (
@@ -487,21 +487,21 @@ export function MapConfigurationPage() {
                       className={cn(
                         "w-full text-left p-3.5 flex items-start justify-between border-l-2 transition-all",
                         isSelected
-                          ? "bg-teal-50/40 border-teal-600"
+                          ? "bg-red-50/40 border-crimson-700"
                           : "border-transparent hover:bg-gray-50/40"
                       )}
                     >
                       <div className="flex gap-2.5 min-w-0">
                         <div className={cn(
                           "mt-0.5 rounded-lg p-1.5 flex-shrink-0",
-                          isSelected ? "bg-teal-50 text-teal-600" : "bg-gray-100 text-gray-500"
+                          isSelected ? "bg-red-50 text-crimson-700" : "bg-gray-100 text-gray-500"
                         )}>
                           <Church className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
                           <h4 className={cn(
                             "text-xs font-bold truncate",
-                            isSelected ? "text-teal-900" : "text-gray-700"
+                            isSelected ? "text-crimson-900" : "text-gray-700"
                           )}>
                             {p.name}
                           </h4>
@@ -532,7 +532,7 @@ export function MapConfigurationPage() {
         {/* Floating Toggle Button for Left List */}
         <button
           onClick={() => setIsListCollapsed(!isListCollapsed)}
-          className="absolute bg-white/95 border border-gray-200/80 text-gray-500 hover:text-teal-600 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
+          className="absolute bg-white/95 border border-gray-200/80 text-gray-500 hover:text-crimson-700 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
           style={{ 
             left: isListCollapsed ? '16px' : '348px', 
             top: '20px',
@@ -566,7 +566,7 @@ export function MapConfigurationPage() {
         {previewParish && isSettingsCollapsed && (
           <button
             onClick={() => setIsSettingsCollapsed(false)}
-            className="absolute right-4 bg-white/95 border border-gray-200/80 text-gray-500 hover:text-teal-600 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
+            className="absolute right-4 bg-white/95 border border-gray-200/80 text-gray-500 hover:text-crimson-700 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
             style={{ top: '20px' }}
             title="Expand Settings Panel"
           >
@@ -598,7 +598,7 @@ export function MapConfigurationPage() {
         <div
           className={cn(
             'fixed bottom-6 right-6 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-semibold text-white animate-in slide-in-from-bottom duration-200 border',
-            toast.type === 'success' && 'bg-teal-600 border-teal-500',
+            toast.type === 'success' && 'bg-emerald-600 border-emerald-500',
             toast.type === 'error' && 'bg-rose-600 border-rose-500',
             toast.type === 'warning' && 'bg-amber-600 border-amber-500'
           )}
@@ -632,7 +632,7 @@ export function MapConfigurationPage() {
                   dialog.onConfirm();
                   setDialog(null);
                 }}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg active:scale-95 transition-all"
+                className="px-4 py-2 bg-crimson-700 hover:bg-crimson-800 text-white text-xs font-semibold rounded-lg active:scale-95 transition-all"
               >
                 {dialog.confirmText}
               </button>

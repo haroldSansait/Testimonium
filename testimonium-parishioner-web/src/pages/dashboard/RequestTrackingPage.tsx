@@ -347,15 +347,29 @@ export const RequestTrackingPage: React.FC = () => {
                         Your request for a <span className="font-semibold text-text-primary capitalize">{selectedRequest.documentType} Certificate</span> has been reviewed and requires a certificate processing fee. Please follow the instructions to upload payment receipt.
                       </p>
                     </div>
-                    <div className="text-left bg-white p-3 rounded-xl border border-amber-100 min-w-[140px] flex flex-col justify-center">
+                    <div className="text-left bg-white p-3.5 rounded-xl border border-amber-100 min-w-[140px] flex flex-col justify-center shadow-xs">
                       <span className="text-[9px] text-text-muted uppercase font-bold tracking-wider">Amount Due</span>
-                      <span className="text-xl font-extrabold text-crimson mt-0.5">₱150.00</span>
+                      <span className="text-xl font-extrabold text-crimson mt-0.5">
+                        {(() => {
+                          const fee = selectedRequest.fee !== undefined && selectedRequest.fee !== null && !isNaN(selectedRequest.fee)
+                            ? selectedRequest.fee
+                            : (selectedRequest.paymentTransactions?.[0]?.amount ? Number(selectedRequest.paymentTransactions[0].amount) : 100);
+                          return `₱${Number(fee).toFixed(2)}`;
+                        })()}
+                      </span>
                     </div>
                   </div>
 
                   {/* Side-by-side Layout */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <PaymentInstructionsCard parishId={selectedRequest.parishId} />
+                    <PaymentInstructionsCard 
+                      parishId={selectedRequest.parishId} 
+                      amount={
+                        selectedRequest.fee !== undefined && selectedRequest.fee !== null && !isNaN(selectedRequest.fee)
+                          ? selectedRequest.fee
+                          : (selectedRequest.paymentTransactions?.[0]?.amount ? Number(selectedRequest.paymentTransactions[0].amount) : 100)
+                      } 
+                    />
                     <ReceiptUploadCard
                       requestId={selectedRequest.id}
                       existingTransaction={selectedRequest.paymentTransactions?.[0]}

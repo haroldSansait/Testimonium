@@ -52,7 +52,7 @@ export function UnsavedChangesBanner({
               <button
                 onClick={onSave}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-teal-500 hover:bg-teal-400 active:scale-95 text-xs text-white font-bold transition-all shadow-md disabled:bg-teal-500/50 disabled:scale-100"
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-crimson-700 hover:bg-crimson-800 active:scale-95 text-xs text-white font-bold transition-all shadow-md disabled:bg-crimson-700/50 disabled:scale-100"
               >
                 {isSaving ? (
                   <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>

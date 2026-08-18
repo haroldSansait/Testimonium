@@ -68,7 +68,7 @@ export function PreviewDialog({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-teal-700 to-indigo-900 text-teal-100/50 font-serif text-lg tracking-wider">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-crimson-900 to-neutral-900 text-red-100/50 font-serif text-lg tracking-wider">
                     TESTIMONIUM PARISH DIRECTORY
                   </div>
                 )}
@@ -99,11 +99,11 @@ export function PreviewDialog({
                   </h1>
                   <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs text-gray-500 font-medium">
                     <span className="flex items-center gap-1">
-                      <Landmark className="w-3.5 h-3.5 text-teal-600" />
+                      <Landmark className="w-3.5 h-3.5 text-crimson-700" />
                       {vicariate}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Award className="w-3.5 h-3.5 text-teal-600" />
+                      <Award className="w-3.5 h-3.5 text-crimson-700" />
                       Patron: {patronSaint}
                     </span>
                   </div>

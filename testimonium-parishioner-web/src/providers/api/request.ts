@@ -3,23 +3,18 @@ import type { SacramentalRequest, RequestAttachment } from "../../types";
 import { client } from "../../api/client";
 
 const mapFrontendToBackendDocType = (type: string): string => {
-  switch (type) {
-    case "baptism":
-      return "BAPTISMAL_CERTIFICATE";
-    case "confirmation":
-      return "CONFIRMATION_CERTIFICATE";
-    case "marriage":
-      return "MARRIAGE_CERTIFICATE";
-    case "first-communion":
-    case "first_communion":
-      return "FIRST_COMMUNION_CERTIFICATE";
-    default:
-      // Return uppercase backend representation if it is already mapped
-      if (type.includes("_CERTIFICATE")) {
-        return type;
-      }
-      return "BAPTISMAL_CERTIFICATE";
+  const clean = String(type || '').toUpperCase().replace(/-/g, '_');
+  if (clean.includes('BAPTISM')) return 'BAPTISMAL_CERTIFICATE';
+  if (clean.includes('CONFIRMATION')) return 'CONFIRMATION_CERTIFICATE';
+  if (clean.includes('MARRIAGE_BANNS') || clean === 'BANNS') return 'MARRIAGE_BANNS';
+  if (clean.includes('PERMIT_TO_MARRY') || clean === 'PERMIT') return 'PERMIT_TO_MARRY';
+  if (clean.includes('STATUS_OF_LIBERTY') || clean === 'LIBERTY') return 'STATUS_OF_LIBERTY';
+  if (clean.includes('MARRIAGE')) return 'MARRIAGE_CERTIFICATE';
+  if (clean.includes('COMMUNION')) return 'FIRST_COMMUNION_CERTIFICATE';
+  if (clean.includes('_CERTIFICATE') || clean.includes('_BANNS') || clean.includes('_MARRY') || clean.includes('_LIBERTY')) {
+    return clean;
   }
+  return 'BAPTISMAL_CERTIFICATE';
 };
 
 const mapBackendToFrontendDocType = (type: string): any => {
@@ -31,7 +26,13 @@ const mapBackendToFrontendDocType = (type: string): any => {
     case "MARRIAGE_CERTIFICATE":
       return "marriage";
     case "FIRST_COMMUNION_CERTIFICATE":
-      return "other";
+      return "first-communion";
+    case "MARRIAGE_BANNS":
+      return "marriage-banns";
+    case "PERMIT_TO_MARRY":
+      return "permit-to-marry";
+    case "STATUS_OF_LIBERTY":
+      return "status-of-liberty";
     default:
       return type;
   }
@@ -72,11 +73,13 @@ const mapBackendToFrontendStatus = (status: string): RequestStatus => {
 
 const mapRequest = (req: any): SacramentalRequest => {
   if (!req) return req;
+  const parsedFee = req.fee !== null && req.fee !== undefined ? parseFloat(req.fee) : null;
   return {
     ...req,
     id: String(req.id),
     parishId: String(req.parishId),
     documentType: mapBackendToFrontendDocType(req.documentType),
+    fee: parsedFee,
     status: mapBackendToFrontendStatus(req.status),
     submittedAt: req.dateRequested || req.createdAt,
     updatedAt: req.updatedAt || req.dateProcessed || req.createdAt,

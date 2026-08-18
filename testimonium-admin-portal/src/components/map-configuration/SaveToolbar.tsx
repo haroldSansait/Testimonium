@@ -45,7 +45,7 @@ export function SaveToolbar({
             placeholder="Search parish (e.g. St Joseph)..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-teal-500 font-medium"
+            className="w-full pl-9 pr-4 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-crimson-700 font-medium"
           />
         </div>
 
@@ -54,7 +54,7 @@ export function SaveToolbar({
           <select
             value={selectedVicariate}
             onChange={(e) => onVicariateChange(e.target.value)}
-            className="pl-3 pr-8 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-teal-500 font-medium bg-white appearance-none cursor-pointer"
+            className="pl-3 pr-8 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-crimson-700 font-medium bg-white appearance-none cursor-pointer"
           >
             <option value="all">All Vicariates</option>
             <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
@@ -116,9 +116,9 @@ export function SaveToolbar({
           disabled={!hasUnsavedChanges || isSaving}
           className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold shadow transition-all ${
             isSaving
-              ? 'bg-teal-500/80 text-white cursor-not-allowed'
+              ? 'bg-crimson-700/80 text-white cursor-not-allowed'
               : hasUnsavedChanges
-              ? 'bg-teal-600 hover:bg-teal-500 text-white animate-pulse cursor-pointer'
+              ? 'bg-crimson-700 hover:bg-crimson-800 text-white animate-pulse cursor-pointer'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
           }`}
         >

@@ -22,11 +22,14 @@ const SYSTEM_INFO = {
   privacy:
     'All personal data collected through this platform is processed exclusively for the provision of sacramental and administrative services within the Canlaon Vicariate. Data is stored securely and is not shared with third parties outside of the diocesan administration. In accordance with the Data Privacy Act of 2012 (RA 10173), parishioners may request access to or deletion of their records by contacting the vicariate office.',
   technologies: [
-    'React + TypeScript (Admin Portal)',
-    'React + TypeScript (Parishioner Web)',
-    'Node.js + Express (Backend API)',
-    'PostgreSQL via Supabase',
-    'Firebase Authentication',
+    'React 19 + TypeScript (Admin Portal)',
+    'React 19 + TypeScript (Parishioner Web Portal)',
+    'Node.js + Express 5 (Backend API)',
+    'PostgreSQL (Supabase) via Prisma ORM 7.8',
+    'Firebase Authentication & JIT User Provisioning',
+    'Cloudflare R2 S3-Compatible Object Storage',
+    'Google Vision API & OCR.Space Optical Engine',
+    'Leaflet GIS & Interactive Sanctuary Mapping',
   ],
 };
 

@@ -39,7 +39,8 @@ export const ParishMarker = React.memo(
     const needsLocation = parish.latitude === null || parish.latitude === undefined;
 
     const position: L.LatLngTuple = [lat, lng];
-    const pinColor = needsLocation ? '#6b7280' : (parish.pinColor || '#0d9488'); // Gray if needs location, else parish color
+    const defaultColor = '#7B1C2A';
+    const pinColor = needsLocation ? '#6b7280' : (/^#[0-9A-Fa-f]{6}$/.test(parish.pinColor || '') ? parish.pinColor! : defaultColor);
 
     // Keyboard nudging handler for accessibility
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -109,10 +110,10 @@ export const ParishMarker = React.memo(
         eventHandlers={eventHandlers}
       >
         <div 
-          className="relative w-10 h-10 flex items-center justify-center focus:outline-none"
+          className="relative w-11 h-12 flex items-center justify-center focus:outline-none"
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          aria-label={`${parish.name} marker. Use arrow keys to nudge position.`}
+          aria-label={`${parish.name} church marker. Use arrow keys to nudge position.`}
         >
           <AnimatePresence>
             {/* Unsaved Changes orange outer ring glow */}
@@ -122,7 +123,7 @@ export const ParishMarker = React.memo(
                 animate={{ scale: 1.3, opacity: [0.3, 0.6, 0.3] }}
                 exit={{ scale: 0.8, opacity: 0 }}
                 transition={{ repeat: Infinity, duration: 1.5 }}
-                className="absolute w-10 h-10 rounded-full bg-amber-500/30 blur-sm pointer-events-none"
+                className="absolute w-11 h-11 rounded-full bg-amber-500/30 blur-sm pointer-events-none"
               />
             )}
 
@@ -130,7 +131,7 @@ export const ParishMarker = React.memo(
             {isSelected && (
               <motion.div
                 layoutId="selected-marker-ring"
-                className="absolute -inset-2 rounded-full border-2 border-white bg-teal-500/10 shadow-lg pointer-events-none"
+                className="absolute -inset-2 rounded-full border-2 border-white bg-red-500/10 shadow-lg pointer-events-none"
                 style={{ borderColor: pinColor }}
                 transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               />
@@ -143,7 +144,7 @@ export const ParishMarker = React.memo(
                 animate={{ scale: 2.2, opacity: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
-                className="absolute w-10 h-10 rounded-full bg-emerald-500 pointer-events-none"
+                className="absolute w-11 h-11 rounded-full bg-emerald-500 pointer-events-none"
               />
             )}
           </AnimatePresence>
@@ -154,21 +155,33 @@ export const ParishMarker = React.memo(
             whileTap={{ scale: 0.95 }}
             className="relative cursor-grab active:cursor-grabbing"
           >
-            {/* Pin SVG */}
+            {/* Church SVG Pin */}
             <svg
-              width="34"
-              height="40"
-              viewBox="0 0 34 40"
+              width="36"
+              height="44"
+              viewBox="0 0 36 44"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
               className="filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.35)]"
             >
+              {/* Outer Pin Teardrop Shape */}
               <path
-                d="M17 0C7.61 0 0 7.61 0 17C0 27.8 17 40 17 40C17 40 34 27.8 34 17C34 7.61 26.39 0 17 0Z"
+                d="M18 0C8.05887 0 0 8.05887 0 18C0 29.5 18 44 18 44C18 44 36 29.5 36 18C36 8.05887 27.9411 0 18 0Z"
                 fill={pinColor}
               />
-              {/* Inner pin circle */}
-              <circle cx="17" cy="16" r="6" fill="#FFFFFF" />
+              {/* Inner Circle Glow Ring */}
+              <circle cx="18" cy="18" r="13" fill="#FFFFFF" fillOpacity="0.2" />
+              <circle cx="18" cy="18" r="11" fill="#FFFFFF" />
+              {/* Church / Cross Icon */}
+              <path
+                d="M18 9V24M14.5 13.5H21.5M12.5 24H23.5M13.5 24V21L18 17.5L22.5 21V24H13.5Z"
+                stroke={pinColor}
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill={pinColor}
+                fillOpacity="0.15"
+              />
             </svg>
 
             {/* Red "Needs Location" tiny badge */}
@@ -189,7 +202,7 @@ export const ParishMarker = React.memo(
 
           {/* Pin label (conditionally shown) */}
           {(parish.showLabel ?? true) && (
-            <div className="absolute top-10 whitespace-nowrap bg-gray-900/90 text-white text-[10px] px-1.5 py-0.5 rounded shadow border border-gray-700 pointer-events-none select-none font-medium">
+            <div className="absolute top-11 whitespace-nowrap bg-gray-900/90 text-white text-[10px] px-1.5 py-0.5 rounded shadow border border-gray-700 pointer-events-none select-none font-medium z-[1001]">
               {parish.name}
             </div>
           )}

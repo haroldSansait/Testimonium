@@ -16,12 +16,12 @@ export class ApiPaymentConfigurationProvider implements IPaymentConfigurationPro
         gcash: {
           accountName: "TESTIMONIUM GCash Fallback",
           accountNumber: "0917-123-4567",
-          qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/gcash_qr.png",
+          qrCodeUrl: undefined,
         },
         maya: {
           accountName: "TESTIMONIUM Maya Fallback",
           accountNumber: "0917-123-4567",
-          qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/maya_qr.png",
+          qrCodeUrl: undefined,
         }
       };
     }

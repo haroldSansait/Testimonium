@@ -70,6 +70,7 @@ export class ParishionerRequestRepository {
         isDraft: true,
         status: "PENDING",
         paymentStatus: "UNPAID",
+        fee: data.fee !== undefined ? data.fee : null,
       },
       include: detailInclude,
     });

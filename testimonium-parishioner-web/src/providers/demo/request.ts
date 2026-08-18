@@ -7,6 +7,7 @@ const INITIAL_REQUESTS: SacramentalRequest[] = [
     trackingNumber: 'TX-2026-88401',
     parishId: 'p1',
     documentType: 'baptism',
+    fee: 100,
     status: 'under-review',
     applicantName: 'Juan dela Cruz Jr.',
     relationship: 'Self',
@@ -21,6 +22,7 @@ const INITIAL_REQUESTS: SacramentalRequest[] = [
     trackingNumber: 'TX-2026-90412',
     parishId: 'p2',
     documentType: 'marriage',
+    fee: 150,
     status: 'ready',
     applicantName: 'Pedro Santos & Maria Gomez',
     relationship: 'Groom',
@@ -76,6 +78,8 @@ export class DemoRequestProvider implements IRequestProvider {
     purpose: string;
   }): Promise<SacramentalRequest> {
     await new Promise(resolve => setTimeout(resolve, 400));
+    const reqConfig = await this.getDocumentRequirements(request.documentType, request.parishId);
+    const feeSnapshot = reqConfig?.baseFee !== undefined ? reqConfig.baseFee : 100;
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);
     const trackingNumber = `SR-2026-${randomSuffix}`;
     const newRequest: SacramentalRequest = {
@@ -83,6 +87,7 @@ export class DemoRequestProvider implements IRequestProvider {
       trackingNumber,
       parishId: request.parishId,
       documentType: request.documentType,
+      fee: feeSnapshot,
       status: 'pending',
       applicantName: request.applicantName,
       relationship: request.relationship,
@@ -220,30 +225,33 @@ export class DemoRequestProvider implements IRequestProvider {
   }
 
   async getDocumentRequirements(type: string, parishId?: string): Promise<any> {
-    // Suppress unused parameter warning
-    void parishId;
     const ALL_REQS: any = {
       'baptismal_certificate': {
+        baseFee: 100,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'confirmation_certificate': {
+        baseFee: 100,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'marriage_certificate': {
+        baseFee: 150,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'first_communion_certificate': {
+        baseFee: 75,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid ID', required: true }
         ]
       },
       'marriage_banns': {
+        baseFee: 200,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid ID', required: true },
           { id: 'baptismal_cert', label: 'Baptismal Certificate', required: true },
@@ -255,6 +263,7 @@ export class DemoRequestProvider implements IRequestProvider {
         ]
       },
       'permit_to_marry': {
+        baseFee: 150,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid Government ID', required: true },
           { id: 'baptismal_cert', label: 'Baptismal Certificate', required: true },
@@ -267,6 +276,7 @@ export class DemoRequestProvider implements IRequestProvider {
         ]
       },
       'status_of_liberty': {
+        baseFee: 150,
         requiredDocuments: [
           { id: 'valid_id', label: 'Valid Government ID', required: true },
           { id: 'baptismal_cert', label: 'Baptismal Certificate', required: true },
@@ -275,9 +285,31 @@ export class DemoRequestProvider implements IRequestProvider {
         ]
       }
     };
-    const cleanType = type.toLowerCase().replace(/_certificate/g, '').replace(/-/g, '_');
+    const cleanType = String(type || '').toLowerCase().replace(/_certificate/g, '').replace(/-/g, '_');
     const matchedKey = Object.keys(ALL_REQS).find(k => k.replace(/_certificate/g, '').replace(/_/g, '') === cleanType.replace(/_/g, '')) || 'baptismal_certificate';
-    return ALL_REQS[matchedKey];
+    const result = JSON.parse(JSON.stringify(ALL_REQS[matchedKey]));
+
+    // Check if demo localStorage has custom parish documentSettings
+    if (parishId) {
+      try {
+        const parishesRaw = localStorage.getItem('testimonium_demo_parishes');
+        if (parishesRaw) {
+          const parishesList = JSON.parse(parishesRaw);
+          const matchedParish = parishesList.find((p: any) => p.id === parishId);
+          if (matchedParish?.documentSettings) {
+            const canonicalKey = matchedKey.toUpperCase();
+            const config = matchedParish.documentSettings[canonicalKey] || matchedParish.documentSettings[matchedKey];
+            if (config?.price !== undefined) {
+              result.baseFee = Number(config.price);
+            }
+          }
+        }
+      } catch (e) {
+        // fallback to baseFee
+      }
+    }
+
+    return result;
   }
 
   async resubmitCorrections(id: string): Promise<SacramentalRequest> {

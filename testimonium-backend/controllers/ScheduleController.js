@@ -80,7 +80,7 @@ export const create = async (req, res, next) => {
 
 export const getAvailableSlots = async (req, res, next) => {
   try {
-    const { parishId, date } = req.query;
+    const { parishId, date, eventType } = req.query;
     if (!parishId || !date) {
       return res.status(400).json({
         success: false,
@@ -89,7 +89,8 @@ export const getAvailableSlots = async (req, res, next) => {
       });
     }
 
-    const slots = await scheduleService.getAvailableSlots(parishId, date);
+    const canonicalEventType = eventType ? resolveEventType(eventType) : null;
+    const slots = await scheduleService.getAvailableSlots(parishId, date, canonicalEventType);
 
     return res.status(200).json({
       success: true,

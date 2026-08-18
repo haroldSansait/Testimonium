@@ -55,7 +55,11 @@ export class ParishionerRequestService {
         throw error;
       }
 
-      // Create request with isDraft: true
+      // Resolve fee snapshot from parish document requirements configuration
+      const reqConfig = await DocumentRequirementService.getRequirements(normalizedDocType, numericParishId);
+      const feeSnapshot = reqConfig?.baseFee !== undefined ? parseFloat(reqConfig.baseFee) : 100.00;
+
+      // Create request with isDraft: true and authoritative fee snapshot
       const draft = await tx.documentRequest.create({
         data: {
           userId,
@@ -66,6 +70,7 @@ export class ParishionerRequestService {
           purpose: requestData.purpose || "",
           isDraft: true,
           status: "PENDING",
+          fee: feeSnapshot,
         },
       });
 

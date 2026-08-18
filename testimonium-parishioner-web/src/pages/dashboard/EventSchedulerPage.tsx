@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, Check } from 'lucide-react';
+import { CheckCircle, Check, Users } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes } from '../../hooks/useService';
 import type { Appointment } from '../../types';
@@ -10,8 +10,26 @@ import { Button } from '../../components/ui/Button';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
-import { CalendarProvider } from '../../features/scheduler/components/CalendarProvider';
-import { CalendarToolbar } from '../../features/scheduler/components/CalendarToolbar';
+import { DatePickerCalendar } from '../../features/scheduler/components/DatePickerCalendar';
+
+const ALL_EVENT_OPTIONS: { id: string; label: string }[] = [
+  { id: 'BAPTISM', label: 'Baptism' },
+  { id: 'WEDDING', label: 'Marriage (Canonical Interview)' },
+  { id: 'MARRIAGE_SPECIAL', label: 'Marriage Special' },
+  { id: 'CONFIRMATION', label: 'Confirmation' },
+  { id: 'FIRST_COMMUNION', label: 'First Communion' },
+  { id: 'CONFESSION', label: 'Confession' },
+  { id: 'ANOINTING_OF_THE_SICK', label: 'Anointing of the Sick' },
+  { id: 'FUNERAL', label: 'Funeral' },
+  { id: 'WAKE_MASS', label: 'Wake Mass' },
+  { id: 'PRIVATE_MASS', label: 'Private Mass' },
+  { id: 'MASS_INTENTION', label: 'Mass Intention' },
+  { id: 'BLESSING', label: 'Blessing' },
+  { id: 'DELIVERANCE', label: 'Deliverance' },
+  { id: 'THANKSGIVING', label: 'Thanksgiving' },
+  { id: 'MASS_OF_HOLY_SPIRIT', label: 'Mass of the Holy Spirit' },
+  { id: 'FIESTA', label: 'Fiesta' },
+];
 
 export const EventSchedulerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -25,7 +43,7 @@ export const EventSchedulerPage: React.FC = () => {
 
   // Scheduler State
   const [selectedParishId, setSelectedParishId] = useState('');
-  const [selectedService, setSelectedService] = useState('Baptism Interview');
+  const [selectedService, setSelectedService] = useState('Baptism');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
@@ -47,24 +65,36 @@ export const EventSchedulerPage: React.FC = () => {
   // Booking confirmation
   const [createdBooking, setCreatedBooking] = useState<Appointment | null>(null);
 
-  const steps = ['Select Parish', 'Choose Service', 'Select Date', 'Choose Time Slot', 'Confirmation'];
+  const steps = ['Select Parish', 'Choose Sacrament', 'Select Date', 'Choose Time Slot', 'Confirmation'];
 
-  const servicesList = [
-    'Marriage Special',
-    'Wake Mass',
-    'Funeral',
-    'Private Mass',
-    'Anointing of the Sick',
-    'Fiesta',
-    'Blessing',
-    'Deliverance',
-    'Thanksgiving',
-    'First Communion',
-    'Mass of the Holy Spirit',
-    'Confirmation',
-    'Confession',
-    'Baptism'
-  ];
+  const selectedParish = parishes.find(p => p.id === selectedParishId) || (parishes.length > 0 ? parishes[0] : undefined);
+
+  // Dynamically derive offered services based on parish eventSettings.availableEvents
+  const availableServices = useMemo(() => {
+    if (!selectedParish) return ALL_EVENT_OPTIONS;
+    const configuredEvents = selectedParish.eventSettings?.availableEvents;
+    if (!configuredEvents || !Array.isArray(configuredEvents) || configuredEvents.length === 0) {
+      return ALL_EVENT_OPTIONS;
+    }
+    const filtered = ALL_EVENT_OPTIONS.filter(opt => {
+      const optEnum = opt.id.toUpperCase().replace(/[\s-]/g, '_');
+      return configuredEvents.some((ce: string) => {
+        const norm = String(ce).toUpperCase().replace(/[\s-]/g, '_');
+        return norm === optEnum || norm.includes(optEnum) || optEnum.includes(norm);
+      });
+    });
+    return filtered.length > 0 ? filtered : ALL_EVENT_OPTIONS;
+  }, [selectedParish]);
+
+  // If selected service is no longer offered in selected parish, default to first offered sacrament
+  useEffect(() => {
+    if (availableServices.length > 0) {
+      const isStillAvailable = availableServices.some(s => s.label === selectedService || s.id === selectedService);
+      if (!isStillAvailable) {
+        setSelectedService(availableServices[0].label);
+      }
+    }
+  }, [availableServices, selectedService]);
 
   const fetchActiveProposal = async () => {
     try {
@@ -97,13 +127,13 @@ export const EventSchedulerPage: React.FC = () => {
     }
   }, [parishes, selectedParishId]);
 
-  // Fetch slots when date changes
+  // Fetch slots when date or service changes
   useEffect(() => {
     if (selectedParishId && selectedDate) {
       const fetchSlots = async () => {
         setLoadingSlots(true);
         try {
-          const slots = await services.scheduler.getAvailableSlots(selectedParishId, selectedDate);
+          const slots = await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedService);
           setAvailableSlots(slots);
           if (slots.length > 0) {
             const isMarriage = selectedService.toLowerCase().includes('marriage') || selectedService.toLowerCase().includes('wedding');
@@ -114,9 +144,13 @@ export const EventSchedulerPage: React.FC = () => {
             } else {
               setSelectedTimeSlot(slots[0]);
             }
+          } else {
+            setSelectedTimeSlot('');
           }
         } catch (err) {
           console.error(err);
+          setAvailableSlots([]);
+          setSelectedTimeSlot('');
         } finally {
           setLoadingSlots(false);
         }
@@ -180,73 +214,44 @@ export const EventSchedulerPage: React.FC = () => {
   };
 
   const getSelectedParishName = () => {
-    return parishes.find(p => p.id === selectedParishId)?.name || 'Selected Parish';
+    const parish = parishes.find(p => p.id === selectedParishId);
+    return parish ? parish.name : 'Unknown Parish';
   };
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <PageHeader 
-          title="Event & Appointment Scheduler" 
-          description="Book dates and times for canonical interviews, seminars, and parish certifications."
-          onRefresh={refetch}
-          breadcrumbs={['Home', 'Event Scheduler']}
-        />
-        <ErrorState 
-          title="Unable to load scheduling systems" 
-          description="We had trouble retrieving available parish calendars. Please try again."
-          onRetry={refetch} 
-        />
-      </div>
-    );
-  }
 
   if (loading) {
     return (
-      <div className="space-y-6" aria-busy="true">
-        <PageHeader 
-          title="Event & Appointment Scheduler" 
-          description="Book dates and times for canonical interviews, seminars, and parish certifications."
-          onRefresh={refetch}
-          isRefreshing={true}
-          breadcrumbs={['Home', 'Event Scheduler']}
-        />
-        <Card>
-          <CardContent className="pt-6 space-y-8">
-            {/* Stepper Skeleton */}
-            <div className="flex justify-between items-center max-w-xl mx-auto">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="flex items-center space-x-2">
-                  <Skeleton className="w-8 h-8 rounded-full" />
-                  {i < 5 && <Skeleton className="h-1 w-12 sm:w-16 rounded" />}
-                </div>
-              ))}
-            </div>
-
-            {/* Stepper calendar skeleton */}
-            <div className="space-y-4 max-w-xl mx-auto pt-4">
-              <Skeleton className="h-5 w-40 rounded" />
-              <Skeleton className="h-4 w-60 rounded" />
-              <Skeleton className="h-24 w-full rounded-card" />
-              <div className="flex justify-between pt-4">
-                <Skeleton className="h-10 w-24 rounded-button" />
-                <Skeleton className="h-10 w-24 rounded-button" />
-              </div>
-            </div>
-          </CardContent>
+      <div className="space-y-6">
+        <PageHeader title="Event & Appointment Scheduler" description="Schedule sacramental rites and canonical appointments with parish offices." />
+        <Card className="p-8">
+          <Skeleton className="h-10 w-full mb-6" />
+          <Skeleton className="h-64 w-full" />
         </Card>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Event & Appointment Scheduler" description="Schedule sacramental rites and canonical appointments with parish offices." />
+        <ErrorState description="Failed to load parishes for scheduling." onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6" aria-live="polite">
-      <PageHeader 
-        title="Event & Appointment Scheduler" 
-        description="Book dates and times for canonical interviews, seminars, and parish certifications."
-        onRefresh={refetch}
-        breadcrumbs={['Home', 'Event Scheduler']}
+    <div className="space-y-6 pb-12">
+      <PageHeader
+        title="Event & Appointment Scheduler"
+        description="Book dates for weddings, baptisms, blessings, and pastoral interviews across the Vicariate."
+        breadcrumbs={['Dashboard', 'Event Scheduler']}
       />
+
+      {toastMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold rounded-xl animate-in fade-in">
+          {toastMessage}
+        </div>
+      )}
 
       {/* Reschedule Proposal Response Banner (shown only when a proposed reschedule exists) */}
       {activeProposal && (
@@ -287,7 +292,7 @@ export const EventSchedulerPage: React.FC = () => {
               <select
                 value={selectedParishId}
                 onChange={e => setSelectedParishId(e.target.value)}
-                className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors"
+                className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors cursor-pointer"
               >
                 {parishes.map(parish => (
                   <option key={parish.id} value={parish.id}>
@@ -295,6 +300,16 @@ export const EventSchedulerPage: React.FC = () => {
                   </option>
                 ))}
               </select>
+
+              {selectedParish?.venueCapacity && (
+                <div className="flex items-center gap-2.5 p-3.5 bg-red-50/60 border border-crimson/15 rounded-xl text-xs text-text-primary">
+                  <Users className="w-4 h-4 text-crimson flex-shrink-0" />
+                  <span>
+                    Parish Venue Capacity: <strong className="font-bold text-crimson">{selectedParish.venueCapacity} people max</strong> (Informational attendance limit)
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-end pt-4">
                 <Button onClick={handleNext}>Next Step</Button>
               </div>
@@ -306,63 +321,76 @@ export const EventSchedulerPage: React.FC = () => {
             <div className="space-y-4 max-w-xl mx-auto">
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
-                  Select Administrative Service
+                  Select Sacrament or Service
                 </label>
-                <p className="text-xs text-text-muted">Select the interview, seminar, or ritual service schedule type.</p>
+                <p className="text-xs text-text-muted">Select the interview, seminar, or ritual service schedule type for {selectedParish?.name}.</p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {servicesList.map(srv => (
-                  <button
-                    key={srv}
-                    onClick={() => setSelectedService(srv)}
-                    className={`p-4 border rounded-button text-left text-xs font-medium transition-all focus-ring ${
-                      selectedService === srv
-                        ? 'border-crimson bg-red-50/15 text-crimson font-semibold'
-                        : 'border-border text-text-primary hover:bg-app-page'
-                    }`}
-                  >
-                    <span>{srv}</span>
-                  </button>
-                ))}
-              </div>
+
+              {selectedParish?.venueCapacity && (
+                <div className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 border border-border/60 rounded-lg text-xs text-text-muted">
+                  <Users className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
+                  <span>Church Maximum Capacity: <strong>{selectedParish.venueCapacity} attendees</strong></span>
+                </div>
+              )}
+
+              {availableServices.length === 0 ? (
+                <div className="p-5 bg-amber-50/60 border border-amber-200 rounded-xl text-center space-y-1">
+                  <p className="text-xs font-bold text-amber-900">No Sacraments Available</p>
+                  <p className="text-xs text-amber-700">No sacraments or rites are currently enabled for online scheduling at this parish office.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {availableServices.map(srv => (
+                    <button
+                      key={srv.id}
+                      type="button"
+                      onClick={() => setSelectedService(srv.label)}
+                      className={`p-4 border rounded-xl text-left text-xs font-medium transition-all focus-ring cursor-pointer flex items-center justify-between ${
+                        selectedService === srv.label || selectedService === srv.id
+                          ? 'border-crimson bg-red-50/20 text-crimson font-bold shadow-xs'
+                          : 'border-border text-text-primary hover:bg-app-page'
+                      }`}
+                    >
+                      <span>{srv.label}</span>
+                      {(selectedService === srv.label || selectedService === srv.id) && (
+                        <Check className="w-4 h-4 text-crimson" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev}>Back</Button>
-                <Button onClick={handleNext}>Next Step</Button>
+                <Button onClick={handleNext} disabled={availableServices.length === 0}>Next Step</Button>
               </div>
             </div>
           )}
 
           {/* Step 3: Select Date */}
           {currentStep === 2 && (
-            <CalendarProvider>
-              <div className="space-y-4 max-w-xl mx-auto border border-border rounded-card bg-app-page overflow-hidden">
-                <CalendarToolbar title={`Schedule for ${selectedDate || 'Select Date'}`} />
-                <div className="p-4 space-y-4">
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
-                      Select Booking Date
-                    </label>
-                    <p className="text-xs text-text-muted">Choose a date for your appointment slot.</p>
-                  </div>
-                  
-                  {/* Custom Date Input Container */}
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      min={new Date().toISOString().split('T')[0]}
-                      onChange={e => setSelectedDate(e.target.value)}
-                      className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors"
-                    />
-                  </div>
-
-                  <div className="flex justify-between pt-6">
-                    <Button variant="outline" onClick={handlePrev}>Back</Button>
-                    <Button onClick={handleNext} disabled={!selectedDate}>Next Step</Button>
-                  </div>
-                </div>
+            <div className="space-y-4 max-w-xl mx-auto">
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
+                  Select Booking Date
+                </label>
+                <p className="text-xs text-text-muted">
+                  Choose an open operating day at {selectedParish?.name || 'the parish office'}.
+                </p>
               </div>
-            </CalendarProvider>
+              
+              <DatePickerCalendar
+                selectedDate={selectedDate}
+                onSelectDate={(date) => setSelectedDate(date)}
+                officeHours={selectedParish?.officeHours}
+                parishName={selectedParish?.name}
+              />
+
+              <div className="flex justify-between pt-6">
+                <Button variant="outline" onClick={handlePrev}>Back</Button>
+                <Button onClick={handleNext} disabled={!selectedDate}>Next Step</Button>
+              </div>
+            </div>
           )}
 
           {/* Step 4: Choose Time Slot */}
@@ -372,27 +400,37 @@ export const EventSchedulerPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
                   Available Office Time Slots
                 </label>
-                <p className="text-xs text-text-muted">Select an available hourly slot for {selectedDate}.</p>
+                <p className="text-xs text-text-muted">
+                  Select an available slot for <strong className="text-text-primary">{selectedDate ? new Date(selectedDate).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : ''}</strong> at {selectedParish?.name}.
+                </p>
               </div>
 
               {loadingSlots ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full rounded animate-pulse" />
-                  <Skeleton className="h-10 w-full rounded animate-pulse" />
+                <div className="grid grid-cols-2 gap-3">
+                  <Skeleton className="h-12 w-full rounded-xl animate-pulse" />
+                  <Skeleton className="h-12 w-full rounded-xl animate-pulse" />
+                </div>
+              ) : availableSlots.length === 0 ? (
+                <div className="p-5 bg-amber-50/60 border border-amber-200 rounded-xl text-center space-y-2">
+                  <p className="text-xs font-bold text-amber-900">No Available Time Slots</p>
+                  <p className="text-xs text-amber-700 font-normal leading-relaxed">
+                    All scheduling slots are fully booked or the parish office is closed on this date. Please go back and select a different date.
+                  </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {availableSlots.map(slot => (
                     <button
                       key={slot}
+                      type="button"
                       onClick={() => setSelectedTimeSlot(slot)}
-                      className={`p-3 border rounded-button text-center text-xs font-medium transition-all focus-ring ${
+                      className={`p-3.5 border rounded-xl text-center text-xs font-bold transition-all focus-ring cursor-pointer flex items-center justify-center gap-2 ${
                         selectedTimeSlot === slot
-                          ? 'border-crimson bg-red-50/15 text-crimson font-semibold'
-                          : 'border-border text-text-primary hover:bg-app-page'
+                          ? 'border-crimson bg-crimson text-white shadow-sm'
+                          : 'border-border text-text-primary bg-white hover:bg-red-50/30 hover:border-crimson/30'
                       }`}
                     >
-                      {slot}
+                      <span>{slot}</span>
                     </button>
                   ))}
                 </div>
@@ -400,11 +438,11 @@ export const EventSchedulerPage: React.FC = () => {
 
               <div className="space-y-2 mt-4 pt-4 border-t border-border/40">
                 <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider">
-                  Venue / Event Address (Optional)
+                  Venue / Location Note (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Parish Main Church, Home, or Barangay Chapel Name/Address"
+                  placeholder="e.g. Parish Main Sanctuary, Barangay Chapel, or Home Address"
                   value={venueAddress}
                   onChange={e => setVenueAddress(e.target.value)}
                   className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors outline-none"
@@ -413,7 +451,7 @@ export const EventSchedulerPage: React.FC = () => {
 
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev} disabled={submitting}>Back</Button>
-                <Button onClick={handleBook} loading={submitting} disabled={!selectedTimeSlot}>
+                <Button onClick={handleBook} loading={submitting} disabled={!selectedTimeSlot || availableSlots.length === 0}>
                   Confirm Booking
                 </Button>
               </div>

@@ -204,14 +204,43 @@ const DEMO_PARISHES: Parish[] = [
   }
 ];
 
+const DEMO_EVENT_SETTINGS = {
+  availableEvents: [
+    'BAPTISM',
+    'WEDDING',
+    'MARRIAGE_SPECIAL',
+    'CONFIRMATION',
+    'MASS_INTENTION',
+    'FUNERAL',
+    'WAKE_MASS',
+    'PRIVATE_MASS',
+    'BLESSING',
+    'THANKSGIVING',
+    'FIRST_COMMUNION',
+    'CONFESSION'
+  ],
+  capacitySettings: { slotCapacity: 3, dailyLimit: 15 },
+  timeSlots: ['08:00 AM', '09:30 AM', '01:30 PM', '03:30 PM']
+};
+
 export class DemoParishProvider implements IParishProvider {
   async getParishes(): Promise<Parish[]> {
     await new Promise(resolve => setTimeout(resolve, 300));
-    return DEMO_PARISHES;
+    return DEMO_PARISHES.map(p => ({
+      venueCapacity: 150,
+      eventSettings: DEMO_EVENT_SETTINGS,
+      ...p
+    }));
   }
 
   async getParishById(id: string): Promise<Parish | null> {
     await new Promise(resolve => setTimeout(resolve, 150));
-    return DEMO_PARISHES.find(p => p.id === id) || null;
+    const parish = DEMO_PARISHES.find(p => p.id === id);
+    if (!parish) return null;
+    return {
+      venueCapacity: 150,
+      eventSettings: DEMO_EVENT_SETTINGS,
+      ...parish
+    };
   }
 }

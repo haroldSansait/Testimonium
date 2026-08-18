@@ -76,6 +76,13 @@ Or use the health endpoint:
 GET http://localhost:5000/api/v1/health
 ```
 
+### Syntax Validation Check
+
+Validate all backend scripts before committing:
+```powershell
+node -c server.js services/ParishService.js services/ScheduleService.js controllers/ScheduleController.js validators/parishSchemas.js repositories/ParishRepository.js
+```
+
 ---
 
 ## Environment Configuration
@@ -147,6 +154,7 @@ Use for rapid prototyping when you **do not** want a migration history entry. Sy
 
 ```powershell
 npx prisma db push
+npx prisma generate
 ```
 
 > ⚠️ Use with caution — `db push` can cause data loss if columns are removed. Prefer `migrate dev` for any tracked changes.
@@ -268,8 +276,8 @@ npm run dev
 ## Stale Prisma Client Recovery
 
 Symptoms of a stale Prisma Client:
-- TypeScript errors referencing missing model fields
-- Runtime errors about unknown Prisma models or operations
+- TypeScript errors referencing missing model fields (e.g. `venueCapacity`, `fee`)
+- Runtime errors about unknown Prisma models or operations (`Invalid prisma.schedule.findMany() invocation`)
 - Queries returning unexpected shapes after a schema change
 
 ### Full recovery procedure
@@ -317,9 +325,11 @@ This maps the request directly to the pre-seeded `coordinator@testimonium.org` (
 
 Available bypass tokens:
 
-| Token | Mapped Role |
-|---|---|
-| `test-token-coordinator` | Diocese Coordinator |
+| Token | Mapped Role | Scoped Context |
+|---|---|---|
+| `test-token-coordinator` | `DIOCESE_COORDINATOR` | Unrestricted vicariate-wide access |
+| `test-token-secretary` | `SECRETARY` | Assigned parish secretary context |
+| `test-token-priest` | `PRIEST` | Assigned parish priest context |
 
 ---
 
@@ -329,6 +339,7 @@ Available bypass tokens:
 |---|---|---|
 | `Error: listen EADDRINUSE :::5000` | Another process is using port 5000 | See [Port Conflict Resolution](#port-conflict-resolution) |
 | `PrismaClientInitializationError` | Stale or missing Prisma Client | Run `npx prisma generate` then restart |
+| `Invalid value for argument in. Expected ScheduleStatus` | Querying invalid enum strings | Ensure query uses valid Prisma enums: `PENDING`, `REQUESTED`, `PROPOSED_RESCHEDULE`, `WAITING_PARISHIONER_RESPONSE`, `CONFIRMED`, `COMPLETED`, `CANCELLED`, `REJECTED` |
 | `Invalid database URL` | `DATABASE_URL` missing or malformed in `.env` | Check `.env` against `.env.example` |
 | `Firebase: App named [DEFAULT] already exists` | Backend started twice | Kill all node processes, restart once |
 | `CORS error from frontend` | Frontend running on unpinned port | Confirm Vite ports are `5173`/`5174`; check `env.js` corsOrigins |

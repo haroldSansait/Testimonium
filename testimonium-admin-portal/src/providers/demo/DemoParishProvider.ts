@@ -150,7 +150,7 @@ export const DemoParishProvider: ParishProvider = {
     return updated;
   },
 
-  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean }): Promise<Parish> {
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish> {
     store = store.map((p) => {
       if (p.id === id) {
         return {
@@ -160,6 +160,8 @@ export const DemoParishProvider: ParishProvider = {
           officeHours: data.officeHours !== undefined ? data.officeHours : p.officeHours,
           availableDocuments: data.availableDocuments !== undefined ? data.availableDocuments : p.availableDocuments,
           paymentQrEnabled: data.paymentQrEnabled !== undefined ? data.paymentQrEnabled : p.paymentQrEnabled,
+          paymentQrImage: data.paymentQrImage !== undefined ? data.paymentQrImage : p.paymentQrImage,
+          venueCapacity: data.venueCapacity !== undefined ? data.venueCapacity : p.venueCapacity,
         };
       }
       return p;

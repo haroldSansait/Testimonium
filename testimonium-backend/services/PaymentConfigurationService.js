@@ -29,16 +29,17 @@ export class PaymentConfigurationService {
     }
 
     if (parish) {
+      const qrCodeUrl = (parish.paymentQrEnabled && parish.paymentQrImage) ? parish.paymentQrImage : null;
       return {
         gcash: {
           accountName: `${parish.parishName} Sacramental Fees`,
           accountNumber: parish.contactNumber || "0917-111-2222",
-          qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/gcash_qr.png"
+          qrCodeUrl: qrCodeUrl
         },
         maya: mayaEnabled ? {
           accountName: `${parish.parishName} Maya Registry`,
           accountNumber: parish.contactNumber || "0917-111-2222",
-          qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/maya_qr.png"
+          qrCodeUrl: qrCodeUrl
         } : null
       };
     }
@@ -48,7 +49,7 @@ export class PaymentConfigurationService {
       gcash: {
         accountName: "TESTIMONIUM Sacramental Registry",
         accountNumber: "09171234567",
-        qrCodeUrl: "https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/gcash_qr.png"
+        qrCodeUrl: null
       },
       maya: null
     };

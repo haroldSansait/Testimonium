@@ -1,18 +1,14 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
 
 export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const isLoginPage = location.pathname === '/login';
   const isSignupPage = location.pathname === '/signup';
-  const isVerifyEmailPage = location.pathname === '/verify-email';
   const isAuthPage = isLoginPage || isSignupPage;
-  const canAccessDashboard = Boolean(user && user.emailVerified && !isVerifyEmailPage);
 
   return (
     <div className="min-h-screen flex flex-col bg-app-base">
@@ -38,17 +34,6 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
                     Log In
                   </Link>
                 )
-              ) : user ? (
-                <div className="flex items-center space-x-3">
-                  {canAccessDashboard && (
-                    <Button size="sm" variant="outline" onClick={() => navigate('/dashboard/home')}>
-                      Dashboard
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="sm" onClick={() => logout()}>
-                    Sign Out
-                  </Button>
-                </div>
               ) : (
                 <>
                   <Link to="/login" className="text-sm font-medium text-text-muted hover:text-text-primary focus-ring px-2.5 py-1.5 rounded-md">

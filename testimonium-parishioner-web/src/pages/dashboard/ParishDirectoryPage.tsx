@@ -333,11 +333,11 @@ export const ParishDirectoryPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Rich Floating Parish Info Overlay Card (Desktop: left side overlay, Mobile: bottom sheet style) */}
+        {/* Rich Floating Parish Info Overlay Card (Desktop: expanded split panel overlay, Mobile: bottom sheet style) */}
         {selectedParish && (
           <div className="absolute inset-0 pointer-events-none z-[1000]">
-            {/* Desktop layout: floating overlay */}
-            <div className={`hidden lg:block absolute top-4 bottom-4 w-96 pointer-events-auto overflow-y-auto animate-in slide-in-from-left duration-300 transition-all ${
+            {/* Desktop layout: spacious floating overlay */}
+            <div className={`hidden lg:block absolute top-4 bottom-4 w-[580px] max-w-[calc(100vw-360px)] pointer-events-auto overflow-hidden animate-in slide-in-from-left duration-300 transition-all ${
               isSidebarOpen ? "left-[304px]" : "left-4"
             }`}>
               <ParishDrawer 
@@ -349,7 +349,7 @@ export const ParishDirectoryPage: React.FC = () => {
             </div>
 
             {/* Mobile layout: bottom sheet overlay */}
-            <div className="lg:hidden absolute bottom-0 left-0 right-0 max-h-[50vh] pointer-events-auto overflow-y-auto border-t border-border shadow-2xl rounded-t-card bg-white animate-in slide-in-from-bottom duration-300">
+            <div className="lg:hidden absolute bottom-0 left-0 right-0 max-h-[70vh] pointer-events-auto overflow-y-auto border-t border-border shadow-2xl rounded-t-2xl bg-white animate-in slide-in-from-bottom duration-300">
               <ParishDrawer 
                 parish={selectedParish}
                 onRequestDocument={handleRequestDocument}

@@ -35,6 +35,8 @@ export interface Parish {
   paymentQrImage?: string | null;
   paymentQrEnabled?: boolean;
   availableDocuments?: string[] | null;
+  venueCapacity?: number | null;
+  eventSettings?: any;
 }
 
 export type RequestStatus =
@@ -116,7 +118,8 @@ export interface SacramentalRequest {
   id: string;
   trackingNumber: string | null;
   parishId: string;
-  documentType: 'baptism' | 'confirmation' | 'marriage' | 'death' | 'other' | 'BAPTISMAL_CERTIFICATE' | 'CONFIRMATION_CERTIFICATE' | 'MARRIAGE_CERTIFICATE' | 'FIRST_COMMUNION_CERTIFICATE';
+  documentType: 'baptism' | 'confirmation' | 'marriage' | 'death' | 'other' | 'marriage-banns' | 'permit-to-marry' | 'status-of-liberty' | 'first-communion' | 'BAPTISMAL_CERTIFICATE' | 'CONFIRMATION_CERTIFICATE' | 'MARRIAGE_CERTIFICATE' | 'FIRST_COMMUNION_CERTIFICATE' | 'MARRIAGE_BANNS' | 'PERMIT_TO_MARRY' | 'STATUS_OF_LIBERTY';
+  fee?: number | null;
   status: RequestStatus;
   applicantName: string;
   relationship: string;

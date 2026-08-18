@@ -47,7 +47,7 @@ export interface IRequestProvider {
 
 export interface ISchedulerProvider {
   getAppointments(): Promise<Appointment[]>;
-  getAvailableSlots(parishId: string, date: string): Promise<string[]>;
+  getAvailableSlots(parishId: string, date: string, serviceName?: string): Promise<string[]>;
   bookAppointment(appointment: {
     parishId: string;
     serviceName: string;

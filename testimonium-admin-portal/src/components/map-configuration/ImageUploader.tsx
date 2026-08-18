@@ -143,10 +143,10 @@ export function ImageUploader({
         onClick={() => fileInputRef.current?.click()}
         className={`group relative border-2 border-dashed rounded-lg overflow-hidden cursor-pointer flex flex-col items-center justify-center transition-all ${
           isUploading
-            ? 'border-teal-400 bg-teal-50/10'
+            ? 'border-crimson-700/40 bg-red-50/10'
             : error
             ? 'border-rose-300 bg-rose-50/10 hover:border-rose-400'
-            : 'border-gray-200 bg-gray-50/50 hover:border-teal-400 hover:bg-teal-50/5'
+            : 'border-gray-200 bg-gray-50/50 hover:border-crimson-700/40 hover:bg-red-50/5'
         }`}
         style={{ aspectRatio: aspectRatio === 'cover' ? '16/9' : '1/1' }}
       >
@@ -172,7 +172,7 @@ export function ImageUploader({
           </div>
         ) : (
           <div className="flex flex-col items-center text-center p-4">
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 mb-2 group-hover:bg-teal-50 group-hover:text-teal-500 transition-colors">
+            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 mb-2 group-hover:bg-red-50 group-hover:text-crimson-700 transition-colors">
               <ImageIcon className="w-5 h-5" />
             </div>
             <span className="text-xs font-semibold text-gray-600">
@@ -181,7 +181,7 @@ export function ImageUploader({
             <span className="text-[10px] text-gray-400 mt-1.5 px-4 leading-relaxed">
               No image has been uploaded yet. The parishioner portal is currently using the default parish image. Upload an image to override it.
             </span>
-            <span className="text-[10px] text-teal-600 font-medium mt-2 group-hover:underline">
+            <span className="text-[10px] text-crimson-700 font-medium mt-2 group-hover:underline">
               Drag image here, or browse
             </span>
           </div>
@@ -190,8 +190,8 @@ export function ImageUploader({
         {/* Overlay statuses */}
         {isUploading && (
           <div className="absolute inset-0 bg-white/85 flex flex-col items-center justify-center z-10">
-            <Loader2 className="w-6 h-6 text-teal-600 animate-spin mb-1" />
-            <span className="text-xs font-medium text-teal-800">Compressing & Uploading...</span>
+            <Loader2 className="w-6 h-6 text-crimson-700 animate-spin mb-1" />
+            <span className="text-xs font-medium text-crimson-900">Compressing & Uploading...</span>
           </div>
         )}
 

@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Building } from 'lucide-react';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  Building,
+  CalendarPlus,
+  ArrowRight,
+  Pause,
+  Play
+} from 'lucide-react';
 import type { Event } from '../../../types';
 import { getEventCountdownLabel } from '../../../utils/date';
 import { Button } from '../../../components/ui/Button';
@@ -10,13 +21,16 @@ interface FeaturedEventsCarouselProps {
   onViewDetails: (event: Event) => void;
 }
 
+const AUTOPLAY_DURATION_MS = 8000;
+
 export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({ 
   events, 
   onViewDetails 
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const autoplayTimerRef = useRef<any>(null);
+  const [progress, setProgress] = useState(0);
+  const progressIntervalRef = useRef<any>(null);
   
   // Touch coordinates for swipe gestures
   const touchStartX = useRef<number | null>(null);
@@ -26,32 +40,48 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
 
   const nextSlide = useCallback(() => {
     setCurrentIndex(prev => (prev === totalSlides - 1 ? 0 : prev + 1));
+    setProgress(0);
   }, [totalSlides]);
 
   const prevSlide = useCallback(() => {
     setCurrentIndex(prev => (prev === 0 ? totalSlides - 1 : prev - 1));
+    setProgress(0);
   }, [totalSlides]);
 
-  // Autoplay Setup
+  // Check prefers-reduced-motion
+  const prefersReducedMotion = typeof window !== 'undefined' 
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
+    : false;
+
+  // Autoplay & Progress Bar Setup
   useEffect(() => {
-    if (isPaused || totalSlides <= 1) {
-      if (autoplayTimerRef.current) {
-        clearInterval(autoplayTimerRef.current);
-        autoplayTimerRef.current = null;
+    if (isPaused || totalSlides <= 1 || prefersReducedMotion) {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
       }
       return;
     }
 
-    autoplayTimerRef.current = setInterval(() => {
-      nextSlide();
-    }, 9000); // 9 seconds autoplay period
+    const stepMs = 100;
+    const increment = (stepMs / AUTOPLAY_DURATION_MS) * 100;
+
+    progressIntervalRef.current = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) {
+          nextSlide();
+          return 0;
+        }
+        return prev + increment;
+      });
+    }, stepMs);
 
     return () => {
-      if (autoplayTimerRef.current) {
-        clearInterval(autoplayTimerRef.current);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
     };
-  }, [isPaused, nextSlide, totalSlides]);
+  }, [isPaused, nextSlide, totalSlides, prefersReducedMotion]);
 
   // Tab Inactive Pause Listener
   useEffect(() => {
@@ -77,6 +107,9 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       nextSlide();
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      setIsPaused(prev => !prev);
     }
   };
 
@@ -94,7 +127,7 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
     if (!touchStartX.current || !touchEndX.current) return;
     
     const diffX = touchStartX.current - touchEndX.current;
-    const threshold = 55; // minimum swipe delta in pixels
+    const threshold = 45; // minimum swipe delta in pixels
 
     if (diffX > threshold) {
       nextSlide();
@@ -102,7 +135,6 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
       prevSlide();
     }
 
-    // Reset touch variables and resume playing
     touchStartX.current = null;
     touchEndX.current = null;
     setIsPaused(false);
@@ -123,60 +155,85 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
     }
   };
 
+  const handleExportGoogleCalendar = (e: React.MouseEvent, event: Event) => {
+    e.stopPropagation();
+    const title = encodeURIComponent(event.title);
+    const details = encodeURIComponent(`${event.description}\n\nParish: ${event.parishName}\nLocation: ${event.location}`);
+    const location = encodeURIComponent(`${event.location}, ${event.parishName}`);
+    
+    const dateStr = event.startDate.replace(/-/g, '');
+    const startTimeStr = event.startTime ? event.startTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00' : '080000';
+    const endTimeStr = event.endTime ? event.endTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00' : '100000';
+    
+    const dates = `${dateStr}T${startTimeStr}/${dateStr}T${endTimeStr}`;
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <section 
       aria-roledescription="carousel" 
       aria-label="Featured Vicariate Events"
-      className="relative outline-none"
+      className="relative outline-none select-none"
       onKeyDown={handleKeyDown}
       tabIndex={0}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
+      onFocus={() => setIsPaused(true)}
+      onBlur={() => setIsPaused(false)}
     >
       {/* Slides Container */}
       <div 
-        className="relative h-[480px] md:h-[380px] w-full rounded-card overflow-hidden bg-app-page border border-border shadow-md"
+        className="relative min-h-[440px] md:h-[390px] w-full rounded-2xl overflow-hidden bg-white border border-border/80 shadow-md transition-all duration-300"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         {events.map((event, idx) => {
           const isActive = idx === currentIndex;
-          const countdown = getEventCountdownLabel(event.startDate);
+          const countdown = getEventCountdownLabel(event.startDate, event.startTime);
           
           return (
             <div
               key={event.id}
               role="group"
               aria-roledescription="slide"
-              aria-label={`${idx + 1} of ${totalSlides}`}
+              aria-label={`${idx + 1} of ${totalSlides}: ${event.title}`}
               aria-hidden={!isActive}
-              className={`absolute inset-0 flex flex-col md:flex-row transition-opacity duration-700 ease-in-out ${
-                isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+              className={`absolute inset-0 flex flex-col md:flex-row transition-all duration-500 ease-in-out ${
+                isActive ? 'opacity-100 z-10 pointer-events-auto scale-100' : 'opacity-0 z-0 pointer-events-none scale-[0.98]'
               }`}
             >
               {/* Event Image Cover */}
-              <div className="relative w-full md:w-5/12 h-48 md:h-full bg-border overflow-hidden">
+              <div className="relative w-full md:w-5/12 h-52 md:h-full bg-neutral-900 overflow-hidden flex-shrink-0">
                 <img
                   src={event.coverImage}
                   alt={event.coverImageAlt}
-                  loading="lazy"
-                  className="w-full h-full object-cover select-none"
+                  loading={idx === 0 ? "eager" : "lazy"}
+                  className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:to-black/5" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent md:bg-gradient-to-r md:from-transparent md:to-black/30" />
                 
-                {/* Category Badge overlay */}
-                <div className="absolute top-4 left-4 z-20">
-                  <Badge variant={getCategoryColor(event.category)} className="capitalize py-1 px-2.5 font-semibold text-xs tracking-wider">
+                {/* Category & Parish Badge overlay */}
+                <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2">
+                  <Badge variant={getCategoryColor(event.category)} className="py-1 px-3 font-bold text-xs tracking-wider shadow-sm backdrop-blur-md">
                     {event.category}
                   </Badge>
                 </div>
 
                 {/* Countdown Badge overlay */}
                 <div className="absolute top-4 right-4 z-20">
-                  <div className="bg-crimson text-white text-[10px] font-bold uppercase tracking-wider py-1 px-2.5 rounded-full shadow">
+                  <div className="bg-crimson text-white text-[11px] font-bold uppercase tracking-wider py-1 px-3 rounded-full shadow-md backdrop-blur-sm border border-white/20">
                     {countdown}
                   </div>
+                </div>
+
+                {/* Mobile Bottom overlay info */}
+                <div className="md:hidden absolute bottom-3 left-4 right-4 text-white">
+                  <span className="text-xs font-semibold text-white/90 flex items-center gap-1.5 drop-shadow">
+                    <Building size={13} className="text-red-300" />
+                    {event.parishName}
+                  </span>
                 </div>
               </div>
 
@@ -184,50 +241,65 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
               <div className="flex-1 p-6 md:p-8 flex flex-col justify-between h-auto md:h-full bg-white text-text-primary">
                 <div className="space-y-4">
                   <div>
-                    <span className="text-[10px] text-text-muted font-bold tracking-wider uppercase flex items-center space-x-1">
-                      <Building size={12} className="text-crimson mr-1" />
+                    <div className="hidden md:flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-wider">
+                      <Building size={14} className="text-crimson" />
                       <span>{event.parishName}</span>
-                    </span>
-                    <h3 className="font-serif font-bold text-lg md:text-2xl text-text-primary mt-1 md:mt-2 leading-tight">
+                    </div>
+                    <h3 className="font-serif font-bold text-xl md:text-2xl text-text-primary mt-1 leading-tight tracking-tight">
                       {event.title}
                     </h3>
                   </div>
 
                   {/* Metadata coordinates */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-text-muted">
-                    <div className="flex items-center space-x-1.5 min-w-0">
-                      <Calendar size={14} className="text-crimson/70 flex-shrink-0" />
-                      <span className="truncate">{new Date(event.startDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-xs text-text-muted bg-app-page/70 p-3.5 rounded-xl border border-border/50">
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <Calendar size={15} className="text-crimson flex-shrink-0" />
+                      <span className="font-medium text-text-primary truncate">
+                        {new Date(event.startDate).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
                     </div>
-                    <div className="flex items-center space-x-1.5 min-w-0">
-                      <Clock size={14} className="text-crimson/70 flex-shrink-0" />
-                      <span className="truncate">{event.startTime} - {event.endTime}</span>
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <Clock size={15} className="text-crimson flex-shrink-0" />
+                      <span className="font-medium text-text-primary truncate">{event.startTime} - {event.endTime}</span>
                     </div>
-                    <div className="flex items-center space-x-1.5 min-w-0 col-span-2">
-                      <MapPin size={14} className="text-crimson/70 flex-shrink-0" />
-                      <span className="truncate">{event.location}</span>
+                    <div className="flex items-center space-x-2 min-w-0 sm:col-span-2">
+                      <MapPin size={15} className="text-crimson flex-shrink-0" />
+                      <span className="font-medium text-text-primary truncate">{event.location}</span>
                     </div>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-text-muted line-clamp-3 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-text-muted line-clamp-2 md:line-clamp-3 leading-relaxed">
                     {event.description}
                   </p>
                 </div>
 
                 {/* Actions Row */}
-                <div className="flex items-center justify-between pt-4 border-t border-border/40">
-                  <Button 
-                    size="sm"
-                    onClick={() => onViewDetails(event)}
-                    className="bg-crimson hover:bg-crimson-dark text-white font-semibold text-xs tracking-wider"
-                  >
-                    View Details
-                  </Button>
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border/50 mt-4 md:mt-0">
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      size="sm"
+                      onClick={() => onViewDetails(event)}
+                      className="bg-crimson hover:bg-crimson-dark text-white font-semibold text-xs px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95"
+                    >
+                      <span>View Details</span>
+                      <ArrowRight size={13} className="ml-1.5" />
+                    </Button>
+                    
+                    <button
+                      type="button"
+                      onClick={(e) => handleExportGoogleCalendar(e, event)}
+                      title="Add to Google Calendar"
+                      className="p-2 border border-border rounded-lg text-text-muted hover:text-crimson hover:bg-red-50/40 hover:border-crimson/30 transition-all text-xs font-semibold flex items-center gap-1.5"
+                    >
+                      <CalendarPlus size={15} />
+                      <span className="hidden sm:inline">Add to Calendar</span>
+                    </button>
+                  </div>
                   
                   {/* Participant indicators */}
                   {event.registrationRequired && event.currentParticipants !== undefined && event.maxParticipants !== undefined && (
-                    <span className="text-[10px] text-text-muted font-medium bg-app-base py-1 px-2.5 rounded-full border border-border/40">
-                      Slots: {event.currentParticipants}/{event.maxParticipants} Registered
+                    <span className="text-[11px] text-text-muted font-semibold bg-app-base py-1 px-3 rounded-full border border-border/60">
+                      Slots: <strong className="text-text-primary">{event.currentParticipants}/{event.maxParticipants}</strong>
                     </span>
                   )}
                 </div>
@@ -235,53 +307,84 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
             </div>
           );
         })}
+
+        {/* Autoplay Progress Bar */}
+        {totalSlides > 1 && !prefersReducedMotion && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5 z-20 overflow-hidden">
+            <div 
+              className="h-full bg-crimson transition-all duration-100 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Navigation Arrows */}
+      {/* Navigation Controls Bar */}
       {totalSlides > 1 && (
-        <>
-          <button
-            onClick={prevSlide}
-            className="absolute left-2 top-[24%] md:top-1/2 md:-translate-y-1/2 z-20 p-1.5 md:p-2.5 rounded-full bg-white/90 border border-border text-text-primary hover:text-crimson hover:bg-white hover:scale-105 shadow transition-all focus-ring"
-            aria-label="Previous slide"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            onClick={nextSlide}
-            className="absolute right-2 top-[24%] md:top-1/2 md:-translate-y-1/2 z-20 p-1.5 md:p-2.5 rounded-full bg-white/90 border border-border text-text-primary hover:text-crimson hover:bg-white hover:scale-105 shadow transition-all focus-ring"
-            aria-label="Next slide"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </>
-      )}
-
-      {/* Pagination Dot Indicators (Rendered below the slide container to avoid overlaps) */}
-      {totalSlides > 1 && (
-        <div 
-          role="tablist" 
-          aria-label="Slides" 
-          className="flex justify-center space-x-2 mt-4"
-        >
-          {events.map((_, idx) => (
+        <div className="flex items-center justify-between mt-3 px-1">
+          {/* Left: Pause/Play & Slide Counter */}
+          <div className="flex items-center gap-2">
             <button
-              key={idx}
-              role="tab"
-              aria-selected={idx === currentIndex}
-              aria-label={`Go to slide ${idx + 1}`}
-              onClick={() => setCurrentIndex(idx)}
-              className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                idx === currentIndex 
-                  ? 'bg-crimson w-6' 
-                  : 'bg-text-muted/30 hover:bg-text-muted/60'
-              }`}
-            />
-          ))}
+              onClick={() => setIsPaused(prev => !prev)}
+              className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-gray-100 transition-colors focus-ring"
+              title={isPaused ? "Resume Autoplay" : "Pause Autoplay"}
+              aria-label={isPaused ? "Resume Autoplay" : "Pause Autoplay"}
+            >
+              {isPaused ? <Play size={13} /> : <Pause size={13} />}
+            </button>
+            <span className="text-xs font-semibold text-text-muted">
+              {currentIndex + 1} / {totalSlides}
+            </span>
+          </div>
+
+          {/* Center: Pagination Dot Indicators */}
+          <div 
+            role="tablist" 
+            aria-label="Carousel Slides" 
+            className="flex items-center space-x-1.5"
+          >
+            {events.map((_, idx) => (
+              <button
+                key={idx}
+                role="tab"
+                aria-selected={idx === currentIndex}
+                aria-label={`Go to event slide ${idx + 1}`}
+                onClick={() => {
+                  setCurrentIndex(idx);
+                  setProgress(0);
+                }}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  idx === currentIndex 
+                    ? 'bg-crimson w-7' 
+                    : 'bg-border hover:bg-text-muted/50 w-2'
+                }`}
+              />
+            ))}
+          </div>
+
+          {/* Right: Prev/Next Arrow Buttons */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={prevSlide}
+              className="p-1.5 rounded-lg bg-white border border-border text-text-muted hover:text-crimson hover:bg-gray-50 hover:scale-105 shadow-xs transition-all focus-ring"
+              aria-label="Previous event slide"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            <button
+              onClick={nextSlide}
+              className="p-1.5 rounded-lg bg-white border border-border text-text-muted hover:text-crimson hover:bg-gray-50 hover:scale-105 shadow-xs transition-all focus-ring"
+              aria-label="Next event slide"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </div>
       )}
     </section>
   );
 };
+
 export default FeaturedEventsCarousel;
+
 

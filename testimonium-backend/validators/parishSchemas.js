@@ -14,6 +14,7 @@ export const createParishSchema = z.object({
   documentSettings: z.any().optional().nullable(),
   eventSettings: z.any().optional().nullable(),
   officeHours: z.any().optional().nullable(),
+  venueCapacity: z.number().int().positive().max(10000).optional().nullable(),
 });
 
 export const updateParishSchema = createParishSchema.partial().extend({

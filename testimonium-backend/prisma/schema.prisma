@@ -160,6 +160,7 @@ model Parish {
   paymentQrUpdatedAt DateTime?       @map("payment_qr_updated_at")
   paymentQrUpdatedBy Int?            @map("payment_qr_updated_by")
   availableDocuments Json?           @map("available_documents")
+  venueCapacity    Int?              @map("venue_capacity")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   users            User[]
@@ -236,6 +237,7 @@ model DocumentRequest {
   paymentStatus         PaymentStatus         @default(UNPAID) @map("payment_status")
   paymentProofObjectKey String?               @map("payment_proof_object_key") @db.VarChar(255)
   paymentQrReference    String?               @map("payment_qr_reference") @db.VarChar(100)
+  fee                   Decimal?              @map("fee") @db.Decimal(10, 2)
   processedById         Int?                  @map("processed_by")
   remarks               String?               @db.Text
   correctionNote        String?               @map("correction_note") @db.Text

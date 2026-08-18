@@ -204,77 +204,248 @@ export class ScheduleService {
   }
 
   /**
-   * Book a new schedule slot.
+   * Book a new schedule slot with concurrency locking and multi-layer validation.
    */
   async create({ userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks = "" }) {
     const parsedParishId = parseInt(parishId, 10);
-    const targetDate = new Date(requestedDate);
-    targetDate.setHours(0, 0, 0, 0);
-
-    // Check if parish is closed or secretary is on leave
-    const block = await prisma.parishAvailability.findFirst({
-      where: {
-        parishId: parsedParishId,
-        startDate: { lte: targetDate },
-        endDate: { gte: targetDate },
-        type: { in: ["PARISH_CLOSED", "SECRETARY_LEAVE", "FULLY_BOOKED"] }
-      }
-    });
-
-    if (block) {
-      const err = new Error(`Parish is unavailable on this date: ${block.title} (${block.type}).`);
+    if (isNaN(parsedParishId)) {
+      const err = new Error("Invalid parish ID provided.");
       err.statusCode = 400;
       throw err;
     }
 
-    const finalRemarks = `Time Slot: ${timeSlot}. ${remarks}`.trim();
+    const targetDate = new Date(requestedDate);
+    if (isNaN(targetDate.getTime())) {
+      const err = new Error("Invalid requested date.");
+      err.statusCode = 400;
+      throw err;
+    }
+    targetDate.setHours(0, 0, 0, 0);
 
-    const schedule = await prisma.schedule.create({
-      data: {
-        userId: parseInt(userId, 10),
-        parishId: parsedParishId,
-        eventType,
-        displayTitle,
-        requestedDate: targetDate,
-        remarks: finalRemarks,
-        status: "PENDING",
-      },
-      include: {
-        parish: { select: { id: true, parishName: true } },
-      },
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (targetDate.getTime() < today.getTime()) {
+      const err = new Error("Cannot schedule appointments or sacraments for past dates.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 1. Fetch Parish Configuration
+    const parish = await prisma.parish.findUnique({
+      where: { id: parsedParishId },
+    });
+    if (!parish) {
+      const err = new Error("Parish not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // 2. Validate Office Hours / Closed Days
+    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const targetDayName = dayNames[targetDate.getDay()];
+    if (parish.officeHours) {
+      try {
+        const officeConfig = typeof parish.officeHours === "string" ? JSON.parse(parish.officeHours) : parish.officeHours;
+        const daySchedule = officeConfig[targetDayName];
+        if (daySchedule && (daySchedule.isClosed || daySchedule.closed)) {
+          const formattedDay = targetDayName.charAt(0).toUpperCase() + targetDayName.slice(1);
+          const err = new Error(`The parish office is closed on ${formattedDay}s. Please choose an open day.`);
+          err.statusCode = 400;
+          throw err;
+        }
+      } catch (e) {
+        if (e.statusCode) throw e;
+        logger.warn({ err: e }, "[ScheduleService] Error parsing parish officeHours");
+      }
+    }
+
+    // 3. Parse Event Settings (Available Sacraments, Capacity, Configured Time Slots)
+    let eventSettings = null;
+    if (parish.eventSettings) {
+      try {
+        eventSettings = typeof parish.eventSettings === "string" ? JSON.parse(parish.eventSettings) : parish.eventSettings;
+      } catch (e) {
+        logger.warn({ err: e }, "[ScheduleService] Error parsing parish eventSettings");
+      }
+    }
+
+    // Validate if sacrament is offered
+    if (eventSettings && Array.isArray(eventSettings.availableEvents) && eventSettings.availableEvents.length > 0) {
+      const normalizedReqEvent = String(eventType).toUpperCase().replace(/[\s-]/g, "_");
+      const isOffered = eventSettings.availableEvents.some((ev) => {
+        const norm = String(ev).toUpperCase().replace(/[\s-]/g, "_");
+        return norm === normalizedReqEvent || norm.includes(normalizedReqEvent) || normalizedReqEvent.includes(norm);
+      });
+
+      if (!isOffered) {
+        const err = new Error(`The sacrament/event "${eventType}" is not currently offered for online scheduling by ${parish.parishName}.`);
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    // 4. Validate Allowable Time Slots
+    const isSaturday = targetDate.getDay() === 6;
+    const defaultSlots = isSaturday
+      ? ["06:00 AM", "08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]
+      : ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"];
+
+    let allowableSlots = defaultSlots;
+    if (eventSettings) {
+      if (eventType && eventSettings.eventTimeSlots && eventSettings.eventTimeSlots[eventType] && Array.isArray(eventSettings.eventTimeSlots[eventType])) {
+        allowableSlots = eventSettings.eventTimeSlots[eventType];
+      } else if (Array.isArray(eventSettings.timeSlots)) {
+        allowableSlots = eventSettings.timeSlots;
+      }
+    }
+
+    if (timeSlot && !allowableSlots.includes(timeSlot)) {
+      const err = new Error(`Selected time slot "${timeSlot}" is not valid for ${parish.parishName}. Available slots: ${allowableSlots.join(", ")}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 5. Capacity Boundaries
+    const slotCapacity = eventSettings?.capacitySettings?.slotCapacity ? parseInt(eventSettings.capacitySettings.slotCapacity, 10) : 1;
+    const dailyLimit = eventSettings?.capacitySettings?.dailyLimit ? parseInt(eventSettings.capacitySettings.dailyLimit, 10) : 10;
+
+    // 6. Atomic Concurrency Lock inside Prisma Transaction
+    const finalRemarks = timeSlot ? `Time Slot: ${timeSlot}. ${remarks}`.trim() : remarks.trim();
+
+    const createdSchedule = await prisma.$transaction(async (tx) => {
+      // Check block entries inside transaction
+      const block = await tx.parishAvailability.findFirst({
+        where: {
+          parishId: parsedParishId,
+          startDate: { lte: targetDate },
+          endDate: { gte: targetDate },
+          type: { in: ["PARISH_CLOSED", "SECRETARY_LEAVE", "FULLY_BOOKED"] }
+        }
+      });
+
+      if (block) {
+        const err = new Error(`Parish is unavailable on this date: ${block.title} (${block.type}).`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Query active bookings for the day
+      const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+      const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59, 999);
+
+      const activeBookings = await tx.schedule.findMany({
+        where: {
+          parishId: parsedParishId,
+          requestedDate: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+          status: { in: ["PENDING", "CONFIRMED", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"] },
+        },
+        select: { id: true, remarks: true },
+      });
+
+      // Daily Limit Check
+      if (activeBookings.length >= dailyLimit) {
+        const err = new Error(`Daily capacity reached for ${parish.parishName} on ${targetDate.toLocaleDateString()}. Maximum of ${dailyLimit} appointments allowed per day.`);
+        err.statusCode = 409;
+        throw err;
+      }
+
+      // Slot Capacity Check
+      if (timeSlot) {
+        const matchingSlotBookings = activeBookings.filter((b) => b.remarks && b.remarks.includes(`Time Slot: ${timeSlot}`));
+        if (matchingSlotBookings.length >= slotCapacity) {
+          const err = new Error(`Capacity full for time slot "${timeSlot}". Please select a different time slot or date.`);
+          err.statusCode = 409;
+          throw err;
+        }
+      }
+
+      // Create booking record
+      return tx.schedule.create({
+        data: {
+          userId: parseInt(userId, 10),
+          parishId: parsedParishId,
+          eventType,
+          displayTitle: displayTitle || `${eventType} Booking`,
+          requestedDate: targetDate,
+          remarks: finalRemarks,
+          status: "PENDING",
+        },
+        include: {
+          parish: { select: { id: true, parishName: true } },
+        },
+      });
+    }, {
+      isolationLevel: 'Serializable',
+      maxWait: 5000,
+      timeout: 10000,
     });
 
     // Notify parishioner + admins of new booking
-    await RequestNotificationService.notifyScheduleChange(
-      parseInt(userId, 10),
-      schedule.parishId,
-      schedule.id,
-      schedule.displayTitle || eventType,
-      "PENDING",
-      null, // no tx: create() runs outside a Prisma transaction
-      true  // notifyAdmins: new booking needs staff awareness
-    );
+    try {
+      await RequestNotificationService.notifyScheduleChange(
+        parseInt(userId, 10),
+        createdSchedule.parishId,
+        createdSchedule.id,
+        createdSchedule.displayTitle || eventType,
+        "PENDING",
+        null,
+        true
+      );
+    } catch (notifErr) {
+      logger.warn({ err: notifErr }, "[ScheduleService] Failed to dispatch schedule notification");
+    }
 
     // Audit log
     await AuditLogService.log(userId, `Booked a new schedule request: ${displayTitle || eventType}`, null, false, {
       affectedTable: "Schedule",
-      affectedRecordId: schedule.id,
-      parishId: schedule.parishId,
+      affectedRecordId: createdSchedule.id,
+      parishId: createdSchedule.parishId,
       newValues: { eventType, displayTitle, requestedDate, timeSlot, remarks }
     });
 
-    return schedule;
+    return createdSchedule;
   }
 
   /**
-   * Calculates available slots for a parish on a given date by subtracting booked slots.
+   * Calculates available slots for a parish on a given date by subtracting booked slots and evaluating capacity.
    */
-  async getAvailableSlots(parishId, date) {
+  async getAvailableSlots(parishId, date, eventType) {
     const parsedParishId = parseInt(parishId, 10);
     const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) return [];
     targetDate.setHours(0, 0, 0, 0);
 
-    // Check parish availability block
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (targetDate.getTime() < today.getTime()) {
+      return [];
+    }
+
+    // 1. Fetch Parish
+    const parish = await prisma.parish.findUnique({
+      where: { id: parsedParishId },
+    });
+    if (!parish) return [];
+
+    // 2. Check Office Hours
+    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const targetDayName = dayNames[targetDate.getDay()];
+    if (parish.officeHours) {
+      try {
+        const officeConfig = typeof parish.officeHours === "string" ? JSON.parse(parish.officeHours) : parish.officeHours;
+        const daySchedule = officeConfig[targetDayName];
+        if (daySchedule && (daySchedule.isClosed || daySchedule.closed)) {
+          return [];
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "[ScheduleService] Error parsing parish officeHours in getAvailableSlots");
+      }
+    }
+
+    // 3. Check parish availability block
     const block = await prisma.parishAvailability.findFirst({
       where: {
         parishId: parsedParishId,
@@ -288,28 +459,68 @@ export class ScheduleService {
       return [];
     }
 
+    // 4. Parse Event Settings
+    let eventSettings = null;
+    if (parish.eventSettings) {
+      try {
+        eventSettings = typeof parish.eventSettings === "string" ? JSON.parse(parish.eventSettings) : parish.eventSettings;
+      } catch (e) {
+        logger.warn({ err: e }, "[ScheduleService] Error parsing eventSettings in getAvailableSlots");
+      }
+    }
+
+    // Check if sacrament is offered
+    if (eventType && eventSettings && Array.isArray(eventSettings.availableEvents) && eventSettings.availableEvents.length > 0) {
+      const normalizedReqEvent = String(eventType).toUpperCase().replace(/[\s-]/g, "_");
+      const isOffered = eventSettings.availableEvents.some((ev) => {
+        const norm = String(ev).toUpperCase().replace(/[\s-]/g, "_");
+        return norm === normalizedReqEvent || norm.includes(normalizedReqEvent) || normalizedReqEvent.includes(norm);
+      });
+      if (!isOffered) return [];
+    }
+
+    // Determine configured time slots
+    const isSaturday = targetDate.getDay() === 6;
+    const defaultSlots = isSaturday
+      ? ["06:00 AM", "08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]
+      : ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"];
+
+    let candidateSlots = defaultSlots;
+    if (eventSettings) {
+      if (eventType && eventSettings.eventTimeSlots && eventSettings.eventTimeSlots[eventType] && Array.isArray(eventSettings.eventTimeSlots[eventType])) {
+        candidateSlots = eventSettings.eventTimeSlots[eventType];
+      } else if (Array.isArray(eventSettings.timeSlots)) {
+        candidateSlots = eventSettings.timeSlots;
+      }
+    }
+
+    const slotCapacity = eventSettings?.capacitySettings?.slotCapacity ? parseInt(eventSettings.capacitySettings.slotCapacity, 10) : 1;
+    const dailyLimit = eventSettings?.capacitySettings?.dailyLimit ? parseInt(eventSettings.capacitySettings.dailyLimit, 10) : 10;
+
     // Fetch existing bookings for that day
+    const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+    const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59, 999);
+
     const bookings = await prisma.schedule.findMany({
       where: {
         parishId: parsedParishId,
         requestedDate: {
-          gte: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()),
-          lt: new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1),
+          gte: dayStart,
+          lte: dayEnd,
         },
-        status: { in: ["PENDING", "CONFIRMED"] },
+        status: { in: ["PENDING", "CONFIRMED", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"] },
       },
       select: { remarks: true },
     });
 
-    const isSaturday = targetDate.getDay() === 6;
-    const standardSlots = isSaturday
-      ? ["06:00 AM", "09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"]
-      : ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
-    
-    // Filter standard slots by checking if they are already found in booking remarks
-    const available = standardSlots.filter((slot) => {
-      const isBooked = bookings.some((b) => b.remarks && b.remarks.includes(`Time Slot: ${slot}`));
-      return !isBooked;
+    if (bookings.length >= dailyLimit) {
+      return [];
+    }
+
+    // Filter candidate slots by checking capacity
+    const available = candidateSlots.filter((slot) => {
+      const slotBookingsCount = bookings.filter((b) => b.remarks && b.remarks.includes(`Time Slot: ${slot}`)).length;
+      return slotBookingsCount < slotCapacity;
     });
 
     return available;

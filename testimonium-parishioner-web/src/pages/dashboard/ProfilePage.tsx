@@ -27,7 +27,6 @@ export const ProfilePage: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [smsNotifications, setSmsNotifications] = useState(false);
   const [saving, setSaving] = useState(false);
   const [resetSending, setResetSending] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
@@ -236,7 +235,7 @@ export const ProfilePage: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-border/40">
+                <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <span className="text-xs font-semibold text-text-primary">Email Notifications</span>
                     <p className="text-[10px] text-text-muted">Receive status logs and confirmation reports on your email.</p>
@@ -245,18 +244,6 @@ export const ProfilePage: React.FC = () => {
                     type="checkbox"
                     checked={emailNotifications}
                     onChange={e => setEmailNotifications(e.target.checked)}
-                    className="w-4 h-4 rounded text-crimson border-border focus-ring cursor-pointer"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-xs font-semibold text-text-primary">SMS Alerts</span>
-                    <p className="text-[10px] text-text-muted">Receive urgent updates regarding appointments on your mobile.</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={smsNotifications}
-                    onChange={e => setSmsNotifications(e.target.checked)}
                     className="w-4 h-4 rounded text-crimson border-border focus-ring cursor-pointer"
                   />
                 </div>

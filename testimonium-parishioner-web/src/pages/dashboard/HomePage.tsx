@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, 
@@ -27,7 +27,7 @@ import {
   useFeaturedEvents
 } from '../../hooks/useService';
 import type { Event } from '../../types';
-import { getEventCountdownLabel } from '../../utils/date';
+import { getEventCountdownLabel, isEventUpcoming } from '../../utils/date';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -109,7 +109,7 @@ export const HomePage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Core Queries
+  // Core Queries (Top-level unconditional hook execution)
   const parishesQuery = useParishes();
   const requestsQuery = useRequests();
   const appointmentsQuery = useAppointments();
@@ -125,6 +125,74 @@ export const HomePage: React.FC = () => {
   // Modal State
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Safe data extractions (handle loading / error / undefined states gracefully)
+  const requests = requestsQuery.data || [];
+  const appointments = appointmentsQuery.data || [];
+  const announcements = announcementsQuery.data || [];
+  const parishes = parishesQuery.data || [];
+  const profile = profileQuery.data;
+  const events = eventsQuery.data || [];
+
+  // Filter featured events according to user selections & robust canonical timezone check
+  // Declared unconditionally at top-level before any early return to guarantee invariant hook order
+  const filteredFeaturedEvents = useMemo(() => {
+    const featuredList = featuredEventsQuery.data || [];
+    const allList = eventsQuery.data || [];
+    
+    // Merge featured events with full event catalog, deduplicated by ID
+    const candidateDict: Record<string, Event> = {};
+    featuredList.forEach(e => { candidateDict[e.id] = e; });
+    if (filterParishId !== 'all') {
+      allList.forEach(e => { candidateDict[e.id] = e; });
+    }
+    const combinedCandidates: Event[] = Object.values(candidateDict);
+    if (combinedCandidates.length === 0) return [];
+
+    const validUpcoming = combinedCandidates.filter(e => {
+      if (!isEventUpcoming(e)) return false;
+      if (filterParishId !== 'all' && String(e.parishId).trim() !== String(filterParishId).trim()) return false;
+      if (filterCategory !== 'all' && e.category.toLowerCase() !== filterCategory.toLowerCase()) return false;
+      return true;
+    });
+
+    // Consolidate multiple Mass entries on the same parish & date
+    const nonMassEvents: Event[] = [];
+    const massMap: Record<string, Event[]> = {};
+
+    validUpcoming.forEach(e => {
+      if (e.category === 'Holy Mass') {
+        const key = `${String(e.parishId)}_${e.startDate}`;
+        if (!massMap[key]) massMap[key] = [];
+        massMap[key].push(e);
+      } else {
+        nonMassEvents.push(e);
+      }
+    });
+
+    const consolidatedMasses: Event[] = Object.values(massMap).map(massList => {
+      if (massList.length === 1) return massList[0];
+      const sorted = [...massList].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+      const firstUpcoming = sorted[0];
+      const allTimes = sorted.map(m => m.startTime).filter(Boolean).join(' • ');
+      return {
+        ...firstUpcoming,
+        title: `${firstUpcoming.parishName} Holy Mass Schedule`,
+        description: `Mass schedule times: ${allTimes}. Join our parish community for holy sacrifice and prayers.`,
+        startTime: firstUpcoming.startTime,
+        endTime: sorted[sorted.length - 1].endTime || firstUpcoming.endTime,
+      };
+    });
+
+    return [...nonMassEvents, ...consolidatedMasses].sort((a, b) => {
+      return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+    });
+  }, [featuredEventsQuery.data, eventsQuery.data, filterParishId, filterCategory]);
+
+  // Filter next event assigned to user's local parish (strictly upcoming events)
+  const nextParishEvent = profile?.parishId
+    ? events.find(e => String(e.parishId).trim() === String(profile.parishId).trim() && isEventUpcoming(e))
+    : undefined;
 
   const loading = 
     parishesQuery.loading || 
@@ -174,7 +242,7 @@ export const HomePage: React.FC = () => {
   ];
 
   const getParishName = (parishId: string) => {
-    return parishesQuery.data?.find(p => p.id === parishId)?.name || 'Local Parish';
+    return parishes.find(p => p.id === parishId)?.name || 'Local Parish';
   };
 
   if (error) {
@@ -258,30 +326,6 @@ export const HomePage: React.FC = () => {
       </div>
     );
   }
-
-  const requests = requestsQuery.data || [];
-  const appointments = appointmentsQuery.data || [];
-  const announcements = announcementsQuery.data || [];
-  const parishes = parishesQuery.data || [];
-  const profile = profileQuery.data;
-  const events = eventsQuery.data || [];
-  const featuredEvents = featuredEventsQuery.data || [];
-
-  // Filter next event assigned to user's local parish
-  const nextParishEvent = profile?.parishId
-    ? events.find(e => e.parishId === profile.parishId && e.status !== 'completed')
-    : undefined;
-
-  // Filter featured events according to user selections & status === 'upcoming'
-  const filteredFeaturedEvents = featuredEvents.filter(e => {
-    // Show only public upcoming events
-    if (e.status !== 'upcoming') return false;
-    // Scope by Parish
-    if (filterParishId !== 'all' && e.parishId !== filterParishId) return false;
-    // Scope by Category
-    if (filterCategory !== 'all' && e.category.toLowerCase() !== filterCategory.toLowerCase()) return false;
-    return true;
-  });
 
   return (
     <div className="space-y-8 pb-10" aria-live="polite">

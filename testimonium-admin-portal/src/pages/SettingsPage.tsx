@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Save,
@@ -13,6 +13,10 @@ import {
   Image as ImageIcon,
   RotateCcw,
   AlertTriangle,
+  Plus,
+  X,
+  Sliders,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -27,6 +31,7 @@ import type { Parish } from '@/types';
 
 // Event types and possible requirements
 const EVENT_TYPES = [
+  { id: 'WEDDING', label: 'Marriage (Canonical Interview)', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
   { id: 'MARRIAGE_SPECIAL', label: 'Marriage (Special)', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
   { id: 'WAKE_MASS', label: 'Wake Mass', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
   { id: 'FUNERAL', label: 'Funeral', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
@@ -94,6 +99,8 @@ interface ParishConfigSnapshot {
   officeHours: any;
   availableDocuments: string[];
   paymentQrEnabled: boolean;
+  paymentQrImage: string | null;
+  venueCapacity: number | null;
 }
 
 export function SettingsPage() {
@@ -108,17 +115,19 @@ export function SettingsPage() {
 
   // Configuration States
   const [documentSettings, setDocumentSettings] = useState<any>({});
-  const [eventSettings, setEventSettings] = useState<Record<string, { requirements: Record<string, boolean> }>>({});
+  const [eventSettings, setEventSettings] = useState<any>({});
   const [officeHours, setOfficeHours] = useState<Record<string, { openTime: string; closeTime: string; isClosed: boolean }>>({});
   const [paymentQrImage, setPaymentQrImage] = useState<string | null>(null);
   const [paymentQrEnabled, setPaymentQrEnabled] = useState<boolean>(false);
   const [availableDocuments, setAvailableDocuments] = useState<string[]>([...DEFAULT_OFFERED_DOCUMENTS]);
+  const [venueCapacity, setVenueCapacity] = useState<number | null>(null);
   const [uploadingQr, setUploadingQr] = useState(false);
 
   // Original snapshot for change detection
   const [originalSnapshot, setOriginalSnapshot] = useState<ParishConfigSnapshot | null>(null);
   const [pendingParishId, setPendingParishId] = useState<string | null>(null);
   const [showSwitchConfirmModal, setShowSwitchConfirmModal] = useState(false);
+  const loadedParishIdRef = useRef<string | null>(null);
 
   // Initialize office hours default settings
   const initDefaultOfficeHours = useCallback(() => {
@@ -170,7 +179,11 @@ export function SettingsPage() {
 
   // Initialize event settings default configurations
   const initDefaultEventSettings = useCallback(() => {
-    const evts: any = {};
+    const evts: any = {
+      availableEvents: EVENT_TYPES.map(e => e.id),
+      capacitySettings: { slotCapacity: 1, dailyLimit: 10 },
+      timeSlots: ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"]
+    };
     EVENT_TYPES.forEach(evt => {
       const reqs: any = {};
       evt.possibleReqs.forEach(r => {
@@ -208,27 +221,42 @@ export function SettingsPage() {
 
   // Load parish configurations when parish selection changes
   useEffect(() => {
-    if (!selectedParishId) return;
+    if (!selectedParishId || parishes.length === 0) return;
+    if (loadedParishIdRef.current === selectedParishId) return;
+
     const parish = parishes.find(p => p.id === selectedParishId) || null;
 
     if (parish) {
+      loadedParishIdRef.current = selectedParishId;
       const docSettingsMerged = parish.documentSettings || initDefaultDocSettings();
       if (!docSettingsMerged.paymentMethods) {
         docSettingsMerged.paymentMethods = { gcash: true, maya: false };
       }
       const evSettingsMerged = parish.eventSettings || initDefaultEventSettings();
+      if (!Array.isArray(evSettingsMerged.availableEvents)) {
+        evSettingsMerged.availableEvents = EVENT_TYPES.map(e => e.id);
+      }
+      if (!evSettingsMerged.capacitySettings) {
+        evSettingsMerged.capacitySettings = { slotCapacity: 1, dailyLimit: 10 };
+      }
+      if (!Array.isArray(evSettingsMerged.timeSlots)) {
+        evSettingsMerged.timeSlots = ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"];
+      }
       const parsedHours = parseOfficeHours(parish.officeHours);
       const parsedDocs = parish.availableDocuments && Array.isArray(parish.availableDocuments)
         ? parish.availableDocuments
         : [...DEFAULT_OFFERED_DOCUMENTS];
       const qrEnabled = Boolean(parish.paymentQrEnabled);
+      const qrImage = parish.paymentQrImage || null;
+      const capacity = parish.venueCapacity !== undefined && parish.venueCapacity !== null ? Number(parish.venueCapacity) : null;
 
       setDocumentSettings(docSettingsMerged);
       setEventSettings(evSettingsMerged);
       setOfficeHours(parsedHours);
-      setPaymentQrImage(parish.paymentQrImage || null);
+      setPaymentQrImage(qrImage);
       setPaymentQrEnabled(qrEnabled);
       setAvailableDocuments(parsedDocs);
+      setVenueCapacity(capacity);
 
       // Snapshot for unsaved changes detection
       setOriginalSnapshot({
@@ -237,6 +265,8 @@ export function SettingsPage() {
         officeHours: parsedHours,
         availableDocuments: parsedDocs,
         paymentQrEnabled: qrEnabled,
+        paymentQrImage: qrImage,
+        venueCapacity: capacity,
       });
       (window as any).hasUnsavedSettingsChanges = false;
     }
@@ -251,9 +281,11 @@ export function SettingsPage() {
       officeHours,
       availableDocuments,
       paymentQrEnabled,
+      paymentQrImage,
+      venueCapacity,
     };
     return JSON.stringify(currentSnapshot) !== JSON.stringify(originalSnapshot);
-  }, [originalSnapshot, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled]);
+  }, [originalSnapshot, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled, paymentQrImage, venueCapacity]);
 
   // Browser refresh/close guard & sync window flag
   useUnsavedChanges({ isDirty });
@@ -273,6 +305,8 @@ export function SettingsPage() {
     setOfficeHours(JSON.parse(JSON.stringify(originalSnapshot.officeHours)));
     setAvailableDocuments([...originalSnapshot.availableDocuments]);
     setPaymentQrEnabled(originalSnapshot.paymentQrEnabled);
+    setPaymentQrImage(originalSnapshot.paymentQrImage);
+    setVenueCapacity(originalSnapshot.venueCapacity ?? null);
     (window as any).hasUnsavedSettingsChanges = false;
     setToast({ message: 'Unsaved changes discarded.', type: 'success' });
   };
@@ -284,12 +318,14 @@ export function SettingsPage() {
       setPendingParishId(newParishId);
       setShowSwitchConfirmModal(true);
     } else {
+      loadedParishIdRef.current = null;
       setSelectedParishId(newParishId);
     }
   };
 
   const handleConfirmSwitchParish = () => {
     if (pendingParishId) {
+      loadedParishIdRef.current = null;
       setSelectedParishId(pendingParishId);
       setPendingParishId(null);
     }
@@ -319,32 +355,23 @@ export function SettingsPage() {
     try {
       const updatedParish = await ParishManagementService.uploadPaymentQr(selectedParishId, file);
       setPaymentQrImage(updatedParish.paymentQrImage || null);
-      setPaymentQrEnabled(Boolean(updatedParish.paymentQrEnabled));
-      setParishes((prev) => prev.map((p) => (p.id === selectedParishId ? updatedParish : p)));
-      setToast({ message: 'Payment QR uploaded successfully.', type: 'success' });
+      setPaymentQrEnabled(true);
+      // Update parish cache silently without resetting originalSnapshot so dirty state remains active
+      setParishes((prev) => prev.map((p) => (p.id === selectedParishId ? { ...p, paymentQrImage: updatedParish.paymentQrImage, paymentQrEnabled: true } : p)));
+      setToast({ message: 'Payment QR uploaded. Remember to save your settings to apply changes.', type: 'success' });
     } catch (err: any) {
       console.error(err);
       setToast({ message: err?.message || 'Failed to upload Payment QR image.', type: 'error' });
     } finally {
       setUploadingQr(false);
+      e.target.value = '';
     }
   };
 
-  const handleDeleteQr = async () => {
-    if (!selectedParishId) return;
-    setUploadingQr(true);
-    try {
-      const updatedParish = await ParishManagementService.deletePaymentQr(selectedParishId);
-      setPaymentQrImage(null);
-      setPaymentQrEnabled(false);
-      setParishes((prev) => prev.map((p) => (p.id === selectedParishId ? updatedParish : p)));
-      setToast({ message: 'Payment QR deleted successfully.', type: 'success' });
-    } catch (err: any) {
-      console.error(err);
-      setToast({ message: err?.message || 'Failed to delete Payment QR image.', type: 'error' });
-    } finally {
-      setUploadingQr(false);
-    }
+  const handleDeleteQr = () => {
+    setPaymentQrImage(null);
+    setPaymentQrEnabled(false);
+    setToast({ message: 'Payment QR removed. Save your settings to apply changes.', type: 'success' });
   };
 
   // Dismiss Toast
@@ -389,6 +416,56 @@ export function SettingsPage() {
         [evtId]: {
           requirements: reqs
         }
+      };
+    });
+  };
+
+  const handleToggleAvailableEvent = (eventId: string) => {
+    setEventSettings((prev: any) => {
+      const currentList: string[] = Array.isArray(prev?.availableEvents) ? prev.availableEvents : EVENT_TYPES.map(e => e.id);
+      const updated = currentList.includes(eventId)
+        ? currentList.filter(id => id !== eventId)
+        : [...currentList, eventId];
+      return {
+        ...prev,
+        availableEvents: updated,
+      };
+    });
+  };
+
+  const handleCapacityChange = (field: 'slotCapacity' | 'dailyLimit', value: number) => {
+    setEventSettings((prev: any) => ({
+      ...prev,
+      capacitySettings: {
+        slotCapacity: prev?.capacitySettings?.slotCapacity || 1,
+        dailyLimit: prev?.capacitySettings?.dailyLimit || 10,
+        [field]: Math.max(1, value || 1),
+      }
+    }));
+  };
+
+  const [newSlotInput, setNewSlotInput] = useState('');
+
+  const handleTimeSlotAdd = () => {
+    const clean = to12Hour(to24Hour(newSlotInput));
+    if (!clean) return;
+    setEventSettings((prev: any) => {
+      const currentSlots: string[] = Array.isArray(prev?.timeSlots) ? prev.timeSlots : ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
+      if (currentSlots.includes(clean)) return prev;
+      return {
+        ...prev,
+        timeSlots: [...currentSlots, clean].sort((a, b) => (parseTimeToMinutes(a) || 0) - (parseTimeToMinutes(b) || 0)),
+      };
+    });
+    setNewSlotInput('');
+  };
+
+  const handleTimeSlotRemove = (slotToRemove: string) => {
+    setEventSettings((prev: any) => {
+      const currentSlots: string[] = Array.isArray(prev?.timeSlots) ? prev.timeSlots : ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
+      return {
+        ...prev,
+        timeSlots: currentSlots.filter(s => s !== slotToRemove),
       };
     });
   };
@@ -443,6 +520,8 @@ export function SettingsPage() {
         officeHours,
         availableDocuments,
         paymentQrEnabled,
+        paymentQrImage,
+        venueCapacity,
       });
 
       const updatedDocs = updatedParish?.availableDocuments && Array.isArray(updatedParish.availableDocuments)
@@ -456,7 +535,9 @@ export function SettingsPage() {
         eventSettings, 
         officeHours, 
         availableDocuments: updatedDocs, 
-        paymentQrEnabled 
+        paymentQrEnabled,
+        paymentQrImage,
+        venueCapacity,
       } : p));
       
       // Update snapshot to establish clean baseline
@@ -466,6 +547,8 @@ export function SettingsPage() {
         officeHours,
         availableDocuments: updatedDocs,
         paymentQrEnabled,
+        paymentQrImage,
+        venueCapacity,
       });
       (window as any).hasUnsavedSettingsChanges = false;
 
@@ -731,53 +814,243 @@ export function SettingsPage() {
 
           {/* Tab 2: Sacramental Scheduling */}
           {activeTab === 'events' && (
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-base font-bold text-gray-900">Sacramental Scheduling Requirements</h4>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Set mandatory documentation required when parishioners schedule parish sacraments and special masses.
-                </p>
+            <div className="space-y-8">
+              {/* 1. Offered Sacraments & Scheduling Availability */}
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-base font-bold text-gray-900">Offered Sacraments & Ceremonies</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Enable or disable specific sacraments offered for parishioner online appointment booking. Disabled sacraments cannot be scheduled online.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {EVENT_TYPES.map((evt) => {
+                    const availableList: string[] = Array.isArray(eventSettings?.availableEvents) ? eventSettings.availableEvents : EVENT_TYPES.map(e => e.id);
+                    const isOffered = availableList.includes(evt.id);
+
+                    return (
+                      <div
+                        key={evt.id}
+                        onClick={() => handleToggleAvailableEvent(evt.id)}
+                        className={cn(
+                          'p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none',
+                          isOffered
+                            ? 'bg-white border-crimson-700/30 shadow-xs'
+                            : 'bg-gray-50/70 border-gray-200 opacity-60'
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className={cn('text-xs font-bold block truncate', isOffered ? 'text-gray-900' : 'text-gray-400')}>
+                            {evt.label}
+                          </span>
+                          <span className="text-[10px] text-gray-400 block mt-0.5 font-medium">
+                            {isOffered ? 'Offered for scheduling' : 'Disabled'}
+                          </span>
+                        </div>
+                        <div
+                          className={cn(
+                            'w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold transition-all',
+                            isOffered ? 'bg-crimson-700 text-white' : 'bg-gray-200 text-transparent'
+                          )}
+                        >
+                          ✓
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {EVENT_TYPES.map((evt) => {
-                  const conf = eventSettings[evt.id] || { requirements: {} };
-                  return (
-                    <div key={evt.id} className="p-4 bg-white border border-gray-200 rounded-xl space-y-2.5">
-                      <span className="font-bold text-gray-900 text-sm block">{evt.label}</span>
-                      {evt.possibleReqs.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
-                            Required Documents
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {evt.possibleReqs.map((req) => {
-                              const isReq = conf.requirements?.[req.id] ?? true;
-                              return (
-                                <button
-                                  key={req.id}
-                                  type="button"
-                                  onClick={() => handleEventRequirementToggle(evt.id, req.id)}
-                                  className={cn(
-                                    'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
-                                    isReq
-                                      ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
-                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
-                                  )}
-                                >
-                                  {isReq ? '✓ ' : '+ '}
-                                  {req.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 italic">No prerequisite files required for this sacrament.</p>
-                      )}
+              {/* 2. Concurrency & Capacity Controls */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-crimson-700" />
+                  <h4 className="text-base font-bold text-gray-900">Capacity & Concurrency Limits</h4>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Protect parish schedules from overbooking. The backend strictly locks time slots and enforces daily appointment quotas atomically.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-2">
+                    <label className="text-xs font-bold text-gray-900 block">
+                      Slot Capacity (Per Time Slot)
+                    </label>
+                    <p className="text-[11px] text-gray-500">
+                      Maximum concurrent appointments allowed during the exact same time slot window.
+                    </p>
+                    <div className="flex items-center gap-3 pt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={eventSettings?.capacitySettings?.slotCapacity ?? 1}
+                        onChange={(e) => handleCapacityChange('slotCapacity', parseInt(e.target.value, 10))}
+                        className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 outline-none focus:border-crimson-700"
+                      />
+                      <span className="text-xs text-gray-400 font-medium">appointment(s) / slot</span>
                     </div>
-                  );
-                })}
+                  </div>
+
+                  <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-2">
+                    <label className="text-xs font-bold text-gray-900 block">
+                      Daily Appointment Limit
+                    </label>
+                    <p className="text-[11px] text-gray-500">
+                      Maximum total confirmed/pending bookings accepted across the entire parish for a single day.
+                    </p>
+                    <div className="flex items-center gap-3 pt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={eventSettings?.capacitySettings?.dailyLimit ?? 10}
+                        onChange={(e) => handleCapacityChange('dailyLimit', parseInt(e.target.value, 10))}
+                        className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 outline-none focus:border-crimson-700"
+                      />
+                      <span className="text-xs text-gray-400 font-medium">appointments / day</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Parish Event & Venue Capacity */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-crimson-700" />
+                  <h4 className="text-base font-bold text-gray-900">Parish Event & Venue Capacity</h4>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Maximum number of people the parish church / sanctuary can accommodate for a scheduled event or sacramental celebration.
+                </p>
+
+                <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-2 max-w-md">
+                  <label className="text-xs font-bold text-gray-900 block">
+                    Maximum Venue Capacity
+                  </label>
+                  <p className="text-[11px] text-gray-500">
+                    Informational attendance capacity displayed to parishioners when scheduling appointments and ceremonies.
+                  </p>
+                  <div className="flex items-center gap-3 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      placeholder="e.g. 150"
+                      value={venueCapacity ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? null : Math.max(1, parseInt(e.target.value, 10) || 1);
+                        setVenueCapacity(val);
+                      }}
+                      className="w-32 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 outline-none focus:border-crimson-700"
+                    />
+                    <span className="text-xs text-gray-400 font-medium">people / attendees max</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Configured Time Slots */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-crimson-700" />
+                  <h4 className="text-base font-bold text-gray-900">Standard Scheduling Time Slots</h4>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Configure the authoritative bookable time slots presented to parishioners on the date picker.
+                </p>
+
+                <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {(Array.isArray(eventSettings?.timeSlots) ? eventSettings.timeSlots : ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]).map((slot: string) => (
+                      <span
+                        key={slot}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-50 text-crimson-700 border border-crimson-700/20 rounded-lg text-xs font-bold"
+                      >
+                        {slot}
+                        <button
+                          type="button"
+                          onClick={() => handleTimeSlotRemove(slot)}
+                          className="hover:text-red-900 transition-colors p-0.5 rounded"
+                          title={`Remove ${slot}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <input
+                      type="time"
+                      step="900"
+                      value={newSlotInput}
+                      onChange={(e) => setNewSlotInput(e.target.value)}
+                      placeholder="Add time slot"
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-mono outline-none focus:border-crimson-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTimeSlotAdd}
+                      disabled={!newSlotInput}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-crimson-700 hover:bg-crimson-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Slot
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Prerequisite Documentation Requirements */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <div>
+                  <h4 className="text-base font-bold text-gray-900">Prerequisite Documentation Requirements</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Set mandatory documentation required when parishioners schedule parish sacraments and special masses.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {EVENT_TYPES.map((evt) => {
+                    const conf = eventSettings[evt.id] || { requirements: {} };
+                    return (
+                      <div key={evt.id} className="p-4 bg-white border border-gray-200 rounded-xl space-y-2.5">
+                        <span className="font-bold text-gray-900 text-sm block">{evt.label}</span>
+                        {evt.possibleReqs.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
+                              Required Documents
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {evt.possibleReqs.map((req) => {
+                                const isReq = conf.requirements?.[req.id] ?? true;
+                                return (
+                                  <button
+                                    key={req.id}
+                                    type="button"
+                                    onClick={() => handleEventRequirementToggle(evt.id, req.id)}
+                                    className={cn(
+                                      'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
+                                      isReq
+                                        ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
+                                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
+                                    )}
+                                  >
+                                    {isReq ? '✓ ' : '+ '}
+                                    {req.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">No prerequisite files required for this sacrament.</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}

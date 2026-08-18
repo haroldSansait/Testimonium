@@ -21,7 +21,7 @@ export const ApiParishProvider: ParishProvider = {
     return response.data.data;
   },
 
-  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean }): Promise<Parish> {
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish> {
     const response = await api.patch<ApiResponseEnvelope<Parish>>(`/parishes/${id}/settings`, data);
     return response.data.data;
   },

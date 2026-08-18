@@ -7,8 +7,9 @@ This document covers the configuration, permissions, object hierarchy, CORS poli
 ## 1. Cloudflare R2 Overview
 
 Cloudflare R2 provides zero-egress-fee, S3-compatible object storage for:
-- Parish cover images & logos (`parishes/parish_{id}/...`)
-- Supporting document uploads (`documents/req_{id}/...`)
+- Parish cover photos, logos & gallery assets (`parishes/parish_{id}/...`)
+- Parish GCash/Maya Payment QR Codes (`parishes/parish_{id}/payment_qr/...`)
+- Supporting document uploads (`documents/req_{id}/supporting/...`)
 - Payment receipt upload evidence (`documents/req_{id}/receipts/...`)
 
 ---
@@ -38,7 +39,7 @@ Cloudflare R2 provides zero-egress-fee, S3-compatible object storage for:
 
 ## 3. CORS Configuration
 
-To allow direct file uploads or preview rendering from web browsers (Admin Portal & Parishioner Portal), apply the following CORS policy in R2 Bucket Settings:
+To allow direct file uploads and preview rendering from web browsers (Admin Portal & Parishioner Portal), apply the following CORS policy in R2 Bucket Settings:
 
 ```json
 [
@@ -77,6 +78,7 @@ To allow direct file uploads or preview rendering from web browsers (Admin Porta
 | :--- | :--- | :--- | :--- |
 | `parishes/parish_{id}/cover/{uuid}_{filename}` | Parish Cover Photo | Public Read via CDN | Persistent (Overwritten/Replaced) |
 | `parishes/parish_{id}/logo/{uuid}_{filename}` | Parish Logo Image | Public Read via CDN | Persistent (Overwritten/Replaced) |
+| `parishes/parish_{id}/payment_qr/{uuid}_{filename}` | Parish Payment QR Code | Public Read via CDN | Replaced on new upload |
 | `parishes/parish_{id}/gallery/{uuid}_{filename}` | Parish Gallery Image | Public Read via CDN | Persistent |
 | `documents/req_{id}/supporting/{timestamp}_{filename}` | Requirement File | Authenticated / Signed URL | Retained during request lifecycle |
 | `documents/req_{id}/receipts/{timestamp}_{filename}` | Payment Proof | Authenticated / Signed URL | Audit-locked evidence |
@@ -93,7 +95,7 @@ To allow direct file uploads or preview rendering from web browsers (Admin Porta
              ├───► [R2 Storage] Upload ORIGINAL buffer (Unchanged evidence)
              │
              └───► [Sharp Service] Image Pre-processing for OCR:
-                      1. Auto-rotate via EXIF
+                      1. Auto-rotate via EXIF metadata
                       2. Resize to max width 1200px
                       3. Stretch contrast & sharpen
                       4. Compress to JPEG (Quality 80)

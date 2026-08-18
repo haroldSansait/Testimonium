@@ -368,6 +368,7 @@ export interface Parish {
   paymentQrUpdatedAt?: string | null;
   paymentQrUpdatedBy?: number | null;
   availableDocuments?: string[] | null;
+  venueCapacity?: number | null;
 }
 
 // ─── User Management ──────────────────────────────────────────────────────────

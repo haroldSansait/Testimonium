@@ -1,363 +1,67 @@
-Act as a Senior Frontend Software Engineer and UI/UX Engineer working in Antigravity Agent Mode.
-
-We are beginning the frontend implementation of the TESTIMONIUM Secretary/Admin Portal.
-
-==================================================
-PROJECT CONTEXT
-==================================================
+# TESTIMONIUM — Admin & Coordinator Portal Documentation
 
-Workspace:
-testimonium-admin-portal
+This document describes the architecture, data provider abstractions, state management, security guards, and page features of the **TESTIMONIUM Admin Portal**.
 
-This phase focuses ONLY on recreating the frontend UI.
+---
 
-Do NOT integrate:
+## 1. Architecture & Tech Stack
 
-• Firebase Authentication
-• Express Backend
-• Supabase
-• Prisma
-• API calls
-• React Query
-• Authentication Logic
+*   **Framework**: React 19 + TypeScript + Vite 8
+*   **Styling**: Tailwind CSS with custom Testimonium Crimson design system (`#7B1C2A`, `crimson-700`, `bg-red-50`)
+*   **Routing**: React Router 7 (`createBrowserRouter`)
+*   **Authentication & RBAC**: Firebase Authentication + Custom Claims + Just-In-Time (JIT) staff provisioning
+*   **Provider Architecture**: Pluggable Data Provider interfaces (`ParishProvider`, `DocumentRequestProvider`, `ScheduleProvider`, `ActivityLogProvider`) supporting seamless switching between `api` (REST API) and `demo` (in-memory mock) modes
 
-Everything must use local mock data.
+---
 
-The goal is to produce a production-quality frontend that is ready for backend integration later.
+## 2. Role-Based Access Control (RBAC)
 
-==================================================
-SOURCE OF TRUTH
-==================================================
+The portal supports three distinct administrative roles with ring-fenced permissions:
 
-The exported Figma images inside this workspace are the ONLY source of truth.
+| Role | Permitted Pages & Capabilities |
+| :--- | :--- |
+| **`DIOCESE_COORDINATOR`** | Unrestricted vicariate-wide access. Manage all parishes, user accounts, system-wide analytics, interactive map configuration, activity audit logs, and global settings. |
+| **`SECRETARY`** | Scoped strictly to assigned parish. Manage parish document requests (verification & correction notes), sacramental schedules (booking & reschedule proposals), weekly mass templates, custom events, staff availability, and parish settings (fees, capacity, time slots, office hours, GCash/Maya QR). |
+| **`PRIEST`** | Scoped strictly to assigned parish. View calendar feeds, confirmed sacraments, and respond to presiding mass/event assignments. |
 
-These include:
+---
 
-• Login - Parish Admin Portal
-• Admin Dashboard
-• Document Requests
-• Schedule Requests
-• Parish Calendar
-• Notifications
-• Activity Log
-• TESTIMONIUM_Logo
+## 3. Core Pages & Capabilities
 
-Recreate every page as accurately as possible.
+### 1. Dashboard & Analytics (`/dashboard`)
+- Live summary counters for pending document requests, scheduling requests, verified payments, and total active parishioners.
+- Quick action shortcuts and recent activity stream.
 
-Do NOT redesign the UI.
+### 2. Document Requests (`/document-requests`)
+- Review sacramental certificate applications with authoritative fee snapshot display.
+- Integrated Payment Verification drawer with **Google Vision / OCR.Space parsing** for GCash and Maya transaction screenshots.
+- Interactive Correction Workflow: mark requests as `Needs Correction` with targeted requirement checklist and custom instructions.
 
-Preserve:
+### 3. Sacramental Scheduling & Rescheduling (`/schedule-requests`)
+- Review booking applications for Baptisms, Weddings, Canonical Interviews, Blessings, Funerals, and Special Masses.
+- Assign presiding priests with real-time schedule conflict and leave detection.
+- Propose alternative reschedule dates/times with mandatory reason notes.
 
-• colors
-• spacing
-• typography
-• shadows
-• border radius
-• icons
-• tables
-• cards
-• badges
-• filters
-• search bars
-• layout
-• responsiveness
+### 4. Parish Settings (`/settings`)
+Multi-tab configuration suite:
+- **Tab 1 — Document Fees & Requirements**: Set individual certificate pricing overrides and mandatory requirement file tags.
+- **Tab 2 — Sacramental Scheduling**: Toggle offered sacraments, configure Per-Slot Booking Capacity (`slotCapacity`), Daily Appointment Quotas (`dailyLimit`), Maximum Church Venue Attendance Capacity (`venueCapacity`), and Time Slot builder chips.
+- **Tab 3 — Office Operating Hours**: Set open and close times per day of the week, and mark closed days (e.g. Sunday/Monday).
+- **Tab 4 — GCash / Maya Payment QR**: Upload, preview, and toggle active status for parish payment QR codes.
+- **Unsaved Changes Guard**: Deep comparison tracking (`isDirty`) with modal confirmation when attempting to switch parishes or leave without saving.
 
-Mock data visible in the designs MUST be recreated exactly as static frontend data.
+### 5. Interactive Map Configuration (`/map-configuration`)
+*(Diocese Coordinator Only)*
+- Church sanctuary SVG map markers with custom hex color picker (`#7B1C2A`), zoom levels (1–20), and label visibility toggles.
+- Interactive drag-and-drop marker relocation and keyboard arrow nudging with boundary clamping.
+- Real-time save toolbar with unsaved changes glow indicator.
 
-==================================================
-TECH STACK
-==================================================
+### 6. User Management (`/users`)
+*(Diocese Coordinator Only)*
+- Provision parish priests and secretaries with automatic JIT linking.
+- Manage staff status (`Active`, `Inactive`, `Disabled`), assistant flags, and calendar color identifiers.
 
-Use:
-
-React
-TypeScript
-Vite
-Tailwind CSS
-shadcn/ui
-React Router DOM
-React Hook Form
-Zod
-Lucide React
-
-Do NOT install unnecessary libraries.
-
-==================================================
-PROJECT STRUCTURE
-==================================================
-
-Organize the project using scalable architecture.
-
-src/
-
-assets/
-components/
-layouts/
-pages/
-routes/
-hooks/
-contexts/
-types/
-mock/
-utils/
-styles/
-
-Every reusable UI element must become its own component.
-
-Examples:
-
-Sidebar
-
-Navbar
-
-Page Header
-
-Dashboard Card
-
-Stat Card
-
-Request Table
-
-Search Bar
-
-Notification Card
-
-Calendar Widget
-
-Status Badge
-
-Pagination
-
-Modal
-
-Confirmation Dialog
-
-Avatar
-
-Profile Menu
-
-Buttons
-
-Inputs
-
-Loading Skeletons
-
-Empty State
-
-==================================================
-LAYOUT
-==================================================
-
-Create a reusable AdminLayout.
-
-It must contain:
-
-Sidebar
-
-Top Navigation
-
-Scrollable content area
-
-Responsive behavior
-
-Every authenticated page must use this layout.
-
-The Login page must use a separate AuthLayout.
-
-==================================================
-ROUTING
-==================================================
-
-Configure React Router.
-
-Routes:
-
-/
-
-Login
-
-/dashboard
-
-/document-requests
-
-/schedule-requests
-
-/calendar
-
-/notifications
-
-/activity-log
-
-Use placeholder ProtectedRoute wrappers.
-
-Do NOT implement authentication.
-
-==================================================
-MOCK DATA
-==================================================
-
-Create a dedicated mock folder.
-
-Examples:
-
-mock/
-
-dashboard.ts
-
-documentRequests.ts
-
-scheduleRequests.ts
-
-notifications.ts
-
-calendar.ts
-
-activityLog.ts
-
-users.ts
-
-Move ALL visible mock data from the Figma designs into these files.
-
-Pages must consume mock data instead of hardcoded values.
-
-Example:
-
-const requests = documentRequests;
-
-NOT:
-
-const requests = [
-...
-]
-
-inside the page.
-
-==================================================
-COMPONENT QUALITY
-==================================================
-
-Do NOT duplicate UI.
-
-Extract reusable components.
-
-Tables should be reusable.
-
-Status badges should be reusable.
-
-Cards should be reusable.
-
-Dialogs should be reusable.
-
-Forms should be reusable.
-
-Buttons should be reusable.
-
-Search bars should be reusable.
-
-Filters should be reusable.
-
-Pagination should be reusable.
-
-==================================================
-RESPONSIVENESS
-==================================================
-
-Support:
-
-Desktop
-
-Laptop
-
-Tablet
-
-Mobile
-
-Maintain the same visual hierarchy as the Figma.
-
-==================================================
-DESIGN QUALITY
-==================================================
-
-The generated UI should look polished enough that someone unfamiliar with the project would assume it was hand-coded by an experienced frontend engineer.
-
-Do not simplify layouts.
-
-Do not omit sections.
-
-Do not replace components with placeholders.
-
-==================================================
-CODE QUALITY
-==================================================
-
-Use:
-
-Strict TypeScript
-
-Functional Components
-
-Reusable Props
-
-Clean folder organization
-
-Meaningful naming
-
-No inline styles
-
-No duplicated logic
-
-No dead code
-
-==================================================
-DO NOT IMPLEMENT
-==================================================
-
-No backend calls
-
-No Firebase
-
-No authentication
-
-No API clients
-
-No Prisma
-
-No Supabase
-
-No database logic
-
-No environment variables
-
-No business logic
-
-==================================================
-DELIVERABLE
-==================================================
-
-Produce a fully navigable frontend application that accurately recreates every exported Figma screen using reusable React components and local mock data.
-
-The project should be immediately ready for backend integration simply by replacing the mock data with API responses in a future phase.
-
-==================================================
-FINAL VERIFICATION
-==================================================
-
-Before finishing:
-
-• Verify every exported Figma screen has been recreated.
-
-• Verify routing works.
-
-• Verify no page contains hardcoded UI duplicated from another page.
-
-• Verify mock data is separated into dedicated files.
-
-• Verify the application builds successfully.
-
-• Verify there are no TypeScript errors.
-
-• Verify there are no ESLint errors.
-
-• Verify the codebase is modular, reusable, scalable, and production-ready.
-
-Report any assumptions before implementation.
+### 7. Activity Log & Auditing (`/activity-log`)
+*(Diocese Coordinator Only)*
+- Complete audit trail of database mutations with actor role, IP address, timestamp, and JSON diffs of previous vs new values.
+- Archiving and log purge controls.

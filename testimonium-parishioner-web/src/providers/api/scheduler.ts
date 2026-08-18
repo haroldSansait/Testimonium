@@ -75,11 +75,18 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     return list.map(mapAppointment);
   }
 
-  async getAvailableSlots(parishId: string, date: string): Promise<string[]> {
-    const response = await client.get<any>("/schedule-requests/available-slots", {
+  async getAvailableSlots(parishId: string, date: string, serviceName?: string): Promise<string[]> {
+    const params: Record<string, string> = {
       parishId,
       date,
-    });
+    };
+    if (serviceName) {
+      const resolved = resolveEventType(serviceName);
+      if (resolved) {
+        params.eventType = resolved;
+      }
+    }
+    const response = await client.get<any>("/schedule-requests/available-slots", params);
     return Array.isArray(response)
       ? response
       : response?.data || response?.items || [];

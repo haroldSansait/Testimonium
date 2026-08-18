@@ -143,6 +143,9 @@ export class ParishService {
     if (data.availableDocuments !== undefined) {
       updatePayload.availableDocuments = normalizeAvailableDocumentsForSave(data.availableDocuments);
     }
+    if (data.venueCapacity !== undefined) {
+      updatePayload.venueCapacity = data.venueCapacity ? parseInt(data.venueCapacity, 10) : null;
+    }
 
 
     const parish = await prisma.$transaction(async (tx) => {
@@ -357,12 +360,13 @@ export class ParishService {
       coverImage: p.coverImage || "",
       logoImage: p.logoImage || "",
       mapZoom: p.mapZoom,
-      pinColor: p.pinColor || "#0d9488",
+      pinColor: p.pinColor || "#7B1C2A",
       showLabel: p.showLabel ?? true,
       directoryDescription: p.directoryDescription || "",
       locationUpdatedAt: p.locationUpdatedAt ? p.locationUpdatedAt.toISOString() : null,
       locationUpdatedBy: p.locationUpdatedBy,
       gallery: p.gallery || [],
+      venueCapacity: p.venueCapacity ?? null,
       documentSettings: p.documentSettings
         ? (() => { try { return typeof p.documentSettings === 'string' ? JSON.parse(p.documentSettings) : p.documentSettings; } catch (e) { return p.documentSettings; } })()
         : null,

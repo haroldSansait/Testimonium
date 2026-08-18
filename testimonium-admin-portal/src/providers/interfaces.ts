@@ -163,7 +163,7 @@ export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
   addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish>;
   editParish(id: string, data: Partial<Parish>): Promise<Parish>;
-  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean }): Promise<Parish>;
+  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish>;
   uploadPaymentQr(id: string, file: File): Promise<Parish>;
   deletePaymentQr(id: string): Promise<Parish>;
   archiveParish(id: string): Promise<void>;

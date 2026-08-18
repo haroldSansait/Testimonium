@@ -1,9 +1,9 @@
 # TESTIMONIUM Portal Suite
 
 > **Roman Catholic Diocese of San Carlos**  
-> Sacramental Document Processing & Parish Administration System
+> Sacramental Document Processing & Parish Administration System — *Vicariate of Canlaon*
 
-TESTIMONIUM is a diocesan-scale platform enabling parishioners to request sacramental records, schedule parish events, and track certificate processing — while providing parish staff and diocese administrators with a unified management dashboard.
+TESTIMONIUM is a diocesan-scale platform enabling parishioners to request sacramental certificates, schedule parish rites and appointments, and track certificate processing in real time — while providing parish secretaries, priests, and diocese coordinators with a unified administrative dashboard.
 
 ---
 
@@ -11,9 +11,9 @@ TESTIMONIUM is a diocesan-scale platform enabling parishioners to request sacram
 
 | Application | Description | Dev URL |
 |---|---|---|
-| **Backend API** | Node.js / Express REST API serving the suite | `http://localhost:5000` |
-| **Parishioner Web Portal** | React / Vite portal for parishioners | `http://localhost:5173` |
-| **Admin Portal** | React / Radix UI management dashboard for parish staff and diocese | `http://localhost:5174` |
+| **Backend API** | Node.js / Express 5 REST API with Prisma ORM & PostgreSQL | `http://localhost:5000` |
+| **Parishioner Web Portal** | React 19 / Vite 8 portal with Leaflet GIS maps & DatePicker | `http://localhost:5173` |
+| **Admin Portal** | React 19 / Vite 8 management dashboard for parish staff and diocese | `http://localhost:5174` |
 | **Parishioner Mobile App** | React Native / Expo mobile app scaffold | *Scaffold Only* |
 
 These are **independent applications** that share the same backend API and Firebase project. They are orchestrated together from the root workspace but remain completely separate codebases with their own routing, authentication flows, layouts, and build pipelines.
@@ -27,44 +27,52 @@ testimonium/
 ├── package.json                        ← Root workspace (start here)
 ├── .env.example                        ← Environment variable reference for the full suite
 ├── README.md                           ← This file
+├── API_DOCUMENTATION.md                ← Comprehensive REST API documentation
+├── DATABASE.md                         ← Database administration, migrations & backup guide
+├── Testimonium_Database_Schema.md      ← Schema definitions, models & entity relationships
+├── DEPLOYMENT.md                       ← Production deployment manual (PM2, Docker, Nginx)
+├── CLOUDFLARE_R2.md                    ← Cloudflare R2 storage hierarchy & image pipeline
+├── testimonium_context.md              ← Master synchronization state & architecture snapshot
 │
 ├── testimonium-backend/                ← Backend API Service
 │   ├── server.js                       ← Express entry point (port 5000)
-│   ├── DEVELOPER_GUIDE.md              ← Backend lifecycle & Prisma workflows
+│   ├── DEVELOPER_GUIDE.md              ← Backend developer guide & troubleshooting
 │   ├── .env.example                    ← Backend environment template
 │   ├── config/                         ← Firebase, DB, R2, env configuration
 │   ├── controllers/                    ← Express route handlers
-│   ├── middlewares/                    ← Auth, RBAC, upload, error guards
+│   ├── middlewares/                    ← Auth, RBAC, upload, rate limiting guards
 │   ├── prisma/                         ← Schema, migrations, seed script
 │   ├── repositories/                   ← Prisma DB query layer
 │   ├── routes/                         ← Express route registrations
-│   ├── services/                       ← Business logic
+│   ├── services/                       ← Business logic (ScheduleService, ParishService, etc.)
 │   └── validators/                     ← Zod request validators
 │
 ├── testimonium-parishioner-web/        ← Parishioner Web Portal
 │   ├── .env.example                    ← Frontend environment template
 │   └── src/
 │       ├── pages/public/               ← Landing, Login, Signup pages
-│       ├── pages/dashboard/            ← Authenticated parishioner pages
-│       ├── contexts/                   ← AuthContext, NotificationContext
+│       ├── pages/dashboard/            ← Authenticated parishioner pages (Home, Scheduler, Tracking, Directory)
+│       ├── contexts/                   ← AuthContext, NotificationContext, SubmissionProtectionContext
+│       ├── features/                   ← DatePickerCalendar, PaymentInstructionsCard
 │       ├── layouts/                    ← PublicLayout, DashboardLayout
-│       ├── components/                 ← Reusable UI components
-│       └── providers/                  ← Data provider architecture
+│       ├── components/                 ← Reusable UI & Map components (ParishDrawer, MapMarker)
+│       └── providers/                  ← Data provider architecture (API / Demo)
 │
 ├── testimonium-parishioner-app/        ← Parishioner Mobile App (Scaffold)
 │   ├── App.js                          ← Boilerplate entry point
 │   ├── app.json                        ← Native configuration file
 │   └── src/                            ← Screens, components, services scaffolds
 │
-└── testimonium-admin-portal/           ← Parish Admin Portal
+└── testimonium-admin-portal/           ← Parish Admin & Coordinator Portal
     ├── .env.example                    ← Frontend environment template
+    ├── ADMIN_PORTAL.md                 ← Admin portal architecture & feature guide
     └── src/
-        ├── pages/                      ← Admin management screens
-        ├── context/                    ← AuthContext
-        ├── layouts/                    ← Dashboard and auth layouts
-        ├── components/                 ← Radix UI wrappers and widgets
-        ├── providers/                  ← Data provider architecture (Demo/API/Hybrid)
-        └── routes/                     ← AppRouter with RBAC-guarded routes
+        ├── pages/                      ← Admin management screens (Settings, Map, Requests, Users, Logs)
+        ├── contexts/                   ← AuthContext, NotificationContext
+        ├── layouts/                    ← DashboardLayout, AuthLayout
+        ├── components/                 ← Map Configuration, Parish Settings, Modals (Help, About)
+        ├── providers/                  ← Data provider architecture (ApiParishProvider, DemoParishProvider)
+        └── services/                   ← ParishManagementService, etc.
 ```
 
 ---
@@ -101,7 +109,7 @@ This installs dependencies for the root workspace, backend, Parishioner Portal, 
 
 ### 3. Configure environment variables
 
-Each application has its own `.env` file. Copy the templates and fill in the values:
+Copy the templates and fill in the values:
 
 ```powershell
 # Backend
@@ -113,10 +121,6 @@ copy testimonium-parishioner-web\.env.example testimonium-parishioner-web\.env
 # Admin Portal
 copy testimonium-admin-portal\.env.example testimonium-admin-portal\.env
 ```
-
-See the [Environment Variables](#environment-variables) section below for what each variable does.
-
-> **Credentials:** Obtain Firebase and Cloudflare R2 credentials from the project maintainer. Do not commit `.env` files.
 
 ### 4. Synchronize the database
 
@@ -156,86 +160,12 @@ This launches all three services simultaneously using `concurrently`:
 [Admin]       vite (port 5174)            → http://localhost:5174
 ```
 
-Each service is color-coded in the terminal output:
-- **Blue** — Backend
-- **Green** — Parishioner Web Portal
-- **Magenta** — Admin Portal
-
-> If the backend fails to start, `--kill-others-on-fail` automatically terminates the frontend processes to prevent zombie UI instances running against a dead API.
-
 ### Start individual applications
 
 ```powershell
 npm run backend        # Backend only
 npm run parishioner    # Parishioner Web Portal only
 npm run admin          # Admin Portal only
-```
-
----
-
-## Startup Order
-
-The frontend applications can technically start before the backend, but they will fail to load data until the backend is ready. The recommended order is:
-
-```
-1. Backend (port 5000) — must be healthy before API calls succeed
-2. Parishioner Portal (port 5173) — depends on backend
-3. Admin Portal (port 5174) — depends on backend
-```
-
-`npm run dev` starts all three simultaneously. The frontends handle backend unavailability gracefully during the brief startup window.
-
----
-
-## Health Check & Service Verification
-
-After startup, verify each service is running:
-
-### Backend
-
-```powershell
-# Using PowerShell
-Invoke-WebRequest -Uri http://localhost:5000/api/v1/health -UseBasicParsing
-```
-
-Or open in a browser: `http://localhost:5000/api/v1/health`
-
-Expected response:
-```json
-{ "status": "ok" }
-```
-
-### Parishioner Web Portal
-
-Open in a browser: `http://localhost:5173`
-
-The TESTIMONIUM landing page should load with the parishioner services and the **"Parish Staff & Administrators"** gateway section at the bottom.
-
-### Admin Portal
-
-Open in a browser: `http://localhost:5174`
-
-The Admin Portal login page should load.
-
----
-
-## Stopping All Services
-
-Press `Ctrl+C` in the terminal running `npm run dev`. `concurrently` will terminate all three processes.
-
-If a process becomes unresponsive:
-
-```powershell
-# Find processes on specific ports
-netstat -ano | findstr :5000
-netstat -ano | findstr :5173
-netstat -ano | findstr :5174
-
-# Kill by PID
-taskkill /PID <PID> /F
-
-# Or kill all Node.js processes (use carefully)
-taskkill /IM node.exe /F
 ```
 
 ---
@@ -248,85 +178,35 @@ taskkill /IM node.exe /F
 | Parishioner Web Portal | `5173` | `testimonium-parishioner-web/vite.config.ts` |
 | Admin Portal | `5174` | `testimonium-admin-portal/vite.config.ts` |
 
-Ports are **pinned with `strictPort: true`** in both Vite configurations. If a port is already in use, Vite will fail immediately with a clear error instead of silently moving to the next available port.
-
-The backend CORS configuration (`testimonium-backend/config/env.js`) explicitly allows both `http://localhost:5173` and `http://localhost:5174`.
+Ports are **pinned with `strictPort: true`** in both Vite configurations.
 
 ---
 
-## Environment Variables
+## User Roles & Capabilities
 
-See `.env.example` in the root for a full cross-application reference table.
-
-### Key differences between portal `.env` files
-
-The two frontend portals use **different variable names** for the same logical purpose. This is intentional for historical reasons — do not rename them.
-
-| Purpose | Parishioner Web Portal | Admin Portal |
+| Role | Application | Primary Access & Responsibilities |
 |---|---|---|
-| Backend API URL | `VITE_API_BASE_URL` | `VITE_API_URL` |
-| Data provider mode | `VITE_PROVIDER_MODE` | `VITE_DATA_PROVIDER` |
-| Firebase credentials | `VITE_FIREBASE_*` (6 keys) | `VITE_FIREBASE_*` (6 keys, same) |
+| **`PARISHIONER`** | Parishioner Web Portal | Order certificates with fee snapshotting, submit GCash/Maya receipts, schedule appointments with interactive date picker, track request timelines. |
+| **`SECRETARY`** | Admin Portal | Process parish document requests, verify payments with OCR, issue correction notices, manage sacramental bookings, configure parish pricing, offered sacraments, venue capacity, time slots, office hours, and payment QR codes. |
+| **`PRIEST`** | Admin Portal | View assigned presiding calendar, confirm sacramental appointments and Masses, log leave/unavailability ranges. |
+| **`DIOCESE_COORDINATOR`** | Admin Portal | Unrestricted vicariate-wide management, interactive church map pin positioning and styling, user/staff provisioning, analytics, and activity audit logs. |
 
 ---
 
-## Development Rules
+## Core System Architecture & Features
 
-These rules prevent the most common development environment issues.
-
-### ✅ Always start from the root workspace
-
-```powershell
-# Correct — starts exactly one backend instance
-npm run dev
-
-# Risky — can create a second backend if root dev is also running
-cd testimonium-backend && npm run dev
-```
-
-### ✅ Only one backend instance at a time
-
-Port `5000` can only be bound once. Running the backend from both the root workspace and the backend directory simultaneously causes an `EADDRINUSE` error. Always verify no stale backend process is running before starting.
-
-### ✅ Regenerate Prisma Client after schema changes
-
-After any `prisma migrate dev` or `prisma generate`:
-
-```powershell
-npx prisma generate
-# Then restart the backend — nodemon does not detect Prisma Client changes
-```
-
-### ✅ Restart the backend manually after `.env` changes
-
-nodemon does not watch `.env` files. Changes to backend environment variables require a manual `Ctrl+C` and restart.
-
-### ✅ Use `npm run install:all` after pulling dependency changes
-
-If `package.json` files were updated in the pull:
-
-```powershell
-npm run install:all
-```
-
-### ✅ Keep ports fixed
-
-Do not change the Vite ports without also updating:
-- `testimonium-backend/config/env.js` — `corsOrigins` array
-- Both frontend `.env` files — backend URL variables
-- This README and `.env.example` files
-
----
-
-## User Roles
-
-| Role | Application | Access |
-|---|---|---|
-| **Parishioner** | Parishioner Web Portal | Request documents, schedule events, track status |
-| **Secretary** | Admin Portal | Process document requests for their assigned parish |
-| **Parish Coordinator (Priest)** | Admin Portal | Approve schedules, view parish calendar |
-| **Diocese Coordinator** | Admin Portal | Multi-parish oversight, analytics, user management |
-| **Super Administrator** | Admin Portal | Full system access |
+1. **Immutable Historical Fee Snapshotting**:
+   - Every document request snapshots its authoritative `fee Decimal(10,2)` upon draft creation, ensuring future price adjustments never alter in-flight or completed transactions.
+2. **Sacramental Scheduling Concurrency Hardening**:
+   - Appointment reservations execute inside **Prisma Serializable transactions**.
+   - Strict separation between physical church attendance limits (`venueCapacity`) and staff booking concurrency (`slotCapacity` / `dailyLimit`).
+   - Dynamic parish sacrament availability derivation with canonical default time slots.
+3. **Interactive Vicariate Mapping**:
+   - Custom church sanctuary SVG markers with hex color customization (`#7B1C2A`), zoom controls, label toggles, and drag-and-drop coordinates with unsaved-changes protection.
+4. **Optical Character Recognition (OCR)**:
+   - Sharp image pre-processing (EXIF auto-rotation, 1200px resize, contrast stretching, quality 80 JPEG) combined with Google Vision API / OCR.Space parsing for GCash and Maya receipts.
+5. **Robust Audit Trail**:
+   - Detailed activity logging recording actor role, IP address, timestamp, and JSON diffs of previous vs new values.
 
 ---
 
@@ -334,14 +214,14 @@ Do not change the Vite ports without also updating:
 
 | Layer | Technology |
 |---|---|
-| Backend runtime | Node.js `v20.x`, Express `v5.x`, ES Modules |
-| Database | PostgreSQL (Supabase), Prisma `v7.8.0` (`@prisma/adapter-pg`) |
-| Authentication | Firebase Auth (Admin SDK `v14.x` + Client SDK `v12.x`) |
-| File storage | Cloudflare R2 (S3-compatible via `@aws-sdk/client-s3`) |
-| Image & OCR Pipeline | Sharp `v0.35.x` image optimization, OCR.Space API + Fallback Stub OCR |
-| Logging & Monitoring | Pino `v10.x` structured logger with `pino-http` middleware |
-| Admin Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4`, Radix UI |
-| Parishioner Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4`, Leaflet Maps |
+| Backend Runtime | Node.js `v20.x LTS`, Express `v5.x` (ES Modules) |
+| Database & ORM | PostgreSQL (Supabase), Prisma `v7.8.0` with `@prisma/adapter-pg` |
+| Authentication | Firebase Auth (Admin SDK `v14.x` + Client SDK `v12.x`) + JIT Provisioning |
+| Cloud Object Storage | Cloudflare R2 (S3-compatible via `@aws-sdk/client-s3`) |
+| Image & OCR Pipeline | Sharp `v0.35.x`, Google Vision API / OCR.Space Engine 2 |
+| Logging | Pino `v10.x` structured logger with `pino-http` |
+| Admin Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4`, Radix UI, Lucide Icons |
+| Parishioner Web Portal | React `v19`, Vite `v8`, TypeScript, TailwindCSS `v3.4`, Leaflet GIS Maps |
 
 ---
 
@@ -349,8 +229,11 @@ Do not change the Vite ports without also updating:
 
 | Document | Location | Purpose |
 |---|---|---|
-| Backend Developer Guide | [`testimonium-backend/DEVELOPER_GUIDE.md`](./testimonium-backend/DEVELOPER_GUIDE.md) | Prisma workflows, lifecycle, recovery, troubleshooting |
-| Backend API Reference | [`testimonium-backend/API_DOCUMENTATION.md`](./testimonium-backend/API_DOCUMENTATION.md) | REST endpoint documentation |
-| Database Schema | [`testimonium-backend/Testimonium_Database_Schema.md`](./testimonium-backend/Testimonium_Database_Schema.md) | Schema definitions and relations |
-| Admin Portal Design | [`testimonium-admin-portal/ADMIN_PORTAL.md`](./testimonium-admin-portal/ADMIN_PORTAL.md) | Admin portal architecture notes |
-| Parishioner Portal Design | [`testimonium-parishioner-web/DESIGN.md`](./testimonium-parishioner-web/DESIGN.md) | Parishioner portal design system |
+| **System Context & Snapshot** | [`testimonium_context.md`](./testimonium_context.md) | Master synchronization state, directory tree & phase tracker |
+| **Database Administration** | [`DATABASE.md`](./DATABASE.md) | Migrations, backup scripts, restore & disaster recovery |
+| **Database Schema Reference** | [`Testimonium_Database_Schema.md`](./Testimonium_Database_Schema.md) | Entity descriptions, table fields & constraints |
+| **Backend REST API Reference** | [`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md) | REST endpoints, request/response envelopes & validation |
+| **Production Deployment Manual** | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Production setup with PM2, Docker, Nginx & SSL |
+| **Cloudflare R2 Storage Guide** | [`CLOUDFLARE_R2.md`](./CLOUDFLARE_R2.md) | Bucket hierarchy, permissions, CORS & OCR pipeline |
+| **Backend Developer Guide** | [`testimonium-backend/DEVELOPER_GUIDE.md`](./testimonium-backend/DEVELOPER_GUIDE.md) | Lifecycle, Prisma workflows, dev auth bypass & troubleshooting |
+| **Admin Portal Documentation** | [`testimonium-admin-portal/ADMIN_PORTAL.md`](./testimonium-admin-portal/ADMIN_PORTAL.md) | Admin portal architecture, RBAC & page capabilities |

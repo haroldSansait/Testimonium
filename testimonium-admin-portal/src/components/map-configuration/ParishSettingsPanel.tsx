@@ -12,14 +12,14 @@ interface ParishSettingsPanelProps {
 }
 
 const CURATED_COLORS = [
-  { name: 'Teal', value: '#0d9488' },
-  { name: 'Rose', value: '#f43f5e' },
-  { name: 'Indigo', value: '#6366f1' },
-  { name: 'Emerald', value: '#10b981' },
+  { name: 'Maroon', value: '#7B1C2A' },
+  { name: 'Crimson', value: '#dc2626' },
   { name: 'Amber', value: '#f59e0b' },
-  { name: 'Violet', value: '#8b5cf6' },
+  { name: 'Emerald', value: '#10b981' },
+  { name: 'Teal', value: '#0d9488' },
   { name: 'Sky', value: '#0ea5e9' },
-  { name: 'Crimson', value: '#dc2626' }
+  { name: 'Indigo', value: '#6366f1' },
+  { name: 'Violet', value: '#8b5cf6' }
 ];
 
 export function ParishSettingsPanel({
@@ -45,7 +45,7 @@ export function ParishSettingsPanel({
   const currentLatitude = draft.latitude !== undefined ? draft.latitude : parish.latitude;
   const currentLongitude = draft.longitude !== undefined ? draft.longitude : parish.longitude;
   const currentZoom = draft.mapZoom !== undefined ? draft.mapZoom : (parish.mapZoom ?? 13);
-  const currentPinColor = draft.pinColor !== undefined ? draft.pinColor : (parish.pinColor ?? '#0d9488');
+  const currentPinColor = draft.pinColor !== undefined ? draft.pinColor : (parish.pinColor ?? '#7B1C2A');
   const currentShowLabel = draft.showLabel !== undefined ? draft.showLabel : (parish.showLabel ?? true);
   const currentDescription = draft.directoryDescription !== undefined ? draft.directoryDescription : (parish.directoryDescription ?? '');
   const currentContact = draft.contactNumber !== undefined ? draft.contactNumber : (parish.contactNumber ?? '');
@@ -58,7 +58,7 @@ export function ParishSettingsPanel({
       {/* Panel Header */}
       <div className="p-4 border-b border-gray-150 bg-gray-50/75 backdrop-blur-sm flex items-center justify-between">
         <div className="flex items-center gap-2 overflow-hidden">
-          <MapPin className="w-4 h-4 text-teal-600 flex-shrink-0" />
+          <MapPin className="w-4 h-4 text-crimson-700 flex-shrink-0" />
           <div className="overflow-hidden">
             <h2 className="text-xs font-bold text-gray-800">Parish Settings</h2>
             <p className="text-[10px] text-gray-500 truncate max-w-[200px]" title={parish.name}>
@@ -212,7 +212,7 @@ export function ParishSettingsPanel({
               <div>
                 <div className="flex justify-between mb-1">
                   <label className="text-[11px] font-medium text-gray-400">Map Zoom Level</label>
-                  <span className="text-[11px] font-bold text-teal-600">{currentZoom}</span>
+                  <span className="text-[11px] font-bold text-crimson-700">{currentZoom}</span>
                 </div>
                 <input
                   type="range"
@@ -220,7 +220,7 @@ export function ParishSettingsPanel({
                   max="20"
                   value={currentZoom ?? 13}
                   onChange={(e) => onFieldChange('mapZoom', parseInt(e.target.value, 10))}
-                  className="w-full accent-teal-600"
+                  className="w-full accent-crimson-700"
                 />
               </div>
 
@@ -236,7 +236,7 @@ export function ParishSettingsPanel({
                       title={col.name}
                       className={`w-6 h-6 rounded-full border shadow-sm transition-all focus:outline-none ${
                         currentPinColor === col.value 
-                          ? 'ring-2 ring-offset-2 ring-teal-500 scale-110 border-transparent' 
+                          ? 'ring-2 ring-offset-2 ring-crimson-700 scale-110 border-transparent' 
                           : 'border-gray-200 hover:scale-105'
                       }`}
                       style={{ backgroundColor: col.value }}
@@ -255,7 +255,7 @@ export function ParishSettingsPanel({
                   type="button"
                   onClick={() => onFieldChange('showLabel', !currentShowLabel)}
                   className={`relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    currentShowLabel ? 'bg-teal-600' : 'bg-gray-200'
+                    currentShowLabel ? 'bg-crimson-700' : 'bg-gray-200'
                   }`}
                 >
                   <span
@@ -293,7 +293,7 @@ export function ParishSettingsPanel({
                   value={currentDescription}
                   onChange={(e) => onFieldChange('directoryDescription', e.target.value)}
                   placeholder="Introduce your parish to the public..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded text-gray-700 focus:outline-none focus:border-teal-500 font-medium"
+                  className="w-full px-3 py-2 border border-gray-200 rounded text-gray-700 focus:outline-none focus:border-crimson-700 font-medium"
                 />
               </div>
 
@@ -304,7 +304,7 @@ export function ParishSettingsPanel({
                   value={currentContact}
                   onChange={(e) => onFieldChange('contactNumber', e.target.value)}
                   placeholder="e.g. 09171234567"
-                  className="w-full px-3 py-2 border border-gray-200 rounded text-gray-700 focus:outline-none focus:border-teal-500 font-medium"
+                  className="w-full px-3 py-2 border border-gray-200 rounded text-gray-700 focus:outline-none focus:border-crimson-700 font-medium"
                 />
               </div>
 
@@ -315,7 +315,7 @@ export function ParishSettingsPanel({
                   value={currentEmail}
                   onChange={(e) => onFieldChange('email', e.target.value)}
                   placeholder="e.g. support@parish.org"
-                  className="w-full px-3 py-2 border border-gray-200 rounded text-gray-700 focus:outline-none focus:border-teal-500 font-medium"
+                  className="w-full px-3 py-2 border border-gray-200 rounded text-gray-700 focus:outline-none focus:border-crimson-700 font-medium"
                 />
               </div>
 

@@ -60,6 +60,12 @@ const mapParish = (p: any): Parish => {
         ? JSON.parse(p.availableDocuments)
         : p.availableDocuments
       : null,
+    venueCapacity: p.venueCapacity !== undefined && p.venueCapacity !== null ? Number(p.venueCapacity) : null,
+    eventSettings: p.eventSettings
+      ? typeof p.eventSettings === "string"
+        ? (() => { try { return JSON.parse(p.eventSettings); } catch { return p.eventSettings; } })()
+        : p.eventSettings
+      : null,
   };
 };
 

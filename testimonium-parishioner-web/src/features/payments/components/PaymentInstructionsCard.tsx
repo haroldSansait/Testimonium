@@ -6,11 +6,18 @@ import { Skeleton } from '../../../components/ui/Skeleton';
 
 interface PaymentInstructionsCardProps {
   parishId?: string;
+  amount?: number | null;
 }
 
-export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = ({ parishId }) => {
+export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = ({ parishId, amount }) => {
   const { data: config, loading, error } = usePaymentConfiguration(parishId);
   const [activeTab, setActiveTab] = useState<'gcash' | 'maya'>('gcash');
+  const [imageError, setImageError] = useState(false);
+
+  // Reset image error when tab or config changes
+  React.useEffect(() => {
+    setImageError(false);
+  }, [activeTab, config]);
 
   if (loading) {
     return (
@@ -43,17 +50,30 @@ export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = (
   const hasMaya = !!config.maya;
   const selected = (activeTab === 'gcash' || !hasMaya) ? config.gcash : config.maya;
 
+  const formattedAmount = amount !== undefined && amount !== null && !isNaN(amount)
+    ? `₱${amount.toFixed(2)}`
+    : null;
+
   return (
     <Card className="shadow-md overflow-hidden border-border/80">
       <CardHeader className="bg-app-page border-b border-border/40 py-4">
-        <CardTitle className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-crimson" />
-          Payment Instructions
-        </CardTitle>
+        <div className="flex justify-between items-center w-full">
+          <CardTitle className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-crimson" />
+            Payment Instructions
+          </CardTitle>
+          {formattedAmount && (
+            <span className="text-xs font-bold text-crimson bg-red-50 px-2.5 py-1 rounded-md border border-crimson/20">
+              Due: {formattedAmount}
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-5 space-y-5">
         <p className="text-xs text-text-muted font-normal leading-relaxed">
-          Please settle the document fee using {hasMaya ? 'GCash or Maya' : 'GCash'}. Ensure you capture a screenshot of your receipt after transaction.
+          Please settle the document fee{formattedAmount ? ` of ` : ' '}
+          {formattedAmount ? <strong className="text-text-primary font-bold">{formattedAmount}</strong> : null}
+          {' '}using {hasMaya ? 'GCash or Maya' : 'GCash'}. Ensure you capture a screenshot of your receipt after transaction.
         </p>
 
         {/* Tab Buttons */}
@@ -98,7 +118,7 @@ export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = (
           </div>
 
           {/* QR Code Display */}
-          {selected.qrCodeUrl && (
+          {selected.qrCodeUrl && !imageError && (
             <div className="flex flex-col items-center justify-center p-4 border border-dashed border-border/60 rounded-xl bg-white space-y-2">
               <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider flex items-center gap-1.5">
                 <QrCode className="w-3.5 h-3.5" /> Scan QR to Pay
@@ -108,6 +128,7 @@ export const PaymentInstructionsCard: React.FC<PaymentInstructionsCardProps> = (
                   src={selected.qrCodeUrl}
                   alt={`${activeTab === 'gcash' ? 'GCash' : 'Maya'} QR Code`}
                   className="w-32 h-32 object-contain"
+                  onError={() => setImageError(true)}
                 />
               </div>
             </div>

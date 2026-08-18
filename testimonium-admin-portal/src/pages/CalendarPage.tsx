@@ -1,7 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, X, Calendar as CalendarIcon, Clock, MapPin, User, CheckCircle, Download, ExternalLink, Check, AlertCircle } from 'lucide-react';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  X, 
+  Calendar as CalendarIcon, 
+  CalendarDays,
+  Clock, 
+  MapPin, 
+  User, 
+  CheckCircle, 
+  Download, 
+  ExternalLink, 
+  Check, 
+  AlertCircle,
+  Building2,
+  Palette,
+  Plus
+} from 'lucide-react';
 import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { CalendarLegend } from '@/components/calendar/CalendarLegend';
 import { CalendarWeekView } from '@/components/calendar/CalendarWeekView';
@@ -789,7 +806,7 @@ export function CalendarPage() {
   const now = new Date();
   const location = useLocation();
   const { applicationUser } = useAuth();
-  const parishId = applicationUser?.parishId;
+  
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
 
@@ -809,6 +826,11 @@ export function CalendarPage() {
   const [selectedParishFilter, setSelectedParishFilter] = useState<string>(() => {
     return localStorage.getItem('lastSelectedParishId') || '';
   });
+
+  // Effective Parish ID: for Coordinator, use selectedParishFilter; otherwise use user parishId
+  const effectiveParishId = applicationUser?.role === 'DIOCESE_COORDINATOR'
+    ? (selectedParishFilter || undefined)
+    : (applicationUser?.parishId ? String(applicationUser.parishId) : undefined);
 
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
@@ -854,17 +876,17 @@ export function CalendarPage() {
   useAutoRefresh(fetchCalendarEvents, { intervalMs: 5000 });
 
   const fetchPriests = useCallback(async () => {
-    if (!parishId) return;
+    if (!effectiveParishId) return;
     try {
       const list = await UserManagementService.getUsers({
         role: 'PRIEST',
-        parishId: String(parishId),
+        parishId: String(effectiveParishId),
       });
       setPriests(list);
     } catch (err) {
       console.error('Failed to load priests for legend:', err);
     }
-  }, [parishId]);
+  }, [effectiveParishId]);
 
   useEffect(() => {
     void fetchPriests();
@@ -937,62 +959,35 @@ export function CalendarPage() {
     }
   };
 
+  const getViewSubtitle = () => {
+    if (view === 'Month') {
+      return 'Monthly schedule overview';
+    } else if (view === 'Week') {
+      return '7-day schedule breakdown';
+    } else {
+      return 'Single day chronological timeline';
+    }
+  };
+
   return (
-    <div>
-      {/* Calendar Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4 flex-wrap">
+    <div className="space-y-4">
+      {/* Tier 1: Page Header & Primary Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
           <h1
-            className="text-4xl font-bold text-gray-900"
+            className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight"
             style={{ fontFamily: 'Playfair Display, serif' }}
           >
             {getHeaderTitle()}
           </h1>
-          {applicationUser?.role === 'DIOCESE_COORDINATOR' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Parish:</span>
-              <select
-                value={selectedParishFilter}
-                onChange={(e) => handleParishChange(e.target.value)}
-                className="px-3 py-1.5 text-xs font-semibold bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#7B1C2A] transition-colors shadow-sm"
-              >
-                {parishes.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <button
-              onClick={handlePrev}
-              className="p-2 text-gray-500 hover:bg-gray-100 transition-colors"
-              aria-label="Previous month"
-              id="calendar-prev"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleToday}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-              id="calendar-today"
-            >
-              Today
-            </button>
-            <button
-              onClick={handleNext}
-              className="p-2 text-gray-500 hover:bg-gray-100 transition-colors"
-              aria-label="Next month"
-              id="calendar-next"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          <p className="text-xs text-gray-500 mt-1 font-medium flex items-center gap-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#7B1C2A]" />
+            {getViewSubtitle()}
+          </p>
         </div>
 
-        {/* View toggle & Create Event + Export button */}
-        <div className="flex items-center gap-3">
+        {/* Action Buttons: Export, Priest Colors, Create Event */}
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
           <ExportMenu
             events={events}
             year={year}
@@ -1000,42 +995,110 @@ export function CalendarPage() {
             onSuccess={(msg) => showToast(msg, 'success')}
             onError={(msg) => showToast(msg, 'error')}
           />
-          {parishId && (
+          {effectiveParishId && (
             <button
               onClick={() => setShowPriestSettings(true)}
-              className="px-3.5 py-2 text-xs font-semibold bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-xs hover:border-gray-400"
             >
-              Priest Colors
+              <Palette className="w-3.5 h-3.5 text-gray-500" />
+              <span>Priest Colors</span>
             </button>
           )}
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-[#7B1C2A] text-white rounded-lg hover:bg-[#9B2C3A] transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[#7B1C2A] text-white rounded-xl hover:bg-[#9B2C3A] active:bg-[#6A1824] transition-all shadow-sm hover:shadow"
           >
-            + Create Parish Event
+            <Plus className="w-3.5 h-3.5" />
+            <span>Create Parish Event</span>
           </button>
-          <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden">
-            {(['Month', 'Week', 'Day'] as CalendarView[]).map((v) => (
+        </div>
+      </div>
+
+      {/* Tier 2: Control & Filter Floating Toolbar Card */}
+      <div className="bg-white border border-gray-200/90 rounded-2xl p-2.5 sm:px-4 sm:py-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        {/* Left: Prev / Today / Next Navigation Controls */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handlePrev}
+            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shadow-xs"
+            aria-label="Previous period"
+            id="calendar-prev"
+            title={view === 'Month' ? 'Previous Month' : view === 'Week' ? 'Previous Week' : 'Previous Day'}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleToday}
+            className={cn(
+              "px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all shadow-xs",
+              selectedDate.toDateString() === now.toDateString()
+                ? "bg-[#7B1C2A]/10 border-[#7B1C2A]/30 text-[#7B1C2A]"
+                : "bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
+            )}
+            id="calendar-today"
+          >
+            Today
+          </button>
+          <button
+            onClick={handleNext}
+            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shadow-xs"
+            aria-label="Next period"
+            id="calendar-next"
+            title={view === 'Month' ? 'Next Month' : view === 'Week' ? 'Next Week' : 'Next Day'}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Center: Coordinator Parish Filter */}
+        {applicationUser?.role === 'DIOCESE_COORDINATOR' && parishes.length > 0 && (
+          <div className="flex items-center gap-2 bg-gray-50/90 border border-gray-200 px-3 py-1.5 rounded-xl shadow-xs">
+            <Building2 className="w-4 h-4 text-[#7B1C2A] flex-shrink-0" />
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Parish:
+            </span>
+            <select
+              value={selectedParishFilter}
+              onChange={(e) => handleParishChange(e.target.value)}
+              className="bg-white border border-gray-300 text-xs font-semibold text-gray-800 rounded-lg px-2.5 py-1 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7B1C2A]/20 focus:border-[#7B1C2A] transition-all shadow-xs cursor-pointer"
+            >
+              {parishes.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Right: View Switcher (Month | Week | Day) Segmented Pill Control */}
+        <div className="inline-flex p-1 bg-gray-100/90 border border-gray-200 rounded-xl shadow-inner">
+          {(['Month', 'Week', 'Day'] as CalendarView[]).map((v) => {
+            const isActive = view === v;
+            return (
               <button
                 key={v}
                 id={`calendar-view-${v.toLowerCase()}`}
                 onClick={() => setView(v)}
                 className={cn(
-                  'px-4 py-2 text-sm font-medium transition-all',
-                  view === v
-                    ? 'bg-crimson-700 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                  'flex items-center gap-1.5 px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg transition-all',
+                  isActive
+                    ? 'bg-[#7B1C2A] text-white shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
                 )}
               >
-                {v}
+                {v === 'Month' && <CalendarIcon className="w-3.5 h-3.5" />}
+                {v === 'Week' && <CalendarDays className="w-3.5 h-3.5" />}
+                {v === 'Day' && <Clock className="w-3.5 h-3.5" />}
+                <span>{v}</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Calendar Card */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200/90 rounded-2xl shadow-xs overflow-hidden">
         {view === 'Month' && (
           <CalendarGrid
             year={year}
@@ -1054,6 +1117,10 @@ export function CalendarPage() {
             currentDate={selectedDate}
             events={events}
             onEventClick={setSelectedEvent}
+            onSelectDay={(date) => {
+              setSelectedDate(date);
+              setView('Day');
+            }}
           />
         )}
 
@@ -1062,6 +1129,7 @@ export function CalendarPage() {
             currentDate={selectedDate}
             events={events}
             onEventClick={setSelectedEvent}
+            onCreateEvent={() => setShowCreateModal(true)}
           />
         )}
 
@@ -1084,7 +1152,7 @@ export function CalendarPage() {
       {/* Create Parish Event Modal */}
       {showCreateModal && (
         <CreateParishEventModal
-          parishId={parishId}
+          parishId={effectiveParishId}
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
             const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
@@ -1097,7 +1165,7 @@ export function CalendarPage() {
       {/* Priest Color Settings Modal */}
       {showPriestSettings && (
         <PriestColorSettingsModal
-          parishId={parishId ? String(parishId) : undefined}
+          parishId={effectiveParishId ? String(effectiveParishId) : undefined}
           onClose={() => setShowPriestSettings(false)}
           onSuccess={() => {
             void fetchPriests();

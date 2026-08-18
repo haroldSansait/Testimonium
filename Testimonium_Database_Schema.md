@@ -6,7 +6,7 @@ Database Schema Reference & Entity Descriptions _Vicariate of Canlaon, Diocese o
 
 ## **Database Architecture Overview** 
 
-The TESTIMONIUM database uses a relational model implemented in PostgreSQL via **Prisma ORM (v7.8.0)** with `@prisma/adapter-pg`. It is organized around seventeen active tables that support sacramental document processing, payment verification, OCR parsing, church scheduling, staff assignment, parish directory & mapping, notification dispatching, FAQ chatbot operations, and audit logging. All tables include timestamps for full data traceability. The database supports request processing, scheduling coordination, and system monitoring.
+The TESTIMONIUM database uses a relational model implemented in PostgreSQL via **Prisma ORM (v7.8.0)** with `@prisma/adapter-pg`. It is organized around seventeen active tables that support sacramental document processing, historical fee snapshotting, payment verification, OCR parsing, church scheduling with atomic capacity and venue concurrency limits, staff assignment, parish directory & mapping, notification dispatching, FAQ chatbot operations, and audit logging. All tables include timestamps for full data traceability. The database supports request processing, scheduling coordination, and system monitoring.
 
 ---
 
@@ -16,16 +16,16 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 |---|---|
 | `users` | Account information for parishioners, parish secretaries, parish priests, and Diocese Coordinators. Authenticated via Firebase Auth with `firebase_uid`. |
 | `roles` | Defines system authorization roles: `PARISHIONER`, `SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`. |
-| `parishes` | Stores information for parishes, quasi-parishes, and mission stations in the Vicariate of Canlaon, including settings, cover/logo/gallery images, and map markers. |
-| `document_requests` | Sacramental document request records including document type, request status, payment status, tracking number, correction notes, and processing history. |
+| `parishes` | Stores information for parishes, quasi-parishes, and mission stations in the Vicariate of Canlaon, including settings, venue capacity, payment QR configuration, cover/logo/gallery images, and map markers. |
+| `document_requests` | Sacramental document request records including document type, authoritative fee snapshot, request status, payment status, tracking number, correction notes, and processing history. |
 | `request_attachments` | Metadata for primary, supporting, and receipt files stored in Cloudflare R2 object storage. |
 | `payment_transactions` | Payment verification transactions linking document requests to uploaded receipts and staff verifiers. |
 | `receipt_uploads` | Storage metadata for payment receipt screenshots uploaded to Cloudflare R2. |
 | `ocr_results` | Extracted raw text, parsed GCash/Maya payment metadata, multi-score confidence metrics, field normalization, engine parameters, and performance telemetry. |
 | `request_history` | Audit trail of status transitions, remarks, and actor IDs for document requests. |
-| `schedules` | Church scheduling requests including event type, requested dates, proposed reschedules, priest assignments, and conflict flags. |
-| `mass_schedule_templates` | Recurring weekly Mass schedule templates per parish with assigned presiding priests. |
-| `parish_events` | Custom parish activities (Seminars, Fiestas, Holy Hours) with dates, times, and priest assignments. |
+| `schedules` | Church scheduling requests including event type, requested dates, start/end timestamps, proposed reschedules, priest assignments, priest response status, and conflict flags. |
+| `mass_schedule_templates` | Recurring weekly Mass schedule templates per parish with assigned presiding priests and acceptance response states. |
+| `parish_events` | Custom parish activities (Seminars, Fiestas, Holy Hours) with dates, times, priest assignments, and acceptance response states. |
 | `parish_availabilities` | Office closures, staff leave ranges, and booking availability blocks. |
 | `notifications` | Notification logs dispatched to users via `PUSH`, `IN_APP`, or `EMAIL`. |
 | `faq_knowledge_base` | FAQ entries and answers used by the Caloy chatbot to respond to parishioner inquiries. |
@@ -82,6 +82,12 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `is_verified` | `BOOLEAN` | DEFAULT FALSE | Email verification status flag |
 | `status` | `UserStatus` | DEFAULT `ACTIVE` | Account status (`ACTIVE`, `INACTIVE`) |
 | `color` | `VARCHAR(50)` | NULLABLE | Custom user calendar display color preference |
+| `terms_accepted_at` | `TIMESTAMP` | NULLABLE | Timestamp terms of service were accepted |
+| `privacy_accepted_at` | `TIMESTAMP` | NULLABLE | Timestamp privacy policy was accepted |
+| `terms_version` | `VARCHAR(20)` | NULLABLE | Version tag of accepted terms |
+| `privacy_version` | `VARCHAR(20)` | NULLABLE | Version tag of accepted privacy policy |
+| `last_verification_resent_at` | `TIMESTAMP` | NULLABLE | Rate-limiting tracker for email verification resends |
+| `verification_resent_count` | `INT` | DEFAULT 0 | Count of email verification resends |
 | `created_at` | `TIMESTAMP` | DEFAULT `now()` | Record creation timestamp |
 | `updated_at` | `TIMESTAMP` | `@updatedAt` | Record last updated timestamp |
 
@@ -117,7 +123,7 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `cover_image` | `VARCHAR(255)` | NULLABLE | Cloudflare R2 URL for parish cover image |
 | `logo_image` | `VARCHAR(255)` | NULLABLE | Cloudflare R2 URL for parish logo image |
 | `map_zoom` | `INT` | NULLABLE | Custom map zoom level |
-| `pin_color` | `VARCHAR(20)` | NULLABLE | Vicariate map pin color hex code |
+| `pin_color` | `VARCHAR(20)` | NULLABLE | Vicariate map pin color hex code (e.g. `#7B1C2A`) |
 | `show_label` | `BOOLEAN` | DEFAULT TRUE | Toggle map label visibility |
 | `directory_description` | `TEXT` | NULLABLE | Public directory summary profile |
 | `location_updated_by` | `INT` | NULLABLE | User ID who updated coordinates |
@@ -125,8 +131,14 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `gallery` | `VARCHAR[]` | DEFAULT `[]` | Array of Cloudflare R2 URLs for gallery photos |
 | `is_active` | `BOOLEAN` | DEFAULT TRUE | Active operational status toggle |
 | `document_settings` | `TEXT` | NULLABLE | JSON string of parish document request fees & rules |
-| `event_settings` | `TEXT` | NULLABLE | JSON string of event reservation fees & rules |
+| `event_settings` | `TEXT` | NULLABLE | JSON string of event reservation rules, offered sacraments, slot capacity, daily limit, and time slots |
 | `office_hours` | `TEXT` | NULLABLE | JSON string of parish office operating schedules |
+| `payment_qr_image` | `VARCHAR(255)` | NULLABLE | Cloudflare R2 URL for parish GCash/Maya QR code |
+| `payment_qr_enabled` | `BOOLEAN` | DEFAULT FALSE | Toggle QR code payment availability |
+| `payment_qr_updated_at` | `TIMESTAMP` | NULLABLE | Timestamp payment QR was last updated |
+| `payment_qr_updated_by` | `INT` | NULLABLE | User ID who last updated payment QR |
+| `available_documents` | `JSONB` | NULLABLE | Array of canonical document types explicitly enabled for online ordering |
+| `venue_capacity` | `INT` | NULLABLE | Church building/sanctuary maximum attendance capacity (informational limit) |
 | `created_at` | `TIMESTAMP` | DEFAULT `now()` | Record creation timestamp |
 | `updated_at` | `TIMESTAMP` | `@updatedAt` | Record last updated timestamp |
 
@@ -143,12 +155,13 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `applicant_name` | `VARCHAR(150)` | NOT NULL | Full name of certificate subject |
 | `relationship` | `VARCHAR(100)` | NULLABLE | Relationship of applicant to subject |
 | `is_draft` | `BOOLEAN` | DEFAULT TRUE | Draft status flag before final submission |
-| `document_type` | `DocumentType` | NOT NULL | Enum: `BAPTISMAL_CERTIFICATE`, `CONFIRMATION_CERTIFICATE`, `MARRIAGE_CERTIFICATE`, `FIRST_COMMUNION_CERTIFICATE` |
+| `document_type` | `DocumentType` | NOT NULL | Enum: `BAPTISMAL_CERTIFICATE`, `CONFIRMATION_CERTIFICATE`, `MARRIAGE_CERTIFICATE`, `FIRST_COMMUNION_CERTIFICATE`, `MARRIAGE_BANNS`, `PERMIT_TO_MARRY`, `STATUS_OF_LIBERTY` |
 | `purpose` | `TEXT` | NULLABLE | Stated purpose for request |
 | `status` | `DocumentRequestStatus` | DEFAULT `PENDING` | Request status workflow enum (`PENDING`, `UNDER_REVIEW`, `NEEDS_CORRECTION`, `PAYMENT_PENDING`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_NEEDS_CORRECTION`, `PAYMENT_VERIFIED`, `PROCESSING`, `READY_FOR_PICKUP`, `COMPLETED`, `REJECTED`, `CANCELLED`) |
 | `payment_status` | `PaymentStatus` | DEFAULT `UNPAID` | Payment state (`UNPAID`, `PROOF_SUBMITTED`, `CONFIRMED`) |
 | `payment_proof_object_key` | `VARCHAR(255)` | NULLABLE | Cloudflare R2 object key of payment screenshot |
 | `payment_qr_reference` | `VARCHAR(100)` | NULLABLE | GCash/Maya reference ID |
+| `fee` | `DECIMAL(10,2)` | NULLABLE | **Authoritative rate snapshot** persisted upon request creation, immune to subsequent price adjustments |
 | `processed_by` | `INT` | FK → users, NULLABLE | Staff user processing request |
 | `remarks` | `TEXT` | NULLABLE | General remarks or instructions |
 | `correction_note` | `TEXT` | NULLABLE | Document requirement correction note |
@@ -223,16 +236,16 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `merchant` | `VARCHAR(100)` | NULLABLE | Extracted recipient/merchant name |
 | `payment_time` | `VARCHAR(50)` | NULLABLE | Extracted payment timestamp |
 | `account_name` | `VARCHAR(150)` | NULLABLE | Extracted sender account name |
-| `ocr_provider` | `VARCHAR(50)` | NULLABLE | Active OCR engine vendor (`ocrspace` or `stub`) |
+| `ocr_provider` | `VARCHAR(50)` | NULLABLE | Active OCR engine vendor (`google_vision`, `ocrspace`, or `stub`) |
 | `ocr_duration_ms` | `INT` | NULLABLE | Execution duration in milliseconds |
 | `original_file_size` | `INT` | NULLABLE | Original image size in bytes |
 | `compressed_file_size` | `INT` | NULLABLE | Sharp optimized payload size in bytes |
 | `ocr_confidence` | `FLOAT` | NULLABLE | Raw text recognition confidence score |
 | `parser_confidence` | `FLOAT` | NULLABLE | Regex field extraction confidence score |
 | `final_confidence` | `FLOAT` | NULLABLE | Combined weighted confidence score |
-| `ocr_engine` | `VARCHAR(20)` | NULLABLE | Engine mode identifier (`2` for OCR.Space Engine 2) |
+| `ocr_engine` | `VARCHAR(20)` | NULLABLE | Engine mode identifier (`2` for OCR.Space Engine 2, `google` for Vision) |
 | `ocr_language` | `VARCHAR(20)` | NULLABLE | Language parser setting (`eng`) |
-| `compression_width` | `VARCHAR` | NULLABLE | Sharp target resize width (1200px) |
+| `compression_width` | `INT` | NULLABLE | Sharp target resize width (1200px) |
 | `compression_quality` | `INT` | NULLABLE | Sharp JPEG quality setting (80) |
 | `normalized_amount` | `VARCHAR(50)` | NULLABLE | Standardized numeric amount string |
 | `normalized_date` | `VARCHAR(30)` | NULLABLE | Standardized ISO date string |
@@ -262,7 +275,7 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `user_id` | `INT` | FK → users, NOT NULL | Parishioner requesting appointment |
 | `parish_id` | `INT` | FK → parishes, NOT NULL | Target parish for event |
 | `assigned_priest_id` | `INT` | FK → users, NULLABLE | Presiding priest assigned to event |
-| `event_type` | `ScheduleEventType` | NOT NULL | Event type enum (`WEDDING`, `BAPTISM`, `CONFIRMATION`, `PRIVATE_MASS`, `MASS_INTENTION`, `FUNERAL`, `BLESSING`, `FIESTA`, `CONFESSION`, etc.) |
+| `event_type` | `ScheduleEventType` | NOT NULL | Event type enum (`WEDDING`, `BAPTISM`, `CONFIRMATION`, `PRIVATE_MASS`, `MASS_INTENTION`, `MARRIAGE_SPECIAL`, `WAKE_MASS`, `FUNERAL`, `ANOINTING_OF_THE_SICK`, `FIESTA`, `BLESSING`, `DELIVERANCE`, `THANKSGIVING`, `FIRST_COMMUNION`, `MASS_OF_HOLY_SPIRIT`, `CONFESSION`) |
 | `requested_date` | `DATE` | NOT NULL | Requested reservation date |
 | `start_datetime` | `TIMESTAMP` | NULLABLE | Approved start datetime |
 | `end_datetime` | `TIMESTAMP` | NULLABLE | Approved end datetime |
@@ -309,7 +322,7 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 | `parish_id` | `INT` | FK → parishes, NOT NULL | Hosting parish ID |
 | `created_by` | `INT` | FK → users, NULLABLE | Staff member who created event |
 | `title` | `VARCHAR(150)` | NOT NULL | Event title |
-| `event_type` | `VARCHAR(50)` | NOT NULL | Event type (`FIESTA`, `SEMINAR`, `OTHER`) |
+| `event_type` | `VARCHAR(50)` | NOT NULL | Event type (`FIESTA`, `SEMINAR`, `BAPTISM`, `MARRIAGE`, `CONFESSION`, `OTHER`) |
 | `description` | `TEXT` | NULLABLE | Detailed event description |
 | `location` | `VARCHAR(150)` | NULLABLE | Event venue |
 | `event_date` | `DATE` | NOT NULL | Scheduled event date |
@@ -416,7 +429,10 @@ The TESTIMONIUM database uses a relational model implemented in PostgreSQL via *
 |---|---|
 | Firebase Auth JWT Verification | Firebase Auth manages passwords and user credentials. PostgreSQL stores `firebase_uid` for JIT user provisioning and role authorization. |
 | Scoped RBAC Row Isolation | Queries filter by assigned `parish_id` and `user_id`. Staff cannot view or mutate entries belonging to unassigned parishes. |
+| Fee Snapshotting Integrity | Document requests record an immutable `fee` snapshot at submission, preventing retroactive pricing corruption. |
+| Atomic Serializable Transactions | Sacramental bookings execute inside Prisma serializable transactions, eliminating double-booking race conditions. |
+| Capacity Separation | Physical church venue capacity (`venue_capacity`) is explicitly separated from appointment booking concurrency (`slotCapacity`). |
 | Input Validation | All request payloads pass Zod schema validation before database insertion, mitigating injection risks. |
 | Audit Logging & State Deltas | All critical operations record full previous/new state JSON snapshots in `activity_logs`, supporting audit requirements. |
-| Cloud Object Decoupling | Binary uploads (documents, receipts, covers, logos, galleries) are uploaded to Cloudflare R2, keeping PostgreSQL lean. |
+| Cloud Object Decoupling | Binary uploads (documents, receipts, covers, logos, galleries, payment QRs) are uploaded to Cloudflare R2, keeping PostgreSQL lean. |
 | Timestamps & Tracing | All tables enforce `@default(now())` and `@updatedAt` timestamps for complete audit traceability. |

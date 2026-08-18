@@ -116,6 +116,7 @@ export class ParishRepository {
         province: data.province || "Negros Oriental",
         contactNumber: data.contactNumber || null,
         email: data.email || null,
+        venueCapacity: data.venueCapacity ? parseInt(data.venueCapacity, 10) : null,
         isActive: true,
       },
       include: parishInclude,
@@ -139,6 +140,9 @@ export class ParishRepository {
     if (data.province !== undefined) updateData.province = data.province;
     if (data.contactNumber !== undefined) updateData.contactNumber = data.contactNumber;
     if (data.email !== undefined) updateData.email = data.email;
+    if (data.venueCapacity !== undefined) {
+      updateData.venueCapacity = data.venueCapacity ? parseInt(data.venueCapacity, 10) : null;
+    }
     if (data.status !== undefined) {
       updateData.isActive = data.status === "Active";
     }

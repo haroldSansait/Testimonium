@@ -7,11 +7,17 @@ interface CalendarWeekViewProps {
   currentDate: Date;
   events: CalendarEvent[];
   onEventClick: (evt: CalendarEvent) => void;
+  onSelectDay?: (date: Date) => void;
 }
 
 const DAYS_OF_WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
-export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({ currentDate, events, onEventClick }) => {
+export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({ 
+  currentDate, 
+  events, 
+  onEventClick,
+  onSelectDay,
+}) => {
   const getStartOfWeek = (d: Date) => {
     const temp = new Date(d);
     const day = temp.getDay();
@@ -36,50 +42,76 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({ currentDate,
   const today = new Date();
 
   return (
-    <div className="grid grid-cols-7 border-collapse min-h-[400px] border-t border-gray-200 bg-white">
-      {weekDays.map((date, idx) => {
-        const dayEvents = getEventsForDate(date);
-        const isToday = 
-          date.getDate() === today.getDate() &&
-          date.getMonth() === today.getMonth() &&
-          date.getFullYear() === today.getFullYear();
+    <div className="overflow-x-auto">
+      <div className="grid grid-cols-7 min-w-[720px] divide-x divide-gray-200 bg-white">
+        {weekDays.map((date, idx) => {
+          const dayEvents = getEventsForDate(date);
+          const isToday = 
+            date.getDate() === today.getDate() &&
+            date.getMonth() === today.getMonth() &&
+            date.getFullYear() === today.getFullYear();
+          
+          const isSelected = 
+            date.getDate() === currentDate.getDate() &&
+            date.getMonth() === currentDate.getMonth() &&
+            date.getFullYear() === currentDate.getFullYear();
 
-        return (
-          <div 
-            key={idx} 
-            className={cn(
-              "border-r border-b border-gray-200 p-3 flex flex-col min-h-[350px] last:border-r-0",
-              isToday ? "bg-[#7B1C2A]/5" : "bg-white"
-            )}
-          >
-            {/* Column Header */}
-            <div className="text-center pb-2.5 border-b border-gray-100 flex-shrink-0">
-              <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                {DAYS_OF_WEEK[idx]}
-              </span>
-              <span 
-                className={cn(
-                  "inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold mt-1",
-                  isToday ? "bg-crimson-800 text-white" : "text-gray-700"
-                )}
-              >
-                {date.getDate()}
-              </span>
-            </div>
-
-            {/* Column Events */}
-            <div className="flex-1 overflow-y-auto space-y-1.5 pt-3">
-              {dayEvents.length === 0 ? (
-                <span className="block text-[10px] text-gray-300 text-center italic mt-2">No events</span>
-              ) : (
-                dayEvents.map(evt => (
-                  <CalendarEventChip key={evt.id} event={evt} onClick={() => onEventClick(evt)} />
-                ))
+          return (
+            <div 
+              key={idx} 
+              className={cn(
+                "flex flex-col min-h-[400px] p-2.5 sm:p-3 transition-colors",
+                isToday ? "bg-[#7B1C2A]/[0.03]" : "bg-white",
+                isSelected && !isToday && "bg-amber-50/20"
               )}
+            >
+              {/* Column Header */}
+              <div 
+                onClick={() => onSelectDay?.(date)}
+                className={cn(
+                  "text-center pb-2.5 border-b border-gray-150 flex-shrink-0 cursor-pointer rounded-xl hover:bg-gray-100/70 p-2 transition-all group",
+                  isToday && "bg-[#7B1C2A]/[0.06] hover:bg-[#7B1C2A]/[0.1]"
+                )}
+                title="Click to switch to Day View for this date"
+              >
+                <span className={cn(
+                  "block text-[10px] font-bold uppercase tracking-wider",
+                  isToday ? "text-[#7B1C2A]" : "text-gray-400 group-hover:text-gray-600"
+                )}>
+                  {DAYS_OF_WEEK[idx]}
+                </span>
+                <span 
+                  className={cn(
+                    "inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold mt-1 transition-transform group-hover:scale-110",
+                    isToday ? "bg-[#7B1C2A] text-white shadow-xs" : "text-gray-800"
+                  )}
+                >
+                  {date.getDate()}
+                </span>
+                {dayEvents.length > 0 && (
+                  <span className="block text-[9px] text-gray-400 font-medium mt-0.5">
+                    {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
+                  </span>
+                )}
+              </div>
+
+              {/* Column Events */}
+              <div className="flex-1 overflow-y-auto space-y-1.5 pt-3 min-h-[220px]">
+                {dayEvents.length === 0 ? (
+                  <div className="flex items-center justify-center h-28 text-[11px] text-gray-300 italic font-medium">
+                    No events
+                  </div>
+                ) : (
+                  dayEvents.map(evt => (
+                    <CalendarEventChip key={evt.id} event={evt} onClick={() => onEventClick(evt)} />
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };
+
