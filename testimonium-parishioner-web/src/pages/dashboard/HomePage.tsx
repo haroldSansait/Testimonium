@@ -318,7 +318,7 @@ export const HomePage: React.FC = () => {
     <div className="space-y-8 pb-10 text-left" aria-live="polite">
       <PageHeader
         title="Home"
-        description="TESTIMONIUM parishioner overview portal."
+        description="Overview of your sacramental requests, appointments, and vicariate events."
         showBackToHome={false}
         onRefresh={refetchAll}
         breadcrumbs={['Home']}
@@ -327,8 +327,8 @@ export const HomePage: React.FC = () => {
       {/* Welcome Card Banner */}
       <Card className="bg-gradient-to-r from-[#6B0F1A] to-[#4A0A12] text-white border-none p-6 sm:p-8 md:p-10 shadow-md relative overflow-hidden">
         <div className="relative z-10 space-y-3 max-w-2xl text-left">
-          <span className="text-[11px] font-bold text-white/70 uppercase tracking-widest block">
-            TESTIMONIUM Parishioner Portal
+          <span className="text-[11px] font-bold text-white/75 uppercase tracking-widest block">
+            Diocese of San Carlos • Vicariate of Canlaon
           </span>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold tracking-tight text-white leading-tight">
             {(!profile?.phone || !profile?.address)

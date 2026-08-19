@@ -106,10 +106,11 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               >
                 TESTIMONIUM
               </Link>
-              <span className="hidden lg:inline-block font-serif font-bold text-text-primary text-base">
-                TESTIMONIUM Parishioner Portal
+              <span className="hidden lg:inline-block font-serif font-bold text-crimson text-base tracking-wide">
+                TESTIMONIUM
               </span>
             </div>
+
           </div>
 
           <div className="flex items-center space-x-3 sm:space-x-4">
@@ -184,7 +185,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
         {/* Sliding Panel */}
         <aside
-          className={`relative w-72 max-w-[80vw] bg-[#6B0F1A] text-white h-full flex flex-col z-10 shadow-2xl transition-transform duration-300 ease-in-out transform ${
+          className={`relative w-72 max-w-[80vw] bg-white text-text-primary h-full flex flex-col z-10 shadow-2xl border-r border-border transition-transform duration-300 ease-in-out transform ${
             isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -192,12 +193,13 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           <div className="absolute top-4 right-4 z-20">
             <button
               onClick={() => setIsDrawerOpen(false)}
-              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-colors focus-ring"
+              className="p-1.5 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary transition-colors focus-ring"
               aria-label="Close navigation"
             >
               <X size={20} />
             </button>
           </div>
+
 
           <ParishionerSidebar
             isMobileDrawer={true}

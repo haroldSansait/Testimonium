@@ -107,13 +107,18 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  const handleExecuteGoogleSignIn = async () => {
+  const handleExecuteGoogleSignIn = async (legalPayload?: any) => {
+    if (submitCooldown || loading) return;
     setIsLegalModalOpen(false);
     setLoading(true);
+    setSubmitCooldown(true);
     setError('');
 
+    // Activate 2.5s submit cooldown
+    setTimeout(() => setSubmitCooldown(false), 2500);
+
     try {
-      await signInWithGoogle();
+      await signInWithGoogle({ keepSignedIn: true, legal: legalPayload });
       // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
@@ -391,8 +396,8 @@ export const SignupPage: React.FC = () => {
 
           <Button
             variant="outline"
-            onClick={handleExecuteGoogleSignIn}
-            disabled={loading}
+            onClick={() => handleExecuteGoogleSignIn()}
+            disabled={loading || submitCooldown}
             className="w-full flex items-center justify-center space-x-2 font-semibold hover:bg-app-page"
           >
             <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">

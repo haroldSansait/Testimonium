@@ -30,6 +30,15 @@ export interface LegalPayload {
   privacyVersion: string;
 }
 
+export interface SignInOptions {
+  keepSignedIn?: boolean;
+}
+
+export interface GoogleSignInOptions {
+  keepSignedIn?: boolean;
+  legal?: LegalPayload;
+}
+
 export interface BackendUserProfile {
   id: number;
   firebaseUid: string;
@@ -55,14 +64,20 @@ interface AuthContextType {
   isWarningModalOpen: boolean;
   secondsRemaining: number;
   staySignedIn: () => Promise<void>;
-  signInWithEmail: (email: string, password: string) => Promise<{ needsProfileCompletion: boolean }>;
+  signInWithEmail: (
+    email: string,
+    password: string,
+    options?: SignInOptions
+  ) => Promise<{ needsProfileCompletion: boolean }>;
   signUpWithEmail: (
-    email: string, 
-    password: string, 
-    registrationProfile: RegistrationProfile, 
+    email: string,
+    password: string,
+    registrationProfile: RegistrationProfile,
     legal: LegalPayload
   ) => Promise<{ needsProfileCompletion: boolean }>;
-  signInWithGoogle: (legal?: LegalPayload) => Promise<{ needsProfileCompletion: boolean }>;
+  signInWithGoogle: (
+    options?: GoogleSignInOptions
+  ) => Promise<{ needsProfileCompletion: boolean }>;
   recordLegalAcceptance: (legal: LegalPayload) => Promise<BackendUserProfile | null>;
   logout: (reason?: string) => Promise<void>;
   refreshProfile: () => Promise<BackendUserProfile | null>;
@@ -80,11 +95,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshPromiseRef = useRef<Promise<BackendUserProfile | null> | null>(null);
   const { isBusy } = useSubmissionProtection();
 
-  // Enforce parishioner local persistence on mount
-  useEffect(() => {
-    SessionService.enforceSessionPersistence();
-  }, []);
-
   // Listen to FSM state updates
   useEffect(() => {
     const unsubscribe = SessionService.subscribeState((newState) => {
@@ -98,45 +108,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  const fetchBackendProfile = async (currentUser: User, legal?: LegalPayload): Promise<BackendUserProfile | null> => {
+  const performBackendLogin = async (currentUser: User, legal?: LegalPayload): Promise<BackendUserProfile> => {
+    const idToken = await currentUser.getIdToken();
+    const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: legal ? JSON.stringify(legal) : undefined,
+    });
+
+    let result: any = null;
     try {
-      const idToken = await currentUser.getIdToken();
-      const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-      
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: legal ? JSON.stringify(legal) : undefined,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (result?.code === 'EMAIL_NOT_VERIFIED') {
-          const err = new Error(result?.message || 'Please verify your email address.');
-          (err as any).code = 'EMAIL_NOT_VERIFIED';
-          throw err;
-        }
-        if (result?.code) {
-          const err = new Error(result?.message || 'Authentication rejected by backend.');
-          (err as any).code = result.code;
-          throw err;
-        }
-      }
-
-      const profile = result?.data?.user as BackendUserProfile;
-      if (profile) {
-        console.debug('[AuthContext] Profile fetched & committed to context:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion });
-        setAppProfile(profile);
-        return profile;
-      }
-      return null;
-    } catch (error) {
-      throw error;
+      result = await response.json();
+    } catch {
+      // Non-JSON response body
     }
+
+    if (!response.ok) {
+      const message = result?.message || 'Authentication rejected by backend.';
+      const err = new Error(message);
+      if (result?.code) {
+        (err as any).code = result.code;
+      }
+      (err as any).status = response.status;
+      throw err;
+    }
+
+    const profile = result?.data?.user as BackendUserProfile;
+    if (!profile) {
+      throw new Error('Malformed backend login response: user profile missing.');
+    }
+
+    console.debug('[AuthContext] Backend login successful:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion });
+    setAppProfile(profile);
+    return profile;
+  };
+
+  const fetchCurrentBackendProfile = async (currentUser: User): Promise<BackendUserProfile> => {
+    const idToken = await currentUser.getIdToken();
+    const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+    const response = await fetch(`${API_URL}/auth/profile`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+
+    let result: any = null;
+    try {
+      result = await response.json();
+    } catch {
+      // Non-JSON response body
+    }
+
+    if (!response.ok) {
+      const message = result?.message || 'Failed to fetch user profile.';
+      const err = new Error(message);
+      if (result?.code) {
+        (err as any).code = result.code;
+      }
+      (err as any).status = response.status;
+      throw err;
+    }
+
+    const profile = result?.data as BackendUserProfile;
+    if (!profile) {
+      throw new Error('Malformed backend profile response: user profile missing.');
+    }
+
+    console.debug('[AuthContext] Profile fetched & committed to context:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion });
+    setAppProfile(profile);
+    return profile;
   };
 
   const recordLegalAcceptance = async (legal: LegalPayload): Promise<BackendUserProfile | null> => {
@@ -173,8 +220,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
         }
         try {
-          await fetchBackendProfile(currentUser);
-        } catch (err) {
+          await fetchCurrentBackendProfile(currentUser);
+        } catch {
           // Unverified email or backend rejection
         }
       } else {
@@ -208,15 +255,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [resetTimer]);
 
-  const signInWithEmail = async (email: string, password: string) => {
+  const signInWithEmail = async (
+    email: string,
+    password: string,
+    options?: SignInOptions
+  ) => {
     setLoading(true);
     try {
-      await SessionService.enforceSessionPersistence();
+      const keepSignedIn = options?.keepSignedIn ?? false;
+      await SessionService.enforceSessionPersistence(keepSignedIn);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      const profile = await fetchBackendProfile(userCredential.user);
+      const profile = await performBackendLogin(userCredential.user);
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
-      logSessionEvent('Session Started', { email });
+      logSessionEvent('Session Started', { email, keepSignedIn });
 
       return { needsProfileCompletion: profile?.needsProfileCompletion ?? false };
     } finally {
@@ -225,14 +277,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUpWithEmail = async (
-    email: string, 
-    password: string, 
+    email: string,
+    password: string,
     registrationProfile: RegistrationProfile,
     legal: LegalPayload
   ) => {
     setLoading(true);
     try {
-      await SessionService.enforceSessionPersistence();
+      await SessionService.enforceSessionPersistence(true);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const displayName = [registrationProfile.firstName, registrationProfile.lastName].filter(Boolean).join(' ');
       await updateProfile(userCredential.user, { displayName });
@@ -272,16 +324,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async (legal?: LegalPayload) => {
+  const signInWithGoogle = async (options?: GoogleSignInOptions) => {
     setLoading(true);
     try {
-      await SessionService.enforceSessionPersistence();
+      const keepSignedIn = options?.keepSignedIn ?? false;
+      await SessionService.enforceSessionPersistence(keepSignedIn);
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: 'select_account',
+      });
       const userCredential = await signInWithPopup(auth, provider);
 
-      const profile = await fetchBackendProfile(userCredential.user, legal);
+      const profile = await performBackendLogin(userCredential.user, options?.legal);
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
-      logSessionEvent('Session Started', { provider: 'google' });
+      logSessionEvent('Session Started', { provider: 'google', keepSignedIn });
 
       return { needsProfileCompletion: profile?.needsProfileCompletion ?? false };
     } finally {
@@ -311,7 +367,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.debug('[AuthContext] refreshProfile start');
     refreshPromiseRef.current = (async () => {
       try {
-        const profile = await fetchBackendProfile(auth.currentUser!);
+        const profile = await fetchCurrentBackendProfile(auth.currentUser!);
         console.debug('[AuthContext] refreshProfile completed cleanly');
         return profile;
       } finally {

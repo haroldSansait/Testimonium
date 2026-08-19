@@ -1,4 +1,4 @@
-import { signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { clearAllPollingTimers } from '../hooks/useService';
 import { SESSION_CONFIG, type SessionState, type LogoutReason, type SessionBroadcastEvent } from '../config/sessionConfig';
@@ -68,11 +68,15 @@ class SessionServiceImpl {
 
   // ── Role-Aware Persistence Setup ─────────────────────────────────────────
 
-  public async enforceSessionPersistence(): Promise<void> {
+  public async enforceSessionPersistence(keepSignedIn: boolean): Promise<void> {
     try {
-      await setPersistence(auth, browserLocalPersistence);
+      await setPersistence(
+        auth,
+        keepSignedIn ? browserLocalPersistence : browserSessionPersistence
+      );
     } catch (err) {
-      console.error('[ParishionerSessionService] Failed to enforce browserLocalPersistence:', err);
+      console.error('[ParishionerSessionService] Failed to enforce persistence:', err);
+      throw err;
     }
   }
 

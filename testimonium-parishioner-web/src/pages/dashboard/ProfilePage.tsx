@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { User, Bell, Shield, LogOut, Info } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
@@ -15,7 +15,8 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 
 export const ProfilePage: React.FC = () => {
-  const { user, logout, refreshProfile } = useAuth();
+  const { user, appProfile, logout, refreshProfile } = useAuth();
+  const navigate = useNavigate();
   const toast = useToast();
   const location = useLocation();
   const isNewUser = (location.state as any)?.isNewUser || false;
@@ -63,6 +64,8 @@ export const ProfilePage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
+
+    const wasCompletingProfile = isNewUser || Boolean(appProfile?.needsProfileCompletion);
     setSaving(true);
     try {
       await updateProfile({
@@ -71,8 +74,22 @@ export const ProfilePage: React.FC = () => {
         address,
         notificationsEnabled: emailNotifications
       });
-      await refreshProfile();
-      toast.success('Profile updated successfully.');
+      const refreshedProfile = await refreshProfile();
+
+      if (!refreshedProfile) {
+        throw new Error('Failed to synchronize updated profile state with the server.');
+      }
+
+      if (wasCompletingProfile) {
+        if (!refreshedProfile.needsProfileCompletion) {
+          toast.success('Profile updated successfully.');
+          navigate('/dashboard/home', { replace: true });
+        } else {
+          toast.info('Profile saved, but some required information is still incomplete.');
+        }
+      } else {
+        toast.success('Profile updated successfully.');
+      }
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || 'Failed to update profile. Please try again.');

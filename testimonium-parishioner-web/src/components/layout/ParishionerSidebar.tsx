@@ -66,7 +66,7 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovered(true);
-    }, 120);
+    }, 80);
   };
 
   const handleMouseLeave = () => {
@@ -74,7 +74,7 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovered(false);
-    }, 150);
+    }, 120);
   };
 
   useEffect(() => {
@@ -185,54 +185,38 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
     },
   ];
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) => `
-    flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-md transition-all duration-150 group relative
-    ${isActive
-      ? 'bg-white/15 text-white border-l-2 border-white pl-[10px]'
-      : 'text-white/70 hover:bg-white/10 hover:text-white border-l-2 border-transparent pl-[10px]'
-    }
-  `;
-
   const sidebarContent = (
     <div
-      className={`flex flex-col h-full bg-gradient-to-b from-[#6B0F1A] to-[#4A0A12] text-white select-none transition-all duration-300 ease-in-out ${
-        isMobileDrawer ? 'w-full' : (isExpanded ? 'w-[280px] shadow-2xl' : 'w-[76px]')
-      }`}
+      className={`flex flex-col h-full bg-white text-text-primary select-none w-full`}
       onKeyDown={handleKeyDown}
       ref={navRef}
     >
-      {/* Brand Header */}
-      <div className="px-5 pt-5 pb-4 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 text-white font-serif font-black text-sm tracking-wider shadow-sm">
-            TX
-          </div>
-          <div
-            className={`transition-opacity duration-200 min-w-0 ${
-              isExpanded ? 'opacity-100' : 'opacity-0 hidden'
-            }`}
-          >
-            <span
-              className="block text-white font-serif font-bold text-lg tracking-wide leading-none truncate"
-            >
+      {/* Brand Header (Clean without artificial TX square) */}
+      <div className="h-16 px-4 flex items-center flex-shrink-0 border-b border-border/40">
+        {isExpanded ? (
+          <div className="flex flex-col justify-center min-w-0 transition-opacity duration-200">
+            <span className="font-serif font-black text-crimson text-lg tracking-wider leading-tight truncate">
               TESTIMONIUM
             </span>
-            <span className="block text-white/60 text-xs mt-0.5 font-sans truncate">
+            <span className="text-[10px] text-text-muted font-semibold tracking-wider uppercase truncate">
               Parishioner Portal
             </span>
           </div>
-        </div>
+        ) : (
+          <div className="w-full flex items-center justify-center">
+            <span className="font-serif font-black text-crimson text-base tracking-widest">
+              T
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-white/10 mx-4 mb-2 flex-shrink-0" />
-
       {/* Navigation Grouped by Categories */}
-      <nav className="flex-1 px-2 py-2 space-y-4 overflow-y-auto overflow-x-hidden" aria-label="Main Navigation">
+      <nav className="flex-1 px-2.5 py-3 space-y-4 overflow-y-auto overflow-x-hidden" aria-label="Main Navigation">
         {categories.map((cat) => (
           <div key={cat.title} className="space-y-1">
             {isExpanded ? (
-              <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest px-3 mb-1.5 transition-opacity duration-200">
+              <p className="text-[10px] font-bold text-text-muted/70 uppercase tracking-widest px-3 mb-1.5 transition-opacity duration-200">
                 {cat.title}
               </p>
             ) : (
@@ -242,39 +226,53 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={navLinkClass}
                 id={`nav-${item.to.replace('/dashboard/', '').replace('/', '')}`}
                 onClick={handleNavClick}
                 aria-current={location.pathname === item.to ? 'page' : undefined}
+                className={({ isActive }) => `
+                  flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all duration-150 group relative
+                  ${isActive
+                    ? 'bg-crimson text-white font-semibold shadow-xs'
+                    : 'text-text-primary hover:bg-red-50/70 hover:text-crimson font-medium'
+                  }
+                `}
               >
-                <span className="flex-shrink-0">{item.icon}</span>
-                <span
-                  className={`transition-all duration-200 truncate ${
-                    isExpanded
-                      ? 'opacity-100 max-w-[170px] ml-0'
-                      : 'opacity-0 max-w-0 ml-[-8px] pointer-events-none'
-                  }`}
-                >
-                  {item.label}
-                </span>
+                {({ isActive }) => (
+                  <>
+                    <span className={`flex-shrink-0 transition-colors ${isActive ? 'text-white' : 'text-crimson'}`}>
+                      {item.icon}
+                    </span>
+                    <span
+                      className={`transition-all duration-200 truncate ${
+                        isExpanded
+                          ? 'opacity-100 max-w-[170px] ml-0'
+                          : 'opacity-0 max-w-0 ml-[-8px] pointer-events-none'
+                      }`}
+                    >
+                      {item.label}
+                    </span>
 
-                {/* Badge for Notifications */}
-                {item.badge !== undefined && (
-                  <span
-                    className={`ml-auto bg-crimson text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full border border-white/20 transition-opacity duration-150 ${
-                      isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none hidden'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
+                    {/* Badge for Notifications */}
+                    {item.badge !== undefined && (
+                      <span
+                        className={`ml-auto font-bold text-[10px] px-1.5 py-0.5 rounded-full transition-opacity duration-150 ${
+                          isActive ? 'bg-white text-crimson' : 'bg-crimson text-white'
+                        } ${
+                          isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none hidden'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
 
-                {/* Collapsed Tooltip (Desktop Only) */}
-                {!isExpanded && !isMobileDrawer && (
-                  <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap pointer-events-none z-[9999]">
-                    {item.label}
-                    {item.badge !== undefined && ` (${item.badge})`}
-                  </div>
+                    {/* Collapsed Tooltip (Desktop Only) */}
+                    {!isExpanded && !isMobileDrawer && (
+                      <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap pointer-events-none z-[9999]">
+                        {item.label}
+                        {item.badge !== undefined && ` (${item.badge})`}
+                      </div>
+                    )}
+                  </>
                 )}
               </NavLink>
             ))}
@@ -282,9 +280,9 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
         ))}
 
         {/* Support Section */}
-        <div className="space-y-1 pt-1">
+        <div className="space-y-1 pt-1 border-t border-border/40">
           {isExpanded ? (
-            <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest px-3 mb-1.5">
+            <p className="text-[10px] font-bold text-text-muted/70 uppercase tracking-widest px-3 mb-1.5">
               Support
             </p>
           ) : (
@@ -297,10 +295,10 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
                 handleNavClick();
                 onOpenHelp();
               }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white rounded-md transition-colors text-left group relative"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-text-muted hover:text-crimson hover:bg-red-50/70 rounded-lg transition-colors text-left group relative"
               title="Help Center"
             >
-              <HelpCircle className="w-4 h-4 flex-shrink-0" />
+              <HelpCircle className="w-4 h-4 flex-shrink-0 text-crimson" />
               <span
                 className={`transition-all duration-200 truncate ${
                   isExpanded ? 'opacity-100 max-w-[170px]' : 'opacity-0 max-w-0 pointer-events-none'
@@ -322,10 +320,10 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
                 handleNavClick();
                 onOpenAbout();
               }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white rounded-md transition-colors text-left group relative"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-text-muted hover:text-crimson hover:bg-red-50/70 rounded-lg transition-colors text-left group relative"
               title="About TESTIMONIUM"
             >
-              <Info className="w-4 h-4 flex-shrink-0" />
+              <Info className="w-4 h-4 flex-shrink-0 text-crimson" />
               <span
                 className={`transition-all duration-200 truncate ${
                   isExpanded ? 'opacity-100 max-w-[170px]' : 'opacity-0 max-w-0 pointer-events-none'
@@ -344,17 +342,15 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
       </nav>
 
       {/* Bottom Section: User Profile & Pin/Collapse Control */}
-      <div className="mt-auto flex-shrink-0">
-        <div className="h-px bg-white/10 mx-4 mb-3" />
-
+      <div className="mt-auto flex-shrink-0 border-t border-border/50 pt-2">
         {/* User Card */}
-        <div className="px-3 mb-2">
+        <div className="px-2.5 mb-2">
           {isExpanded ? (
-            <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/10 shadow-sm transition-all duration-200">
+            <div className="flex items-center justify-between p-2 bg-app-page/70 rounded-xl border border-border/70 shadow-xs transition-all duration-200">
               <Link
                 to="/dashboard/profile"
                 onClick={handleNavClick}
-                className="flex items-center gap-2.5 min-w-0 hover:bg-white/10 p-1.5 rounded-lg transition-colors flex-1 focus-ring"
+                className="flex items-center gap-2.5 min-w-0 hover:bg-white p-1 rounded-lg transition-colors flex-1 focus-ring"
                 title="View Profile"
               >
                 <Avatar
@@ -362,10 +358,10 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
                   size="sm"
                 />
                 <div className="min-w-0 text-left">
-                  <p className="text-xs font-bold text-white truncate leading-tight">
+                  <p className="text-xs font-bold text-text-primary truncate leading-tight">
                     {user?.displayName || 'Parishioner'}
                   </p>
-                  <p className="text-[10px] text-white/50 truncate font-sans">
+                  <p className="text-[10px] text-text-muted truncate font-sans">
                     {user?.email || 'Authenticated'}
                   </p>
                 </div>
@@ -373,7 +369,7 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
 
               <button
                 onClick={handleLogout}
-                className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors focus-ring"
+                className="p-1.5 text-text-muted hover:text-crimson hover:bg-red-50 rounded-lg transition-colors focus-ring"
                 title="Sign Out"
                 aria-label="Sign Out"
               >
@@ -383,7 +379,7 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
           ) : (
             <Link
               to="/dashboard/profile"
-              className="flex justify-center py-2 relative group focus-ring rounded-lg"
+              className="flex justify-center py-2 relative group focus-ring rounded-lg hover:bg-app-page transition-colors"
               title="View Profile"
               aria-label="View Profile"
             >
@@ -398,13 +394,12 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
           )}
         </div>
 
-
         {/* Pin/Collapse Button (Desktop Only) */}
         {!isMobileDrawer && (
-          <div className="px-3 pb-3">
+          <div className="px-2.5 pb-2.5">
             <button
               onClick={togglePin}
-              className="w-full flex items-center justify-center p-2 rounded-md hover:bg-white/10 text-white/60 hover:text-white transition-colors focus-ring"
+              className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-app-page text-text-muted hover:text-text-primary transition-colors focus-ring"
               title={isPinned ? 'Collapse Sidebar' : 'Pin Sidebar'}
               aria-label={isPinned ? 'Collapse Sidebar' : 'Pin Sidebar'}
             >
@@ -426,21 +421,19 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
     return sidebarContent;
   }
 
-  // Desktop Persistent Sidebar Rail
-  // Layout stability solution:
-  // The outer placeholder reserves the layout width (76px when unpinned, 280px when pinned).
-  // When unpinned and hovered, the inner container expands to 280px via absolute positioning over the main canvas,
-  // preventing ANY layout shift or jumping of the main page content!
+  // Desktop Persistent Sidebar Rail with Smooth Shadow and Expansion
   return (
     <aside
-      className="hidden lg:block relative flex-shrink-0 select-none z-30 transition-all duration-300 ease-in-out border-r border-white/5"
+      className="hidden lg:block relative flex-shrink-0 select-none z-30 transition-[width] duration-300 ease-in-out"
       style={{ width: isPinned ? '280px' : '76px' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       <div
-        className={`h-screen sticky top-0 ${
-          !isPinned && isHovered ? 'absolute top-0 left-0 w-[280px] shadow-2xl z-40' : 'w-full'
+        className={`h-screen sticky top-0 bg-white border-r border-border flex flex-col z-30 transition-[width,box-shadow] duration-300 ease-in-out ${
+          !isPinned && isHovered
+            ? 'absolute top-0 left-0 w-[280px] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] z-40'
+            : (isPinned ? 'w-[280px]' : 'w-[76px]')
         }`}
       >
         {sidebarContent}

@@ -16,7 +16,7 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [submitCooldown, setSubmitCooldown] = useState(false);
@@ -44,7 +44,7 @@ export const LoginPage: React.FC = () => {
     setTimeout(() => setSubmitCooldown(false), 2500);
 
     try {
-      await signInWithEmail(email, password);
+      await signInWithEmail(email, password, { keepSignedIn });
       // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
@@ -60,13 +60,18 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleExecuteGoogleSignIn = async (legalPayload?: any) => {
+    if (submitCooldown || loading) return;
     setIsLegalModalOpen(false);
     setLoading(true);
+    setSubmitCooldown(true);
     setError('');
     setUnverifiedEmailError(false);
 
+    // Activate 2.5s submit cooldown
+    setTimeout(() => setSubmitCooldown(false), 2500);
+
     try {
-      await signInWithGoogle(legalPayload);
+      await signInWithGoogle({ keepSignedIn, legal: legalPayload });
       // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
@@ -202,32 +207,38 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center justify-between text-xs pt-1">
-              <label className="flex items-center space-x-2 text-text-muted select-none cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={e => setRememberMe(e.target.checked)}
-                  className="rounded border-border text-crimson focus-ring w-4 h-4 cursor-pointer"
-                />
-                <span className="text-text-primary font-medium">Remember Me</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => setIsForgotModalOpen(true)}
-                className="font-semibold text-crimson hover:underline focus-ring rounded px-1 py-0.5"
-              >
-                Forgot Password?
-              </button>
+            <div className="space-y-1 pt-1">
+              <div className="flex items-center justify-between text-xs">
+                <label className="flex items-center space-x-2 text-text-muted select-none cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={keepSignedIn}
+                    onChange={e => setKeepSignedIn(e.target.checked)}
+                    disabled={loading}
+                    className="rounded border-border text-crimson focus-ring w-4 h-4 cursor-pointer disabled:opacity-50"
+                  />
+                  <span className="text-text-primary font-medium">Keep me signed in on this device</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsForgotModalOpen(true)}
+                  className="font-semibold text-crimson hover:underline focus-ring rounded px-1 py-0.5"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+              <p className="text-[11px] text-text-muted pl-6">
+                Use this only on a private device.
+              </p>
             </div>
 
             <Button
               type="submit"
               loading={loading}
-              disabled={submitCooldown}
+              disabled={submitCooldown || loading}
               className="w-full pt-2.5 pb-2.5 mt-2 font-semibold shadow-sm"
             >
-              {submitCooldown ? 'Verifying...' : 'Log In'}
+              {submitCooldown && !loading ? 'Verifying...' : 'Log In'}
             </Button>
           </form>
 
@@ -240,7 +251,7 @@ export const LoginPage: React.FC = () => {
           <Button
             variant="outline"
             onClick={() => handleExecuteGoogleSignIn()}
-            disabled={loading}
+            disabled={loading || submitCooldown}
             className="w-full flex items-center justify-center space-x-2 font-semibold hover:bg-app-page"
           >
             <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">

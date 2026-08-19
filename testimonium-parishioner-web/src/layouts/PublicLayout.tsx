@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 
 export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -22,19 +23,32 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
       {/* Header */}
       <header className="bg-white border-b border-border sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className={isAuthPage ? "w-full px-6 md:px-10 lg:px-12" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"}>
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-3">
-              <Link
-                to="/"
-                className="flex items-center focus-ring rounded-md text-left group"
-                aria-label="TESTIMONIUM Home"
-              >
-                <span className="font-serif font-black text-2xl sm:text-3xl text-crimson tracking-wider leading-none group-hover:opacity-90 transition-opacity">
-                  TESTIMONIUM
-                </span>
-              </Link>
+              {isAuthPage ? (
+                <Link
+                  to="/"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-crimson transition-colors focus-ring px-2.5 py-1.5 rounded-button bg-app-page/60 hover:bg-red-50/60 border border-border/70 -ml-2.5"
+                  aria-label="Return to landing page"
+                >
+                  <ArrowLeft size={14} />
+                  <span>Back to Landing Page</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/"
+                  className="flex items-center focus-ring rounded-md text-left group"
+                  aria-label="TESTIMONIUM Home"
+                >
+                  <span className="font-serif font-black text-2xl sm:text-3xl text-crimson tracking-wider leading-none group-hover:opacity-90 transition-opacity">
+                    TESTIMONIUM
+                  </span>
+                </Link>
+              )}
             </div>
+
+
 
             <nav className="flex items-center space-x-3 sm:space-x-4" aria-label="Public Navigation">
               {isAuthPage ? (
