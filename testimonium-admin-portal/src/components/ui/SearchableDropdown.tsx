@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 export interface DropdownOption {
   id: string;
@@ -112,20 +114,22 @@ export function SearchableDropdown({
       {/* Action Icons (Clear selection, Chevron) */}
       <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-gray-400 pointer-events-none">
         {selectedValue && !disabled && !required && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleSelect(null);
-            }}
-            className="p-0.5 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors pointer-events-auto"
-            title="Clear selection"
-            aria-label="Clear selection"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <Tooltip content="Clear selection" side="top">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelect(null);
+              }}
+              className="p-0.5 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors pointer-events-auto"
+              aria-label="Clear selection"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         )}
+
         <ChevronDown className={cn('w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180')} />
       </div>
 

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, MapPin, Eye, Image, BookOpen, AlertCircle, X } from 'lucide-react';
 import { ImageUploader } from './ImageUploader';
 import type { Parish } from '@/types';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 interface ParishSettingsPanelProps {
   parish: Parish;
@@ -67,15 +69,18 @@ export function ParishSettingsPanel({
           </div>
         </div>
         {onClose && (
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-200/50 active:scale-95 text-gray-400 hover:text-gray-700 rounded-lg transition-all"
-            title="Close settings panel"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip content="Close settings panel" side="bottom">
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-gray-200/50 active:scale-95 text-gray-400 hover:text-gray-700 rounded-lg transition-all"
+              aria-label="Close settings panel"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         )}
       </div>
+
 
       <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
         {/* SECTION 1: Basic Info */}
@@ -229,21 +234,24 @@ export function ParishSettingsPanel({
                 <label className="text-[11px] font-medium text-gray-400 block mb-1.5">Pin Color</label>
                 <div className="grid grid-cols-8 gap-2">
                   {CURATED_COLORS.map((col) => (
-                    <button
-                      key={col.value}
-                      type="button"
-                      onClick={() => onFieldChange('pinColor', col.value)}
-                      title={col.name}
-                      className={`w-6 h-6 rounded-full border shadow-sm transition-all focus:outline-none ${
-                        currentPinColor === col.value 
-                          ? 'ring-2 ring-offset-2 ring-crimson-700 scale-110 border-transparent' 
-                          : 'border-gray-200 hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: col.value }}
-                    />
+                    <Tooltip key={col.value} content={`${col.name} pin`} side="top">
+                      <button
+                        type="button"
+                        onClick={() => onFieldChange('pinColor', col.value)}
+                        aria-label={`Select ${col.name} pin color`}
+                        className={`w-6 h-6 rounded-full border shadow-sm transition-all focus:outline-none ${
+                          currentPinColor === col.value
+                            ? 'ring-2 ring-offset-2 ring-crimson-700 scale-110 border-transparent'
+                            : 'border-gray-200 hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: col.value }}
+                      />
+                    </Tooltip>
                   ))}
+
                 </div>
               </div>
+
 
               {/* Label visibility toggle */}
               <div className="flex items-center justify-between py-1.5">

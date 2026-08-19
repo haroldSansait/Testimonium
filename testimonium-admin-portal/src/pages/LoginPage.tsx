@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { Mail, Lock, Eye, EyeOff, LogIn, KeyRound } from 'lucide-react';
 import logoUrl from '@/assets/TESTIMONIUM_logo.png';
 import { useAuth } from '@/hooks/useAuth';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -130,15 +132,18 @@ export function LoginPage() {
               className="w-full pl-10 pr-11 py-2.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 transition-all"
               {...register('password')}
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              id="toggle-password"
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
+            <Tooltip content={showPassword ? "Hide password" : "Show password"} side="top">
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                id="toggle-password"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </Tooltip>
+
           </div>
           {errors.password && (
             <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>

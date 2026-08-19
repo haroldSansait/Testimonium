@@ -190,12 +190,12 @@ export function NotificationsPage() {
           id="load-previous-notifications"
           disabled
           className="flex items-center gap-2 text-sm font-medium text-gray-400 cursor-not-allowed py-2 opacity-60"
-          title="Pagination is not currently supported"
         >
           <ChevronDown className="w-4 h-4" />
           No More Notifications
         </button>
       </div>
+
 
       {/* General Notice Modal */}
       {selectedNotice && (

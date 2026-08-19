@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import { SubmissionProtectionProvider } from '@/context/SubmissionProtectionContext';
+import { TooltipProvider } from '@/components/ui/Tooltip';
 import { setupInterceptors } from '@/api/interceptors';
 import { AppRouter } from '@/routes/AppRouter';
 import { SessionWarningModal } from '@/components/modals/SessionWarningModal';
@@ -44,7 +45,9 @@ createRoot(rootElement).render(
     <BrowserRouter>
       <SubmissionProtectionProvider>
         <AuthProvider>
-          <AppWithSessionModal />
+          <TooltipProvider delayDuration={300} skipDelayDuration={150}>
+            <AppWithSessionModal />
+          </TooltipProvider>
         </AuthProvider>
       </SubmissionProtectionProvider>
     </BrowserRouter>

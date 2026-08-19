@@ -6,6 +6,8 @@ import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import type { MassScheduleTemplate } from '@/providers/interfaces';
 import { Plus, Trash2, Edit2, RotateCcw, Check, X, Clock, AlertTriangle, User } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 export function MassSchedulePage() {
   const { applicationUser } = useAuth();
@@ -224,20 +226,27 @@ export function MassSchedulePage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => handleOpenEdit(item)}
-                          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => void handleDelete(item.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                        <Tooltip content="Edit Mass schedule" side="top">
+                          <button
+                            onClick={() => handleOpenEdit(item)}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                            aria-label="Edit Mass schedule"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="Remove Mass time slot" side="top">
+                          <button
+                            onClick={() => void handleDelete(item.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                            aria-label="Remove Mass time slot"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
                       </div>
+
                     </div>
                   ))}
                 </div>

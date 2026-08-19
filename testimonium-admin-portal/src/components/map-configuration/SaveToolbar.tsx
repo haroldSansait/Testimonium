@@ -1,4 +1,5 @@
 import { Search, Eye, Save, RefreshCw, Maximize2, Minimize2, MapPin } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 interface SaveToolbarProps {
   searchQuery: string;
@@ -32,34 +33,32 @@ export function SaveToolbar({
   onLocateClick
 }: SaveToolbarProps) {
   return (
-    <div className="w-full bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm select-none">
-      {/* Left side: Search & Filter */}
-      <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="relative w-64">
-          <span className="absolute left-3 top-2.5 text-gray-400">
-            <Search className="w-4 h-4" />
-          </span>
+    <div className="bg-white border-b border-gray-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4 select-none">
+      {/* Left side: Vicariate Filter & Search */}
+      <div className="flex items-center gap-3 flex-1 min-w-[280px] max-w-md">
+        {/* Vicariate Select */}
+        <select
+          value={selectedVicariate}
+          onChange={(e) => onVicariateChange(e.target.value)}
+          className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100/80 focus:outline-none focus:ring-1 focus:ring-crimson-700 cursor-pointer"
+        >
+          <option value="ALL">All Vicariates</option>
+          <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
+          <option value="Vicariate of San Carlos Borromeo">Vicariate of San Carlos Borromeo</option>
+          <option value="Vicariate of St. Vincent Ferrer">Vicariate of St. Vincent Ferrer</option>
+          <option value="Vicariate of St. John the Baptist">Vicariate of St. John the Baptist</option>
+        </select>
+
+        {/* Parish Search Box */}
+        <div className="relative flex-1">
+          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search parish (e.g. St Joseph)..."
+            placeholder="Search parish by name..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-crimson-700 font-medium"
+            className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-md text-xs placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-crimson-700"
           />
-        </div>
-
-        {/* Vicariate Filter */}
-        <div className="relative">
-          <select
-            value={selectedVicariate}
-            onChange={(e) => onVicariateChange(e.target.value)}
-            className="pl-3 pr-8 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-crimson-700 font-medium bg-white appearance-none cursor-pointer"
-          >
-            <option value="all">All Vicariates</option>
-            <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
-          </select>
-          <span className="absolute right-2 top-3 pointer-events-none border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-500"></span>
         </div>
       </div>
 
@@ -74,7 +73,6 @@ export function SaveToolbar({
               ? 'border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100 cursor-pointer'
               : 'border-gray-100 text-gray-300 cursor-not-allowed'
           }`}
-          title="Center map on selected parish"
         >
           <MapPin className="w-3.5 h-3.5" />
           Locate Selected
@@ -84,7 +82,6 @@ export function SaveToolbar({
         <button
           onClick={onResetView}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
-          title="Reset map view to diocese bounds"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Reset View
@@ -94,21 +91,25 @@ export function SaveToolbar({
         <button
           onClick={onPreviewClick}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
-          title="Preview public parish details card"
         >
           <Eye className="w-3.5 h-3.5" />
           Preview Card
         </button>
 
         {/* Full Screen */}
-        <button
-          onClick={onFullScreenToggle}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
-          title={isFullScreen ? "Exit Full Screen" : "Enter Full Screen"}
+        <Tooltip
+          content={isFullScreen ? "Exit full-screen map mode (Esc)" : "Expand map to full screen"}
+          side="bottom"
         >
-          {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          {isFullScreen ? 'Exit Full Screen' : 'Full Screen'}
-        </button>
+          <button
+            onClick={onFullScreenToggle}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+            aria-label={isFullScreen ? "Exit full-screen map mode" : "Expand map to full screen"}
+          >
+            {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            {isFullScreen ? 'Exit Full Screen' : 'Full Screen'}
+          </button>
+        </Tooltip>
 
         {/* Save All */}
         <button

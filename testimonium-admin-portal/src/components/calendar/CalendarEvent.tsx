@@ -1,6 +1,7 @@
 import type { CalendarEvent, CalendarEventCategory } from '@/types';
 import { cn } from '@/utils/cn';
 import { getPriestColor } from '@/utils/priestColors';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 const categoryStyles: Record<CalendarEventCategory, string> = {
   mass: 'bg-crimson-800 text-white',
@@ -31,20 +32,33 @@ export function CalendarEventChip({ event, onClick }: CalendarEventChipProps) {
     styleClasses = categoryStyles[event.category];
   }
 
+  const eventTooltipText = `${event.time} — ${event.title}${event.priest ? ` (Priest: ${event.priest})` : ''}`;
+
   return (
-    <div
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick?.();
-      }}
-      style={customStyle}
-      className={cn(
-        'text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity',
-        styleClasses
-      )}
-      title={`${event.time} ${event.title}${event.priest ? ` (Priest: ${event.priest})` : ''}`}
-    >
-      {event.time} {event.title}
-    </div>
+    <Tooltip content={eventTooltipText} side="top">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${event.time} ${event.title}${event.priest ? `, Priest: ${event.priest}` : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick?.();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            onClick?.();
+          }
+        }}
+        style={customStyle}
+        className={cn(
+          'text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity focus:outline-none focus:ring-1 focus:ring-crimson-700/50',
+          styleClasses
+        )}
+      >
+        {event.time} {event.title}
+      </div>
+    </Tooltip>
   );
 }

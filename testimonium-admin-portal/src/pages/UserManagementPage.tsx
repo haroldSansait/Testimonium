@@ -30,6 +30,8 @@ import { UserManagementService, type AddUserPayload } from '@/services/UserManag
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { cn } from '@/utils/cn';
 import type { ManagedUser, ManagedUserRole, ManagedUserStatus } from '@/types';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 // ─── Shared form helpers ──────────────────────────────────────────────────────
 
@@ -837,17 +839,20 @@ function LinkSuccessModal({
               value={link}
               className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-xs font-mono text-gray-600 bg-gray-50 h-20 resize-none focus:outline-none"
             />
-            <button
-              onClick={handleCopy}
-              className="absolute right-2 top-2 p-1.5 bg-white border border-gray-100 text-gray-500 hover:text-gray-800 rounded-md shadow-sm transition-colors"
-              title="Copy to clipboard"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-green-600" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-            </button>
+            <Tooltip content={copied ? "Copied!" : "Copy setup link"} side="left">
+              <button
+                onClick={handleCopy}
+                className="absolute right-2 top-2 p-1.5 bg-white border border-gray-100 text-gray-500 hover:text-gray-800 rounded-md shadow-sm transition-colors"
+                aria-label="Copy setup link to clipboard"
+              >
+                {copied ? (
+                  <Check className="w-3.5 h-3.5 text-green-600" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </Tooltip>
+
           </div>
           {copied && (
             <div className="text-[10px] text-green-600 font-semibold mt-1">

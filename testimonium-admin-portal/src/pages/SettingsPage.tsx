@@ -22,6 +22,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ParishManagementService } from '@/services/ParishManagementService';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 import {
   CANONICAL_DOCUMENT_TYPES,
   DEFAULT_OFFERED_DOCUMENTS,
@@ -968,16 +970,19 @@ export function SettingsPage() {
                         className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-50 text-crimson-700 border border-crimson-700/20 rounded-lg text-xs font-bold"
                       >
                         {slot}
-                        <button
-                          type="button"
-                          onClick={() => handleTimeSlotRemove(slot)}
-                          className="hover:text-red-900 transition-colors p-0.5 rounded"
-                          title={`Remove ${slot}`}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        <Tooltip content="Remove this bookable time slot" side="top">
+                          <button
+                            type="button"
+                            onClick={() => handleTimeSlotRemove(slot)}
+                            className="hover:text-red-900 transition-colors p-0.5 rounded"
+                            aria-label={`Remove ${slot} time slot`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
                       </span>
                     ))}
+
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">

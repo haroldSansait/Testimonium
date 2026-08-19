@@ -2,6 +2,7 @@ import type { ActivityLogEntry } from '@/types';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { cn } from '@/utils/cn';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 interface ActivityLogTableProps {
   entries: ActivityLogEntry[];
@@ -78,14 +79,22 @@ export function ActivityLogTable({
                       className="w-4 h-4 rounded border-gray-300 text-crimson-700 focus:ring-crimson-700/20 cursor-pointer"
                     />
                   ) : (
-                    <div className="w-4 h-4 flex items-center justify-center text-[10px] text-gray-400 font-bold select-none cursor-default" title="Protected System Log">
-                      🔒
-                    </div>
+                    <Tooltip content="Automated system event — protected from archive and purge" side="right">
+                      <div
+                        tabIndex={0}
+                        role="img"
+                        aria-label="Automated system event, protected from archive and purge"
+                        className="w-4 h-4 flex items-center justify-center text-[10px] text-gray-400 font-bold select-none cursor-default focus:outline-none"
+                      >
+                        🔒
+                      </div>
+                    </Tooltip>
                   )}
                 </td>
                 <td className="whitespace-pre text-gray-600 text-xs leading-relaxed">
                   {entry.dateTime}
                 </td>
+
                 <td>
                   <div className="flex items-center gap-2.5">
                     <Avatar

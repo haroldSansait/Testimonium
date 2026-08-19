@@ -5,6 +5,8 @@ import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import type { ParishAvailability } from '@/providers/interfaces';
 import { Calendar, Trash2, Check, AlertTriangle, User } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 export function StaffAvailabilityPage() {
   const { applicationUser } = useAuth();
@@ -307,13 +309,19 @@ export function StaffAvailabilityPage() {
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => void handleDelete(item.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer mt-0.5 opacity-0 group-hover:opacity-100"
-                        title="Delete leave block"
+                      <Tooltip
+                        content={item.type === 'PARISH_CLOSED' ? "Delete closure record" : "Delete leave record"}
+                        side="top"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <button
+                          onClick={() => void handleDelete(item.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer mt-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                          aria-label={item.type === 'PARISH_CLOSED' ? "Delete closure record" : "Delete leave record"}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+
                     </div>
                   ))}
                 </div>

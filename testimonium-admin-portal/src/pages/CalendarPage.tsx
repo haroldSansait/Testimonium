@@ -1,24 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  X, 
-  Calendar as CalendarIcon, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Calendar as CalendarIcon,
   CalendarDays,
-  Clock, 
-  MapPin, 
-  User, 
-  CheckCircle, 
-  Download, 
-  ExternalLink, 
-  Check, 
+  Clock,
+  MapPin,
+  User,
+  CheckCircle,
+  Download,
+  ExternalLink,
+  Check,
   AlertCircle,
   Building2,
   Palette,
-  Plus
+  Plus,
 } from 'lucide-react';
+
 import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { CalendarLegend } from '@/components/calendar/CalendarLegend';
 import { CalendarWeekView } from '@/components/calendar/CalendarWeekView';
@@ -28,6 +29,8 @@ import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { cn } from '@/utils/cn';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 import { downloadIcsFile, buildGoogleCalendarUrl, getUpcomingEvent } from '@/utils/calendarExport';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import type { CalendarEvent, ManagedUser, Parish } from '@/types';
@@ -606,14 +609,14 @@ interface PriestColorSettingsModalProps {
 }
 
 const PRESET_SWATCHES = [
-  '#D97706', // amber
-  '#4F46E5', // indigo
-  '#059669', // emerald
-  '#E11D48', // rose
-  '#0891B2', // cyan
-  '#9333EA', // purple
-  '#EA580C', // orange
-  '#0D9488', // teal
+  { hex: '#D97706', name: 'Amber' },
+  { hex: '#4F46E5', name: 'Indigo' },
+  { hex: '#059669', name: 'Emerald' },
+  { hex: '#E11D48', name: 'Rose' },
+  { hex: '#0891B2', name: 'Cyan' },
+  { hex: '#9333EA', name: 'Purple' },
+  { hex: '#EA580C', name: 'Orange' },
+  { hex: '#0D9488', name: 'Teal' },
 ];
 
 function PriestColorSettingsModal({ parishId, onClose, onSuccess, onError }: PriestColorSettingsModalProps) {
@@ -695,27 +698,30 @@ function PriestColorSettingsModal({ parishId, onClose, onSuccess, onError }: Pri
                   {/* Swatches */}
                   <div className="flex flex-wrap gap-2.5 items-center pt-1">
                     {/* Default Fallback Dot */}
-                    <button
-                      onClick={() => void handleSelectColor(priest.id, null)}
-                      className={cn(
-                        "w-6 h-6 rounded-full border-2 transition-all flex items-center justify-center bg-gray-50 text-[10px] text-gray-500 font-bold",
-                        !priest.color ? "border-gray-800 scale-110 shadow-sm" : "border-gray-200 hover:border-gray-400"
-                      )}
-                      title="Default Palette"
-                    >
-                      ×
-                    </button>
-                    {PRESET_SWATCHES.map((swatchColor) => (
+                    <Tooltip content="Reset to default palette" side="top">
                       <button
-                        key={swatchColor}
-                        onClick={() => void handleSelectColor(priest.id, swatchColor)}
+                        onClick={() => void handleSelectColor(priest.id, null)}
                         className={cn(
-                          "w-6 h-6 rounded-full border-2 transition-all",
-                          priest.color === swatchColor ? "scale-110 border-gray-800 shadow-sm" : "border-transparent hover:border-gray-300"
+                          "w-6 h-6 rounded-full border-2 transition-all flex items-center justify-center bg-gray-50 text-[10px] text-gray-500 font-bold",
+                          !priest.color ? "border-gray-800 scale-110 shadow-sm" : "border-gray-200 hover:border-gray-400"
                         )}
-                        style={{ backgroundColor: swatchColor }}
-                        title={swatchColor}
-                      />
+                        aria-label="Reset to default palette"
+                      >
+                        ×
+                      </button>
+                    </Tooltip>
+                    {PRESET_SWATCHES.map((swatch) => (
+                      <Tooltip key={swatch.hex} content={`${swatch.name} highlight`} side="top">
+                        <button
+                          onClick={() => void handleSelectColor(priest.id, swatch.hex)}
+                          className={cn(
+                            "w-6 h-6 rounded-full border-2 transition-all",
+                            priest.color === swatch.hex ? "scale-110 border-gray-800 shadow-sm" : "border-transparent hover:border-gray-300"
+                          )}
+                          style={{ backgroundColor: swatch.hex }}
+                          aria-label={`Select ${swatch.name} highlight color`}
+                        />
+                      </Tooltip>
                     ))}
                   </div>
                 </div>
@@ -723,6 +729,7 @@ function PriestColorSettingsModal({ parishId, onClose, onSuccess, onError }: Pri
             </div>
           )}
         </div>
+
 
         <div className="px-6 py-4 border-t border-gray-150 flex justify-end bg-gray-50 flex-shrink-0">
           <button
@@ -1018,15 +1025,19 @@ export function CalendarPage() {
       <div className="bg-white border border-gray-200/90 rounded-2xl p-2.5 sm:px-4 sm:py-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
         {/* Left: Prev / Today / Next Navigation Controls */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={handlePrev}
-            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shadow-xs"
-            aria-label="Previous period"
-            id="calendar-prev"
-            title={view === 'Month' ? 'Previous Month' : view === 'Week' ? 'Previous Week' : 'Previous Day'}
+          <Tooltip
+            content={view === 'Month' ? 'Previous month' : view === 'Week' ? 'Previous week' : 'Previous day'}
+            side="bottom"
           >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
+            <button
+              onClick={handlePrev}
+              className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shadow-xs"
+              aria-label={view === 'Month' ? 'Previous month' : view === 'Week' ? 'Previous week' : 'Previous day'}
+              id="calendar-prev"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </Tooltip>
           <button
             onClick={handleToday}
             className={cn(
@@ -1039,16 +1050,21 @@ export function CalendarPage() {
           >
             Today
           </button>
-          <button
-            onClick={handleNext}
-            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shadow-xs"
-            aria-label="Next period"
-            id="calendar-next"
-            title={view === 'Month' ? 'Next Month' : view === 'Week' ? 'Next Week' : 'Next Day'}
+          <Tooltip
+            content={view === 'Month' ? 'Next month' : view === 'Week' ? 'Next week' : 'Next day'}
+            side="bottom"
           >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+            <button
+              onClick={handleNext}
+              className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shadow-xs"
+              aria-label={view === 'Month' ? 'Next month' : view === 'Week' ? 'Next week' : 'Next day'}
+              id="calendar-next"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
+
 
         {/* Center: Coordinator Parish Filter */}
         {applicationUser?.role === 'DIOCESE_COORDINATOR' && parishes.length > 0 && (

@@ -25,6 +25,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { hasPermission } from '@/permissions/rolePermissions';
 import { PERMISSIONS, type Permission } from '@/permissions/permissions';
 import { Avatar } from '@/components/ui/Avatar';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 // ─── Nav item definition ──────────────────────────────────────────────────────
 
@@ -348,22 +350,30 @@ export function Sidebar() {
                   to={item.to}
                   className={navLinkClass}
                   id={`nav-${item.to.replace('/', '')}`}
+                  aria-label={item.label}
                   onClick={(e) => confirmNavigation(e, item.to)}
                 >
-                  <span className="flex-shrink-0">{item.icon}</span>
-                  <span className={cn(
-                    "transition-all duration-200 truncate",
-                    isExpanded ? "opacity-100 max-w-[200px] ml-0" : "opacity-0 max-w-0 ml-[-8px] pointer-events-none"
-                  )}>
-                    {item.label}
-                  </span>
-                  {!isExpanded && (
-                    <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-[9999]">
-                      {item.label}
+                  <Tooltip
+                    content={item.label}
+                    side="right"
+                    sideOffset={16}
+                    disabled={isExpanded}
+                  >
+                    <div className="flex items-center gap-3 w-full min-w-0">
+                      <span className="flex-shrink-0">{item.icon}</span>
+                      <span
+                        className={cn(
+                          "transition-all duration-200 truncate",
+                          isExpanded ? "opacity-100 max-w-[200px] ml-0" : "opacity-0 max-w-0 ml-[-8px] pointer-events-none hidden"
+                        )}
+                      >
+                        {item.label}
+                      </span>
                     </div>
-                  )}
+                  </Tooltip>
                 </NavLink>
               ))}
+
             </div>
           ))}
         </nav>
@@ -383,7 +393,6 @@ export function Sidebar() {
                     }
                   }}
                   className="flex items-center gap-3 min-w-0 cursor-pointer hover:bg-white/10 p-1.5 rounded-lg transition-all duration-200"
-                  title="View Profile"
                 >
                   <Avatar initials={getInitials(applicationUser?.name || applicationUser?.email)} bgColor="#7B1C2A" size="sm" />
                   <div className="min-w-0 text-left">
@@ -391,52 +400,73 @@ export function Sidebar() {
                     <p className="text-[10px] text-white/50 truncate font-semibold uppercase">{role?.replace('_', ' ') || 'Staff'}</p>
                   </div>
                 </div>
-                <button
-                  onClick={(e) => {
-                    if (confirmNavigation(e, undefined, handleLogout)) {
-                      void handleLogout();
-                    }
-                  }}
-                  className="p-1.5 text-white/65 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                  title="Logout"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
+                <Tooltip content="Sign out of account" side="top">
+                  <button
+                    onClick={(e) => {
+                      if (confirmNavigation(e, undefined, handleLogout)) {
+                        void handleLogout();
+                      }
+                    }}
+                    className="p-1.5 text-white/65 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    aria-label="Sign out of account"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
             ) : (
-              <div 
-                className="flex justify-center py-2 relative group cursor-pointer" 
-                onClick={(e) => {
-                  if (confirmNavigation(e, '/profile')) {
-                    navigate('/profile');
-                  }
-                }}
-              >
-                <Avatar initials={getInitials(applicationUser?.name || applicationUser?.email)} bgColor="#7B1C2A" size="sm" />
-                <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-[9999]">
-                  Profile
+              <Tooltip content="View Profile" side="right" sideOffset={12}>
+                <div
+                  className="flex justify-center py-2 relative cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="View Profile"
+
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (confirmNavigation(e as any, '/profile')) {
+                        navigate('/profile');
+                      }
+                    }
+                  }}
+                  onClick={(e) => {
+                    if (confirmNavigation(e, '/profile')) {
+                      navigate('/profile');
+                    }
+                  }}
+                >
+                  <Avatar initials={getInitials(applicationUser?.name || applicationUser?.email)} bgColor="#7B1C2A" size="sm" />
                 </div>
-              </div>
+              </Tooltip>
             )}
           </div>
 
           {/* Pin toggle button */}
           <div className="px-3 pb-4">
-            <button
-              onClick={() => {
-                const newVal = !isPinned;
-                setIsPinned(newVal);
-                localStorage.setItem('testimonium_sidebar_pinned', String(newVal));
-              }}
-              className="w-full flex items-center justify-center p-2 rounded-md hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-              title={isPinned ? "Collapse Sidebar" : "Pin Sidebar"}
+            <Tooltip
+              content={isPinned ? "Collapse sidebar" : "Pin sidebar expanded"}
+              side="right"
+              sideOffset={12}
+              disabled={isExpanded}
             >
-              {isPinned ? <ChevronLeft className="w-4.5 h-4.5" /> : <ChevronRight className="w-4.5 h-4.5" />}
-              {isExpanded && <span className="text-xs font-medium ml-2">{isPinned ? "Collapse Sidebar" : "Pin Sidebar"}</span>}
-            </button>
+              <button
+                onClick={() => {
+                  const newVal = !isPinned;
+                  setIsPinned(newVal);
+                  localStorage.setItem('testimonium_sidebar_pinned', String(newVal));
+                }}
+                className="w-full flex items-center justify-center p-2 rounded-md hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                aria-label={isPinned ? "Collapse sidebar" : "Pin sidebar expanded"}
+              >
+                {isPinned ? <ChevronLeft className="w-4.5 h-4.5" /> : <ChevronRight className="w-4.5 h-4.5" />}
+                {isExpanded && <span className="text-xs font-medium ml-2">{isPinned ? "Collapse Sidebar" : "Pin Sidebar"}</span>}
+              </button>
+            </Tooltip>
           </div>
         </div>
       </aside>
+
 
       {/* Navigation confirmation popup modal */}
       {pendingNav && (

@@ -6,6 +6,7 @@ import { NotificationService } from '@/services/NotificationService';
 import { useState, useEffect, useCallback } from 'react';
 import { HelpModal } from '@/components/modals/HelpModal';
 import { AboutModal } from '@/components/modals/AboutModal';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 const modeConfig = {
   api: {
@@ -66,56 +67,69 @@ export function Navbar({ className }: NavbarProps) {
     >
       {/* Title & Mode Indicator */}
       <div className="flex items-center gap-3">
-        <div className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm",
-          cfg.bg
-        )}>
-          <span className={cn("w-2 h-2 rounded-full animate-pulse", cfg.dot)} />
-          <span className="font-semibold">{cfg.label}</span>
-          <span className="hidden sm:inline-block text-[10px] opacity-75 border-l pl-1.5 border-current/25">{cfg.sub}</span>
-        </div>
+        <Tooltip content={`Connectivity mode: ${cfg.label} (${cfg.sub})`} side="bottom">
+          <div
+            tabIndex={0}
+            role="status"
+            aria-label={`Connectivity mode: ${cfg.label}, ${cfg.sub}`}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm cursor-default focus:outline-none focus:ring-2 focus:ring-crimson-700/20",
+              cfg.bg
+            )}
+          >
+            <span className={cn("w-2 h-2 rounded-full animate-pulse", cfg.dot)} />
+            <span className="font-semibold">{cfg.label}</span>
+            <span className="hidden sm:inline-block text-[10px] opacity-75 border-l pl-1.5 border-current/25">{cfg.sub}</span>
+          </div>
+        </Tooltip>
       </div>
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
-        <button
-          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative"
-          aria-label="Notifications"
-          id="navbar-notifications"
-          onClick={() => {
-            const hasUnsaved = (window as any).hasUnsavedMapChanges || (window as any).hasUnsavedSettingsChanges;
-            if (hasUnsaved) {
-              const proceed = window.confirm('You have unsaved changes. Are you sure you want to leave without saving?');
-              if (!proceed) return;
-              (window as any).hasUnsavedMapChanges = false;
-              (window as any).hasUnsavedSettingsChanges = false;
-            }
-            navigate('/notifications');
-          }}
-        >
-          <Bell className="w-5 h-5" />
-          {unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-          )}
-        </button>
+        <Tooltip content="Notifications & alerts" side="bottom">
+          <button
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative"
+            aria-label="Notifications"
+            id="navbar-notifications"
+            onClick={() => {
+              const hasUnsaved = (window as any).hasUnsavedMapChanges || (window as any).hasUnsavedSettingsChanges;
+              if (hasUnsaved) {
+                const proceed = window.confirm('You have unsaved changes. Are you sure you want to leave without saving?');
+                if (!proceed) return;
+                (window as any).hasUnsavedMapChanges = false;
+                (window as any).hasUnsavedSettingsChanges = false;
+              }
+              navigate('/notifications');
+            }}
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+            )}
+          </button>
+        </Tooltip>
 
-        <button
-          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-          aria-label="Help"
-          id="navbar-help"
-          onClick={() => setShowHelp(true)}
-        >
-          <HelpCircle className="w-5 h-5" />
-        </button>
+        <Tooltip content="Administrative help & guides" side="bottom">
+          <button
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            aria-label="Help"
+            id="navbar-help"
+            onClick={() => setShowHelp(true)}
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
+        </Tooltip>
 
-        <button
-          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-          aria-label="About"
-          id="navbar-about"
-          onClick={() => setShowAbout(true)}
-        >
-          <Info className="w-5 h-5" />
-        </button>
+        <Tooltip content="About TESTIMONIUM" side="bottom">
+          <button
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            aria-label="About"
+            id="navbar-about"
+            onClick={() => setShowAbout(true)}
+          >
+            <Info className="w-5 h-5" />
+          </button>
+        </Tooltip>
       </div>
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />

@@ -9,6 +9,8 @@ import { PreviewDialog } from '@/components/map-configuration/PreviewDialog';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import type { Parish } from '@/types';
 import { cn } from '@/utils/cn';
+import { Tooltip } from '@/components/ui/Tooltip';
+
 
 export function MapConfigurationPage() {
   const [, startTransition] = useTransition();
@@ -513,12 +515,23 @@ export function MapConfigurationPage() {
 
                       <div className="flex items-center gap-1.5 mt-0.5 flex-shrink-0">
                         {needsLocation && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-bold">
-                            No Loc
-                          </span>
+                          <Tooltip content="Coordinates not yet configured. Select the parish and place its marker on the map." side="top">
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-bold cursor-default"
+                              aria-label="Coordinates not yet configured"
+                            >
+                              No Loc
+                            </span>
+                          </Tooltip>
                         )}
                         {isDirty && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title="Unsaved changes"></span>
+                          <Tooltip content="Unsaved parish map changes" side="top">
+                            <span
+                              className="h-1.5 w-1.5 rounded-full bg-amber-500 cursor-default"
+                              role="status"
+                              aria-label="Unsaved changes"
+                            />
+                          </Tooltip>
                         )}
                       </div>
                     </button>
@@ -530,18 +543,21 @@ export function MapConfigurationPage() {
         </div>
 
         {/* Floating Toggle Button for Left List */}
-        <button
-          onClick={() => setIsListCollapsed(!isListCollapsed)}
-          className="absolute bg-white/95 border border-gray-200/80 text-gray-500 hover:text-crimson-700 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
-          style={{ 
-            left: isListCollapsed ? '16px' : '348px', 
-            top: '20px',
-            transition: 'left 300ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms' 
-          }}
-          title={isListCollapsed ? "Expand Parish List" : "Collapse Parish List"}
-        >
-          <ChevronLeft className={cn("w-4 h-4 transition-transform duration-300", isListCollapsed && "rotate-180")} />
-        </button>
+        <Tooltip content={isListCollapsed ? "Expand parish list" : "Collapse parish list"} side="right">
+          <button
+            onClick={() => setIsListCollapsed(!isListCollapsed)}
+            className="absolute bg-white/95 border border-gray-200/80 text-gray-500 hover:text-crimson-700 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
+            style={{
+              left: isListCollapsed ? '16px' : '348px',
+              top: '20px',
+              transition: 'left 300ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms'
+            }}
+
+            aria-label={isListCollapsed ? "Expand parish list" : "Collapse parish list"}
+          >
+            <ChevronLeft className={cn("w-4 h-4 transition-transform duration-300", isListCollapsed && "rotate-180")} />
+          </button>
+        </Tooltip>
 
         {/* Floating Right Panel: Settings sidebar */}
         {previewParish && (
@@ -564,15 +580,18 @@ export function MapConfigurationPage() {
 
         {/* Floating Toggle Button for Settings Panel */}
         {previewParish && isSettingsCollapsed && (
-          <button
-            onClick={() => setIsSettingsCollapsed(false)}
-            className="absolute right-4 bg-white/95 border border-gray-200/80 text-gray-500 hover:text-crimson-700 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
-            style={{ top: '20px' }}
-            title="Expand Settings Panel"
-          >
-            <ChevronRight className="w-4 h-4 rotate-180" />
-          </button>
+          <Tooltip content="Expand settings panel" side="left">
+            <button
+              onClick={() => setIsSettingsCollapsed(false)}
+              className="absolute right-4 bg-white/95 border border-gray-200/80 text-gray-500 hover:text-crimson-700 p-2 rounded-xl shadow-md z-20 transition-all hover:scale-105 active:scale-95 pointer-events-auto"
+              style={{ top: '20px' }}
+              aria-label="Expand settings panel"
+            >
+              <ChevronRight className="w-4 h-4 rotate-180" />
+            </button>
+          </Tooltip>
         )}
+
       </div>
 
       {/* Floating Unsaved Changes Bottom Banner */}
