@@ -1,4 +1,5 @@
 import { CalendarService } from "../services/CalendarService.js";
+import { validateParishAccess } from "../utils/tenantGuard.js";
 
 const calendarService = new CalendarService();
 
@@ -8,8 +9,13 @@ export const getEvents = async (req, res, next) => {
     let parishId;
     if (req.user.role === "DIOCESE_COORDINATOR") {
       parishId = req.query.parishId ? parseInt(req.query.parishId, 10) : undefined;
-    } else {
+    } else if (req.user.role === "SECRETARY" || req.user.role === "PRIEST") {
       parishId = req.user.parish?.id;
+      if (req.query.parishId && parseInt(req.query.parishId, 10) !== parishId) {
+        await validateParishAccess(req, req.query.parishId, "Calendar Events");
+      }
+    } else {
+      parishId = req.query.parishId ? parseInt(req.query.parishId, 10) : undefined;
     }
 
     if (!year || !month) {

@@ -2,7 +2,7 @@ import { ScheduleRepository } from "../repositories/ScheduleRepository.js";
 import { prisma } from "../config/db.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
-import { ConflictHelper } from "./ConflictHelper.js";
+import { ConflictHelper, parseManilaDateTime } from "./ConflictHelper.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
 
@@ -35,7 +35,14 @@ export class ScheduleService {
       where.parishId = parseInt(parishId, 10);
     }
 
-    if (status) {
+    if (priestId) {
+      where.assignedPriestId = parseInt(priestId, 10);
+      if (status === "PENDING") {
+        where.priestResponseStatus = null;
+      }
+    }
+
+    if (status && !priestId) {
       where.status = status;
     }
 
@@ -310,6 +317,8 @@ export class ScheduleService {
     const dailyLimit = eventSettings?.capacitySettings?.dailyLimit ? parseInt(eventSettings.capacitySettings.dailyLimit, 10) : 10;
 
     // 6. Atomic Concurrency Lock inside Prisma Transaction
+    const startDatetime = timeSlot ? parseManilaDateTime(targetDate, timeSlot) : null;
+    const endDatetime = startDatetime ? new Date(startDatetime.getTime() + 60 * 60 * 1000) : null;
     const finalRemarks = timeSlot ? `Time Slot: ${timeSlot}. ${remarks}`.trim() : remarks.trim();
 
     const createdSchedule = await prisma.$transaction(async (tx) => {
@@ -342,7 +351,7 @@ export class ScheduleService {
           },
           status: { in: ["PENDING", "CONFIRMED", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"] },
         },
-        select: { id: true, remarks: true },
+        select: { id: true, startDatetime: true, endDatetime: true, remarks: true },
       });
 
       // Daily Limit Check
@@ -352,9 +361,15 @@ export class ScheduleService {
         throw err;
       }
 
-      // Slot Capacity Check
-      if (timeSlot) {
-        const matchingSlotBookings = activeBookings.filter((b) => b.remarks && b.remarks.includes(`Time Slot: ${timeSlot}`));
+      // Structured Slot Capacity Check (Using exact startDatetime/endDatetime intervals)
+      if (startDatetime && endDatetime) {
+        const matchingSlotBookings = activeBookings.filter((b) => {
+          if (b.startDatetime && b.endDatetime) {
+            return new Date(b.startDatetime) < endDatetime && new Date(b.endDatetime) > startDatetime;
+          }
+          return b.remarks && b.remarks.startsWith(`Time Slot: ${timeSlot}`);
+        });
+
         if (matchingSlotBookings.length >= slotCapacity) {
           const err = new Error(`Capacity full for time slot "${timeSlot}". Please select a different time slot or date.`);
           err.statusCode = 409;
@@ -370,6 +385,8 @@ export class ScheduleService {
           eventType,
           displayTitle: displayTitle || `${eventType} Booking`,
           requestedDate: targetDate,
+          startDatetime,
+          endDatetime,
           remarks: finalRemarks,
           status: "PENDING",
         },
@@ -510,16 +527,26 @@ export class ScheduleService {
         },
         status: { in: ["PENDING", "CONFIRMED", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"] },
       },
-      select: { remarks: true },
+      select: { startDatetime: true, endDatetime: true, remarks: true },
     });
 
     if (bookings.length >= dailyLimit) {
       return [];
     }
 
-    // Filter candidate slots by checking capacity
+    // Filter candidate slots by checking capacity against exact startDatetime interval
     const available = candidateSlots.filter((slot) => {
-      const slotBookingsCount = bookings.filter((b) => b.remarks && b.remarks.includes(`Time Slot: ${slot}`)).length;
+      const slotStart = parseManilaDateTime(targetDate, slot);
+      if (!slotStart) return false;
+      const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
+
+      const slotBookingsCount = bookings.filter((b) => {
+        if (b.startDatetime && b.endDatetime) {
+          return new Date(b.startDatetime) < slotEnd && new Date(b.endDatetime) > slotStart;
+        }
+        return b.remarks && b.remarks.startsWith(`Time Slot: ${slot}`);
+      }).length;
+
       return slotBookingsCount < slotCapacity;
     });
 
@@ -782,21 +809,7 @@ export class ScheduleService {
     if (!start && original.remarks) {
       const match = original.remarks.match(/Time Slot:\s*(\d{2}:\d{2}\s*[AP]M)/);
       if (match) {
-        const timeStr = match[1];
-        const combine = (d, timeStr) => {
-          try {
-            const temp = new Date(d);
-            let [hourMin, period] = timeStr.split(" ");
-            let [hours, minutes] = hourMin.split(":").map(Number);
-            if (period === "PM" && hours < 12) hours += 12;
-            if (period === "AM" && hours === 12) hours = 0;
-            temp.setHours(hours, minutes, 0, 0);
-            return temp;
-          } catch {
-            return null;
-          }
-        };
-        start = combine(checkDate, timeStr);
+        start = parseManilaDateTime(checkDate, match[1]);
         end = start ? new Date(start.getTime() + 60 * 60 * 1000) : null;
       }
     }

@@ -147,13 +147,48 @@ export class DocumentRequestService {
         updatePayload.paymentStatus = "UNPAID";
       }
 
+      if (targetStatus === "PROCESSING" && currentStatus === "UNDER_REVIEW") {
+        // Direct transition for Zero-Fee or Waived Document Requests
+        updatePayload.paymentStatus = "CONFIRMED";
+        updatePayload.status = "PROCESSING";
+      }
+
       if (targetStatus === "PAYMENT_VERIFIED") {
         const pendingTx = await tx.paymentTransaction.findFirst({
           where: { requestId, status: "PENDING" },
+          include: { receipts: { include: { ocrResult: true } } },
           orderBy: { createdAt: "desc" },
         });
 
         if (pendingTx) {
+          // Check for duplicate receipt/reference warning
+          const duplicateReceipt = pendingTx.receipts?.find(r => r.ocrResult?.isDuplicate);
+          if (duplicateReceipt) {
+            if (actorRole !== "DIOCESE_COORDINATOR") {
+              const error = new Error(
+                "Cannot verify payment: Duplicate receipt image or reference number detected. Only Diocese Coordinators can override duplicate warnings."
+              );
+              error.statusCode = 400;
+              throw error;
+            }
+
+            await AuditLogService.log(
+              actorId,
+              `DUPLICATE_PAYMENT_OVERRIDE: Verified transaction #${pendingTx.id} with duplicate warning (Conflicting Request: #${duplicateReceipt.ocrResult.duplicateRequestId || "Unknown"})`,
+              tx,
+              false,
+              {
+                affectedTable: "PaymentTransaction",
+                affectedRecordId: pendingTx.id,
+                parishId: request.parishId,
+                metadata: JSON.stringify({
+                  duplicateReason: duplicateReceipt.ocrResult.duplicateReason,
+                  conflictingRequestId: duplicateReceipt.ocrResult.duplicateRequestId,
+                }),
+              }
+            );
+          }
+
           await tx.paymentTransaction.update({
             where: { id: pendingTx.id },
             data: {

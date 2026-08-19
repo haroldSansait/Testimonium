@@ -157,4 +157,63 @@ export class PriestAssignmentHandler {
 
     return updated;
   }
+
+  /**
+   * Cleans up all pending and future assignments for a priest at a specified parish.
+   * Called when a priest is transferred to another parish, unassigned, or disabled.
+   * @param {number|string} priestId
+   * @param {number|string} oldParishId
+   * @param {object} [tx=prisma] - Optional Prisma transaction client
+   * @param {string|null} [newParishName] - Optional new parish name for logging
+   */
+  static async cleanupPriestAssignmentsFromParish(priestId, oldParishId, tx = prisma, newParishName = null) {
+    if (!priestId || !oldParishId) return;
+    const parsedPriestId = parseInt(priestId, 10);
+    const parsedOldParishId = parseInt(oldParishId, 10);
+    if (isNaN(parsedPriestId) || isNaN(parsedOldParishId)) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 1. Clear future & pending schedules in the old parish
+    await tx.schedule.updateMany({
+      where: {
+        parishId: parsedOldParishId,
+        assignedPriestId: parsedPriestId,
+        requestedDate: { gte: today },
+      },
+      data: {
+        assignedPriestId: null,
+        priestResponseStatus: null,
+        priestResponseReason: null,
+      },
+    });
+
+    // 2. Clear future & active parish events in the old parish
+    await tx.parishEvent.updateMany({
+      where: {
+        parishId: parsedOldParishId,
+        assignedPriestId: parsedPriestId,
+        eventDate: { gte: today },
+      },
+      data: {
+        assignedPriestId: null,
+        priestResponseStatus: null,
+        priestResponseReason: null,
+      },
+    });
+
+    // 3. Clear mass schedule templates in the old parish
+    await tx.massScheduleTemplate.updateMany({
+      where: {
+        parishId: parsedOldParishId,
+        assignedPriestId: parsedPriestId,
+      },
+      data: {
+        assignedPriestId: null,
+        priestResponseStatus: null,
+        priestResponseReason: null,
+      },
+    });
+  }
 }

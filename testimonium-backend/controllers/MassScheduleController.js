@@ -1,10 +1,19 @@
 import { MassScheduleService } from "../services/MassScheduleService.js";
+import { prisma } from "../config/db.js";
+import { validateParishAccess } from "../utils/tenantGuard.js";
 
 const service = new MassScheduleService();
 
 export const list = async (req, res, next) => {
   try {
-    const parishId = req.params.parishId || req.user.parish?.id;
+    let parishId = req.params.parishId || req.query.parishId || req.user.parish?.id;
+    if (req.user.role !== "DIOCESE_COORDINATOR") {
+      parishId = req.user.parish?.id;
+      if (req.params.parishId && parseInt(req.params.parishId, 10) !== parishId) {
+        await validateParishAccess(req, req.params.parishId, "Mass Schedule Template List");
+      }
+    }
+
     if (!parishId) {
       return res.status(400).json({ success: false, message: "Parish ID is required." });
     }
@@ -18,10 +27,16 @@ export const list = async (req, res, next) => {
 
 export const upsert = async (req, res, next) => {
   try {
-    const parishId = req.params.parishId || req.user.parish?.id;
+    let parishId = req.params.parishId || req.body.parishId || req.user.parish?.id;
+    if (req.user.role !== "DIOCESE_COORDINATOR") {
+      parishId = req.user.parish?.id;
+    }
+
     if (!parishId) {
       return res.status(400).json({ success: false, message: "Parish ID is required." });
     }
+
+    await validateParishAccess(req, parishId, "Mass Schedule Template Upsert");
 
     const actorId = req.user.id;
     const { id, dayType, timeSlot, label, assignedPriestId } = req.body;
@@ -35,10 +50,22 @@ export const upsert = async (req, res, next) => {
 
 export const remove = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const actorId = req.user.id;
+    const parsedId = parseInt(req.params.id, 10);
+    if (isNaN(parsedId)) {
+      return res.status(400).json({ success: false, message: "Invalid template ID." });
+    }
 
-    await service.deleteTemplate(id, actorId);
+    const original = await prisma.massScheduleTemplate.findUnique({
+      where: { id: parsedId }
+    });
+    if (!original) {
+      return res.status(404).json({ success: false, message: "Mass schedule template not found." });
+    }
+
+    await validateParishAccess(req, original.parishId, "Mass Schedule Template Deletion");
+
+    const actorId = req.user.id;
+    await service.deleteTemplate(parsedId, actorId);
     return res.status(200).json({ success: true, message: "Mass schedule template deleted successfully." });
   } catch (err) {
     return next(err);
@@ -47,13 +74,18 @@ export const remove = async (req, res, next) => {
 
 export const reset = async (req, res, next) => {
   try {
-    const parishId = req.params.parishId || req.user.parish?.id;
+    let parishId = req.params.parishId || req.body.parishId || req.user.parish?.id;
+    if (req.user.role !== "DIOCESE_COORDINATOR") {
+      parishId = req.user.parish?.id;
+    }
+
     if (!parishId) {
       return res.status(400).json({ success: false, message: "Parish ID is required." });
     }
 
+    await validateParishAccess(req, parishId, "Mass Schedule Reset");
+
     const actorId = req.user.id;
-    
     await service.resetDefaults(parishId, actorId);
     
     const data = await service.getTemplates(parishId);

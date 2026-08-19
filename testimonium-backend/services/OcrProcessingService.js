@@ -185,8 +185,55 @@ export class OcrProcessingService {
 
       const totalAsyncDurationMs = Date.now() - startTime;
 
-      if (!ocrOutput.ocrSuccess) {
-        throw new Error(ocrOutput.failureReason || "OCR provider extraction failed");
+      // ── Step 8.5: Fraud Check — Reference Number Deduplication ─────────────
+      let isDuplicate = receipt.ocrResult?.isDuplicate || false;
+      let duplicateRequestId = receipt.ocrResult?.duplicateRequestId || null;
+      let duplicateReason = receipt.ocrResult?.duplicateReason || null;
+
+      if (!isDuplicate && parsed.referenceNumber && parsed.referenceNumber.trim().length >= 6) {
+        const cleanRef = parsed.referenceNumber.trim();
+        const priorVerifiedTx = await prisma.paymentTransaction.findFirst({
+          where: {
+            referenceNumber: cleanRef,
+            status: "VERIFIED",
+            requestId: { not: requestId },
+          },
+        });
+
+        if (priorVerifiedTx) {
+          isDuplicate = true;
+          duplicateRequestId = priorVerifiedTx.requestId;
+          duplicateReason = "DUPLICATE_REFERENCE_NUMBER";
+          logger.warn(
+            { requestId, duplicateRequestId, referenceNumber: cleanRef },
+            "[OcrProcessingService] Fraud Alert: Duplicate payment reference number matches verified payment"
+          );
+        } else {
+          const priorOcrMatch = await prisma.ocrResult.findFirst({
+            where: {
+              referenceNumber: cleanRef,
+              receipt: {
+                transaction: {
+                  requestId: { not: requestId },
+                  request: {
+                    status: { notIn: ["REJECTED", "CANCELLED"] },
+                  },
+                },
+              },
+            },
+            include: { receipt: { include: { transaction: true } } },
+          });
+
+          if (priorOcrMatch) {
+            isDuplicate = true;
+            duplicateRequestId = priorOcrMatch.receipt?.transaction?.requestId || null;
+            duplicateReason = "DUPLICATE_REFERENCE_NUMBER";
+            logger.warn(
+              { requestId, duplicateRequestId, referenceNumber: cleanRef },
+              "[OcrProcessingService] Fraud Alert: Duplicate payment reference number matches active in-flight request"
+            );
+          }
+        }
       }
 
       // ── Step 9: Save completed OcrResult to database ────────────────────────
@@ -207,6 +254,11 @@ export class OcrProcessingService {
           ocrDurationMs,
           originalFileSize: receipt.fileSize,
           compressedFileSize: compressed.compressedSize,
+
+          // Fraud & Deduplication fields
+          isDuplicate,
+          duplicateRequestId,
+          duplicateReason,
 
           // Phase 2 new fields
           ocrConfidence,

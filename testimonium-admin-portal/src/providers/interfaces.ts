@@ -60,11 +60,43 @@ export interface UserFilters {
   parishId?: string;
 }
 
+export interface PersonData {
+  fullName: string;
+  email: string;
+  contactNumber?: string;
+}
+
+export type StaffAssignmentMode = 'none' | 'existing' | 'new';
+
+export interface StaffAssignmentConfig {
+  mode: StaffAssignmentMode;
+  existingUserId?: string | null;
+  newUserData?: PersonData | null;
+}
+
+export interface CreateParishPayload {
+  parishInfo: {
+    name: string;
+    type: 'Parish' | 'Quasi-Parish' | 'Mission Station' | '';
+    vicariate: string;
+    municipalityCity: string;
+    feastDay: string;
+    patronSaint?: string;
+    address?: string;
+    contactNumber?: string;
+    email?: string;
+    venueCapacity?: number | null;
+  };
+  priest?: StaffAssignmentConfig;
+  secretary?: StaffAssignmentConfig;
+}
+
 export interface AddUserPayload {
   name: string;
   email: string;
   role: ManagedUser['role'];
   parish: string;
+  contactNumber?: string;
 }
 
 // ─── Provider Interfaces ──────────────────────────────────────────────────────
@@ -161,7 +193,7 @@ export interface MassScheduleTemplate {
 
 export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
-  addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish>;
+  addParish(data: CreateParishPayload | Omit<Parish, 'id' | 'status'>): Promise<Parish>;
   editParish(id: string, data: Partial<Parish>): Promise<Parish>;
   editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish>;
   uploadPaymentQr(id: string, file: File): Promise<Parish>;

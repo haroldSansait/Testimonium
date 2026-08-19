@@ -6,7 +6,7 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
-import { NewParishWizard, type WizardData } from '@/components/parish-management/NewParishWizard';
+import { NewParishWizard, type WizardData, MONTHS, getDaysInMonth } from '@/components/parish-management/NewParishWizard';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { SearchableDropdown, type DropdownOption } from '@/components/ui/SearchableDropdown';
@@ -108,6 +108,8 @@ interface EditParishFormData {
   name: string;
   type: ParishType | '';
   vicariate: string;
+  municipalityCity: string;
+  feastDay: string;
   priest: string;
   priestId: string | null;
   secretary: string;
@@ -131,6 +133,8 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
     name: parish.name,
     type: parish.type,
     vicariate: parish.vicariate,
+    municipalityCity: parish.municipalityCity ?? '',
+    feastDay: parish.feastDay ?? '',
     priest: parish.priest,
     priestId: parish.priestId ?? null,
     secretary: parish.secretary,
@@ -216,7 +220,46 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const canSubmit = Boolean(form.name && form.type && form.vicariate) && !isLoadingStaff;
+  // Parse existing feastDay into month and day
+  const parts = form.feastDay ? form.feastDay.split(' ') : [];
+  const selectedMonth = parts.length > 0 && MONTHS.includes(parts[0]) ? parts[0] : '';
+  const selectedDay = parts.length > 1 ? parts[1] : '';
+
+  const maxDays = selectedMonth ? getDaysInMonth(selectedMonth) : 31;
+  const dayOptions = Array.from({ length: maxDays }, (_, i) => String(i + 1));
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newMonth = e.target.value;
+    if (!newMonth) {
+      setForm((prev) => ({ ...prev, feastDay: '' }));
+      return;
+    }
+    const max = getDaysInMonth(newMonth);
+    let day = selectedDay || '1';
+    if (parseInt(day, 10) > max) {
+      day = String(max);
+    }
+    setForm((prev) => ({ ...prev, feastDay: `${newMonth} ${day}` }));
+  };
+
+  const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newDay = e.target.value;
+    const month = selectedMonth || MONTHS[0];
+    if (!newDay) {
+      setForm((prev) => ({ ...prev, feastDay: '' }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, feastDay: `${month} ${newDay}` }));
+  };
+
+  const canSubmit =
+    Boolean(
+      form.name.trim() &&
+      form.type &&
+      form.vicariate &&
+      form.municipalityCity.trim() &&
+      form.feastDay.trim()
+    ) && !isLoadingStaff;
 
   const handleSave = async () => {
     if (!form.type) return;
@@ -224,6 +267,8 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
       name: form.name,
       type: form.type as ParishType,
       vicariate: form.vicariate,
+      municipalityCity: form.municipalityCity.trim(),
+      feastDay: form.feastDay.trim(),
       priestId: form.priestId,
       secretaryId: form.secretaryId,
       status: form.status,
@@ -302,6 +347,50 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
               <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
             </select>
           </FormField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Municipality / City" id="ep-municipality" required>
+              <input
+                id="ep-municipality"
+                className={inputCls}
+                placeholder="e.g. Canlaon City"
+                value={form.municipalityCity}
+                onChange={set('municipalityCity')}
+              />
+            </FormField>
+
+            <FormField label="Feast Date" id="ep-feast-month" required>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  id="ep-feast-month"
+                  className={inputCls}
+                  value={selectedMonth}
+                  onChange={handleMonthChange}
+                >
+                  <option value="">Month...</option>
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  id="ep-feast-day"
+                  className={inputCls}
+                  value={selectedDay}
+                  onChange={handleDayChange}
+                  disabled={!selectedMonth}
+                >
+                  <option value="">Day...</option>
+                  {dayOptions.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </FormField>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Assigned Priest" id="ep-priest">
@@ -443,31 +532,20 @@ export function ParishManagementPage() {
   // ── Wizard finish → addParish ──────────────────────────────────────────────
 
   const handleWizardFinish = async (data: WizardData) => {
-    const { parishInfo, priest, secretary } = data;
     await ParishManagementService.addParish({
-      name: parishInfo.name,
-      type: parishInfo.type as ParishType,
-      vicariate: parishInfo.vicariate,
-      priest: priest.fullName,
-      secretary: secretary.fullName,
-      patronSaint: parishInfo.patronSaint || undefined,
-      address: parishInfo.address || undefined,
-      contactNumber: parishInfo.contactNumber || undefined,
-      email: parishInfo.email || undefined,
-    });
-    // Auto account creation for Secretary
-    await UserManagementService.addUser({
-      name: secretary.fullName,
-      email: secretary.email,
-      role: 'SECRETARY',
-      parish: parishInfo.name,
-    });
-    // Auto account creation for Priest
-    await UserManagementService.addUser({
-      name: priest.fullName,
-      email: priest.email,
-      role: 'PRIEST',
-      parish: parishInfo.name,
+      parishInfo: {
+        name: data.parishInfo.name,
+        type: data.parishInfo.type as ParishType,
+        vicariate: data.parishInfo.vicariate,
+        municipalityCity: data.parishInfo.municipalityCity,
+        feastDay: data.parishInfo.feastDay,
+        patronSaint: data.parishInfo.patronSaint || undefined,
+        address: data.parishInfo.address || undefined,
+        contactNumber: data.parishInfo.contactNumber || undefined,
+        email: data.parishInfo.email || undefined,
+      },
+      priest: data.priest,
+      secretary: data.secretary,
     });
     showToast('Parish added successfully.');
     void fetchParishes();

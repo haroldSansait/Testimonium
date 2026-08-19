@@ -1,18 +1,26 @@
 import { ParishEventService } from "../services/ParishEventService.js";
 import { prisma } from "../config/db.js";
+import { getEffectiveParishId, validateParishAccess } from "../utils/tenantGuard.js";
 
 const service = new ParishEventService();
 
 export const list = async (req, res, next) => {
   try {
     const { year, month } = req.query;
-    const parishId = req.params.parishId || req.user.parish?.id;
+    let parishId = req.params.parishId || req.user.parish?.id;
 
     if (!parishId || !year || !month) {
       return res.status(400).json({
         success: false,
         message: "parishId, year, and month are required."
       });
+    }
+
+    if (req.user.role !== "DIOCESE_COORDINATOR") {
+      parishId = req.user.parish?.id;
+      if (req.params.parishId && parseInt(req.params.parishId, 10) !== parishId) {
+        await validateParishAccess(req, req.params.parishId, "Parish Event List");
+      }
     }
 
     const data = await service.getEvents(parishId, year, month);
@@ -24,7 +32,7 @@ export const list = async (req, res, next) => {
 
 export const create = async (req, res, next) => {
   try {
-    let parishId = req.body.parishId || req.user.parish?.id;
+    let parishId = getEffectiveParishId(req, req.body.parishId);
     if (req.user.role === "DIOCESE_COORDINATOR" && !parishId) {
       const defaultParish = await prisma.parish.findFirst({ select: { id: true } });
       if (defaultParish) {
@@ -36,6 +44,8 @@ export const create = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Parish ID is required for this action." });
     }
 
+    await validateParishAccess(req, parishId, "Parish Event Creation");
+
     const actorId = req.user.id;
     const data = await service.createEvent(parishId, req.body, actorId);
     return res.status(201).json({ success: true, data });
@@ -46,9 +56,22 @@ export const create = async (req, res, next) => {
 
 export const update = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const parsedId = parseInt(req.params.id, 10);
+    if (isNaN(parsedId)) {
+      return res.status(400).json({ success: false, message: "Invalid event ID." });
+    }
+
+    const original = await prisma.parishEvent.findUnique({
+      where: { id: parsedId }
+    });
+    if (!original) {
+      return res.status(404).json({ success: false, message: "Parish event not found." });
+    }
+
+    await validateParishAccess(req, original.parishId, "Parish Event Update");
+
     const actorId = req.user.id;
-    const data = await service.updateEvent(id, req.body, actorId);
+    const data = await service.updateEvent(parsedId, req.body, actorId);
     return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);
@@ -57,9 +80,22 @@ export const update = async (req, res, next) => {
 
 export const remove = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const parsedId = parseInt(req.params.id, 10);
+    if (isNaN(parsedId)) {
+      return res.status(400).json({ success: false, message: "Invalid event ID." });
+    }
+
+    const original = await prisma.parishEvent.findUnique({
+      where: { id: parsedId }
+    });
+    if (!original) {
+      return res.status(404).json({ success: false, message: "Parish event not found." });
+    }
+
+    await validateParishAccess(req, original.parishId, "Parish Event Deletion");
+
     const actorId = req.user.id;
-    await service.deleteEvent(id, actorId);
+    await service.deleteEvent(parsedId, actorId);
     return res.status(200).json({ success: true, message: "Parish event deleted successfully." });
   } catch (err) {
     return next(err);

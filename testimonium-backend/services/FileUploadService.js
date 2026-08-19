@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 import { R2Service } from "./R2Service.js";
@@ -61,6 +62,7 @@ export class FileUploadService {
    */
   static async uploadReceipt(requestId, paymentTransactionId, file, dbClient = prisma) {
     const key = this.generateKey(requestId, "receipts", file.originalname);
+    const imageHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
 
     // Stream upload to R2
     const publicUrl = await r2Service.upload({
@@ -77,6 +79,7 @@ export class FileUploadService {
         fileName: file.originalname,
         mimeType: file.mimetype,
         fileSize: file.size,
+        imageHash,
       },
     });
 

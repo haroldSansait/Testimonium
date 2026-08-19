@@ -1,5 +1,6 @@
 import { ParishService } from "../services/ParishService.js";
 import { ParishImageService } from "../services/ParishImageService.js";
+import { validateParishAccess } from "../utils/tenantGuard.js";
 
 const parishService = new ParishService();
 
@@ -49,6 +50,8 @@ export const updateSettings = async (req, res, next) => {
     const { id } = req.params;
     const actorId = req.user?.id;
     
+    await validateParishAccess(req, id, "Parish Map Directory Settings");
+
     const data = await parishService.updateDirectorySettings(id, req.body, actorId);
     return res.status(200).json({ success: true, data });
   } catch (err) {
@@ -66,6 +69,8 @@ export const uploadImage = async (req, res, next) => {
     const { id } = req.params;
     const { type } = req.query; // 'cover' or 'logo'
     const actorId = req.user?.id;
+
+    await validateParishAccess(req, id, "Parish Image Upload");
 
     if (!req.file) {
       const err = new Error("No file uploaded.");

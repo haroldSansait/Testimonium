@@ -4,6 +4,7 @@ import { UserRepository } from "../repositories/UserRepository.js";
 import { RoleRepository } from "../repositories/RoleRepository.js";
 import { FirebaseAdminService } from "./FirebaseAdminService.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
 
 export class UserService {
   constructor(
@@ -221,6 +222,11 @@ export class UserService {
       }
     }
 
+    // Clean up assignments in old parish if priest is being moved to another parish or unassigned
+    if (user.role?.roleName === "PRIEST" && parishId !== undefined && parishId !== user.parishId && user.parishId !== null) {
+      await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(numericId, user.parishId, prisma, data.parish || null);
+    }
+
     // Update in Firebase if linked
     if (user.firebaseUid) {
       await this.firebaseAdminService.updateUser(user.firebaseUid, {
@@ -267,6 +273,10 @@ export class UserService {
       const err = new Error("User not found.");
       err.statusCode = 404;
       throw err;
+    }
+
+    if (user.role?.roleName === "PRIEST" && user.parishId) {
+      await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(numericId, user.parishId, prisma);
     }
 
     if (user.firebaseUid) {

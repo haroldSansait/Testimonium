@@ -1,5 +1,8 @@
 import { ParishRepository } from "../repositories/ParishRepository.js";
+import { UserService } from "./UserService.js";
+import { FirebaseAdminService } from "./FirebaseAdminService.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
 import { R2Service } from "./R2Service.js";
 import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
@@ -10,9 +13,39 @@ import {
   getEffectiveOfferedDocuments,
 } from "../config/documents.js";
 
+const generateSlug = (name) => {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .trim();
+};
+
+const DEFAULT_MASS_SCHEDULE_TEMPLATES = [
+  // Wednesdays
+  { dayType: "WEDNESDAY", timeSlot: "06:00 AM", label: "Morning Mass" },
+  { dayType: "WEDNESDAY", timeSlot: "05:15 PM", label: "Evening Mass" },
+  // Fridays
+  { dayType: "FRIDAY", timeSlot: "06:00 AM", label: "Morning Mass" },
+  { dayType: "FRIDAY", timeSlot: "05:15 PM", label: "Evening Mass" },
+  // Sundays
+  { dayType: "SUNDAY", timeSlot: "05:00 AM", label: "Sunday Early Mass" },
+  { dayType: "SUNDAY", timeSlot: "07:00 AM", label: "Sunday Morning Mass" },
+  { dayType: "SUNDAY", timeSlot: "09:00 AM", label: "Sunday High Mass" },
+  { dayType: "SUNDAY", timeSlot: "04:00 PM", label: "Sunday Afternoon Mass" },
+  { dayType: "SUNDAY", timeSlot: "06:00 PM", label: "Sunday Evening Mass" },
+];
+
 export class ParishService {
-  constructor(parishRepository = new ParishRepository()) {
+  constructor(
+    parishRepository = new ParishRepository(),
+    userService = new UserService(),
+    firebaseAdminService = new FirebaseAdminService()
+  ) {
     this.parishRepository = parishRepository;
+    this.userService = userService;
+    this.firebaseAdminService = firebaseAdminService;
   }
 
   /**
@@ -34,7 +67,7 @@ export class ParishService {
 
   /**
    * Retrieves a single parish by ID, mapped to DTO.
-   * @param {string|number} id
+   * @param {string|number} idOrSlug
    * @returns {Promise<object>}
    */
   async getParishById(idOrSlug) {
@@ -56,27 +89,332 @@ export class ParishService {
   }
 
   /**
-   * Creates a new parish, parsing address into municipalityCity and province.
-   * @param {object} data
+   * Creates a new parish with optional atomic staff assignment, unique slug, and default mass templates.
+   * @param {object} payload
    * @param {number} actorId
    * @returns {Promise<object>}
    */
-  async createParish(data, actorId) {
-    if (!data.name || !data.type) {
+  async createParish(payload, actorId) {
+    const parishInfo = payload.parishInfo || payload;
+    const name = parishInfo.name?.trim();
+    const type = parishInfo.type;
+    const feastDay = parishInfo.feastDay?.trim() || null;
+    const patronSaint = parishInfo.patronSaint?.trim() || null;
+    const address = parishInfo.address?.trim() || null;
+    const contactNumber = parishInfo.contactNumber?.trim() || null;
+    const email = parishInfo.email?.trim() || null;
+    const venueCapacity = parishInfo.venueCapacity ? parseInt(parishInfo.venueCapacity, 10) : null;
+
+    if (!name || !type) {
       const err = new Error("Parish name and type are required.");
       err.statusCode = 400;
       throw err;
     }
 
-    const { municipalityCity, province } = this.parseAddress(data.address);
-    const parish = await this.parishRepository.create({
-      ...data,
-      municipalityCity,
-      province,
+    // 1. Validate parish name uniqueness
+    const existingParish = await prisma.parish.findUnique({
+      where: { parishName: name },
+    });
+    if (existingParish) {
+      const err = new Error(`A parish named "${name}" already exists.`);
+      err.statusCode = 409;
+      throw err;
+    }
+
+    const priestConfig = payload.priest || { mode: "none" };
+    const secretaryConfig = payload.secretary || { mode: "none" };
+
+    const priestMode = priestConfig.mode || "none";
+    const secretaryMode = secretaryConfig.mode || "none";
+
+    let existingPriestUser = null;
+    let existingSecretaryUser = null;
+
+    // 2. Pre-validate Existing Priest (if mode === 'existing')
+    if (priestMode === "existing") {
+      if (!priestConfig.existingUserId) {
+        const err = new Error("Existing priest ID is required when 'Assign Existing' is selected.");
+        err.statusCode = 400;
+        throw err;
+      }
+      const priestId = parseInt(priestConfig.existingUserId, 10);
+      if (isNaN(priestId)) {
+        const err = new Error("Invalid priest ID format.");
+        err.statusCode = 400;
+        throw err;
+      }
+      existingPriestUser = await prisma.user.findUnique({
+        where: { id: priestId },
+        include: { role: true, parish: true },
+      });
+      if (!existingPriestUser) {
+        const err = new Error("Selected priest was not found.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingPriestUser.role?.roleName !== "PRIEST") {
+        const err = new Error("Selected user does not have the PRIEST role.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingPriestUser.status !== "ACTIVE") {
+        const err = new Error("Selected priest account is inactive.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingPriestUser.parishId !== null) {
+        const err = new Error(`Selected priest is already assigned to "${existingPriestUser.parish?.parishName || 'another parish'}".`);
+        err.statusCode = 409;
+        throw err;
+      }
+    }
+
+    // 3. Pre-validate Existing Secretary (if mode === 'existing')
+    if (secretaryMode === "existing") {
+      if (!secretaryConfig.existingUserId) {
+        const err = new Error("Existing secretary ID is required when 'Assign Existing' is selected.");
+        err.statusCode = 400;
+        throw err;
+      }
+      const secretaryId = parseInt(secretaryConfig.existingUserId, 10);
+      if (isNaN(secretaryId)) {
+        const err = new Error("Invalid secretary ID format.");
+        err.statusCode = 400;
+        throw err;
+      }
+      existingSecretaryUser = await prisma.user.findUnique({
+        where: { id: secretaryId },
+        include: { role: true, parish: true },
+      });
+      if (!existingSecretaryUser) {
+        const err = new Error("Selected secretary was not found.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingSecretaryUser.role?.roleName !== "SECRETARY") {
+        const err = new Error("Selected user does not have the SECRETARY role.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingSecretaryUser.status !== "ACTIVE") {
+        const err = new Error("Selected secretary account is inactive.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingSecretaryUser.parishId !== null) {
+        const err = new Error(`Selected secretary is already assigned to "${existingSecretaryUser.parish?.parishName || 'another parish'}".`);
+        err.statusCode = 409;
+        throw err;
+      }
+    }
+
+    // 4. Pre-validate New Priest (if mode === 'new')
+    if (priestMode === "new") {
+      const pData = priestConfig.newUserData;
+      if (!pData || !pData.fullName?.trim() || !pData.email?.trim()) {
+        const err = new Error("Priest full name and email are required when creating a new priest account.");
+        err.statusCode = 400;
+        throw err;
+      }
+      const existingEmail = await prisma.user.findUnique({
+        where: { email: pData.email.trim() },
+      });
+      if (existingEmail) {
+        const err = new Error(`The email "${pData.email}" is already registered in the system.`);
+        err.statusCode = 409;
+        throw err;
+      }
+    }
+
+    // 5. Pre-validate New Secretary (if mode === 'new')
+    if (secretaryMode === "new") {
+      const sData = secretaryConfig.newUserData;
+      if (!sData || !sData.fullName?.trim() || !sData.email?.trim()) {
+        const err = new Error("Secretary full name and email are required when creating a new secretary account.");
+        err.statusCode = 400;
+        throw err;
+      }
+      const existingEmail = await prisma.user.findUnique({
+        where: { email: sData.email.trim() },
+      });
+      if (existingEmail) {
+        const err = new Error(`The email "${sData.email}" is already registered in the system.`);
+        err.statusCode = 409;
+        throw err;
+      }
+
+      if (priestMode === "new" && priestConfig.newUserData?.email?.trim().toLowerCase() === sData.email.trim().toLowerCase()) {
+        const err = new Error("Priest and Secretary cannot have the same email address.");
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    // 6. Parse Address, Municipality, and Map Type
+    const { municipalityCity: parsedCity, province } = this.parseAddress(address);
+    const municipalityCity = parishInfo.municipalityCity?.trim() || parsedCity || "Unknown";
+    const mappedType = this.parishRepository.mapTypeToEnum(type);
+
+    // 7. Database transaction: Create Parish + Unique Slug + Seed Mass Templates + Link Existing Staff
+    let createdParish;
+    try {
+      createdParish = await prisma.$transaction(async (tx) => {
+        const dupe = await tx.parish.findUnique({ where: { parishName: name } });
+        if (dupe) {
+          const err = new Error(`A parish named "${name}" already exists.`);
+          err.statusCode = 409;
+          throw err;
+        }
+
+        // Generate unique slug
+        const baseSlug = generateSlug(name) || "parish";
+        let candidateSlug = baseSlug;
+        let counter = 1;
+        while (true) {
+          const existingSlug = await tx.parish.findUnique({ where: { slug: candidateSlug } });
+          if (!existingSlug) break;
+          candidateSlug = `${baseSlug}-${counter}`;
+          counter++;
+        }
+
+        const parish = await tx.parish.create({
+          data: {
+            parishName: name,
+            slug: candidateSlug,
+            type: mappedType,
+            patronSaint,
+            feastDay,
+            address,
+            municipalityCity,
+            province: province || "Negros Oriental",
+            contactNumber,
+            email,
+            venueCapacity,
+            isActive: true,
+          },
+        });
+
+        // Seed default mass schedule templates
+        for (const t of DEFAULT_MASS_SCHEDULE_TEMPLATES) {
+          await tx.massScheduleTemplate.create({
+            data: {
+              parishId: parish.id,
+              dayType: t.dayType,
+              timeSlot: t.timeSlot,
+              label: t.label,
+              isActive: true,
+            },
+          });
+        }
+
+        if (priestMode === "existing" && existingPriestUser) {
+          if (existingPriestUser.parishId && existingPriestUser.parishId !== parish.id) {
+            await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(existingPriestUser.id, existingPriestUser.parishId, tx, name);
+          }
+          await tx.user.update({
+            where: { id: existingPriestUser.id },
+            data: { parishId: parish.id },
+          });
+        }
+
+        if (secretaryMode === "existing" && existingSecretaryUser) {
+          await tx.user.update({
+            where: { id: existingSecretaryUser.id },
+            data: { parishId: parish.id },
+          });
+        }
+
+        return parish;
+      });
+    } catch (dbErr) {
+      logger.error({ err: dbErr, parishName: name }, "[ParishService] Failed to create parish in DB transaction");
+      throw dbErr;
+    }
+
+    // 8. Provision New Staff (if applicable) with rollback/compensation
+    const provisionedUsers = [];
+    try {
+      if (priestMode === "new") {
+        const pData = priestConfig.newUserData;
+        const result = await this.userService.createUser(
+          {
+            name: pData.fullName.trim(),
+            email: pData.email.trim(),
+            contactNumber: pData.contactNumber?.trim() || null,
+            role: "PRIEST",
+            parish: createdParish.parishName,
+          },
+          actorId
+        );
+        provisionedUsers.push(result.user);
+      }
+
+      if (secretaryMode === "new") {
+        const sData = secretaryConfig.newUserData;
+        const result = await this.userService.createUser(
+          {
+            name: sData.fullName.trim(),
+            email: sData.email.trim(),
+            contactNumber: sData.contactNumber?.trim() || null,
+            role: "SECRETARY",
+            parish: createdParish.parishName,
+          },
+          actorId
+        );
+        provisionedUsers.push(result.user);
+      }
+    } catch (provisionErr) {
+      logger.error({ err: provisionErr, parishId: createdParish.id }, "[ParishService] Failed to provision staff for new parish, rolling back");
+
+      // Rollback provisioned users
+      for (const u of provisionedUsers) {
+        try {
+          if (u.firebaseUid) {
+            await this.firebaseAdminService.deleteUser(u.firebaseUid);
+          }
+          await prisma.user.delete({ where: { id: parseInt(u.id, 10) } });
+        } catch (cleanupErr) {
+          logger.error({ err: cleanupErr, userId: u.id }, "[ParishService] Error during user cleanup rollback");
+        }
+      }
+
+      // Unlink existing staff
+      if (priestMode === "existing" && existingPriestUser) {
+        await prisma.user.update({ where: { id: existingPriestUser.id }, data: { parishId: null } }).catch(() => {});
+      }
+      if (secretaryMode === "existing" && existingSecretaryUser) {
+        await prisma.user.update({ where: { id: existingSecretaryUser.id }, data: { parishId: null } }).catch(() => {});
+      }
+
+      // Delete created parish
+      await prisma.parish.delete({ where: { id: createdParish.id } }).catch(() => {});
+
+      await AuditLogService.log(actorId, `Parish Creation Failed: "${name}" (${provisionErr.message})`);
+      throw provisionErr;
+    }
+
+    // 9. Audit Logging
+    await AuditLogService.log(actorId, `Parish Created: "${createdParish.parishName}"`);
+
+    if (priestMode === "existing" && existingPriestUser) {
+      await AuditLogService.log(actorId, `Assigned Priest "${existingPriestUser.fullName}" to parish "${createdParish.parishName}"`);
+    }
+    if (secretaryMode === "existing" && existingSecretaryUser) {
+      await AuditLogService.log(actorId, `Assigned Secretary "${existingSecretaryUser.fullName}" to parish "${createdParish.parishName}"`);
+    }
+
+    // 10. Fetch complete parish with all active users and return DTO
+    const finalParish = await prisma.parish.findUnique({
+      where: { id: createdParish.id },
+      include: {
+        users: {
+          where: { status: "ACTIVE" },
+          include: { role: true },
+        },
+      },
     });
 
-    await AuditLogService.log(actorId, `Parish Created: "${parish.parishName}"`);
-    return this.mapToDto(parish);
+    return this.mapToDto(finalParish);
   }
 
   /**
@@ -107,9 +445,11 @@ export class ParishService {
           : data.type;
     }
     if (data.patronSaint !== undefined) updatePayload.patronSaint = data.patronSaint;
+    if (data.feastDay !== undefined) updatePayload.feastDay = data.feastDay?.trim() || null;
+    if (data.municipalityCity !== undefined) updatePayload.municipalityCity = data.municipalityCity?.trim();
     if (data.address !== undefined) {
       updatePayload.address = data.address;
-      if (data.address) {
+      if (data.address && data.municipalityCity === undefined) {
         const { municipalityCity, province } = this.parseAddress(data.address);
         updatePayload.municipalityCity = municipalityCity;
         updatePayload.province = province;
@@ -179,6 +519,7 @@ export class ParishService {
               where: { id: currentPriestId },
               data: { parishId: null },
             });
+            await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(currentPriestId, currentParish.id, tx);
             await AuditLogService.log(actorId, `Removed Priest from parish "${currentParish.parishName}"`, tx);
           }
 
@@ -202,6 +543,11 @@ export class ParishService {
               const err = new Error("Selected priest is not active.");
               err.statusCode = 400;
               throw err;
+            }
+
+            // Clean up any assignments from newPriestUser's old parish if transferred
+            if (newPriestUser.parishId && newPriestUser.parishId !== numericId) {
+              await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(newPriestId, newPriestUser.parishId, tx, currentParish.parishName);
             }
 
             // Assign
@@ -352,6 +698,7 @@ export class ParishService {
       status: p.isActive ? "Active" : "Archived",
       patronSaint: p.patronSaint || "",
       address: p.address || "",
+      municipalityCity: p.municipalityCity || "",
       contactNumber: p.contactNumber || "",
       email: p.email || "",
       latitude: p.latitude,

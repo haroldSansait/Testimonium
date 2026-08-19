@@ -25,6 +25,7 @@ const TRANSITIONS = {
   [DocumentRequestStatus.UNDER_REVIEW]: [
     DocumentRequestStatus.PAYMENT_PENDING,
     DocumentRequestStatus.NEEDS_CORRECTION,
+    DocumentRequestStatus.PROCESSING, // Direct transition for zero-fee or waived documents
     DocumentRequestStatus.REJECTED,
   ],
   [DocumentRequestStatus.NEEDS_CORRECTION]: [

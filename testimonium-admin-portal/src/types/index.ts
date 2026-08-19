@@ -346,6 +346,9 @@ export interface Parish {
   secretaryId?: string | null;
   secretaryName?: string | null;
   status: ParishStatus;
+  slug?: string;
+  feastDay?: string;
+  municipalityCity?: string;
   patronSaint?: string;
   address?: string;
   contactNumber?: string;

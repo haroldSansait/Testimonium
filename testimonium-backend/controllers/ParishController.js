@@ -1,4 +1,5 @@
 import { ParishService } from "../services/ParishService.js";
+import { validateParishAccess } from "../utils/tenantGuard.js";
 
 const parishService = new ParishService();
 
@@ -73,14 +74,8 @@ export const updateSettings = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const userRole = req.user?.role?.roleName;
-    const userParishId = req.user?.parishId;
-
-    if (userRole === "SECRETARY" && String(userParishId) !== String(id)) {
-      const err = new Error("Forbidden: You can only update settings for your assigned parish.");
-      err.statusCode = 403;
-      throw err;
-    }
+    // Strict multi-tenant guard
+    await validateParishAccess(req, id, "Parish Settings");
 
     const data = await parishService.editParish(id, req.body, req.user?.id);
     return res.status(200).json({ success: true, data });
@@ -92,14 +87,9 @@ export const updateSettings = async (req, res, next) => {
 export const uploadPaymentQr = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userRole = req.user?.role?.roleName;
-    const userParishId = req.user?.parishId;
 
-    if (userRole === "SECRETARY" && String(userParishId) !== String(id)) {
-      const err = new Error("Forbidden: You can only update settings for your assigned parish.");
-      err.statusCode = 403;
-      throw err;
-    }
+    // Strict multi-tenant guard
+    await validateParishAccess(req, id, "Payment QR Code");
 
     const data = await parishService.uploadPaymentQr(id, req.file, req.user?.id);
     return res.status(200).json({ success: true, data });
@@ -111,14 +101,9 @@ export const uploadPaymentQr = async (req, res, next) => {
 export const deletePaymentQr = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userRole = req.user?.role?.roleName;
-    const userParishId = req.user?.parishId;
 
-    if (userRole === "SECRETARY" && String(userParishId) !== String(id)) {
-      const err = new Error("Forbidden: You can only update settings for your assigned parish.");
-      err.statusCode = 403;
-      throw err;
-    }
+    // Strict multi-tenant guard
+    await validateParishAccess(req, id, "Payment QR Code");
 
     const data = await parishService.deletePaymentQr(id, req.user?.id);
     return res.status(200).json({ success: true, data });

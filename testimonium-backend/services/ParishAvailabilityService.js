@@ -1,5 +1,6 @@
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { validateParishAccess } from "../utils/tenantGuard.js";
 
 export class ParishAvailabilityService {
   /**
@@ -58,7 +59,7 @@ export class ParishAvailabilityService {
   /**
    * Deletes an availability block.
    */
-  static async deleteAvailability(id, actorId) {
+  static async deleteAvailability(id, actorId, req = null) {
     const parsedId = parseInt(id, 10);
     const original = await prisma.parishAvailability.findUnique({
       where: { id: parsedId }
@@ -68,6 +69,10 @@ export class ParishAvailabilityService {
       const err = new Error("Availability block not found.");
       err.statusCode = 404;
       throw err;
+    }
+
+    if (req) {
+      await validateParishAccess(req, original.parishId, "Parish Availability Deletion");
     }
 
     await prisma.parishAvailability.delete({

@@ -1,10 +1,25 @@
-import type { ParishProvider, ParishFilters, MassScheduleTemplate } from '../interfaces';
+import type {
+  ParishProvider,
+  ParishFilters,
+  MassScheduleTemplate,
+  CreateParishPayload,
+  StaffAssignmentConfig,
+} from '../interfaces';
 import type { Parish } from '@/types';
 import { parishes as mockParishes } from '@/mock/parishes';
 import { DemoUserProvider } from './DemoUserProvider';
 
 let store: Parish[] = [...mockParishes];
 let massTemplates: MassScheduleTemplate[] = [];
+
+const generateSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+};
 
 const seedDemoMassTemplates = (parishId: string) => {
   const defaults: Omit<MassScheduleTemplate, 'id' | 'parishId' | 'isActive'>[] = [
@@ -65,12 +80,81 @@ export const DemoParishProvider: ParishProvider = {
     return result;
   },
 
-  async addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish> {
+  async addParish(data: CreateParishPayload | Omit<Parish, 'id' | 'status'>): Promise<Parish> {
+    const isPayload = 'parishInfo' in data;
+    const parishInfo = isPayload ? data.parishInfo : data;
+    const priestConfig: StaffAssignmentConfig | undefined = isPayload ? data.priest : undefined;
+    const secretaryConfig: StaffAssignmentConfig | undefined = isPayload ? data.secretary : undefined;
+
+    let priestName = !isPayload && typeof (data as any).priest === 'string' ? (data as any).priest : 'Unassigned';
+    let priestId: string | null = null;
+    let secretaryName = !isPayload && typeof (data as any).secretary === 'string' ? (data as any).secretary : 'Unassigned';
+    let secretaryId: string | null = null;
+
+    // Handle Priest
+    if (priestConfig?.mode === 'existing' && priestConfig.existingUserId) {
+      const users = await DemoUserProvider.getUsers({});
+      const existingUser = users.find((u) => u.id === String(priestConfig.existingUserId));
+      if (existingUser) {
+        await DemoUserProvider.editUser(existingUser.id, { parish: parishInfo.name });
+        priestName = existingUser.name;
+        priestId = existingUser.id;
+      }
+    } else if (priestConfig?.mode === 'new' && priestConfig.newUserData) {
+      const result = await DemoUserProvider.addUser({
+        name: priestConfig.newUserData.fullName,
+        email: priestConfig.newUserData.email,
+        role: 'PRIEST',
+        parish: parishInfo.name,
+      });
+      priestName = result.user.name;
+      priestId = result.user.id;
+    }
+
+    // Handle Secretary
+    if (secretaryConfig?.mode === 'existing' && secretaryConfig.existingUserId) {
+      const users = await DemoUserProvider.getUsers({});
+      const existingUser = users.find((u) => u.id === String(secretaryConfig.existingUserId));
+      if (existingUser) {
+        await DemoUserProvider.editUser(existingUser.id, { parish: parishInfo.name });
+        secretaryName = existingUser.name;
+        secretaryId = existingUser.id;
+      }
+    } else if (secretaryConfig?.mode === 'new' && secretaryConfig.newUserData) {
+      const result = await DemoUserProvider.addUser({
+        name: secretaryConfig.newUserData.fullName,
+        email: secretaryConfig.newUserData.email,
+        role: 'SECRETARY',
+        parish: parishInfo.name,
+      });
+      secretaryName = result.user.name;
+      secretaryId = result.user.id;
+    }
+
+    const slug = generateSlug(parishInfo.name);
     const newParish: Parish = {
-      ...data,
       id: `parish-${Date.now()}`,
+      name: parishInfo.name,
+      slug,
+      type: (parishInfo.type || 'Parish') as any,
+      vicariate: parishInfo.vicariate || 'Vicariate of Canlaon',
+      municipalityCity: parishInfo.municipalityCity || 'Canlaon City',
+      feastDay: parishInfo.feastDay || 'January 1',
+      patronSaint: parishInfo.patronSaint || undefined,
+      address: parishInfo.address || undefined,
+      contactNumber: parishInfo.contactNumber || undefined,
+      email: parishInfo.email || undefined,
+      priest: priestName,
+      priestId,
+      priestName,
+      secretary: secretaryName,
+      secretaryId,
+      secretaryName,
       status: 'Active',
     };
+
+    seedDemoMassTemplates(newParish.id);
+
     store = [newParish, ...store];
     return newParish;
   },
@@ -78,6 +162,17 @@ export const DemoParishProvider: ParishProvider = {
   async editParish(id: string, data: Partial<Parish>): Promise<Parish> {
     const parish = store.find((p) => p.id === id);
     if (!parish) throw new Error(`Parish ${id} not found`);
+
+    if (data.name !== undefined) parish.name = data.name;
+    if (data.type !== undefined) parish.type = data.type;
+    if (data.vicariate !== undefined) parish.vicariate = data.vicariate;
+    if (data.municipalityCity !== undefined) parish.municipalityCity = data.municipalityCity;
+    if (data.feastDay !== undefined) parish.feastDay = data.feastDay;
+    if (data.patronSaint !== undefined) parish.patronSaint = data.patronSaint;
+    if (data.address !== undefined) parish.address = data.address;
+    if (data.contactNumber !== undefined) parish.contactNumber = data.contactNumber;
+    if (data.email !== undefined) parish.email = data.email;
+    if (data.status !== undefined) parish.status = data.status;
 
     // Priest update
     if (data.priestId !== undefined) {

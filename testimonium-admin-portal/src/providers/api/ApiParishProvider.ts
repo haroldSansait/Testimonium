@@ -1,5 +1,5 @@
 import api from '@/api/api';
-import type { ParishProvider, ParishFilters, MassScheduleTemplate } from '../interfaces';
+import type { ParishProvider, ParishFilters, MassScheduleTemplate, CreateParishPayload } from '../interfaces';
 import type { Parish } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
 
@@ -11,7 +11,7 @@ export const ApiParishProvider: ParishProvider = {
     return response.data.data.items;
   },
 
-  async addParish(data: Omit<Parish, 'id' | 'status'>): Promise<Parish> {
+  async addParish(data: CreateParishPayload | Omit<Parish, 'id' | 'status'>): Promise<Parish> {
     const response = await api.post<ApiResponseEnvelope<Parish>>('/parishes', data);
     return response.data.data;
   },

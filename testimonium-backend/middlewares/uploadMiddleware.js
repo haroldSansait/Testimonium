@@ -45,16 +45,39 @@ const fileFilter = (req, file, cb) => {
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit per file
+    files: 5,                  // Maximum 5 files per request
   },
   fileFilter,
 });
 
-// Middleware for multiple attachment uploads (limit 10 files)
+// Middleware for multiple attachment uploads (limit 5 files, 5MB each)
 export const uploadRequestFiles = (req, res, next) => {
-  const uploadArray = upload.array("files", 10);
+  const uploadArray = upload.array("files", 5);
   uploadArray(req, res, (err) => {
     if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            success: false,
+            message: "File size exceeds the allowable 5MB limit.",
+            errors: [{ field: "files", message: "File exceeds 5MB." }],
+          });
+        }
+        if (err.code === "LIMIT_FILE_COUNT") {
+          return res.status(400).json({
+            success: false,
+            message: "Too many files uploaded. Maximum of 5 files allowed per request.",
+            errors: [{ field: "files", message: "Maximum 5 files." }],
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+          errors: [],
+        });
+      }
+
       const statusCode = err.statusCode || 400;
       return res.status(statusCode).json({
         success: false,
@@ -80,7 +103,7 @@ export const uploadRequestFiles = (req, res, next) => {
   });
 };
 
-// Receipt-specific file filter: JPEG and PNG only.
+// Receipt-specific file filter: JPEG, PNG, and WEBP.
 // Produces a user-friendly error for HEIC (common iPhone format).
 const receiptFileFilter = (req, file, cb) => {
   const normalizedMime = (file.mimetype || "").toLowerCase();
@@ -121,7 +144,8 @@ const receiptFileFilter = (req, file, cb) => {
 const receiptUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20 MB — backend will compress before sending to OCR
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 1,                  // Single file
   },
   fileFilter: receiptFileFilter,
 });
@@ -131,6 +155,21 @@ export const uploadReceiptFile = (req, res, next) => {
   const uploadSingle = receiptUpload.single("receipt");
   uploadSingle(req, res, (err) => {
     if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            success: false,
+            message: "Payment receipt exceeds the allowable 5MB limit.",
+            errors: [{ field: "receipt", message: "Receipt file exceeds 5MB." }],
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+          errors: [],
+        });
+      }
+
       const statusCode = err.statusCode || 400;
       return res.status(statusCode).json({
         success: false,

@@ -307,12 +307,14 @@ model ReceiptUpload {
   fileName              String             @map("file_name") @db.VarChar(255)
   mimeType              String?            @map("mime_type") @db.VarChar(100)
   fileSize              Int?               @map("file_size")
+  imageHash             String?            @map("image_hash") @db.VarChar(64)
   uploadedAt            DateTime           @default(now()) @map("uploaded_at")
   
   transaction           PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
   ocrResult             OcrResult?
 
   @@index([paymentTransactionId])
+  @@index([imageHash])
   @@map("receipt_uploads")
 }
 
@@ -347,8 +349,14 @@ model OcrResult {
   normalizedAmount   String?       @map("normalized_amount") @db.VarChar(50)
   normalizedDate     String?       @map("normalized_date") @db.VarChar(30)
 
+  // Fraud & Deduplication fields
+  isDuplicate        Boolean       @default(false) @map("is_duplicate")
+  duplicateRequestId Int?          @map("duplicate_request_id")
+  duplicateReason    String?       @map("duplicate_reason") @db.VarChar(255)
+
   receipt            ReceiptUpload @relation(fields: [receiptUploadId], references: [id], onDelete: Cascade)
 
+  @@index([referenceNumber])
   @@map("ocr_results")
 }
 

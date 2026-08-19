@@ -73,12 +73,42 @@ export class ReceiptVerificationService {
         tx
       );
 
+      // Fraud Check: Image Hash Deduplication against verified payments
+      let isDuplicateHash = false;
+      let duplicateReqId = null;
+
+      if (receipt.imageHash) {
+        const priorVerifiedReceipt = await tx.receiptUpload.findFirst({
+          where: {
+            imageHash: receipt.imageHash,
+            id: { not: receipt.id },
+            transaction: {
+              status: "VERIFIED",
+              requestId: { not: requestId },
+            },
+          },
+          include: { transaction: true },
+        });
+
+        if (priorVerifiedReceipt) {
+          isDuplicateHash = true;
+          duplicateReqId = priorVerifiedReceipt.transaction.requestId;
+          logger.warn(
+            { requestId, duplicateRequestId: duplicateReqId, imageHash: receipt.imageHash },
+            "[ReceiptVerificationService] Fraud Alert: Duplicate receipt image hash detected against verified request"
+          );
+        }
+      }
+
       // ── Step 4: Create initial OcrResult with PENDING status ────────────────
       const ocrRecord = await tx.ocrResult.create({
         data: {
           receiptUploadId: receipt.id,
           status: "PENDING",
           confidenceScore: 0,
+          isDuplicate: isDuplicateHash,
+          duplicateRequestId: duplicateReqId,
+          duplicateReason: isDuplicateHash ? "DUPLICATE_IMAGE_HASH" : null,
         },
       });
 
