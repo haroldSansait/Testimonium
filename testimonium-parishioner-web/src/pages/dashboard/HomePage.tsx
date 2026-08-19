@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  FileText, 
-  Search, 
-  Calendar, 
-  Map, 
-  ArrowRight, 
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  FileText,
+  Search,
+  Calendar,
+  Map,
+  ArrowRight,
   Megaphone,
   Clock,
   ExternalLink,
@@ -14,13 +14,15 @@ import {
   Bell,
   Building,
   CalendarDays,
-  User as UserIcon
+  User as UserIcon,
+  CalendarPlus,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  useParishes, 
-  useRequests, 
-  useAppointments, 
+import {
+  useParishes,
+  useRequests,
+  useAppointments,
   useAnnouncements,
   useProfile,
   useEvents,
@@ -41,7 +43,7 @@ import { ParishMarker } from '../../features/parishes/components/ParishMarker';
 import { FeaturedEventsCarousel } from '../../features/events/components/FeaturedEventsCarousel';
 import { EventDetailsModal } from '../../features/events/components/EventDetailsModal';
 
-const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' => {
+const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
   switch (status) {
     case 'pending':
       return 'pending';
@@ -54,6 +56,10 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
     case 'cancelled':
     case 'expired':
       return 'rejected';
+    case 'needs-correction':
+    case 'needs_correction':
+    case 'payment-needs-correction':
+      return 'correction';
     default:
       return 'under-review';
   }
@@ -63,12 +69,12 @@ const exportToGoogleCalendar = (appt: any, parishName: string) => {
   const title = encodeURIComponent(appt.serviceName);
   const details = encodeURIComponent(`Testimonium Parish Appointment\nParish: ${parishName}\nConfirmation: ${appt.confirmationNumber || appt.id}`);
   const locationStr = encodeURIComponent(parishName);
-  
+
   const dateObj = new Date(`${appt.date}T${appt.timeSlot.includes('AM') ? '09:00:00' : '14:00:00'}`);
   const startStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   dateObj.setHours(dateObj.getHours() + 1);
   const endStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  
+
   const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${locationStr}`;
   window.open(url, '_blank');
 };
@@ -135,11 +141,10 @@ export const HomePage: React.FC = () => {
   const events = eventsQuery.data || [];
 
   // Filter featured events according to user selections & robust canonical timezone check
-  // Declared unconditionally at top-level before any early return to guarantee invariant hook order
   const filteredFeaturedEvents = useMemo(() => {
     const featuredList = featuredEventsQuery.data || [];
     const allList = eventsQuery.data || [];
-    
+
     // Merge featured events with full event catalog, deduplicated by ID
     const candidateDict: Record<string, Event> = {};
     featuredList.forEach(e => { candidateDict[e.id] = e; });
@@ -194,19 +199,19 @@ export const HomePage: React.FC = () => {
     ? events.find(e => String(e.parishId).trim() === String(profile.parishId).trim() && isEventUpcoming(e))
     : undefined;
 
-  const loading = 
-    parishesQuery.loading || 
-    requestsQuery.loading || 
-    appointmentsQuery.loading || 
+  const loading =
+    parishesQuery.loading ||
+    requestsQuery.loading ||
+    appointmentsQuery.loading ||
     announcementsQuery.loading ||
     profileQuery.loading ||
     eventsQuery.loading ||
     featuredEventsQuery.loading;
 
-  const error = 
-    parishesQuery.error || 
-    requestsQuery.error || 
-    appointmentsQuery.error || 
+  const error =
+    parishesQuery.error ||
+    requestsQuery.error ||
+    appointmentsQuery.error ||
     announcementsQuery.error ||
     profileQuery.error ||
     eventsQuery.error ||
@@ -233,12 +238,12 @@ export const HomePage: React.FC = () => {
   };
 
   const quickActions = [
-    { label: 'Request a Document', path: '/dashboard/request', icon: <FileText size={20} />, description: 'Submit requests for baptism, marriage, or other certificates.' },
-    { label: 'Track a Request', path: '/dashboard/track', icon: <Search size={20} />, description: 'Check the real-time status and download approved documents.' },
-    { label: 'Schedule an Appointment', path: '/dashboard/scheduler', icon: <Calendar size={20} />, description: 'Book canonical interviews, blessings, or weddings with a priest.' },
-    { label: 'Vicariate Directory', path: '/dashboard/parishes', icon: <Map size={20} />, description: 'Locate vicariate parishes, contact offices, and view mass schedules.' },
-    { label: 'Notifications', path: '/dashboard/notifications', icon: <Bell size={20} />, description: 'View your alerts, request status updates, and diocese announcements.' },
-    { label: 'My Profile', path: '/dashboard/profile', icon: <UserIcon size={20} />, description: 'Manage your contact details, assigned parish, and email alerts.' },
+    { label: 'Request Document', path: '/dashboard/request', icon: <FileText size={18} />, description: 'Baptism, confirmation, or marriage records.', type: 'service' },
+    { label: 'Track Request', path: '/dashboard/track', icon: <Search size={18} />, description: 'Monitor submitted documents in real time.', type: 'service' },
+    { label: 'Schedule Appointment', path: '/dashboard/scheduler', icon: <Calendar size={18} />, description: 'Book canonical interviews or blessings.', type: 'service' },
+    { label: 'Parish Directory', path: '/dashboard/parishes', icon: <Map size={18} />, description: 'Find parish offices, contacts, and schedules.', type: 'service' },
+    { label: 'Notifications', path: '/dashboard/notifications', icon: <Bell size={18} />, description: 'View system alerts and diocese notices.', type: 'account' },
+    { label: 'My Profile', path: '/dashboard/profile', icon: <UserIcon size={18} />, description: 'Update contact details and preferences.', type: 'account' },
   ];
 
   const getParishName = (parishId: string) => {
@@ -247,18 +252,18 @@ export const HomePage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <PageHeader 
-          title="Home" 
+      <div className="space-y-6 text-left">
+        <PageHeader
+          title="Home"
           description="TESTIMONIUM parishioner overview portal."
           showBackToHome={false}
           onRefresh={refetchAll}
           breadcrumbs={['Home']}
         />
-        <ErrorState 
-          title="Failed to load dashboard data" 
+        <ErrorState
+          title="Failed to load dashboard data"
           description="We had trouble retrieving your dashboard feed. Please check your connection and try again."
-          onRetry={refetchAll} 
+          onRetry={refetchAll}
         />
       </div>
     );
@@ -266,61 +271,43 @@ export const HomePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="space-y-8 pb-10" aria-busy="true">
-        <PageHeader 
-          title="Home" 
+      <div className="space-y-8 pb-10 text-left" aria-busy="true">
+        <PageHeader
+          title="Home"
           description="TESTIMONIUM parishioner overview portal."
           showBackToHome={false}
           onRefresh={refetchAll}
           isRefreshing={true}
           breadcrumbs={['Home']}
         />
-        
+
         {/* Welcome Banner Skeleton */}
         <Skeleton className="h-44 w-full rounded-card" />
 
         {/* Carousel Skeleton */}
         <div className="space-y-4">
           <Skeleton className="h-4 w-48 rounded" />
-          <div className="h-[480px] md:h-[380px] w-full rounded-card overflow-hidden bg-white border border-border/80 flex flex-col md:flex-row shadow-sm">
-            <Skeleton className="w-full md:w-5/12 h-48 md:h-full animate-pulse" />
+          <div className="h-[380px] w-full rounded-card overflow-hidden bg-white border border-border flex flex-col md:flex-row shadow-sm">
+            <Skeleton className="w-full md:w-5/12 h-48 md:h-full" />
             <div className="flex-1 p-6 md:p-8 space-y-4 flex flex-col justify-between">
               <div className="space-y-3">
-                <Skeleton className="h-4 w-1/4 rounded animate-pulse" />
-                <Skeleton className="h-8 w-3/4 rounded animate-pulse" />
-                <Skeleton className="h-4 w-1/2 rounded animate-pulse" />
-                <Skeleton className="h-16 w-full rounded animate-pulse" />
+                <Skeleton className="h-4 w-1/4 rounded" />
+                <Skeleton className="h-8 w-3/4 rounded" />
+                <Skeleton className="h-4 w-1/2 rounded" />
+                <Skeleton className="h-16 w-full rounded" />
               </div>
-              <Skeleton className="h-10 w-28 rounded-button animate-pulse" />
+              <Skeleton className="h-10 w-28 rounded-button" />
             </div>
           </div>
         </div>
 
-        {/* Services Section Skeleton */}
+        {/* Quick Access Skeleton */}
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Skeleton className="h-5 w-32 rounded animate-pulse" />
-            <Skeleton className="h-4 w-48 rounded animate-pulse" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="h-44 w-full rounded-card" />
+          <Skeleton className="h-5 w-32 rounded" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <Skeleton key={i} className="h-36 w-full rounded-card" />
             ))}
-          </div>
-        </div>
-
-        {/* Account Section Skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
-          <div className="lg:col-span-8 space-y-4">
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-24 rounded animate-pulse" />
-              <Skeleton className="h-4 w-60 rounded animate-pulse" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {[1, 2].map(i => (
-                <Skeleton key={i} className="h-44 w-full rounded-card" />
-              ))}
-            </div>
           </div>
         </div>
       </div>
@@ -328,52 +315,56 @@ export const HomePage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 pb-10" aria-live="polite">
-      <PageHeader 
-        title="Home" 
+    <div className="space-y-8 pb-10 text-left" aria-live="polite">
+      <PageHeader
+        title="Home"
         description="TESTIMONIUM parishioner overview portal."
         showBackToHome={false}
         onRefresh={refetchAll}
         breadcrumbs={['Home']}
       />
 
-      {/* Welcome Card banner */}
-      <Card className="bg-gradient-to-r from-crimson to-crimson-dark text-white border-none p-8 md:p-10 shadow-md">
-        <div className="space-y-3">
-          <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">
-            TESTIMONIUM Parishioner Web Portal
+      {/* Welcome Card Banner */}
+      <Card className="bg-gradient-to-r from-[#6B0F1A] to-[#4A0A12] text-white border-none p-6 sm:p-8 md:p-10 shadow-md relative overflow-hidden">
+        <div className="relative z-10 space-y-3 max-w-2xl text-left">
+          <span className="text-[11px] font-bold text-white/70 uppercase tracking-widest block">
+            TESTIMONIUM Parishioner Portal
           </span>
-          <h2 className="text-3xl md:text-4xl font-serif font-bold tracking-tight">
-            {(!profile?.phone || !profile?.address) 
+          <h2 className="text-2xl sm:text-3xl font-serif font-bold tracking-tight text-white leading-tight">
+            {(!profile?.phone || !profile?.address)
               ? `Welcome, ${user?.displayName || 'Parishioner'}!`
               : `Welcome back, ${user?.displayName || 'Parishioner'}!`}
           </h2>
-          <p className="text-sm md:text-base text-white/80 max-w-xl leading-relaxed">
-            Manage document requests, schedule canonical interviews, and explore the directory of the parishes in the Vicariate of Canlaon.
+          <p className="text-xs sm:text-sm text-white/85 leading-relaxed font-normal">
+            Manage document requests, schedule canonical appointments, and explore parish records across the Vicariate of Canlaon.
           </p>
           {(!profile?.phone || !profile?.address) && (
             <div className="pt-2">
-              <Button size="sm" variant="outline" className="bg-white/10 hover:bg-white/20 text-white border-white/30" onClick={() => navigate('/dashboard/profile')}>
+              <button
+                onClick={() => navigate('/dashboard/profile')}
+                className="px-4 py-2 bg-white text-crimson hover:bg-gray-100 font-bold rounded-button text-xs shadow-sm transition-all active:scale-[0.98] focus-ring"
+              >
                 Complete Profile Details
-              </Button>
+              </button>
             </div>
           )}
         </div>
       </Card>
 
-      {/* Hero: Upcoming Vicariate Events Carousel */}
+      {/* Upcoming Vicariate Events Carousel */}
       <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h2 className="text-xs font-bold text-text-primary uppercase tracking-widest">
               Upcoming Vicariate Events
             </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <select
               value={filterParishId}
               onChange={(e) => setFilterParishId(e.target.value)}
-              className="px-3 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer"
+              className="px-2.5 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer shadow-xs"
+              aria-label="Filter events by parish"
             >
               <option value="all">All Parishes</option>
               {parishes.map(p => (
@@ -384,7 +375,8 @@ export const HomePage: React.FC = () => {
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="px-3 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer"
+              className="px-2.5 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer shadow-xs"
+              aria-label="Filter events by category"
             >
               <option value="all">All Categories</option>
               <option value="holy mass">Holy Mass</option>
@@ -397,12 +389,12 @@ export const HomePage: React.FC = () => {
               <option value="other">Other</option>
             </select>
 
-            <button 
+            <button
               onClick={() => navigate('/dashboard/parishes')}
-              className="text-xs font-bold text-crimson hover:underline flex items-center space-x-1 focus-ring ml-auto sm:ml-2"
+              className="text-xs font-bold text-crimson hover:underline flex items-center gap-1 focus-ring ml-auto sm:ml-2 px-2 py-1 rounded"
             >
-              <span>View Directory</span>
-              <ArrowRight size={14} />
+              <span>Directory</span>
+              <ArrowRight size={13} />
             </button>
           </div>
         </div>
@@ -411,33 +403,33 @@ export const HomePage: React.FC = () => {
           <EmptyState
             title="No events match your criteria"
             description="Adjust your filters or browse the vicariate directory to find upcoming seminars or Masses."
-            icon={<CalendarDays size={40} className="text-text-muted/40" />}
+            icon={<CalendarDays size={36} className="text-text-muted/40" />}
           />
         ) : (
-          <FeaturedEventsCarousel 
-            events={filteredFeaturedEvents} 
-            onViewDetails={handleViewEventDetails} 
+          <FeaturedEventsCarousel
+            events={filteredFeaturedEvents}
+            onViewDetails={handleViewEventDetails}
           />
         )}
       </div>
 
-      {/* Personalized Section: Happening at Your Parish */}
+      {/* Happening at Your Parish */}
       {nextParishEvent && (
         <div className="space-y-3">
           <h2 className="text-xs font-bold text-text-primary uppercase tracking-widest">
             Happening at Your Parish
           </h2>
-          <Card className="bg-white border border-border/80 shadow-sm p-5 hover:shadow transition-shadow">
+          <Card className="bg-white border border-border/80 shadow-sm p-5 hover:shadow-card transition-shadow">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border/40 pb-3 mb-4 space-y-2 sm:space-y-0">
               <div className="flex items-center space-x-2">
                 <Building size={16} className="text-crimson" />
                 <span className="text-xs font-semibold text-text-primary">{nextParishEvent.parishName}</span>
               </div>
-              <div className="bg-crimson/10 text-crimson text-[10px] font-bold uppercase tracking-wider py-1 px-3 rounded-full">
+              <div className="bg-red-50 text-crimson text-[10px] font-bold uppercase tracking-wider py-0.5 px-2.5 rounded-full border border-crimson/15">
                 {getEventCountdownLabel(nextParishEvent.startDate)}
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row items-start sm:space-x-5 space-y-3 sm:space-y-0">
               <div className="w-20 h-20 rounded overflow-hidden flex-shrink-0 bg-border">
                 <img src={nextParishEvent.coverImage} alt={nextParishEvent.coverImageAlt} className="w-full h-full object-cover" />
@@ -446,12 +438,12 @@ export const HomePage: React.FC = () => {
                 <h4 className="font-serif font-bold text-sm sm:text-base text-text-primary leading-snug">
                   {nextParishEvent.title}
                 </h4>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
                   <span>{new Date(nextParishEvent.startDate).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}</span>
                   <span>•</span>
                   <span>{nextParishEvent.startTime}</span>
                 </div>
-                <Button size="sm" onClick={() => handleViewEventDetails(nextParishEvent)} className="mt-1 bg-crimson hover:bg-crimson-dark">
+                <Button size="sm" onClick={() => handleViewEventDetails(nextParishEvent)} className="mt-1">
                   View Details
                 </Button>
               </div>
@@ -460,173 +452,165 @@ export const HomePage: React.FC = () => {
         </div>
       )}
 
-      {/* Services Section */}
-      <section aria-label="Services Grid">
-        <SectionHeader 
-          title="Services" 
-          description="Choose a service to begin."
+      {/* Unified Quick Access Grid (All 6 Destinations) */}
+      <section aria-label="Quick Access Services">
+        <SectionHeader
+          title="Quick Access"
+          description="Choose a parish service or manage your account."
         />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {quickActions.slice(0, 4).map(action => (
-            <Card 
-              key={action.path} 
-              hoverable 
-              className="cursor-pointer flex flex-col justify-between p-5 h-44 hover:shadow-card hover:scale-[1.01] transition-all duration-200"
-              onClick={() => navigate(action.path)}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-5">
+          {quickActions.map(action => (
+            <Link
+              key={action.path}
+              to={action.path}
+              className={`rounded-card border p-4 sm:p-5 h-36 sm:h-40 flex flex-col justify-between transition-all hover:shadow-card hover:border-crimson/40 focus-ring group ${
+                action.type === 'service' ? 'bg-white border-border' : 'bg-app-page/60 border-border/80'
+              }`}
             >
-              <div className="p-3 bg-red-50 text-crimson rounded-button w-fit">
-                {action.icon}
+              <div className="flex items-center justify-between">
+                <div className={`p-2 sm:p-2.5 rounded-button w-fit ${
+                  action.type === 'service' ? 'bg-red-50 text-crimson' : 'bg-gray-100 text-text-muted'
+                }`}>
+                  {action.icon}
+                </div>
+                <ChevronRight size={14} className="text-text-muted/50 group-hover:text-crimson group-hover:translate-x-0.5 transition-transform" />
               </div>
-              <div className="space-y-1">
-                <h3 className="font-serif font-bold text-text-primary text-sm flex items-center group">
-                  <span>{action.label}</span>
-                  <ArrowRight size={14} className="ml-1.5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+              <div className="space-y-0.5">
+                <h3 className="font-serif font-bold text-text-primary text-xs sm:text-sm truncate group-hover:text-crimson transition-colors">
+                  {action.label}
                 </h3>
-                <p className="text-xs text-text-muted">{action.description}</p>
+                <p className="text-[11px] text-text-muted line-clamp-2 leading-tight">
+                  {action.description}
+                </p>
               </div>
-            </Card>
+            </Link>
           ))}
         </div>
       </section>
 
-      {/* Account Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
-        <section aria-label="Account Settings" className="lg:col-span-8">
-          <SectionHeader 
-            title="Account" 
-            description="Manage your personal portal information."
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {quickActions.slice(4).map(action => (
-              <Card 
-                key={action.path} 
-                hoverable 
-                className="bg-gray-50/40 cursor-pointer flex flex-col justify-between p-5 h-44 hover:shadow-card hover:scale-[1.01] transition-all duration-200"
-                onClick={() => navigate(action.path)}
-              >
-                <div className="p-3 bg-gray-100 text-text-muted rounded-button w-fit">
-                  {action.icon}
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-serif font-bold text-text-primary text-sm flex items-center group">
-                    <span>{action.label}</span>
-                    <ArrowRight size={14} className="ml-1.5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
-                  </h3>
-                  <p className="text-xs text-text-muted">{action.description}</p>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      {/* Core Grid: Left Column for history & announcements, Right for Map Directory */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Side: Recent updates & announcements (Col-span 8) */}
-        <div className="lg:col-span-8 space-y-8">
-          {/* Recent Requests */}
+      {/* Core Grid: Left Column for Recent Requests & Appointments, Right for Map Preview */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+        {/* Left Column (8 cols) */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Recent Sacramental Requests */}
           <Card>
-            <CardHeader className="border-b border-border pb-4">
-              <CardTitle className="flex items-center space-x-2 text-base">
-                <Clock size={18} className="text-crimson" />
+            <CardHeader className="border-b border-border pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center space-x-2 text-sm sm:text-base">
+                <Clock size={17} className="text-crimson" />
                 <span>Recent Sacramental Requests</span>
               </CardTitle>
+              {requests.length > 0 && (
+                <button
+                  onClick={() => navigate('/dashboard/track')}
+                  className="text-xs font-bold text-crimson hover:underline flex items-center gap-1 focus-ring rounded px-1"
+                >
+                  <span>View All</span>
+                  <ArrowRight size={13} />
+                </button>
+              )}
             </CardHeader>
-            <CardContent className="pt-4 space-y-3.5">
+            <CardContent className="pt-3.5 space-y-3">
               {requests.length === 0 ? (
-                <EmptyState 
+                <EmptyState
                   title="No document requests yet"
-                  description="Your submitted certificate requests will appear here once you make a request."
+                  description="Your submitted certificate requests will appear here once you submit a request."
                   icon={<Inbox size={32} className="text-text-muted/40" />}
                   action={
-                    <Button size="sm" onClick={() => navigate('/dashboard/request')} className="bg-crimson hover:bg-crimson-dark">
+                    <Button size="sm" onClick={() => navigate('/dashboard/request')}>
                       Request a Document
                     </Button>
                   }
                 />
               ) : (
                 requests.slice(0, 3).map(req => (
-                  <div 
-                    key={req.id} 
-                    onClick={() => navigate('/dashboard/track')} 
-                    className="p-3.5 bg-app-page hover:bg-border/30 rounded-button border border-border/60 cursor-pointer transition-colors flex justify-between items-center"
+                  <Link
+                    key={req.id}
+                    to={`/dashboard/track?requestId=${req.id}`}
+                    className="p-3 bg-app-page hover:bg-border/30 rounded-button border border-border/70 transition-colors flex justify-between items-center gap-3 focus-ring group"
                   >
-                    <div className="space-y-1 min-w-0">
+                    <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center space-x-2">
-                        <span className="text-xs font-mono font-semibold text-text-primary">
+                        <FileText size={14} className="text-crimson flex-shrink-0" />
+                        <span className="text-xs font-mono font-bold text-text-primary truncate group-hover:text-crimson transition-colors">
                           {req.trackingNumber}
                         </span>
-                        <span className="text-[10px] text-text-muted">•</span>
-                        <span className="text-[10px] font-semibold uppercase text-text-muted capitalize">
-                          {req.documentType} Certificate
+                        <span className="text-text-muted text-xs">•</span>
+                        <span className="text-[11px] font-semibold text-text-muted uppercase truncate">
+                          {req.documentType}
                         </span>
                       </div>
-                      <p className="text-xs text-text-muted truncate max-w-[300px]">
+                      <p className="text-xs text-text-muted truncate">
                         Parish: {getParishName(req.parishId)}
                       </p>
                     </div>
                     <Badge variant={getBadgeVariant(req.status)}>
                       {req.status}
                     </Badge>
-                  </div>
+                  </Link>
                 ))
               )}
             </CardContent>
           </Card>
 
+
           {/* Upcoming Appointments */}
           <Card>
-            <CardHeader className="border-b border-border pb-4">
-              <CardTitle className="flex items-center space-x-2 text-base">
-                <Calendar size={18} className="text-crimson" />
+            <CardHeader className="border-b border-border pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center space-x-2 text-sm sm:text-base">
+                <Calendar size={17} className="text-crimson" />
                 <span>Upcoming Appointments</span>
               </CardTitle>
+              {appointments.length > 0 && (
+                <button
+                  onClick={() => navigate('/dashboard/scheduler')}
+                  className="text-xs font-bold text-crimson hover:underline flex items-center gap-1 focus-ring rounded px-1"
+                >
+                  <span>Book New</span>
+                  <ArrowRight size={13} />
+                </button>
+              )}
             </CardHeader>
-            <CardContent className="pt-4 space-y-3.5">
+            <CardContent className="pt-3.5 space-y-3">
               {appointments.length === 0 ? (
-                <EmptyState 
+                <EmptyState
                   title="No appointments scheduled"
-                  description="Book a blessing, counseling session, or sacramental appointment with your parish priest."
+                  description="Book a blessing, counseling session, or sacramental interview with your parish priest."
                   icon={<Calendar size={32} className="text-text-muted/40" />}
                   action={
-                    <Button size="sm" onClick={() => navigate('/dashboard/scheduler')} className="bg-crimson hover:bg-crimson-dark">
+                    <Button size="sm" onClick={() => navigate('/dashboard/scheduler')}>
                       Schedule Appointment
                     </Button>
                   }
                 />
               ) : (
                 appointments.slice(0, 3).map(appt => (
-                  <div 
-                    key={appt.id} 
-                    className="p-3.5 bg-app-page rounded-button border border-border/60 flex justify-between items-center"
+                  <div
+                    key={appt.id}
+                    className="p-3 bg-app-page rounded-button border border-border/70 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2"
                   >
                     <div className="space-y-1 min-w-0">
                       <h4 className="text-xs font-bold text-text-primary">
                         {appt.serviceName}
                       </h4>
                       <p className="text-xs text-text-muted">
-                        {getParishName(appt.parishId)}
+                        {getParishName(appt.parishId)} • {appt.date} at {appt.timeSlot}
                       </p>
-                      <p className="text-[10px] text-text-muted">
-                        {appt.date} at {appt.timeSlot}
-                      </p>
-                      <div className="flex gap-2 mt-1 pb-1">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           onClick={() => exportToGoogleCalendar(appt, getParishName(appt.parishId))}
-                          className="text-[10px] text-crimson hover:underline font-semibold flex items-center gap-0.5 cursor-pointer bg-transparent border-none p-0"
+                          className="px-2 py-0.5 text-[11px] font-semibold text-crimson bg-red-50 hover:bg-red-100 rounded border border-crimson/20 flex items-center gap-1 focus-ring"
                         >
-                          + Google Calendar
+                          <CalendarPlus size={11} /> Google Cal
                         </button>
-                        <span className="text-[10px] text-text-muted/40">•</span>
                         <button
                           onClick={() => exportToICS(appt, getParishName(appt.parishId))}
-                          className="text-[10px] text-crimson hover:underline font-semibold flex items-center gap-0.5 cursor-pointer bg-transparent border-none p-0"
+                          className="px-2 py-0.5 text-[11px] font-semibold text-crimson bg-red-50 hover:bg-red-100 rounded border border-crimson/20 flex items-center gap-1 focus-ring"
                         >
-                          + iCal / .ics
+                          <CalendarPlus size={11} /> iCal / .ics
                         </button>
                       </div>
                     </div>
-                    <Badge variant="ready">
+                    <Badge variant="ready" className="self-start sm:self-center">
                       {appt.status}
                     </Badge>
                   </div>
@@ -635,29 +619,38 @@ export const HomePage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Announcements */}
+          {/* Diocese Announcements */}
           <Card>
-            <CardHeader className="border-b border-border pb-4">
-              <CardTitle className="flex items-center space-x-2 text-base">
-                <Megaphone size={18} className="text-crimson" />
+            <CardHeader className="border-b border-border pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center space-x-2 text-sm sm:text-base">
+                <Megaphone size={17} className="text-crimson" />
                 <span>Diocese Announcements</span>
               </CardTitle>
+              {announcements.length > 0 && (
+                <button
+                  onClick={() => navigate('/dashboard/notifications')}
+                  className="text-xs font-bold text-crimson hover:underline flex items-center gap-1 focus-ring rounded px-1"
+                >
+                  <span>All Alerts</span>
+                  <ArrowRight size={13} />
+                </button>
+              )}
             </CardHeader>
-            <CardContent className="pt-4 space-y-5">
+            <CardContent className="pt-3.5 space-y-4">
               {announcements.length === 0 ? (
-                <EmptyState 
+                <EmptyState
                   title="No announcements available"
-                  description="Check back later for diocese updates, parish events, and canonical announcements."
+                  description="Check back later for diocese updates, parish events, and canonical notices."
                   icon={<Bell size={32} className="text-text-muted/40" />}
                 />
               ) : (
                 announcements.slice(0, 3).map(ann => (
-                  <div key={ann.id} className="pb-4 border-b border-border last:border-none last:pb-0 space-y-1">
-                    <span className="text-[10px] text-text-muted font-bold">
+                  <div key={ann.id} className="pb-3 border-b border-border last:border-none last:pb-0 space-y-1">
+                    <time dateTime={ann.date} className="text-[11px] text-text-muted font-bold block">
                       {new Date(ann.date).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}
-                    </span>
-                    <h4 className="font-semibold text-text-primary text-sm mt-0.5">{ann.title}</h4>
-                    <p className="text-xs text-text-muted mt-1 leading-relaxed">{ann.content}</p>
+                    </time>
+                    <h4 className="font-semibold text-text-primary text-xs sm:text-sm">{ann.title}</h4>
+                    <p className="text-xs text-text-muted leading-relaxed">{ann.content}</p>
                   </div>
                 ))
               )}
@@ -665,19 +658,18 @@ export const HomePage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Right Side: Featured Vicariate Map Preview & Need Help (Col-span 4) */}
-        <div className="lg:col-span-4 space-y-8">
-          {/* Featured Vicariate Map */}
+        {/* Right Column (4 cols) */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Vicariate Map Preview */}
           <Card className="overflow-hidden p-0 border border-border">
-            <div className="p-4 border-b border-border bg-white flex-shrink-0">
-              <h3 className="font-serif font-bold text-text-primary text-sm flex items-center space-x-1.5">
+            <div className="p-4 border-b border-border bg-white flex items-center justify-between">
+              <h3 className="font-serif font-bold text-text-primary text-sm flex items-center gap-1.5">
                 <Map size={16} className="text-crimson" />
-                <span>Vicariate Map Preview</span>
+                <span>Vicariate Map</span>
               </h3>
             </div>
-            
-            {/* Embedded Mini Leaflet map */}
-            <div className="h-60 w-full relative bg-gray-100">
+
+            <div className="h-64 sm:h-72 w-full relative bg-gray-100">
               {parishes.length > 0 ? (
                 <LeafletMap center={{ lat: 10.22, lng: 123.25 }} zoom={9} className="h-full w-full">
                   {parishes.map(p => (
@@ -688,38 +680,38 @@ export const HomePage: React.FC = () => {
                 <Skeleton className="h-full w-full" />
               )}
             </div>
-            
-            <div className="p-4 bg-white">
-              <Button 
-                size="sm" 
-                onClick={() => navigate('/dashboard/parishes')} 
-                className="w-full flex items-center justify-center space-x-1.5"
+
+            <div className="p-3.5 bg-white border-t border-border">
+              <Button
+                size="sm"
+                onClick={() => navigate('/dashboard/parishes')}
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold"
               >
-                <span>Explore All Parishes</span>
-                <ExternalLink size={14} />
+                <span>Explore Parishes Directory</span>
+                <ExternalLink size={13} />
               </Button>
             </div>
           </Card>
 
-          {/* Need Help Banner (Trigger assistant) */}
-          <Card className="bg-app-page border border-border/80 p-5 space-y-4">
-            <div className="flex items-start space-x-3.5">
-              <div className="p-2.5 bg-red-50 text-crimson rounded-button">
-                <MessageSquare size={20} />
+          {/* Need Assistance Card */}
+          <Card className="bg-app-page border border-border p-5 space-y-3.5">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-red-50 text-crimson rounded-button flex-shrink-0">
+                <MessageSquare size={18} />
               </div>
               <div className="space-y-1">
                 <h3 className="font-serif font-bold text-text-primary text-sm">Need Assistance?</h3>
-                <p className="text-xs text-text-muted leading-relaxed">
-                  Chat with Caloy, our digital assistant, to ask questions about document fees, required files, or mass times.
+                <p className="text-xs text-text-muted leading-relaxed font-normal">
+                  Chat with Caloy, our digital assistant, to ask questions about document requirements, fees, or parish office schedules.
                 </p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => {
                 const triggerBtn = document.querySelector('button[aria-label="Open Caloy AI Assistant"]') as HTMLButtonElement;
                 if (triggerBtn) triggerBtn.click();
               }}
-              className="w-full py-2 border border-crimson/20 rounded-button text-xs font-semibold text-crimson hover:bg-crimson/5 transition-colors focus-ring"
+              className="w-full py-2 bg-white border border-crimson/30 rounded-button text-xs font-bold text-crimson hover:bg-red-50/50 transition-colors focus-ring shadow-xs"
             >
               Start Chat with Caloy
             </button>
@@ -728,7 +720,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* Global Event Details Modal Overlay */}
-      <EventDetailsModal 
+      <EventDetailsModal
         event={selectedEvent}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

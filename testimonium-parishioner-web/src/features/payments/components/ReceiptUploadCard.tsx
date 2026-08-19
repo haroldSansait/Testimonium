@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, Image, Trash2, RefreshCw, CheckCircle, AlertCircle, Eye } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Trash2, RefreshCw, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
 import services from '../../../providers/factory';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
@@ -18,11 +18,9 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  
-  // Progress states
+
+  // Processing states (only active when request is genuinely pending)
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isProcessingOcr, setIsProcessingOcr] = useState(false);
   const [ocrResult, setOcrResult] = useState<{ referenceNumber?: string; amount?: string; confidenceScore?: number; autoVerified?: boolean } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -106,36 +104,13 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
     if (!file) return;
 
     setIsUploading(true);
-    setUploadProgress(0);
     setErrorMessage(null);
 
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 95) {
-          clearInterval(interval);
-          return 95;
-        }
-        return prev + 15;
-      });
-    }, 150);
-
     try {
-      // Execute the request provider uploadReceipt call
-      const promise = services.request.uploadReceipt(requestId, file);
-      
-      // Wait for simulated progress to complete
-      await new Promise(resolve => setTimeout(resolve, 800));
-      clearInterval(interval);
-      setUploadProgress(100);
+      const result = await services.request.uploadReceipt(requestId, file);
 
-      // Transition to OCR
+      // Immediately render returned OCR results without artificial delays
       setIsUploading(false);
-      setIsProcessingOcr(true);
-
-      const result = await promise;
-      
-      setIsProcessingOcr(false);
       setOcrResult({
         referenceNumber: result.ocrResult?.referenceNumber || undefined,
         amount: result.ocrResult?.amount || undefined,
@@ -145,9 +120,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
 
       onSuccess(result.request);
     } catch (err: any) {
-      clearInterval(interval);
       setIsUploading(false);
-      setIsProcessingOcr(false);
       console.error(err);
       const msg = err.response?.data?.message || err.message || "Failed to upload receipt. Please check your network and try again.";
       setErrorMessage(msg);
@@ -156,56 +129,56 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
 
   return (
     <Card className="shadow-md overflow-hidden border-border/80">
-      <CardHeader className="bg-app-page border-b border-border/40 py-4">
-        <CardTitle className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+      <CardHeader className="bg-app-page border-b border-border/40 py-3.5">
+        <CardTitle className="text-xs sm:text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
           <UploadCloud className="w-4 h-4 text-crimson" />
-          Receipt Upload
+          <span>Receipt Upload</span>
         </CardTitle>
       </CardHeader>
-      
-      <CardContent className="p-5 space-y-4">
+
+      <CardContent className="p-5 space-y-4 text-left">
         {errorMessage && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-xs text-red-800 animate-in fade-in duration-150">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-card flex items-start gap-2.5 text-xs text-red-900 animate-in fade-in duration-150">
             <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-            <span className="font-normal">{errorMessage}</span>
+            <span className="font-medium">{errorMessage}</span>
           </div>
         )}
 
         {/* Existing uploaded receipt mode */}
         {existingReceiptUrl && !file && (
           <div className="space-y-4 text-center">
-            <div className="p-4 bg-green-50/40 border border-green-200/50 rounded-xl space-y-3">
-              <div className="flex items-center justify-center gap-2 text-green-700 text-xs font-semibold">
-                <CheckCircle className="w-4 h-4" />
+            <div className="p-4 bg-green-50/50 border border-green-200 rounded-card space-y-3">
+              <div className="flex items-center justify-center gap-1.5 text-green-800 text-xs font-bold">
+                <CheckCircle2 className="w-4 h-4 text-green-700" />
                 <span>Receipt Uploaded Successfully</span>
               </div>
-              
-              <div className="border border-border/60 rounded-lg overflow-hidden max-h-48 flex justify-center bg-gray-900 shadow-inner">
-                <img src={existingReceiptUrl} alt="Receipt proof" className="object-contain max-h-48" />
+
+              <div className="border border-border/60 rounded-xl overflow-hidden max-h-64 flex justify-center bg-gray-950 shadow-inner">
+                <img src={existingReceiptUrl} alt="Uploaded receipt proof" className="object-contain max-h-64" />
               </div>
 
               {existingOcr && (
-                <div className="text-left text-xs bg-white border border-border/20 p-3 rounded-lg space-y-1.5 font-normal text-text-muted">
+                <div className="text-left text-xs bg-white border border-border p-3.5 rounded-xl space-y-2 text-text-muted">
                   {existingOcr.referenceNumber && (
                     <div>
                       <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Reference No:</span>
-                      <span className="font-semibold text-text-primary font-mono">{existingOcr.referenceNumber}</span>
+                      <span className="font-bold text-text-primary font-mono">{existingOcr.referenceNumber}</span>
                     </div>
                   )}
                   {existingOcr.amount && (
                     <div>
                       <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Amount Detected:</span>
-                      <span className="font-semibold text-text-primary">₱{existingOcr.amount}</span>
+                      <span className="font-bold text-text-primary">₱{existingOcr.amount}</span>
                     </div>
                   )}
                   <div>
                     <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Verification Mode:</span>
-                    <span className="font-semibold text-text-primary font-mono text-[10px] bg-gray-50 border px-1.5 py-0.5 rounded uppercase">
+                    <span className="font-bold text-text-primary text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded uppercase">
                       {existingTransaction.status === 'VERIFIED' ? 'Auto-Verified' : 'Manual Audit Pending'}
                     </span>
                   </div>
                   {existingTransaction.status !== 'VERIFIED' && (
-                    <p className="text-[10px] text-text-muted mt-2 border-t pt-1.5 font-normal leading-relaxed">
+                    <p className="text-[11px] text-text-muted mt-2 border-t border-border/50 pt-2 font-normal leading-relaxed">
                       Parish administrative staff are reviewing this transaction proof. Processing will resume immediately after validation.
                     </p>
                   )}
@@ -218,181 +191,166 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
                 href={existingReceiptUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 py-2 text-xs font-semibold rounded-button border border-border text-text-primary bg-white hover:bg-app-page transition-all flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 text-xs font-bold rounded-button border border-border text-text-primary bg-white hover:bg-app-page transition-all flex items-center justify-center gap-1.5 focus-ring"
               >
                 <Eye className="w-3.5 h-3.5" /> View Receipt
               </a>
               <Button
                 onClick={triggerFileInput}
                 variant="outline"
-                className="flex-1 text-xs border border-border text-text-primary hover:bg-app-page flex items-center justify-center gap-1.5"
+                className="flex-1 text-xs border border-border text-text-primary hover:bg-app-page flex items-center justify-center gap-1.5 font-semibold"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Replace Receipt
               </Button>
             </div>
-            
+
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
               accept="image/png, image/jpeg, image/jpg, image/webp"
               className="hidden"
+              aria-label="Replace receipt file"
             />
           </div>
         )}
 
         {/* OCR Result View immediately after upload */}
-        {ocrResult && !isUploading && !isProcessingOcr && !existingReceiptUrl && (
-          <div className="p-4 rounded-xl border space-y-4 animate-in fade-in zoom-in-95 duration-200 text-left bg-white shadow-sm border-border/80">
+        {ocrResult && !isUploading && !existingReceiptUrl && (
+          <div className="p-4 rounded-card border space-y-4 animate-in fade-in duration-200 text-left bg-white shadow-xs border-border">
             {ocrResult.autoVerified ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-green-700 text-xs font-bold">
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Receipt Submitted & Verified</span>
+                <div className="flex items-center gap-2 text-green-800 text-xs font-bold">
+                  <CheckCircle2 className="w-5 h-5 text-green-700" />
+                  <span className="text-sm">Receipt Passed Automated Verification</span>
                 </div>
                 <p className="text-xs text-text-muted leading-relaxed font-normal">
-                  Our system auto-verified your payment details. Parish staff will now begin processing your requested document.
+                  Our system verified the payment details on your uploaded receipt.
                 </p>
-                <div className="bg-app-page border border-border/20 p-3.5 rounded-lg space-y-1.5 text-xs font-normal text-text-muted">
+                <div className="bg-app-page border border-border p-3.5 rounded-xl space-y-1.5 text-xs text-text-muted">
                   {ocrResult.referenceNumber && (
                     <div>
                       <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Reference Number:</span>
-                      <span className="font-semibold text-text-primary font-mono">{ocrResult.referenceNumber}</span>
+                      <span className="font-bold text-text-primary font-mono">{ocrResult.referenceNumber}</span>
                     </div>
                   )}
                   {ocrResult.amount && (
                     <div>
                       <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Amount Detected:</span>
-                      <span className="font-semibold text-text-primary">₱{ocrResult.amount}</span>
+                      <span className="font-bold text-text-primary">₱{ocrResult.amount}</span>
                     </div>
                   )}
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-blue-700 text-xs font-bold">
-                  <AlertCircle className="w-4 h-4 text-blue-600" />
-                  <span>Receipt Uploaded & Awaiting Review</span>
+                <div className="flex items-center gap-2 text-blue-800 text-xs font-bold">
+                  <AlertCircle className="w-5 h-5 text-blue-600" />
+                  <span className="text-sm">Receipt Uploaded &amp; Awaiting Review</span>
                 </div>
                 <p className="text-xs text-text-muted leading-relaxed font-normal">
-                  Your receipt proof was received successfully but requires a manual audit by parish staff (confidence check threshold).
+                  Your receipt proof was received successfully and is queued for parish audit.
                 </p>
-                <div className="bg-app-page border border-border/20 p-3.5 rounded-lg text-xs font-normal text-text-muted space-y-1.5">
+                <div className="bg-app-page border border-border p-3 rounded-xl text-xs text-text-muted space-y-1">
                   <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Next Steps:</span>
+                    <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Status:</span>
                     <span className="font-semibold text-text-primary">Awaiting manual approval</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Notification:</span>
-                    <span className="font-semibold text-text-primary">You will be notified once verified</span>
                   </div>
                 </div>
               </div>
             )}
-            
-            <Button onClick={removeFile} variant="outline" className="w-full text-xs">
-              Upload Another Receipt
+
+            <Button onClick={removeFile} variant="outline" className="w-full text-xs font-semibold">
+              Upload a Different Receipt
             </Button>
           </div>
         )}
 
-        {/* Upload states: Progress bars */}
+        {/* Upload State: Honest Indeterminate Progress while request is genuinely active */}
         {isUploading && (
-          <div className="p-6 border border-border/40 rounded-xl bg-app-page/50 text-center space-y-4">
-            <span className="text-xs font-semibold text-text-primary animate-pulse">Uploading Receipt...</span>
-            <div className="w-full bg-border/60 rounded-full h-2 overflow-hidden shadow-inner">
-              <div
-                className="bg-crimson h-2 rounded-full transition-all duration-150"
-                style={{ width: `${uploadProgress}%` }}
-              />
+          <div className="p-6 border border-border/80 rounded-card bg-app-page/50 text-center space-y-3" role="status">
+            <span className="text-xs font-bold text-text-primary">Uploading &amp; Verifying Receipt…</span>
+            <div className="w-full bg-border rounded-full h-2 overflow-hidden shadow-inner relative">
+              <div className="bg-crimson h-2 rounded-full w-2/5 animate-pulse" />
             </div>
-            <span className="text-xs font-mono font-bold text-text-primary block">{uploadProgress}%</span>
+            <p className="text-[11px] text-text-muted">Encrypting and transferring file to secure ecclesiastical storage.</p>
           </div>
         )}
 
-        {/* OCR running state */}
-        {isProcessingOcr && (
-          <div className="p-6 border border-border/40 rounded-xl bg-app-page/50 text-center space-y-4 flex flex-col items-center justify-center">
-            <RefreshCw className="w-8 h-8 text-crimson animate-spin" />
-            <span className="text-xs font-semibold text-text-primary animate-pulse mt-2">Running OCR Verification...</span>
-            <p className="text-[10px] text-text-muted max-w-xs font-normal">
-              Extracting transaction details, reference number, and amount proof.
-            </p>
-          </div>
-        )}
-
-        {/* Drag & drop upload area */}
-        {!file && !existingReceiptUrl && !ocrResult && !isUploading && !isProcessingOcr && (
-          <div
+        {/* Drag & Drop Upload Area with Semantic Accessible Label */}
+        {!file && !existingReceiptUrl && !ocrResult && !isUploading && (
+          <label
+            htmlFor="receipt-file-input"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={triggerFileInput}
-            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-150 flex flex-col items-center justify-center gap-2.5 ${
+            className={`border-2 border-dashed rounded-card p-8 text-center cursor-pointer transition-all duration-150 flex flex-col items-center justify-center gap-2.5 focus-within:ring-2 focus-within:ring-crimson ${
               isDragging
-                ? 'border-crimson bg-red-50/10 scale-98'
+                ? 'border-crimson bg-red-50/15'
                 : 'border-border/80 hover:border-crimson hover:bg-red-50/5'
             }`}
           >
             <UploadCloud className="w-10 h-10 text-text-muted/60" />
             <div>
-              <span className="text-xs font-semibold text-text-primary">Drag &amp; drop receipt here</span>
-              <p className="text-[10px] text-text-muted mt-1 font-normal">or click to browse from files</p>
+              <span className="text-xs font-bold text-text-primary block">Upload Payment Receipt</span>
+              <p className="text-[11px] text-text-muted mt-0.5 font-normal">Drag &amp; drop or click to browse files</p>
             </div>
-            <span className="text-[9px] text-text-muted/80 bg-app-page px-2 py-0.5 rounded-full border border-border/20 font-normal">
+            <span className="text-[10px] text-text-muted bg-white px-2.5 py-0.5 rounded-full border border-border font-medium">
               Supports PNG, JPG, JPEG, WEBP (Max 10 MB)
             </span>
             <input
+              id="receipt-file-input"
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
               accept="image/png, image/jpeg, image/jpg, image/webp"
-              className="hidden"
+              className="sr-only"
             />
-          </div>
+          </label>
         )}
 
-        {/* File Preview area after selection */}
-        {file && previewUrl && !ocrResult && !isUploading && !isProcessingOcr && (
-          <div className="border border-border/60 rounded-xl p-4 bg-app-page/30 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+        {/* File Preview Area After Selection */}
+        {file && previewUrl && !ocrResult && !isUploading && (
+          <div className="border border-border rounded-card p-4 bg-app-page/40 space-y-4 animate-in fade-in duration-150 text-left">
             <div className="flex items-center justify-between border-b border-border/40 pb-2">
               <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                <Image className="w-4 h-4 text-text-muted" /> Selected Preview
+                <ImageIcon className="w-4 h-4 text-text-muted" /> Selected Preview
               </span>
               <button
+                type="button"
                 onClick={removeFile}
-                className="p-1 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                aria-label="Remove File"
+                className="p-1 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-md transition-colors focus-ring"
+                aria-label="Remove selected file"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="border border-border/60 rounded-lg overflow-hidden max-h-48 flex justify-center bg-gray-900 shadow-inner">
-              <img src={previewUrl} alt="Receipt preview" className="object-contain max-h-48" />
+            <div className="border border-border/80 rounded-xl overflow-hidden max-h-64 flex justify-center bg-gray-950 shadow-inner">
+              <img src={previewUrl} alt="Selected receipt preview" className="object-contain max-h-64" />
             </div>
 
-            <div className="flex items-center justify-between text-[10px] text-text-muted font-normal bg-white p-2 rounded-lg border border-border/20">
-              <span className="truncate max-w-[200px]" title={file.name}>{file.name}</span>
-              <span className="font-semibold font-mono">{formatBytes(file.size)}</span>
+            <div className="flex items-center justify-between text-[11px] text-text-muted font-normal bg-white p-2.5 rounded-lg border border-border/60">
+              <span className="truncate max-w-[200px] font-medium" title={file.name}>{file.name}</span>
+              <span className="font-mono font-bold text-text-primary">{formatBytes(file.size)}</span>
             </div>
 
             <div className="flex gap-3">
               <Button
                 onClick={uploadReceipt}
-                className="flex-1 text-xs bg-crimson hover:bg-crimson-dark text-white font-semibold flex items-center justify-center gap-1.5"
+                className="flex-1 text-xs font-semibold flex items-center justify-center gap-1.5"
               >
                 Submit Receipt
               </Button>
               <Button
                 onClick={triggerFileInput}
                 variant="outline"
-                className="flex-1 text-xs border border-border text-text-primary hover:bg-app-page"
+                className="flex-1 text-xs border border-border text-text-primary hover:bg-app-page font-semibold"
               >
                 Replace
               </Button>
             </div>
-            
+
             <input
               type="file"
               ref={fileInputRef}
@@ -406,4 +364,5 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
     </Card>
   );
 };
+
 export default ReceiptUploadCard;

@@ -1,12 +1,12 @@
 import React from 'react';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson';
+  variant?: 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction';
 }
 
 export const Badge: React.FC<BadgeProps> = ({ className = '', variant = 'neutral', children, ...props }) => {
   const baseStyles = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold';
-  
+
   const variants = {
     pending: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
     'under-review': 'bg-blue-50 text-blue-700 border border-blue-200',
@@ -14,6 +14,7 @@ export const Badge: React.FC<BadgeProps> = ({ className = '', variant = 'neutral
     rejected: 'bg-red-50 text-red-700 border border-red-200',
     neutral: 'bg-gray-100 text-gray-700 border border-gray-200',
     crimson: 'bg-red-50/50 text-crimson border border-crimson/20',
+    correction: 'bg-amber-50 text-amber-800 border border-amber-300',
   };
 
   return (

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldAlert, BookOpen, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { mapAuthError } from '../../utils/authErrorMapper';
 import { Button } from '../../components/ui/Button';
@@ -17,7 +17,7 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  
+
   const [loading, setLoading] = useState(false);
   const [submitCooldown, setSubmitCooldown] = useState(false);
   const [error, setError] = useState('');
@@ -80,50 +80,71 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const brandingPoints = [
+    'Secure Sacramental Document Processing',
+    'Direct Canonical Scheduling with Priests',
+    'Real-Time Certificate Status Tracking',
+    'Vicariate Parish Information & Mass Times'
+  ];
+
   return (
     <div className="min-h-[calc(100vh-64px)] grid grid-cols-1 md:grid-cols-12 bg-app-base">
       {/* Left side - Branding (Hidden on mobile) */}
-      <div 
-        className="hidden md:flex md:col-span-5 text-white flex-col justify-center items-center text-center p-12 relative overflow-hidden"
+      <div
+        className="hidden md:flex md:col-span-5 text-white flex-col justify-between p-10 lg:p-12 relative overflow-hidden"
         style={{
-          backgroundImage: `linear-gradient(rgba(123, 28, 42, 0.88), rgba(123, 28, 42, 0.92)), url(${mtKanlaonImage})`,
+          backgroundImage: `linear-gradient(rgba(107, 15, 26, 0.90), rgba(74, 10, 18, 0.95)), url(${mtKanlaonImage})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat'
         }}
       >
-        <div className="absolute inset-0 bg-black/10 z-0" />
-        <div className="absolute -bottom-20 -left-20 w-84 h-84 border-4 border-white/5 rounded-full z-0" />
-
-        <div className="relative z-10 space-y-6 max-w-md flex flex-col items-center animate-in fade-in duration-700">
-          <BookOpen size={56} className="text-white/85" />
-          <h3 className="text-3xl md:text-4xl font-serif font-bold leading-tight">
-            "Reverence, Transparency, and Efficiency in Service of the Faithful"
-          </h3>
-          <p className="text-sm sm:text-base text-white/80 leading-relaxed font-normal">
-            Managing sacramental registrations, certificates, and appointments securely for the Vicariate of Canlaon.
-          </p>
+        <div className="relative z-10">
+          <span className="font-serif font-black text-2xl tracking-wider block">
+            TESTIMONIUM
+          </span>
+          <span className="text-xs text-white/70 tracking-wide font-sans">
+            Parishioner Web Portal
+          </span>
         </div>
 
-        <div className="absolute bottom-12 left-0 right-0 text-center z-10 text-[10px] text-white/40">
+        <div className="relative z-10 space-y-6 my-auto max-w-sm">
+          <h2 className="text-2xl lg:text-3xl font-serif font-bold leading-snug">
+            Welcome to the Parishioner Portal
+          </h2>
+          <p className="text-xs lg:text-sm text-white/80 leading-relaxed font-normal">
+            Access ecclesiastical services and sacramental registries across the Vicariate of Canlaon.
+          </p>
+
+          <div className="space-y-3 pt-2">
+            {brandingPoints.map((point, idx) => (
+              <div key={idx} className="flex items-start gap-2.5 text-xs text-white/90 font-medium">
+                <CheckCircle2 size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                <span>{point}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative z-10 text-[11px] text-white/50 pt-6">
           Roman Catholic Diocese of San Carlos &copy; {new Date().getFullYear()}
         </div>
       </div>
 
       {/* Right side - Form */}
-      <div className="col-span-1 md:col-span-7 flex items-center justify-center p-8 sm:p-12 lg:p-16">
-        <div className="w-full max-w-md space-y-8">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-serif font-bold text-text-primary">
+      <div className="col-span-1 md:col-span-7 flex items-center justify-center p-6 sm:p-10 lg:p-16">
+        <div className="w-full max-w-md space-y-6 sm:space-y-8">
+          <div className="space-y-1.5 text-left">
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-text-primary">
               Log In to Portal
             </h1>
-            <p className="text-sm text-text-muted">
+            <p className="text-xs sm:text-sm text-text-muted">
               Enter your credentials to access your parishioner dashboard.
             </p>
           </div>
 
           {unverifiedEmailError ? (
-            <div className="p-4 bg-amber-50 border border-amber-300 text-amber-950 rounded-xl space-y-3 shadow-sm animate-in fade-in">
+            <div className="p-4 bg-amber-50 border-l-4 border-amber-500 border border-amber-200 text-amber-950 rounded-card space-y-3 shadow-xs text-left animate-in fade-in">
               <div className="flex items-start space-x-2.5 text-xs font-bold text-amber-950">
                 <ShieldAlert size={18} className="mt-0.5 flex-shrink-0 text-amber-700" />
                 <span>Email Verification Required</span>
@@ -134,7 +155,7 @@ export const LoginPage: React.FC = () => {
               <div className="pt-1">
                 <Button
                   onClick={() => navigate('/verify-email')}
-                  className="w-full text-xs py-2 bg-amber-700 hover:bg-amber-800 text-white flex items-center justify-center space-x-1.5 font-semibold shadow-sm"
+                  className="w-full text-xs py-2 bg-amber-700 hover:bg-amber-800 text-white flex items-center justify-center space-x-1.5 font-semibold shadow-xs"
                 >
                   <span>Go to Email Verification</span>
                   <ArrowRight size={14} />
@@ -142,13 +163,13 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
           ) : error ? (
-            <div className="p-3.5 bg-red-50 border border-red-300 text-red-900 rounded-button flex items-start space-x-2.5 text-xs font-semibold shadow-sm animate-in fade-in">
-              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0 text-red-600" />
+            <div className="p-3.5 bg-red-50 border-l-4 border-status-rejected border border-red-200 text-red-900 rounded-card flex items-start space-x-2.5 text-xs font-semibold shadow-xs text-left animate-in fade-in">
+              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0 text-status-rejected" />
               <span>{error}</span>
             </div>
           ) : null}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 text-left">
             <Input
               label="Email Address"
               type="email"
@@ -159,6 +180,7 @@ export const LoginPage: React.FC = () => {
               disabled={loading}
               className="w-full"
             />
+
             <div className="relative">
               <Input
                 label="Password"
@@ -168,12 +190,12 @@ export const LoginPage: React.FC = () => {
                 onChange={e => setPassword(e.target.value)}
                 required
                 disabled={loading}
-                className="w-full pr-10"
+                className="w-full pr-11"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-8 text-text-muted hover:text-text-primary transition-colors focus:outline-none"
+                className="absolute right-3 top-[34px] text-text-muted hover:text-text-primary transition-colors focus-ring rounded-md p-1"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -188,30 +210,30 @@ export const LoginPage: React.FC = () => {
                   onChange={e => setRememberMe(e.target.checked)}
                   className="rounded border-border text-crimson focus-ring w-4 h-4 cursor-pointer"
                 />
-                <span>Remember Me</span>
+                <span className="text-text-primary font-medium">Remember Me</span>
               </label>
               <button
                 type="button"
                 onClick={() => setIsForgotModalOpen(true)}
-                className="font-medium text-crimson hover:underline focus-ring"
+                className="font-semibold text-crimson hover:underline focus-ring rounded px-1 py-0.5"
               >
                 Forgot Password?
               </button>
             </div>
 
-            <Button 
-              type="submit" 
-              loading={loading} 
+            <Button
+              type="submit"
+              loading={loading}
               disabled={submitCooldown}
-              className="w-full pt-2.5 pb-2.5 mt-2"
+              className="w-full pt-2.5 pb-2.5 mt-2 font-semibold shadow-sm"
             >
               {submitCooldown ? 'Verifying...' : 'Log In'}
             </Button>
           </form>
 
-          <div className="relative flex py-2 items-center text-xs text-text-muted justify-center">
+          <div className="relative flex py-1 items-center text-xs text-text-muted justify-center">
             <div className="flex-grow border-t border-border" />
-            <span className="flex-shrink mx-4">or continue with</span>
+            <span className="flex-shrink mx-4 font-medium text-text-muted/80">or continue with</span>
             <div className="flex-grow border-t border-border" />
           </div>
 
@@ -219,9 +241,9 @@ export const LoginPage: React.FC = () => {
             variant="outline"
             onClick={() => handleExecuteGoogleSignIn()}
             disabled={loading}
-            className="w-full flex items-center justify-center space-x-2"
+            className="w-full flex items-center justify-center space-x-2 font-semibold hover:bg-app-page"
           >
-            <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+            <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
@@ -232,7 +254,7 @@ export const LoginPage: React.FC = () => {
 
           <p className="text-center text-xs text-text-muted">
             Don't have an account?{' '}
-            <Link to="/signup" className="font-semibold text-crimson hover:underline focus-ring">
+            <Link to="/signup" className="font-bold text-crimson hover:underline focus-ring rounded px-1">
               Create one now
             </Link>
           </p>
@@ -245,15 +267,15 @@ export const LoginPage: React.FC = () => {
         onClose={() => setIsForgotModalOpen(false)}
         title="Forgot Password"
       >
-        <div className="space-y-4 text-sm text-text-primary">
-          <p>
+        <div className="space-y-4 text-sm text-text-primary text-left">
+          <p className="text-xs text-text-muted leading-relaxed">
             For security reasons and to safeguard parishioner registries, password reset services are controlled via official coordination.
           </p>
-          <div className="p-3 bg-red-50 text-crimson rounded-button border border-crimson/10 font-semibold text-xs leading-relaxed">
+          <div className="p-3.5 bg-red-50 text-crimson rounded-card border border-crimson/10 font-semibold text-xs leading-relaxed">
             Please contact your Diocese Coordinator or your local Parish Secretary for assistance in resetting your password.
           </div>
           <div className="flex justify-end pt-2">
-            <Button onClick={() => setIsForgotModalOpen(false)}>
+            <Button size="sm" onClick={() => setIsForgotModalOpen(false)}>
               Understood
             </Button>
           </div>

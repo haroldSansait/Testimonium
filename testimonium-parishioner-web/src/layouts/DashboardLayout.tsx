@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Home, 
-  Bell, 
-  User as UserIcon, 
-  Menu, 
-  X, 
+import {
+  Bell,
+  User as UserIcon,
+  Menu,
+  X,
   LogOut,
   ChevronDown,
   HelpCircle,
@@ -18,6 +17,7 @@ import { Dropdown } from '../components/ui/Dropdown';
 import type { DropdownItem } from '../components/ui/Dropdown';
 import { CaloyAssistant } from '../features/chat/components/CaloyAssistant';
 import { Button } from '../components/ui/Button';
+import { ParishionerSidebar } from '../components/layout/ParishionerSidebar';
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
@@ -43,240 +43,174 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-
-
   const userMenuItems: DropdownItem[] = [
-    { 
-      label: 'My Profile', 
-      value: 'profile', 
+    {
+      label: 'My Profile',
+      value: 'profile',
       icon: <UserIcon size={16} />,
-      onClick: () => navigate('/dashboard/profile') 
+      onClick: () => navigate('/dashboard/profile')
     },
-    { 
-      label: 'Notifications', 
-      value: 'notifications', 
+    {
+      label: 'Notifications',
+      value: 'notifications',
       icon: <Bell size={16} />,
-      onClick: () => navigate('/dashboard/notifications') 
+      onClick: () => navigate('/dashboard/notifications')
     },
-    { 
-      label: 'Sign Out', 
-      value: 'logout', 
+    {
+      label: 'Sign Out',
+      value: 'logout',
       icon: <LogOut size={16} />,
       onClick: async () => {
         navigate('/', { replace: true });
         await logout();
-      } 
+      }
     },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-app-page text-text-primary overflow-hidden relative">
-      {/* Top Application Bar */}
-      <header className="h-16 bg-white border-b border-border flex items-center justify-between px-4 sm:px-6 lg:px-8 z-[1010] sticky top-0 shadow-sm">
-        <div className="flex items-center space-x-4">
-          {/* Hamburger trigger */}
-          <button
-            onClick={() => setIsDrawerOpen(true)}
-            className="p-2 rounded-button hover:bg-app-page text-text-muted hover:text-crimson transition-colors focus-ring"
-            aria-label="Open navigation menu"
-            aria-expanded={isDrawerOpen}
-          >
-            <Menu size={22} />
-          </button>
-          
+    <div className="h-screen flex overflow-hidden bg-app-base text-text-primary relative">
+      {/* Skip to main content for keyboard accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[99999] focus:bg-white focus:text-crimson focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:ring-2 focus:ring-crimson font-medium text-sm transition-all"
+      >
+        Skip to content
+      </a>
+
+      {/* Desktop Persistent Sidebar (≥1024px) */}
+      <ParishionerSidebar
+        onOpenHelp={() => setModalType('help')}
+        onOpenAbout={() => setModalType('about')}
+      />
+
+      {/* Main Content Viewport */}
+      <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
+        {/* Top Application Bar */}
+        <header className="h-16 bg-white border-b border-border flex items-center justify-between px-4 sm:px-6 lg:px-8 z-20 flex-shrink-0 shadow-xs">
           <div className="flex items-center space-x-3">
-            <Link
-              to="/dashboard/home"
-              className="font-serif font-black tracking-wider text-crimson text-lg md:text-xl hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson/20 rounded px-1 transition-opacity"
-              aria-label="TESTIMONIUM Home"
+            {/* Mobile Hamburger Trigger (<1024px) */}
+            <button
+              onClick={() => setIsDrawerOpen(true)}
+              className="p-2 rounded-button hover:bg-app-page text-text-muted hover:text-crimson transition-colors focus-ring lg:hidden"
+              aria-label="Open navigation menu"
+              aria-expanded={isDrawerOpen}
             >
-              TESTIMONIUM
-            </Link>
-          </div>
-        </div>
+              <Menu size={22} />
+            </button>
 
-        <div className="flex items-center space-x-4">
-          {/* Notifications button */}
-          <Link
-            to="/dashboard/notifications"
-            className="relative p-2 rounded-full hover:bg-app-page text-text-muted hover:text-crimson transition-colors focus-ring"
-            aria-label={`${unreadCount} unread notifications`}
-          >
-            <Bell size={20} />
-            {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-crimson text-white text-[9px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {unreadCount}
+            <div className="flex items-center space-x-2">
+              <Link
+                to="/dashboard/home"
+                className="font-serif font-black tracking-wider text-crimson text-lg md:text-xl hover:opacity-85 focus-ring rounded px-1 transition-opacity lg:hidden"
+                aria-label="TESTIMONIUM Home"
+              >
+                TESTIMONIUM
+              </Link>
+              <span className="hidden lg:inline-block font-serif font-bold text-text-primary text-base">
+                TESTIMONIUM Parishioner Portal
               </span>
-            )}
-          </Link>
+            </div>
+          </div>
 
-          {/* User profile avatar dropdown */}
-          <Dropdown
-            trigger={
-              <button className="flex items-center space-x-2 p-1 rounded-full hover:bg-app-page transition-colors focus-ring">
-                <Avatar name={user?.displayName || user?.email || 'User'} size="sm" />
-                <ChevronDown size={14} className="text-text-muted hidden sm:inline" />
-              </button>
-            }
-            items={userMenuItems}
-            align="right"
-          />
-        </div>
-      </header>
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            {/* Notifications Button */}
+            <Link
+              to="/dashboard/notifications"
+              className="relative p-2 rounded-full hover:bg-app-page text-text-muted hover:text-crimson transition-colors focus-ring"
+              aria-label={`${unreadCount} unread notifications`}
+            >
+              <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-crimson text-white text-[9px] font-bold rounded-full flex items-center justify-center border border-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
 
-      {/* Main Container */}
-      <main className="flex-1 overflow-y-auto bg-app-base">
-        {/* Centered Content with generous margins */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6">
-          {children}
-        </div>
-      </main>
+            {/* Quick Help & About (Desktop) */}
+            <button
+              onClick={() => setModalType('help')}
+              className="hidden sm:flex p-2 text-text-muted hover:text-text-primary hover:bg-app-page rounded-full transition-colors focus-ring"
+              aria-label="Help Center"
+              title="Help Center"
+            >
+              <HelpCircle size={19} />
+            </button>
 
-      {/* Unified Sliding Drawer Panel */}
-      <div 
-        className={`fixed inset-0 z-[9999] flex ${isDrawerOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            {/* User Profile Avatar Dropdown */}
+            <Dropdown
+              trigger={
+                <button
+                  className="flex items-center space-x-2 p-1 rounded-full hover:bg-app-page transition-colors focus-ring"
+                  aria-label="User account menu"
+                >
+                  <Avatar name={user?.displayName || user?.email || 'User'} size="sm" />
+                  <ChevronDown size={14} className="text-text-muted hidden sm:inline" />
+                </button>
+              }
+              items={userMenuItems}
+              align="right"
+            />
+          </div>
+        </header>
+
+        {/* Scrollable Main Canvas */}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto bg-app-base focus:outline-none"
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 w-full">
+            {children}
+          </div>
+        </main>
+      </div>
+
+      {/* Mobile Drawer Navigation (<1024px) */}
+      <div
+        className={`fixed inset-0 z-[9999] lg:hidden flex ${isDrawerOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
         role="dialog"
         aria-modal="true"
+        aria-label="Mobile Navigation"
       >
         {/* Backdrop Overlay */}
-        <div 
+        <div
           className={`fixed inset-0 bg-black/60 transition-opacity duration-300 ${
             isDrawerOpen ? 'opacity-100' : 'opacity-0'
-          }`} 
+          }`}
           onClick={() => setIsDrawerOpen(false)}
           aria-hidden="true"
         />
 
         {/* Sliding Panel */}
-        <aside 
-          className={`relative w-72 max-w-xs bg-sidebar-bg text-white h-full flex flex-col z-10 border-none shadow-card transition-transform duration-300 ease-in-out transform ${
+        <aside
+          className={`relative w-72 max-w-[80vw] bg-[#6B0F1A] text-white h-full flex flex-col z-10 shadow-2xl transition-transform duration-300 ease-in-out transform ${
             isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          {/* Drawer Header */}
-          <div className="h-16 flex items-center justify-between px-6 bg-sidebar-dark flex-shrink-0 shadow-sm">
-            <span className="font-serif font-black text-lg tracking-wider">TESTIMONIUM</span>
+          {/* Close button at top right */}
+          <div className="absolute top-4 right-4 z-20">
             <button
               onClick={() => setIsDrawerOpen(false)}
-              className="p-1 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-colors focus-ring"
-              aria-label="Close menu"
+              className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-colors focus-ring"
+              aria-label="Close navigation"
             >
               <X size={20} />
             </button>
           </div>
 
-          {/* User profile summary */}
-          <div className="p-5 bg-sidebar-dark/20 flex items-center space-x-3.5 flex-shrink-0">
-            <Avatar name={user?.displayName || user?.email || 'User'} size="md" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate text-white">{user?.displayName || 'Parishioner'}</p>
-              <p className="text-xs text-white/50 truncate">{user?.email}</p>
-            </div>
-          </div>
-
-          {/* Navigation Links Grouped into Sections */}
-          <nav className="flex-1 px-4 py-6 space-y-6 overflow-y-auto">
-            {/* Portal Section */}
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-4 mb-2">Portal</p>
-              <Link
-                to="/dashboard/home"
-                onClick={() => setIsDrawerOpen(false)}
-                className={`flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium transition-all duration-150 focus-ring ${
-                  location.pathname === '/dashboard/home'
-                    ? 'bg-white/10 text-white font-semibold shadow-inner'
-                    : 'text-white/70 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Home size={18} className={location.pathname === '/dashboard/home' ? 'text-white' : 'text-white/60'} />
-                <span>Home</span>
-              </Link>
-            </div>
-
-            {/* Account Section */}
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-4 mb-2">Account</p>
-              
-              <Link
-                to="/dashboard/profile"
-                onClick={() => setIsDrawerOpen(false)}
-                className={`flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium transition-all duration-150 focus-ring ${
-                  location.pathname === '/dashboard/profile'
-                    ? 'bg-white/10 text-white font-semibold shadow-inner'
-                    : 'text-white/70 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <UserIcon size={18} className={location.pathname === '/dashboard/profile' ? 'text-white' : 'text-white/60'} />
-                <span>Profile</span>
-              </Link>
-
-              <Link
-                to="/dashboard/notifications"
-                onClick={() => setIsDrawerOpen(false)}
-                className={`flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium transition-all duration-150 focus-ring ${
-                  location.pathname === '/dashboard/notifications'
-                    ? 'bg-white/10 text-white font-semibold shadow-inner'
-                    : 'text-white/70 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Bell size={18} className={location.pathname === '/dashboard/notifications' ? 'text-white' : 'text-white/60'} />
-                <span>Notifications</span>
-                {unreadCount > 0 && (
-                  <span className="ml-auto bg-white text-crimson font-bold text-xs px-2 py-0.5 rounded-full animate-pulse">
-                    {unreadCount}
-                  </span>
-                )}
-              </Link>
-            </div>
-
-            {/* Support Section */}
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-4 mb-2">Support</p>
-              
-              <button
-                onClick={() => {
-                  setIsDrawerOpen(false);
-                  setModalType('help');
-                }}
-                className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white focus-ring text-left"
-              >
-                <HelpCircle size={18} className="text-white/60" />
-                <span>Help Center</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setIsDrawerOpen(false);
-                  setModalType('about');
-                }}
-                className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white focus-ring text-left"
-              >
-                <Info size={18} className="text-white/60" />
-                <span>About TESTIMONIUM</span>
-              </button>
-            </div>
-
-            {/* Session Section */}
-            <div className="space-y-1.5 pt-2">
-              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest px-4 mb-2">Session</p>
-              <button 
-                onClick={async () => {
-                  setIsDrawerOpen(false);
-                  navigate('/', { replace: true });
-                  await logout();
-                }}
-                className="w-full flex items-center space-x-3.5 px-4 py-2.5 rounded-button text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-colors focus-ring text-left"
-              >
-                <LogOut size={18} className="text-white/60" />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          </nav>
-
-          {/* Drawer Footer info */}
-          <div className="p-4 bg-sidebar-dark/20 flex-shrink-0 text-center">
-            <span className="text-[10px] text-white/30 font-medium">TESTIMONIUM v1.0.0</span>
-          </div>
+          <ParishionerSidebar
+            isMobileDrawer={true}
+            onCloseMobileDrawer={() => setIsDrawerOpen(false)}
+            onOpenHelp={() => {
+              setIsDrawerOpen(false);
+              setModalType('help');
+            }}
+            onOpenAbout={() => {
+              setIsDrawerOpen(false);
+              setModalType('about');
+            }}
+          />
         </aside>
       </div>
 
@@ -285,30 +219,33 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
       {/* Help / About Modals */}
       {modalType !== 'none' && (
-        <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
           onClick={() => setModalType('none')}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-dialog-title"
         >
-          <div 
-            className="bg-white rounded-card shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4 text-left"
+          <div
+            className="bg-white rounded-card shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4 text-left border border-border"
             onClick={e => e.stopPropagation()}
           >
             {modalType === 'help' ? (
               <>
                 <div className="flex items-center space-x-3 text-crimson">
                   <HelpCircle size={24} />
-                  <h3 className="font-serif font-bold text-lg text-text-primary">Help Center</h3>
+                  <h3 id="modal-dialog-title" className="font-serif font-bold text-lg text-text-primary">Help Center</h3>
                 </div>
                 <div className="text-xs text-text-muted space-y-2.5 leading-relaxed">
                   <p>
-                    Welcome to the <strong>TESTIMONIUM Help Center</strong>. Here is how you can get help:
+                    Welcome to the <strong>TESTIMONIUM Help Center</strong>. Here is how you can get assistance:
                   </p>
-                  <ul className="list-disc list-inside space-y-1 pl-1">
+                  <ul className="list-disc list-inside space-y-1.5 pl-1 text-text-primary">
                     <li>
                       <strong>Caloy AI Assistant:</strong> Use the floating widget in the bottom right corner of any page to ask instant questions about services, requirements, and office hours.
                     </li>
                     <li>
-                      <strong>Support Email:</strong> Write to us at <a href="mailto:support@testimonium.org" className="text-crimson hover:underline font-semibold">support@testimonium.org</a> for technical or account issues.
+                      <strong>Support Email:</strong> Write to us at <a href="mailto:support@testimonium.org" className="text-crimson hover:underline font-semibold focus-ring rounded">support@testimonium.org</a> for technical or account issues.
                     </li>
                     <li>
                       <strong>Parish Contact:</strong> Contact your selected parish office directly using the phone or email listed under the Parishes Directory page.
@@ -320,23 +257,23 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <>
                 <div className="flex items-center space-x-3 text-crimson">
                   <Info size={24} />
-                  <h3 className="font-serif font-bold text-lg text-text-primary">About TESTIMONIUM</h3>
+                  <h3 id="modal-dialog-title" className="font-serif font-bold text-lg text-text-primary">About TESTIMONIUM</h3>
                 </div>
                 <div className="text-xs text-text-muted space-y-2.5 leading-relaxed">
                   <p>
-                    <strong>TESTIMONIUM v1.0.0</strong> is the official digital registry and sacramental services portal of the Diocese and the Vicariate of Canlaon.
+                    <strong>TESTIMONIUM</strong> is the official digital registry and sacramental services portal of the Diocese and the Vicariate of Canlaon.
                   </p>
                   <p>
                     Designed to streamline communications and certificate processing, TESTIMONIUM links parishioners directly to parish records, canonical scheduling calendars, and secure document verification systems.
                   </p>
-                  <p className="text-[10px] text-text-muted/65 italic border-t border-border/40 pt-2.5">
-                    © 2026 Diocese and Vicariate of Canlaon. All rights reserved.
+                  <p className="text-[11px] text-text-muted/75 italic border-t border-border/40 pt-2.5">
+                    © {new Date().getFullYear()} Roman Catholic Diocese of San Carlos. All rights reserved.
                   </p>
                 </div>
               </>
             )}
             <div className="flex justify-end pt-2">
-              <Button size="sm" className="bg-crimson hover:bg-crimson-dark" onClick={() => setModalType('none')}>
+              <Button size="sm" onClick={() => setModalType('none')}>
                 Close
               </Button>
             </div>

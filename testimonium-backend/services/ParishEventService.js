@@ -18,6 +18,24 @@ function combineDateAndTime(date, timeStr) {
   }
 }
 
+function toPublicEventDto(event) {
+  return {
+    id: event.id,
+    parishId: event.parishId,
+    title: event.title,
+    eventType: event.eventType,
+    description: event.description,
+    location: event.location,
+    eventDate: event.eventDate,
+    startTime: event.startTime,
+    endTime: event.endTime,
+    parish: event.parish ? {
+      id: event.parish.id,
+      parishName: event.parish.parishName
+    } : undefined
+  };
+}
+
 export class ParishEventService {
   async createEvent(parishId, data, actorId) {
     const parsedParishId = parseInt(parishId, 10);
@@ -221,6 +239,11 @@ export class ParishEventService {
     );
 
     return combinedWithSecretaries;
+  }
+
+  async getPublicEvents(year, month) {
+    const events = await this.getEvents("all", year, month);
+    return events.map(toPublicEventDto);
   }
 
   async updateEvent(id, data, actorId) {

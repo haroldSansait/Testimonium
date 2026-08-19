@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export interface ModalProps {
@@ -10,19 +10,70 @@ export interface ModalProps {
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+  const modalContainerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    if (!isOpen) return;
+
+    // Save the element that had focus before the modal opened
+    triggerElementRef.current = document.activeElement as HTMLElement | null;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalContainerRef.current) {
+        const focusables = modalContainerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+
+        const firstElement = focusables[0];
+        const lastElement = focusables[focusables.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement || !modalContainerRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement || !modalContainerRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
     };
 
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleEscape);
-    }
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Shift initial focus to the first focusable element inside the modal or the container
+    const timer = setTimeout(() => {
+      if (modalContainerRef.current) {
+        const focusables = modalContainerRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length > 0) {
+          focusables[0].focus();
+        } else {
+          modalContainerRef.current.focus();
+        }
+      }
+    }, 50);
 
     return () => {
+      clearTimeout(timer);
       document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('keydown', handleKeyDown);
+
+      // Restore focus to the trigger element when the modal closes
+      if (triggerElementRef.current && document.body.contains(triggerElementRef.current)) {
+        triggerElementRef.current.focus();
+      }
     };
   }, [isOpen, onClose]);
 
@@ -43,14 +94,18 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       aria-labelledby={title ? "modal-title" : undefined}
     >
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/55 transition-opacity" 
+      <div
+        className="fixed inset-0 bg-black/60 transition-opacity backdrop-blur-xs"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Content Container */}
-      <div className={`relative w-full bg-white rounded-card shadow-card p-6 border border-border z-10 animate-in fade-in zoom-in duration-fast ${sizes[size]}`}>
+      <div
+        ref={modalContainerRef}
+        tabIndex={-1}
+        className={`relative w-full bg-white rounded-card shadow-card p-6 border border-border z-10 focus:outline-none ${sizes[size]}`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
           {title ? (
@@ -62,7 +117,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
           )}
           <button
             onClick={onClose}
-            className="p-1 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary focus-ring"
+            className="p-1.5 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary focus-ring"
             aria-label="Close modal"
           >
             <X size={18} />
@@ -77,4 +132,5 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
     </div>
   );
 };
+
 export default Modal;

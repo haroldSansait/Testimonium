@@ -4,6 +4,24 @@ import { getEffectiveParishId, validateParishAccess } from "../utils/tenantGuard
 
 const service = new ParishEventService();
 
+export const listAll = async (req, res, next) => {
+  try {
+    const { year, month } = req.query;
+
+    if (!year || !month) {
+      return res.status(400).json({
+        success: false,
+        message: "year and month are required."
+      });
+    }
+
+    const data = await service.getPublicEvents(year, month);
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const list = async (req, res, next) => {
   try {
     const { year, month } = req.query;
