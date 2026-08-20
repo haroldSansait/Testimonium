@@ -1,119 +1,67 @@
-# Cloudflare R2 Storage & Image Pipeline Documentation
+# Cloudflare R2 and OCR Pipeline
 
-This document covers the configuration, permissions, object hierarchy, CORS policies, and image optimization pipeline for Cloudflare R2 storage in TESTIMONIUM.
+**Last reconciled:** 20 August 2026
 
----
+TESTIMONIUM uses Cloudflare R2 through the S3-compatible AWS SDK. Browsers upload to the Express API; the API validates the file and writes to R2. R2 credentials are never exposed to either portal.
 
-## 1. Cloudflare R2 Overview
+## Configuration
 
-Cloudflare R2 provides zero-egress-fee, S3-compatible object storage for:
-- Parish cover photos, logos & gallery assets (`parishes/parish_{id}/...`)
-- Parish GCash/Maya Payment QR Codes (`parishes/parish_{id}/payment_qr/...`)
-- Supporting document uploads (`documents/req_{id}/supporting/...`)
-- Payment receipt upload evidence (`documents/req_{id}/receipts/...`)
+Set the following in `testimonium-backend/.env`:
 
----
-
-## 2. Bucket Provisioning & Environment Credentials
-
-### Step-by-Step Creation
-
-1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com/).
-2. Navigate to **R2 Object Storage** → **Create Bucket**.
-3. Name the bucket (e.g. `testimonium-documents`).
-4. Under **Settings** → **Public Access**, enable **Custom Domain** or **R2.dev Subdomain**:
-   - Example Public URL: `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev`
-5. Go to **Manage R2 API Tokens** → **Create API Token**:
-   - Permissions: **Object Read & Write**
-   - Apply to specific bucket: `testimonium-documents`
-6. Copy credentials to backend `.env`:
-   ```ini
-   R2_ACCOUNT_ID=b6ab36a02c914579977dd08c3959e2f7
-   R2_ACCESS_KEY_ID=your_access_key_id
-   R2_SECRET_ACCESS_KEY=your_secret_access_key
-   R2_BUCKET_NAME=testimonium-documents
-   R2_PUBLIC_URL=https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev
-   ```
-
----
-
-## 3. CORS Configuration
-
-To allow direct file uploads and preview rendering from web browsers (Admin Portal & Parishioner Portal), apply the following CORS policy in R2 Bucket Settings:
-
-```json
-[
-  {
-    "AllowedOrigins": [
-      "https://admin.testimonium.org",
-      "https://app.testimonium.org",
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:3000"
-    ],
-    "AllowedMethods": [
-      "GET",
-      "PUT",
-      "POST",
-      "HEAD"
-    ],
-    "AllowedHeaders": [
-      "*"
-    ],
-    "ExposeHeaders": [
-      "ETag",
-      "Content-Length",
-      "Content-Type"
-    ],
-    "MaxAgeSeconds": 3600
-  }
-]
+```ini
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_ACCESS_KEY_ID=your_r2_access_key
+R2_SECRET_ACCESS_KEY=your_r2_secret
+R2_BUCKET_NAME=testimonium-documents
+R2_PUBLIC_URL=https://assets.example.org
 ```
 
----
+The backend builds its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, uses region `auto`, and returns URLs as `<R2_PUBLIC_URL>/<object-key>`. Therefore `R2_PUBLIC_URL` must be a configured public R2.dev endpoint or custom domain with the correct bucket origin.
 
-## 4. Object Key Structure & Permissions
+## Current object-key layout
 
-| Path Hierarchy | Content Type | Access Pattern | Lifecycle |
-| :--- | :--- | :--- | :--- |
-| `parishes/parish_{id}/cover/{uuid}_{filename}` | Parish Cover Photo | Public Read via CDN | Persistent (Overwritten/Replaced) |
-| `parishes/parish_{id}/logo/{uuid}_{filename}` | Parish Logo Image | Public Read via CDN | Persistent (Overwritten/Replaced) |
-| `parishes/parish_{id}/payment_qr/{uuid}_{filename}` | Parish Payment QR Code | Public Read via CDN | Replaced on new upload |
-| `parishes/parish_{id}/gallery/{uuid}_{filename}` | Parish Gallery Image | Public Read via CDN | Persistent |
-| `documents/req_{id}/supporting/{timestamp}_{filename}` | Requirement File | Authenticated / Signed URL | Retained during request lifecycle |
-| `documents/req_{id}/receipts/{timestamp}_{filename}` | Payment Proof | Authenticated / Signed URL | Audit-locked evidence |
+| Key pattern | Producer | Stored reference |
+| --- | --- | --- |
+| `documents/req_<requestId>/supporting/<timestamp>_<name>` | Supporting-file upload | `request_attachments.r2_object_key` |
+| `documents/req_<requestId>/receipts/<timestamp>_<name>` | Receipt upload | `receipt_uploads.r2_object_key`, `document_requests.payment_proof_object_key` |
+| `parishes/parish_<parishId>/cover/<uuid>_<name>` | Parish image service | `parishes.cover_image` public URL |
+| `parishes/parish_<parishId>/logo/<uuid>_<name>` | Parish image service | `parishes.logo_image` public URL |
+| Parish QR image path | Parish service | `parishes.payment_qr_image` public URL |
 
----
+Object names are sanitized. Parish cover/logo writes use a UUID to prevent collisions and stale CDN cache. Replacing an attachment deletes the prior object after the new upload; a failed parish database update attempts to delete the new R2 object.
 
-## 5. Image Compression & OCR Pipeline
+## Upload controls
 
-```
-┌─────────────────────────┐
-│ Uploaded Receipt Buffer │
-└────────────┬────────────┘
-             │
-             ├───► [R2 Storage] Upload ORIGINAL buffer (Unchanged evidence)
-             │
-             └───► [Sharp Service] Image Pre-processing for OCR:
-                      1. Auto-rotate via EXIF metadata
-                      2. Resize to max width 1200px
-                      3. Stretch contrast & sharpen
-                      4. Compress to JPEG (Quality 80)
-                      5. Submit compressed buffer to OCR API
-```
+| Flow | Accepted types | Limit | Field |
+| --- | --- | --- | --- |
+| Supporting documents | PDF, PNG, JPEG, WebP | 5 MB per file, five files | `files` |
+| Payment receipt | JPEG, PNG | 5 MB, one file | `receipt` |
+| Parish cover/logo | JPEG, PNG, WebP; magic-byte checked | 5 MB | `image` |
+| Payment QR | Image upload | 2 MB | `qrImage` |
 
----
+Receipt uploads reject HEIC/HEIF deliberately because the current OCR pipeline only accepts JPEG/PNG. The original receipt is preserved unchanged as evidence.
 
-## 6. Troubleshooting & Diagnostics
+## Receipt OCR flow
 
-### Error 403 Forbidden (R2 Upload/Download Failure)
-- **Cause**: Invalid `R2_ACCESS_KEY_ID` or `R2_SECRET_ACCESS_KEY`, or token lacks Read & Write permissions.
-- **Fix**: Re-generate R2 API Token with Object Read & Write permissions scope.
+1. The API validates request ownership and an eligible payment state.
+2. It creates/reuses a pending payment transaction, uploads the original receipt to R2, records a SHA-256 image hash, and creates an `ocr_results` row with `PENDING` status.
+3. The request moves to `PAYMENT_UNDER_REVIEW`; a history record and notifications are written.
+4. Background processing downloads the R2 object, makes an in-memory OCR-optimized copy using Sharp, checks the process-local cache, calls the configured provider, and stores parsed metadata/confidences.
+5. A matching hash against a verified receipt on another request is flagged for review. OCR does not automatically verify payment.
 
-### Error 404 Not Found (Public Image Fails to Load)
-- **Cause**: `R2_PUBLIC_URL` mismatch or R2.dev public domain disabled.
-- **Fix**: Verify domain in Cloudflare R2 Bucket Settings → Public Access.
+Set `OCR_PROVIDER=ocrspace` plus `OCR_SPACE_API_KEY` for OCR.Space, or use `stub` for development. `OCR_ENABLED=false` disables processing. OCR settings include timeout, max payload size, compression width/quality, retry count/delay, and cache TTL/max entries.
 
-### CORS Error in Browser Console (`No 'Access-Control-Allow-Origin' header`)
-- **Cause**: Origin of request is missing from R2 bucket CORS settings.
-- **Fix**: Add exact domain protocol + host (including port for local dev) to AllowedOrigins array.
+## CORS and access model
+
+The shipped application does not perform direct browser-to-R2 uploads, so bucket CORS is not required for the upload path. CORS is not needed for a normal public image element. Configure it only if a portal fetches objects with JavaScript or uses them in a canvas; restrict those origins to the production portals and local development origins.
+
+The backend calls `PutObject`, `GetObject`, and `DeleteObject`. Give its R2 token only object read/write permission on the application bucket. Use a separate token per environment and rotate it through deployment secrets.
+
+Signed URL generation is intentionally not implemented in `R2Service`. If confidential documents cannot be public, introduce authenticated download/proxy or signed-URL support before making those assets accessible.
+
+## Diagnostics
+
+- **403 from R2:** verify account ID, token scope, bucket name, and the S3 endpoint—not the public URL.
+- **Public URL returns 404:** verify `R2_PUBLIC_URL` maps to the bucket and that the stored key has no duplicated prefix.
+- **Browser CORS error on an image:** configure R2/custom-domain response CORS for the portal origin.
+- **OCR failure:** inspect backend structured logs and `ocr_results`; verify original receipt type/size and the OCR provider key. The stored receipt remains available for staff review.

@@ -1,248 +1,93 @@
-# TESTIMONIUM Production Deployment Manual
+# TESTIMONIUM Deployment Guide
 
-This manual provides a comprehensive, step-by-step guide for deploying the TESTIMONIUM platform to production across all tiers: **Backend API**, **Admin Portal**, and **Parishioner Web Portal**.
+**Last reconciled:** 20 August 2026
 
----
+Deploy the backend and the two Vite applications independently. All browser requests must target the same backend API version, currently `/api/v1`.
 
-## Architecture Overview
+## Production topology
 
-```
-                        ┌───────────────────────────────┐
-                        │   Cloudflare / Nginx Proxy    │
-                        └───────────────┬───────────────┘
-                                        │
-             ┌──────────────────────────┼──────────────────────────┐
-             ▼                          ▼                          ▼
-┌─────────────────────────┐ ┌───────────────────────┐ ┌────────────────────────┐
-│  Parishioner Web Portal │ │     Admin Portal      │ │      Backend API       │
-│   (Vite Single-Page)    │ │  (Vite Single-Page)   │ │  (Node.js / Express)   │
-└─────────────────────────┘ └───────────────────────┘ └───────────┬────────────┘
-                                                                  │
-                                                ┌─────────────────┴─────────────────┐
-                                                ▼                                   ▼
-                                     ┌─────────────────────┐             ┌─────────────────────┐
-                                     │ Supabase PostgreSQL │             │   Cloudflare R2     │
-                                     │ (Canonical Storage) │             │ (Document Uploads)  │
-                                     └─────────────────────┘             └─────────────────────┘
+```text
+app.example.org -> parishioner-web/dist
+admin.example.org -> admin-portal/dist
+api.example.org -> reverse proxy -> Node/Express :5000
+                                  -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space (optional)
 ```
 
----
+Use TLS for every public origin. Configure `CORS_ORIGINS` with the exact deployed portal origins.
 
-## 1. Environment Variables Reference
+## Backend configuration
 
-### Backend API (`testimonium-backend/.env`)
+Create `testimonium-backend/.env` using its `.env.example`. The application requires a database URL and Firebase Admin credentials to start correctly. R2 is required for the implemented file-upload flows.
 
-| Variable | Required | Description | Example |
-| :--- | :---: | :--- | :--- |
-| `NODE_ENV` | Yes | Environment mode | `production` |
-| `PORT` | Yes | Port to listen on | `5000` |
-| `DATABASE_URL` | Yes | PostgreSQL connection string (pooling) | `postgresql://postgres:[PASS]@db.[REF].supabase.co:5432/postgres?schema=public&sslmode=require` |
-| `DIRECT_URL` | Optional | Direct connection string for Prisma migrations | `postgresql://postgres:[PASS]@db.[REF].supabase.co:5432/postgres?schema=public` |
-| `TRUST_PROXY` | Recommended | Enable reverse proxy headers | `1` or `true` |
-| `CORS_ORIGINS` | Recommended | Comma-separated allowed web origins | `https://admin.testimonium.org,https://app.testimonium.org` |
-| `GLOBAL_RATE_LIMIT_MAX` | Optional | Max requests per 15 min per IP | `5000` |
-| `AUTH_READ_RATE_LIMIT_MAX` | Optional | Max authenticated GET requests per 15 min | `2500` |
-| `AUTH_WRITE_RATE_LIMIT_MAX` | Optional | Max authenticated write requests per 15 min | `500` |
-| `ANON_READ_RATE_LIMIT_MAX` | Optional | Max anonymous GET requests per 15 min | `800` |
-| `ANON_WRITE_RATE_LIMIT_MAX` | Optional | Max anonymous write requests per 15 min | `100` |
-| `AUTH_LOGIN_RATE_LIMIT_MAX` | Optional | Max login token exchange attempts per 15 min per IP | `10` |
-| `FIREBASE_PROJECT_ID` | Yes | Firebase project ID | `testimonium-app` |
-| `FIREBASE_CLIENT_EMAIL` | Yes | Firebase service account email | `firebase-adminsdk-xxx@testimonium-app.iam.gserviceaccount.com` |
-| `FIREBASE_PRIVATE_KEY` | Yes | Firebase service account private key (PEM string) | `"-----BEGIN PRIVATE KEY-----\n..."` |
-| `R2_ACCOUNT_ID` | Yes | Cloudflare Account ID | `b6ab36a02c914579977dd08c3959e2f7` |
-| `R2_ACCESS_KEY_ID` | Yes | Cloudflare R2 S3 Access Key | `abc123def456...` |
-| `R2_SECRET_ACCESS_KEY` | Yes | Cloudflare R2 S3 Secret Key | `secret789...` |
-| `R2_BUCKET_NAME` | Yes | Cloudflare R2 bucket name | `testimonium-documents` |
-| `R2_PUBLIC_URL` | Yes | Public HTTPS URL endpoint for bucket | `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev` |
-| `OCR_ENABLED` | Optional | Enable/disable OCR processing | `true` |
-| `OCR_PROVIDER` | Optional | Provider selection (`ocrspace`, `google_vision`, or `stub`) | `ocrspace` |
-| `OCR_SPACE_API_KEY` | Conditional | API key if `OCR_PROVIDER=ocrspace` | `K888888888888` |
-| `OCR_SPACE_ENGINE` | Optional | OCR.Space engine mode (`1` or `2`) | `2` |
-| `OCR_TIMEOUT` | Optional | OCR API call timeout in ms | `10000` |
-| `OCR_MAX_SIZE_KB` | Optional | Maximum image payload size in KB | `900` |
-| `OCR_COMPRESSION_WIDTH` | Optional | Sharp resize width target | `1200` |
-| `OCR_COMPRESSION_QUALITY` | Optional | Sharp JPEG compression quality | `80` |
-| `LOG_LEVEL` | Optional | Pino logger minimum level | `info` |
+| Variable group | Required production settings |
+| --- | --- |
+| Runtime | `NODE_ENV=production`, `PORT`, `TRUST_PROXY=1`, `CORS_ORIGINS` |
+| Database | `DATABASE_URL` or `SUPABASE_DATABASE_URL`; set `DATABASE_URL` for Prisma CLI compatibility |
+| Firebase Admin | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` |
+| R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` |
+| OCR | `OCR_ENABLED`, `OCR_PROVIDER`; when `ocrspace`, also `OCR_SPACE_API_KEY` and optional size/timeout/retry settings |
+| Protection | rate-limit maxima and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
 
-### Admin Portal (`testimonium-admin-portal/.env`)
+Never set `ENABLE_DEV_AUTH=true` in production. It bypasses Firebase token verification.
 
-| Variable | Required | Description | Example |
-| :--- | :---: | :--- | :--- |
-| `VITE_API_URL` | Yes | Target backend API endpoint | `https://api.testimonium.org/api/v1` |
-| `VITE_FIREBASE_API_KEY` | Yes | Firebase Web Client API key | `AIzaSy...` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Firebase Auth Domain | `testimonium-app.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase Project ID | `testimonium-app` |
+## Portal configuration
 
-### Parishioner Web Portal (`testimonium-parishioner-web/.env`)
+Vite variables are embedded at build time. Set them in each portal’s environment before building.
 
-| Variable | Required | Description | Example |
-| :--- | :---: | :--- | :--- |
-| `VITE_API_URL` | Yes | Target backend API endpoint | `https://api.testimonium.org/api/v1` |
-| `VITE_FIREBASE_API_KEY` | Yes | Firebase Web Client API key | `AIzaSy...` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Firebase Auth Domain | `testimonium-app.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase Project ID | `testimonium-app` |
+| Portal | API setting | Provider setting | Other required settings |
+| --- | --- | --- | --- |
+| Parishioner web | `VITE_API_BASE_URL=https://api.example.org/api/v1` | `VITE_PROVIDER_MODE=api` | Firebase client variables; optional `VITE_ADMIN_PORTAL_URL` |
+| Admin portal | `VITE_API_URL=https://api.example.org/api/v1` | `VITE_DATA_PROVIDER=api` | Firebase client variables |
 
----
+`VITE_*` values are public client configuration. Never put service-account keys, R2 secrets, or database URLs in them.
 
-## 2. Backend API Deployment Procedure
+## Release procedure
 
-### Option A: Process Manager (PM2 on Linux Server)
+1. Install pinned dependencies:
 
-1. **Clone repository & Install Production Dependencies**:
    ```bash
-   cd /var/www/testimonium/testimonium-backend
-   npm ci --omit=dev
+   npm ci
+   npm ci --prefix testimonium-backend
+   npm ci --prefix testimonium-parishioner-web
+   npm ci --prefix testimonium-admin-portal
    ```
 
-2. **Run Database Migrations & Generate Prisma Client**:
+2. Apply database migrations before starting code that depends on them:
+
    ```bash
+   cd testimonium-backend
    npx prisma migrate deploy
    npx prisma generate
    ```
 
-3. **Start Process via PM2**:
+3. Start or restart the backend with a process manager. Example PM2 command:
+
    ```bash
-   pm2 start server.js --name testimonium-backend -i max --env production
+   pm2 start server.js --name testimonium-api --cwd /srv/testimonium/testimonium-backend
    pm2 save
    ```
 
-4. **Verify Process Status & Health Check**:
+4. Build and publish each frontend’s `dist/` directory:
+
    ```bash
-   pm2 status
-   curl -I http://localhost:5000/api/v1/health
+   npm run build --prefix testimonium-parishioner-web
+   npm run build --prefix testimonium-admin-portal
    ```
 
-### Option B: Docker Container Deployment
+5. Verify `GET /api/v1/health`, an authenticated portal session, an R2 upload in a non-production test request, and the reverse-proxy SPA fallback.
 
-```dockerfile
-# testimonium-backend/Dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-COPY prisma ./prisma/
-RUN npm ci
-COPY . .
-RUN npx prisma generate
+## Reverse-proxy requirements
 
-FROM node:20-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app ./
-EXPOSE 5000
-CMD ["node", "server.js"]
-```
+- Proxy `/api/` to the backend; preserve `Authorization`, `Host`, and forwarding headers.
+- Serve each Vite `dist/` directory with `try_files $uri $uri/ /index.html` so client-side routes work after refresh.
+- Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads are limited to 2 MB.
+- Enable `TRUST_PROXY=1` only when the proxy correctly supplies forwarding headers.
 
----
+## Operational checks and rollback
 
-## 3. Frontend Web Applications Build & Hosting
+- Keep database backups and verify a restore path before migrations; see [DATABASE.md](DATABASE.md).
+- Back out an application release by serving the previous frontend build and restarting the previous backend release. Do not reverse a migration unless a tested down-migration or restore plan exists.
+- Monitor API health, structured backend logs, R2 upload errors, OCR failures, and rate-limit behavior after release.
+- `RATE_LIMIT_STORE=memory` is process-local; use a shared strategy before horizontally scaling rate-limited API instances.
 
-### 1. Build Admin Portal
-
-```bash
-cd /var/www/testimonium/testimonium-admin-portal
-npm ci
-npm run build
-# Output generated in /var/www/testimonium/testimonium-admin-portal/dist
-```
-
-### 2. Build Parishioner Web Portal
-
-```bash
-cd /var/www/testimonium/testimonium-parishioner-web
-npm ci
-npm run build
-# Output generated in /var/www/testimonium/testimonium-parishioner-web/dist
-```
-
----
-
-## 4. Reverse Proxy Setup (Nginx Configuration)
-
-```nginx
-# /etc/nginx/sites-available/testimonium.conf
-
-# 1. Backend API
-server {
-    listen 443 ssl http2;
-    server_name api.testimonium.org;
-
-    ssl_certificate /etc/letsencrypt/live/api.testimonium.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.testimonium.org/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        client_max_body_size 15M;
-    }
-}
-
-# 2. Admin Portal
-server {
-    listen 443 ssl http2;
-    server_name admin.testimonium.org;
-
-    ssl_certificate /etc/letsencrypt/live/admin.testimonium.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/admin.testimonium.org/privkey.pem;
-
-    root /var/www/testimonium/testimonium-admin-portal/dist;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-
-# 3. Parishioner Web Portal
-server {
-    listen 443 ssl http2;
-    server_name app.testimonium.org;
-
-    ssl_certificate /etc/letsencrypt/live/app.testimonium.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/app.testimonium.org/privkey.pem;
-
-    root /var/www/testimonium/testimonium-parishioner-web/dist;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
----
-
-## 5. Cloudflare R2 Bucket Security & CORS
-
-Ensure your R2 bucket CORS settings permit browser uploads from production domains:
-
-```json
-[
-  {
-    "AllowedOrigins": [
-      "https://admin.testimonium.org",
-      "https://app.testimonium.org"
-    ],
-    "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
+For R2 CORS and lifecycle configuration, see [CLOUDFLARE_R2.md](CLOUDFLARE_R2.md).

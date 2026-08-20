@@ -1,0 +1,2 @@
+export const observerShouldBootstrap = (interactiveUid: string | null, observedUid: string) => interactiveUid !== observedUid;
+export const isCurrentAuthOperation = (operationGeneration: number, operationUid: string, currentGeneration: number, currentUid: string | null) => operationGeneration === currentGeneration && operationUid === currentUid;

@@ -1,324 +1,121 @@
-# TESTIMONIUM Backend REST API Reference Documentation
+# TESTIMONIUM Backend REST API
 
-This document describes the backend endpoints, validation rules, pagination behaviors, role-based authorization requirements, and response formats for the TESTIMONIUM sacramental document processing and scheduling backend.
+**Base URL:** `/api/v1`
+**Last reconciled:** 20 August 2026
+**Source of truth:** `testimonium-backend/server.js`, route modules, validators, and controllers.
 
----
+## Authentication, tenancy, and response conventions
 
-## 1. Authentication & Security
-
-All routes (except public health checkpoints) require authentication using **Firebase ID Tokens** passed in the `Authorization` header:
+Except for `GET /health`, all endpoints require a Firebase ID token:
 
 ```http
-Authorization: Bearer <Firebase_ID_Token>
+Authorization: Bearer <firebase-id-token>
 ```
 
-### Dev Auth Guard Bypass
-In `development` environments (when `ENABLE_DEV_AUTH=true`), endpoints can be accessed by passing a mock token matching pre-seeded profiles:
-*   `Authorization: Bearer test-token-coordinator` (maps context to `coordinator@testimonium.org`)
-*   `Authorization: Bearer test-token-secretary` (maps context to parish secretary)
-*   `Authorization: Bearer test-token-priest` (maps context to parish priest)
+In local development only, `ENABLE_DEV_AUTH=true` enables the backend’s development-auth path. It must never be enabled in production.
 
-### Role Authorization
-Users are restricted to resources matching their assigned role:
-*   **`DIOCESE_COORDINATOR`**: Unrestricted reads/writes across all parishes, users, analytics, and audit logs.
-*   **`PRIEST`**: Scoped view/edit of assigned parish entries, calendar events, and presiding priest assignment confirmations.
-*   **`SECRETARY`**: Scoped view/edit of assigned parish document requests, scheduling requests, mass schedules, custom events, settings, and availabilities.
-*   **`PARISHIONER`**: View/edit of own document requests, appointment scheduling, and profile updates.
+The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`. Staff access is parish-scoped where applicable; the coordinator is cross-parish. A successful response is normally `{ "success": true, "data": ... }`; errors normally provide `success`, `message`, and optional `errors`. List endpoints may return pagination metadata alongside items.
 
----
+## Public and authentication routes
 
-## 2. Standardized Response Formats
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/health` | Public | API and database health status. |
+| GET | `/auth/profile` | Authenticated | Get the signed-in user profile. |
+| PUT | `/auth/profile` | Authenticated | Update the signed-in profile. |
+| POST | `/auth/login` | Authenticated | Provision or resolve the Firebase-authenticated user session. |
+| POST | `/auth/register` | Authenticated | Register/complete a user record after Firebase authentication. |
+| POST | `/auth/legal-acceptance` | Authenticated | Record accepted terms/privacy versions. |
+| POST | `/auth/resend-verification` | Rate-limited | Request a verification-email resend. |
 
-All API responses follow a uniform JSON structure.
+## Parish directory and configuration
 
-### Success Envelope (Collection/List)
-Collection and list endpoints return a paginated envelope under the `data` property:
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/parishes` | Authenticated | List active/visible parish directory records. |
+| GET | `/parishes/:id` | Authenticated | Get parish details. |
+| POST | `/parishes` | Coordinator | Create a parish. |
+| PUT | `/parishes/:id` | Coordinator | Update general parish data. |
+| DELETE | `/parishes/:id` | Coordinator | Archive a parish. |
+| POST | `/parishes/:id/restore` | Coordinator | Restore an archived parish. |
+| GET | `/parishes/map-config` | Coordinator | Retrieve map configuration. |
+| PATCH | `/parishes/map-config/batch` | Coordinator | Save a validated, rate-limited map configuration batch. |
+| PATCH | `/parishes/:id/settings` | Staff | Update parish settings, constrained to staff tenancy. |
+| PUT | `/parishes/:id/settings` | Staff | Same settings update path for clients using PUT. |
+| POST | `/parishes/:id/payment-qr` | Staff | Upload a payment QR image (`qrImage`, 2 MB limit). |
+| DELETE | `/parishes/:id/payment-qr` | Staff | Remove the payment QR image. |
+| POST | `/parishes/:id/images` | Coordinator | Upload a directory image (`image`, 5 MB limit). |
 
-```json
-{
-  "success": true,
-  "data": {
-    "items": [ ... ],
-    "total": 48,
-    "page": 1,
-    "limit": 25,
-    "totalPages": 2
-  }
-}
-```
+`GET /document-requirements` and `GET /document-requirements/:type` expose document metadata. Both optionally accept `type` and/or `parishId` as appropriate.
 
-### Success Envelope (Single Resource)
-Single resource requests return the object directly under `data`:
-```json
-{
-  "success": true,
-  "data": { ... }
-}
-```
+## Parishioner document requests and payment
 
-### Error Envelope
-Validation failures, authentication errors, not founds, or concurrency conflicts return:
-```json
-{
-  "success": false,
-  "message": "Validation failed.",
-  "errors": [
-    {
-      "field": "email",
-      "message": "Invalid email format"
-    }
-  ]
-}
-```
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| POST | `/requests` | Parishioner | Create a validated document-request draft. |
+| POST | `/requests/:id/submit` | Owner | Submit a draft. |
+| POST | `/requests/:id/cancel` | Owner | Cancel an eligible request. |
+| GET | `/requests` | Owner | List the caller’s requests. |
+| GET | `/requests/:id` | Owner | Get a request by ID. |
+| GET | `/requests/tracking/:trackingNumber` | Owner | Get a request by tracking number. |
+| POST | `/requests/:id/files` | Owner | Upload up to five supporting files in `files`. |
+| POST | `/requests/:id/receipt` | Owner | Upload one payment receipt in `receipt`; rate-limited. |
+| POST | `/requests/:id/resubmit-corrections` | Owner | Resubmit a corrected request. |
+| GET | `/payment/configuration` | Authenticated | Resolve payment settings for the caller’s context. |
+| GET | `/document-requests` | Staff | List processable document requests. |
+| PATCH | `/document-requests/:id/status` | Staff | Apply a validated workflow/status change. |
 
----
+Supporting uploads allow PDF, PNG, JPEG, and WebP, up to 5 MB each. Receipts accept JPEG or PNG only, up to 5 MB; HEIC/HEIF and PDFs are rejected. A receipt is stored in R2, creates payment/OCR records, and moves the request to `PAYMENT_UNDER_REVIEW`. OCR enriches the evidence asynchronously; staff still performs approval or correction handling.
 
-## 3. Endpoint Specifications
+## Scheduling, availability, and calendar
 
-### 3.1 Authentication & Profile (`/api/v1/auth`)
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/schedule-requests` | Authenticated | List scheduling requests in the caller’s scope. |
+| POST | `/schedule-requests` | Authenticated | Create a validated schedule request. |
+| GET | `/schedule-requests/available-slots` | Authenticated | Calculate available slots. |
+| PATCH | `/schedule-requests/:id/status` | Authorized workflow participant | Update request status. |
+| POST | `/schedule-requests/:id/propose-reschedule` | Staff | Propose a new schedule. |
+| POST | `/schedule-requests/:id/respond-reschedule` | Parishioner | Accept or decline a proposal. |
+| POST | `/schedule-requests/:id/assign-priest` | Staff | Assign a priest. |
+| POST | `/schedule-requests/:id/priest-respond` | Priest | Accept or reject an assignment. |
+| GET | `/parish-availabilities` | Authenticated | List closure/leave/full-booked records. |
+| POST | `/parish-availabilities` | Staff | Create an availability block. |
+| DELETE | `/parish-availabilities/:id` | Staff | Delete an availability block. |
+| GET | `/calendar/events` | Authenticated | Retrieve calendar events in the caller’s scope. |
+| GET | `/mass-schedules/:parishId` | Authenticated staff | List recurring mass templates. |
+| POST | `/mass-schedules/:parishId` | Secretary | Upsert a mass template. |
+| DELETE | `/mass-schedules/:id` | Secretary | Delete a template. |
+| POST | `/mass-schedules/:parishId/reset` | Secretary | Reset parish templates. |
+| POST | `/mass-schedules/:id/priest-respond` | Priest | Respond to template assignment. |
+| GET | `/parish-events/all` | Authenticated | Get the parishioner discovery feed. |
+| GET | `/parish-events/:parishId` | Authenticated | List parish events within the enforced caller scope. |
+| POST | `/parish-events` | Secretary/Coordinator | Create a parish event. |
+| PUT/PATCH | `/parish-events/:id` | Secretary/Coordinator | Update an event. |
+| DELETE | `/parish-events/:id` | Secretary/Coordinator | Remove an event. |
+| POST | `/parish-events/:id/priest-respond` | Priest | Respond to an event assignment. |
 
-#### JIT Authentication & Login
-*   **Route**: `POST /api/v1/auth/login`
-*   **Roles**: All authenticated users.
-*   **Description**: Validates Firebase token, links pre-provisioned staff UIDs on first login, and registers JIT parishioners. Supports `rememberMe` mapping to calculate session limits.
-*   **Request Body**:
-```json
-{
-  "rememberMe": true
-}
-```
-*   **Response**: `200 OK` with session DTO and user profile.
+## Administration, notifications, and reporting
 
-#### Get Active Profile
-*   **Route**: `GET /api/v1/auth/profile`
-*   **Roles**: All authenticated users.
-*   **Response**: `200 OK` with profile object.
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/dashboard/stats`, `/dashboard/schedule`, `/dashboard/alerts` | Authenticated | Role-scoped dashboard data. |
+| GET | `/notifications` | Authenticated | List caller notifications. |
+| PATCH | `/notifications/read-all` | Authenticated | Mark all caller notifications read. |
+| PATCH | `/notifications/:id/read` | Authenticated | Mark one notification read. |
+| GET | `/users` | Coordinator; staff only for priest directory | List users. |
+| POST | `/users` | Coordinator | Create a user. |
+| PUT | `/users/:id` | Coordinator | Update a user. |
+| PUT | `/users/:id/color` | Coordinator/Secretary | Update calendar/display color. |
+| POST | `/users/:id/disable`, `/users/:id/enable` | Coordinator | Change user status. |
+| POST | `/users/:id/reset-password` | Coordinator | Trigger password reset, rate-limited. |
+| GET | `/diocese/stats`, `/diocese/activity`, `/diocese/notifications` | Coordinator | Diocese dashboard data. |
+| GET | `/analytics/overview`, `/analytics/sacraments`, `/analytics/documents`, `/analytics/parishes` | Coordinator | Analytics datasets. |
+| GET | `/activity-log`, `/activity-log/action-types` | Coordinator | View audit records and filters. |
+| POST | `/activity-log/archive`, `/archive-all`, `/restore`, `/restore-all`, `/purge` | Coordinator | Administer audit-log retention. |
 
-#### Update Profile Details
-*   **Route**: `PUT /api/v1/auth/profile`
-*   **Roles**: All authenticated users.
-*   **Request Body**:
-```json
-{
-  "fullName": "Elena Cruz-Santos",
-  "contactNumber": "09171234567",
-  "address": "San Carlos City"
-}
-```
+## Integration notes
 
----
-
-### 3.2 Parish Administration (`/api/v1/parishes`)
-
-#### List Parishes
-*   **Route**: `GET /api/v1/parishes`
-*   **Roles**: Public / All roles.
-*   **Parameters**: `page`, `limit`, `search`, `type`, `status`
-*   **Response**: List of parish metadata DTOs.
-
-#### Get Parish By ID / Slug
-*   **Route**: `GET /api/v1/parishes/:id`
-*   **Roles**: All roles.
-
-#### Update Parish Settings
-*   **Route**: `PATCH /api/v1/parishes/:id/settings`
-*   **Roles**: `DIOCESE_COORDINATOR`, `SECRETARY` (only for assigned parish)
-*   **Request Body**:
-```json
-{
-  "documentSettings": { "BAPTISMAL_CERTIFICATE": { "price": 100 } },
-  "eventSettings": {
-    "availableEvents": ["BAPTISM", "WEDDING", "CONFIRMATION"],
-    "capacitySettings": { "slotCapacity": 2, "dailyLimit": 10 },
-    "timeSlots": ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]
-  },
-  "officeHours": { "Monday": { "openTime": "08:00 AM", "closeTime": "05:00 PM", "isClosed": false } },
-  "availableDocuments": ["BAPTISMAL_CERTIFICATE", "MARRIAGE_CERTIFICATE"],
-  "venueCapacity": 200,
-  "paymentQrEnabled": true
-}
-```
-
-#### Upload Payment QR Code
-*   **Route**: `POST /api/v1/parishes/:id/payment-qr`
-*   **Roles**: `DIOCESE_COORDINATOR`, `SECRETARY`
-*   **Content-Type**: `multipart/form-data` (`file` field, max 5MB image).
-
-#### Delete Payment QR Code
-*   **Route**: `DELETE /api/v1/parishes/:id/payment-qr`
-*   **Roles**: `DIOCESE_COORDINATOR`, `SECRETARY`
-
-#### Batch Update Map Configuration
-*   **Route**: `PATCH /api/v1/parishes/map`
-*   **Roles**: `DIOCESE_COORDINATOR`
-*   **Request Body**:
-```json
-{
-  "updates": [
-    {
-      "id": 1,
-      "latitude": 10.485,
-      "longitude": 123.415,
-      "mapZoom": 14,
-      "pinColor": "#7B1C2A",
-      "showLabel": true
-    }
-  ]
-}
-```
-
----
-
-### 3.3 Document Requests (`/api/v1/document-requests`)
-
-#### List Document Requests
-*   **Route**: `GET /api/v1/document-requests`
-*   **Roles**: `DIOCESE_COORDINATOR`, `SECRETARY`, `PARISHIONER` (scoped to own requests)
-*   **Parameters**: `page`, `limit`, `search`, `status`, `parishId`, `documentType`
-
-#### Create Document Request (Draft with Fee Snapshot)
-*   **Route**: `POST /api/v1/document-requests`
-*   **Roles**: `PARISHIONER`
-*   **Description**: Creates a draft document request and **snapshots the authoritative fee** based on parish configuration/rates.
-*   **Request Body**:
-```json
-{
-  "parishId": 2,
-  "applicantName": "Juan Dela Cruz",
-  "relationship": "Self",
-  "documentType": "BAPTISMAL_CERTIFICATE",
-  "purpose": "Employment / Passport"
-}
-```
-
-#### Submit Document Request Draft
-*   **Route**: `POST /api/v1/document-requests/:id/submit`
-*   **Roles**: `PARISHIONER`
-
-#### Update Request Status & Corrections
-*   **Route**: `PATCH /api/v1/document-requests/:id/status`
-*   **Roles**: `SECRETARY`, `DIOCESE_COORDINATOR`
-*   **Request Body**:
-```json
-{
-  "status": "NEEDS_CORRECTION",
-  "correctionNote": "Please upload a clearer scan of the Government ID.",
-  "correctionRequirementIds": ["valid_id"]
-}
-```
-
----
-
-### 3.4 Payment Proof & OCR Processing (`/api/v1/payment`)
-
-#### Submit Payment Proof
-*   **Route**: `POST /api/v1/payment/proof`
-*   **Roles**: `PARISHIONER`
-*   **Content-Type**: `multipart/form-data` (`receipt` image file, `requestId`, `provider`, `referenceNumber`)
-*   **Description**: Uploads raw receipt to Cloudflare R2, executes Sharp image optimization, runs OCR parsing, and records `OcrResult` with confidence scores.
-
-#### Verify / Reject Payment
-*   **Route**: `POST /api/v1/payment/verify`
-*   **Roles**: `SECRETARY`, `DIOCESE_COORDINATOR`
-*   **Request Body**:
-```json
-{
-  "requestId": 14,
-  "status": "VERIFIED",
-  "remarks": "GCash reference 10023456789 verified."
-}
-```
-
----
-
-### 3.5 Sacramental Scheduling (`/api/v1/schedule-requests`)
-
-#### Query Available Time Slots
-*   **Route**: `GET /api/v1/schedule-requests/available-slots`
-*   **Roles**: All authenticated users.
-*   **Query Parameters**:
-  - `parishId` (required, e.g. `2`)
-  - `date` (required, ISO `YYYY-MM-DD`, e.g. `2026-08-25`)
-  - `eventType` (optional, e.g. `WEDDING`, `BAPTISM`)
-*   **Rules Enforced**:
-  - Returns `400` if date is in the past or parish is closed on the day of week.
-  - Returns `[]` if event type is disabled in `eventSettings.availableEvents`.
-  - Filters out slots that reached `capacitySettings.slotCapacity`.
-  - Returns `[]` if total daily bookings reached `capacitySettings.dailyLimit`.
-*   **Response**: Array of available slot strings (e.g. `["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]`).
-
-#### Book Sacramental Schedule
-*   **Route**: `POST /api/v1/schedule-requests`
-*   **Roles**: `PARISHIONER`
-*   **Description**: Atomically reserves a time slot inside a **Prisma Serializable transaction**.
-*   **Request Body**:
-```json
-{
-  "parishId": 2,
-  "serviceName": "Baptism",
-  "date": "2026-08-25",
-  "timeSlot": "09:30 AM",
-  "location": "Parish Sanctuary"
-}
-```
-
-#### Propose Reschedule (Parish Staff)
-*   **Route**: `PATCH /api/v1/schedule-requests/:id/propose-reschedule`
-*   **Roles**: `SECRETARY`, `DIOCESE_COORDINATOR`
-*   **Request Body**:
-```json
-{
-  "proposedDate": "2026-08-27",
-  "proposedTime": "10:00 AM",
-  "rescheduleReason": "Priest pastoral recollection conflict."
-}
-```
-
-#### Respond to Proposed Reschedule (Parishioner)
-*   **Route**: `POST /api/v1/schedule-requests/:id/respond-reschedule`
-*   **Roles**: `PARISHIONER`
-*   **Request Body**:
-```json
-{
-  "accept": true
-}
-```
-
----
-
-### 3.6 Calendar & Mass Schedules (`/api/v1/calendar`, `/api/v1/mass-schedules`, `/api/v1/parish-events`)
-
-#### Get Parish Calendar Feed
-*   **Route**: `GET /api/v1/calendar`
-*   **Roles**: Staff & Coordinator. Scoped to parish.
-*   **Parameters**: `start`, `end`, `parishId`
-
-#### Mass Schedule Template Management
-*   `GET /api/v1/mass-schedules` — List recurring weekly templates.
-*   `POST /api/v1/mass-schedules` — Create/update Mass template.
-*   `DELETE /api/v1/mass-schedules/:id` — Delete template.
-
-#### Priest Assignment Confirmation
-*   **Route**: `PATCH /api/v1/schedules/:id/priest-response` (or `/mass-schedules/:id/priest-response`)
-*   **Roles**: `PRIEST`
-*   **Request Body**:
-```json
-{
-  "status": "CONFIRMED",
-  "reason": "Available to preside."
-}
-```
-
----
-
-### 3.7 Activity Logs & Audits (`/api/v1/activity-log`)
-
-#### List Activity Logs
-*   **Route**: `GET /api/v1/activity-log`
-*   **Roles**: `DIOCESE_COORDINATOR`
-*   **Parameters**: `page`, `limit`, `search`, `role`, `parishId`, `archived`
-
-#### Archive / Restore / Purge Logs
-*   `POST /api/v1/activity-log/archive` — Archive logs older than cutoff date.
-*   `POST /api/v1/activity-log/restore` — Restore archived logs.
-*   `DELETE /api/v1/activity-log/purge` — Permanently delete archived logs (requires `ENABLE_ACTIVITY_PURGE=true`).
+- Portal base URLs are `VITE_API_BASE_URL` (parishioner portal) and `VITE_API_URL` (admin portal).
+- Do not add a route without registering it in `server.js`, protecting it with authentication/role middleware, and documenting its payload validation.
+- Upload URLs returned by R2 are public URLs; the backend does not currently implement signed R2 URLs.
