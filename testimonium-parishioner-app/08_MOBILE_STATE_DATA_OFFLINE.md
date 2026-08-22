@@ -37,26 +37,28 @@ Do not install it before auditing current dependencies.
 
 If another server-state library is already established, keep one approach.
 
-## 3. Query-key discipline
+## 3. Query-key discipline (Phase 2 Implemented Conventions)
 
-Conceptual keys:
+Structured feature-owned keys:
 
 ```text
-['profile', userUid]
-['parishes', filters]
-['parish', parishId]
-['requests', userUid, filters]
-['request', requestId]
-['request-history', requestId]
-['payment-config', requestIdOrContext]
-['schedule-requests', userUid]
-['schedule', scheduleId]
-['available-slots', parishId, eventType, date]
-['events', year, month]
-['notifications', userUid, page]
+parishKeys.all:                 ['parishes']
+parishKeys.lists():             ['parishes', 'list']
+parishKeys.list(filters):       ['parishes', 'list', { search, type, page, limit }]
+parishKeys.details():           ['parishes', 'detail']
+parishKeys.detail(id):          ['parishes', 'detail', id]
+
+eventKeys.all:                  ['events']
+eventKeys.months():             ['events', 'month']
+eventKeys.month({ year, month }): ['events', 'month', { year, month }]
 ```
 
-Identity-sensitive keys should not leak across users.
+Identity-sensitive keys continue to use UID prefixing (`privateQueryKey`) and are purged on logout:
+```ts
+await queryClient.cancelQueries();
+queryClient.clear();
+```
+
 
 ## 4. Cache clearing
 

@@ -47,62 +47,29 @@ Events can appear:
 
 Do not let authenticated app tabs render before backend profile bootstrap is resolved.
 
-## 4. App route group
+## 4. App route group (Phase 2 Implemented Structure)
 
-### Home
+The authenticated `(app)` route group uses a root `Stack` owning modal/drill-down destinations above a five-tab `(tabs)` navigator:
+
 ```text
-/home
-/home/notifications
-/home/event/:eventId
+app/(app)/
+  _layout.tsx                       # Root Stack (headerShown: false)
+  notifications.tsx                 # Notification shell destination
+  parishes/[parishId].tsx           # Parish detail screen (above tabs)
+  (tabs)/
+    _layout.tsx                     # 5-Tab navigator (Ionicons, primary #7B1C2A active tint)
+    (home)/index.tsx                # Home Screen
+    (requests)/index.tsx            # Document Requests minimal shell (Phase 3)
+    (schedule)/index.tsx            # Schedule minimal shell (Phase 5)
+    (parishes)/index.tsx            # Parish Directory Screen
+    (profile)/index.tsx             # Profile & Sign-Out Screen
 ```
 
-### Requests
-```text
-/requests
-/requests/new
-/requests/new/parish
-/requests/new/document-type
-/requests/new/requirements
-/requests/new/details
-/requests/new/attachments
-/requests/new/review
-/requests/:requestId
-/requests/:requestId/payment
-/requests/:requestId/receipt
-/requests/:requestId/corrections
-/requests/:requestId/history
-```
+### Drill-down navigation
+- Tapping a parish card in Home or Directory pushes to `/parishes/:parishId` (sits above tabs with safe back navigation).
+- Tapping the notification bell in Home header pushes to `/notifications` (sits above tabs).
+- Back navigation uses `navigateBackOrReplace` with deterministic tab-root fallbacks (`/(app)/(tabs)/(parishes)` or `/(app)/(tabs)/(home)`).
 
-Route granularity may be implemented as nested steps or one stateful flow depending on actual navigation library. Preserve conceptual boundaries even if URLs differ.
-
-### Schedule
-```text
-/schedule
-/schedule/new
-/schedule/new/parish
-/schedule/new/type
-/schedule/new/date
-/schedule/new/slot
-/schedule/new/review
-/schedule/:scheduleId
-/schedule/:scheduleId/reschedule-response
-```
-
-### Parishes
-```text
-/parishes
-/parishes/map
-/parishes/:parishId
-/parishes/:parishId/events
-```
-
-### Profile
-```text
-/profile
-/profile/edit
-/profile/legal
-/profile/session
-```
 
 ## 5. Tab reset behavior
 

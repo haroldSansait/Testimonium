@@ -1,9 +1,17 @@
-import { Tabs } from "expo-router";
-import { colors } from "@/theme/tokens";
-export default function AppLayout() { return <Tabs screenOptions={{ headerStyle: { backgroundColor: colors.surface }, headerTintColor: colors.primary, tabBarActiveTintColor: colors.primary }}>
-  <Tabs.Screen name="(home)" options={{ title: "Home" }} />
-  <Tabs.Screen name="(requests)" options={{ title: "Requests" }} />
-  <Tabs.Screen name="(schedule)" options={{ title: "Schedule" }} />
-  <Tabs.Screen name="(parishes)" options={{ title: "Parishes" }} />
-  <Tabs.Screen name="(profile)" options={{ title: "Profile" }} />
-</Tabs>; }
+import { Stack } from "expo-router";
+
+export default function AppRootStackLayout() {
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="parishes/[parishId]"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="notifications"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+    </Stack>
+  );
+}

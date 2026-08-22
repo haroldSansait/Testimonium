@@ -1,19 +1,25 @@
 import React, { useState } from "react";
 import {
   Pressable,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput as NativeTextInput,
   type TextInputProps as NativeTextInputProps,
   View,
+  ViewStyle,
 } from "react-native";
-import { colors, radii, spacing, typography } from "@/theme/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export interface TextInputProps extends NativeTextInputProps {
-  label: string;
+  label?: string;
   error?: string;
   helperText?: string;
   isPassword?: boolean;
+  leftIcon?: keyof typeof Ionicons.glyphMap;
+  rightIcon?: React.ReactNode;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 export const TextInput: React.FC<TextInputProps> = ({
@@ -22,6 +28,9 @@ export const TextInput: React.FC<TextInputProps> = ({
   helperText,
   isPassword = false,
   secureTextEntry,
+  leftIcon,
+  rightIcon,
+  containerStyle,
   style,
   onFocus,
   onBlur,
@@ -43,10 +52,12 @@ export const TextInput: React.FC<TextInputProps> = ({
   };
 
   return (
-    <View style={styles.group}>
-      <Text style={styles.label} allowFontScaling>
-        {label}
-      </Text>
+    <View style={[styles.group, containerStyle]}>
+      {label ? (
+        <Text style={styles.label} allowFontScaling>
+          {label}
+        </Text>
+      ) : null}
 
       <View
         style={[
@@ -55,8 +66,19 @@ export const TextInput: React.FC<TextInputProps> = ({
           Boolean(error) && styles.errorBorder,
         ]}
       >
+        {leftIcon ? (
+          <Ionicons
+            name={leftIcon}
+            size={20}
+            color={colors.textSecondary}
+            style={styles.leftIcon}
+            accessibilityElementsHidden={true}
+            importantForAccessibility="no"
+          />
+        ) : null}
+
         <NativeTextInput
-          accessibilityLabel={label}
+          accessibilityLabel={label || props.placeholder || "Text input"}
           style={[styles.input, style]}
           placeholderTextColor={colors.textSecondary}
           secureTextEntry={shouldHideText}
@@ -65,6 +87,8 @@ export const TextInput: React.FC<TextInputProps> = ({
           allowFontScaling
           {...props}
         />
+
+        {rightIcon}
 
         {isPassword && (
           <Pressable
@@ -102,9 +126,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   label: {
-    fontSize: typography.caption,
+    ...fontStyles.captionMedium,
     color: colors.textPrimary,
-    fontWeight: "600",
   },
   inputContainer: {
     minHeight: 48,
@@ -122,10 +145,13 @@ const styles = StyleSheet.create({
   errorBorder: {
     borderColor: colors.danger,
   },
+  leftIcon: {
+    marginRight: spacing.xs,
+  },
   input: {
     flex: 1,
     color: colors.textPrimary,
-    fontSize: typography.body,
+    ...fontStyles.body,
     paddingVertical: spacing.sm,
   },
   toggleButton: {
@@ -136,17 +162,16 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
   },
   toggleText: {
-    fontSize: typography.caption,
-    fontWeight: "600",
+    ...fontStyles.captionMedium,
     color: colors.primary,
   },
   errorText: {
-    fontSize: 13,
+    ...fontStyles.caption,
     color: colors.danger,
     marginTop: 2,
   },
   helperText: {
-    fontSize: 13,
+    ...fontStyles.caption,
     color: colors.textSecondary,
     marginTop: 2,
   },

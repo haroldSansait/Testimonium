@@ -18,13 +18,14 @@
 
 ---
 
-## 2. Phase 2 — Mobile Shell, Home & Parish Directory (STATUS: READY FOR EXECUTION)
-### Scope
-- Bottom tabs navigation (`Home`, `Parishes`, `Requests`, `Appointments`, `Profile`).
-- Home screen: Parishioner welcome banner, active sacrament requests quick tracker, upcoming appointments card, parish announcements carousel.
-- Parish directory: Browse parishes within Diocese of San Carlos, search by municipality/name, view parish details, contact information, mass schedules, and sacraments offered.
-- Events preview: Diocese calendar highlights.
-- Notification shell: Header notification bell with unread badge.
+## 2. Phase 2 — Mobile Shell, Home & Parish Directory (STATUS: COMPLETED - STATIC VERIFIED; PHYSICAL RUNTIME PENDING)
+### Scope Implemented
+- **2A:** Authenticated shell with root `Stack` above five-tab navigator (`Home`, `Requests`, `Schedule`, `Parishes`, `Profile`), warm ecclesiastical design tokens (`#7B1C2A` canonical primary), `@expo/vector-icons`, and reusable UI foundation (`AppHeader`, `Card`, `IconButton`, `Badge`, `SectionHeader`, `Skeleton`, `EmptyState`, `InlineError`).
+- **2B:** Parish directory with debounced search, server-supported type filtering (`Parish`, `Quasi-Parish`, `Mission Station`), pagination, and pull-to-refresh. Parish detail screen with safe contact actions (`tel:`, `mailto:`, `geo:`/Maps), structured office hours, and safe back navigation fallback.
+- **2C:** Home screen with personalized parishioner greeting from authenticated profile, Explore Parishes entry, and current-month public event preview (`GET /api/v1/parish-events/all?year=YYYY&month=M`) with date-only parsing, 12-hour chronological sorting, and section-local error retry. Shared upcoming event preview on parish detail.
+- **2D:** Header notification bell with accessible label and dedicated `/notifications` destination shell.
+- **2E:** Intentional deferred tab shells for Requests, Schedule, and Profile (with safe sign-out and cache clearing). Comprehensive automated test suites (14 suites, 75 tests passing), lint, typecheck, and static Expo Android bundle export.
+
 
 ---
 

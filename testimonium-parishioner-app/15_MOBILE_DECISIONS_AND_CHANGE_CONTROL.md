@@ -93,25 +93,30 @@ Evaluate Maestro or Detox once native release build pipelines are established.
 - **Decision:** `PUT /auth/profile` returns updated `BackendUserProfile`, which is committed directly without follow-up `GET`.
 - **Rationale:** Prevents redirect loops on profile completion.
 
-### M-018 — Native Google Sign-In local session sign-out
+### M-019 — Authenticated Route Stack & Tab Navigator Hierarchy
 **Status:** ACCEPTED
-- **Decision:** Use `@react-native-google-signin/google-signin` adapter. Execute local `GoogleSignin.signOut()` before an explicit Google login attempt to avoid retaining previous local SDK session state. `revokeAccess()` is NOT used.
-- **Verification Status:** Actual Google account-chooser behavior remains PENDING NATIVE RUNTIME VERIFICATION.
+- **Decision:** Authenticated `(app)` route group uses a root `Stack` owning modal and drill-down destinations (`parishes/[parishId].tsx`, `notifications.tsx`) above a 5-tab navigator `(tabs)`.
+- **Rationale:** Ensures parish details and notification shells cleanly sit above the bottom tab bar while retaining deterministic tab-root back navigation fallbacks.
 
-## 4. Phase 1 Implementation Reconciliation - 20 August 2026
+### M-020 — Notification Badge Deferral & Bell Destination Shell
+**Status:** ACCEPTED
+- **Decision:** Header bell navigates to a dedicated `/notifications` destination shell. Unread count badges and polling are deferred to Phase 6.
+- **Rationale:** Backend provides unpaginated notification listings and lacks a dedicated lightweight unread-count endpoint. Avoids excessive polling or inaccurate client counts.
 
-- **Static & Build Verification:**
+### M-021 — Shared Monthly Public Event Query Discovery
+**Status:** ACCEPTED
+- **Decision:** Discovery events reuse `GET /api/v1/parish-events/all?year=YYYY&month=M`. Home displays up to 3 upcoming public events, and Parish Detail filters the same month query client-side by `parishId`.
+- **Rationale:** `GET /parish-events/:parishId` is staff-scoped with multi-tenant guards, whereas `/parish-events/all` is the sanitized public parishioner discovery endpoint. Reusing the monthly query maximizes TanStack Query cache sharing.
+
+## 4. Implementation Reconciliation Snapshot - 22 August 2026
+
+- **Phase 1 Authentication & Baseline:**
+  - Runtime verification on physical Android: ALL PASS (Email/password login/logout, Google Sign-In/logout, backend profile commit, ACTIVE parishioner gate).
+- **Phase 2 Mobile Shell, Home & Parish Directory:**
   - `STATIC VERIFIED` — PASS
-  - `TYPECHECK` — PASS
-  - `UNIT/INTEGRATION TESTS` — PASS (8 suites, 31 tests)
-  - `LINT` — PASS (0 errors, 0 warnings)
-  - `EXPO DOCTOR` — PASS (21/21 checks)
-  - `JS/METRO ANDROID BUNDLE` — PASS (`npx expo export --platform android`)
+  - `TYPECHECK` — PASS (`npm run typecheck` 0 errors)
+  - `AUTOMATED TESTS` — PASS (14 suites, 75 tests passing)
+  - `LINT` — PASS (`eslint . --max-warnings=0` 0 errors, 0 warnings)
+  - `JS/METRO ANDROID EXPORT` — PASS (`npx expo export --platform android` 1475 modules bundled cleanly)
   - `GIT DIFF CHECK` — PASS
-- **Runtime Verification (Pending Device/Native Environment):**
-  - `ANDROID NATIVE COMPILE` — PENDING (Requires Gradle / EAS Build)
-  - `EMULATOR` — PENDING
-  - `PHYSICAL DEVICE` — PENDING
-  - `REAL FIREBASE/BACKEND` — PENDING
-  - `GOOGLE SIGN-IN RUNTIME` — PENDING (Requires Android OAuth client with SHA-1 in Firebase Console)
-  - `iOS` — PENDING
+  - `PHYSICAL ANDROID RUNTIME VERIFICATION` — PENDING USER TESTING

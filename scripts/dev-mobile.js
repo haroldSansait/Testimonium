@@ -98,6 +98,151 @@ function safeBodyExcerpt(body) {
   return normalized.length > 240 ? `${normalized.slice(0, 237)}...` : normalized;
 }
 
+function isValidIpv4(ip) {
+  if (typeof ip !== "string") return false;
+  const match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+  return match.slice(1).every((octet) => {
+    const num = Number(octet);
+    return num >= 0 && num <= 255 && String(num) === octet;
+  });
+}
+
+const DOH_RESOLVERS = [
+  {
+    name: "Cloudflare (domain)",
+    url: "https://cloudflare-dns.com/dns-query",
+    headers: { Accept: "application/dns-json" },
+  },
+  {
+    name: "Cloudflare (104.16.249.249)",
+    url: "https://cloudflare-dns.com/dns-query",
+    connectHost: "104.16.249.249",
+    servername: "cloudflare-dns.com",
+    hostHeader: "cloudflare-dns.com",
+    headers: { Accept: "application/dns-json" },
+  },
+  {
+    name: "Cloudflare (104.16.248.249)",
+    url: "https://cloudflare-dns.com/dns-query",
+    connectHost: "104.16.248.249",
+    servername: "cloudflare-dns.com",
+    hostHeader: "cloudflare-dns.com",
+    headers: { Accept: "application/dns-json" },
+  },
+  {
+    name: "AliDNS (223.5.5.5)",
+    url: "https://dns.alidns.com/resolve",
+    connectHost: "223.5.5.5",
+    servername: "dns.alidns.com",
+    hostHeader: "dns.alidns.com",
+    headers: { Accept: "application/json" },
+  },
+];
+
+function queryDohResolver(hostname, resolver, timeoutMs = 3_000) {
+  return new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = new URL(resolver.url);
+    } catch (err) {
+      resolve({ ok: false, errorName: err.name, errorMessage: err.message, resolver: resolver.name });
+      return;
+    }
+
+    const typeParam = resolver.url.includes("alidns.com") ? "type=1" : "type=A";
+    const queryPath = `${parsed.pathname}?name=${encodeURIComponent(hostname)}&${typeParam}`;
+    const headers = { Accept: "application/dns-json", ...(resolver.headers || {}) };
+    if (resolver.hostHeader) headers.Host = resolver.hostHeader;
+
+    const req = https.get(
+      {
+        protocol: "https:",
+        hostname: resolver.connectHost || parsed.hostname,
+        port: parsed.port || 443,
+        path: queryPath,
+        headers,
+        servername: resolver.servername || parsed.hostname,
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          if (body.length < 16_384) body += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            resolve({
+              ok: false,
+              statusCode: res.statusCode,
+              errorCode: `DOH_HTTP_${res.statusCode}`,
+              errorMessage: `DoH resolver ${resolver.name} returned HTTP ${res.statusCode}`,
+              resolver: resolver.name,
+            });
+            return;
+          }
+          try {
+            const payload = JSON.parse(body);
+            const answers = Array.isArray(payload.Answer) ? payload.Answer : [];
+            const validIps = answers
+              .filter((ans) => ans && ans.type === 1 && isValidIpv4(ans.data))
+              .map((ans) => ans.data);
+
+            if (validIps.length > 0) {
+              resolve({ ok: true, address: validIps[0], allAddresses: validIps, resolver: resolver.name });
+            } else if (payload.Status === 3) {
+              resolve({
+                ok: false,
+                errorCode: "DNS_NXDOMAIN",
+                errorMessage: `Hostname ${hostname} not yet published in DNS (NXDOMAIN)`,
+                resolver: resolver.name,
+              });
+            } else {
+              resolve({
+                ok: false,
+                errorCode: "DNS_NO_A_RECORD",
+                errorMessage: `No A records returned for ${hostname} (status ${payload.Status ?? "unknown"})`,
+                resolver: resolver.name,
+              });
+            }
+          } catch (parseError) {
+            resolve({
+              ok: false,
+              errorName: parseError.name,
+              errorCode: "DNS_RESPONSE_INVALID",
+              errorMessage: parseError.message,
+              resolver: resolver.name,
+            });
+          }
+        });
+      }
+    );
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(Object.assign(new Error(`DoH lookup timed out after ${timeoutMs}ms`), { code: "ETIMEDOUT" }));
+    });
+    req.on("error", (err) => {
+      resolve({
+        ok: false,
+        errorName: err.name,
+        errorCode: err.code || "DOH_REQUEST_ERROR",
+        errorMessage: err.message,
+        resolver: resolver.name,
+      });
+    });
+  });
+}
+
+async function resolveDohWithFallback(hostname, resolvers = DOH_RESOLVERS) {
+  let lastResult = null;
+  for (const resolver of resolvers) {
+    const res = await queryDohResolver(hostname, resolver);
+    if (res.ok && res.address) return res;
+    lastResult = res;
+  }
+  return lastResult || { ok: false, errorCode: "DOH_FAILED", errorMessage: "All DoH resolvers failed" };
+}
+
 function requestText(url, timeoutMs = 5_000, { connectHost, servername, hostHeader } = {}) {
   return new Promise((resolve) => {
     let parsed;
@@ -114,64 +259,75 @@ function requestText(url, timeoutMs = 5_000, { connectHost, servername, hostHead
     }
     const headers = { Accept: "application/json" };
     if (hostHeader) headers.Host = hostHeader;
-    const request = transport.get({
-      protocol: parsed.protocol,
-      hostname: connectHost || parsed.hostname,
-      port: parsed.port || undefined,
-      path: `${parsed.pathname}${parsed.search}`,
-      headers,
-      servername: servername || undefined,
-    }, (response) => {
-      let body = "";
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => { if (body.length < 4_096) body += chunk; });
-      response.on("end", () => resolve({ url, statusCode: response.statusCode || 0, body, connectedAddress: connectHost }));
-    });
-    request.setTimeout(timeoutMs, () => request.destroy(Object.assign(new Error(`Request timed out after ${timeoutMs}ms`), { code: "ETIMEDOUT" })));
-    request.on("error", (error) => resolve({ url, errorName: error.name, errorMessage: error.message, errorCode: error.code, connectedAddress: connectHost }));
-  });
-}
-
-function resolveWithCloudflareDns(hostname) {
-  return new Promise((resolve) => {
-    const pathName = `/dns-query?name=${encodeURIComponent(hostname)}&type=A`;
-    const request = https.get({
-      hostname: "1.1.1.1",
-      servername: "cloudflare-dns.com",
-      path: pathName,
-      headers: { Host: "cloudflare-dns.com", Accept: "application/dns-json" },
-    }, (response) => {
-      let body = "";
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => { if (body.length < 4_096) body += chunk; });
-      response.on("end", () => {
-        try {
-          const payload = JSON.parse(body);
-          const address = payload.Answer?.find((answer) => answer.type === 1 && /^\d{1,3}(?:\.\d{1,3}){3}$/.test(answer.data))?.data;
-          if (address) resolve({ address });
-          else resolve({ errorName: "DnsResponse", errorCode: payload.Status === 3 ? "DNS_NXDOMAIN" : "DNS_NO_A_RECORD", errorMessage: `Cloudflare DNS status ${payload.Status ?? "unknown"}` });
-        } catch (error) {
-          resolve({ errorName: error.name, errorCode: "DNS_RESPONSE_INVALID", errorMessage: error.message });
-        }
-      });
-    });
-    request.setTimeout(5_000, () => request.destroy(Object.assign(new Error("Cloudflare DNS lookup timed out"), { code: "ETIMEDOUT" })));
-    request.on("error", (error) => resolve({ errorName: error.name, errorCode: error.code, errorMessage: error.message }));
+    const request = transport.get(
+      {
+        protocol: parsed.protocol,
+        hostname: connectHost || parsed.hostname,
+        port: parsed.port || undefined,
+        path: `${parsed.pathname}${parsed.search}`,
+        headers,
+        servername: servername || undefined,
+      },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          if (body.length < 4_096) body += chunk;
+        });
+        response.on("end", () =>
+          resolve({
+            url,
+            statusCode: response.statusCode || 0,
+            body,
+            connectedAddress: connectHost,
+          })
+        );
+      }
+    );
+    request.setTimeout(timeoutMs, () =>
+      request.destroy(Object.assign(new Error(`Request timed out after ${timeoutMs}ms`), { code: "ETIMEDOUT" }))
+    );
+    request.on("error", (error) =>
+      resolve({
+        url,
+        errorName: error.name,
+        errorMessage: error.message,
+        errorCode: error.code,
+        connectedAddress: connectHost,
+      })
+    );
   });
 }
 
 async function requestPublicHealth(url) {
-  const initial = await requestText(url);
-  if (initial.errorCode !== "ENOTFOUND") return initial;
+  const initial = await requestText(url, 4_000);
+  const isDnsError =
+    initial.errorCode === "ENOTFOUND" ||
+    initial.errorCode === "EAI_AGAIN" ||
+    initial.errorCode === "EHOSTUNREACH";
+
+  if (!isDnsError) return initial;
+
   const hostname = new URL(url).hostname;
-  const dnsFallback = await resolveWithCloudflareDns(hostname);
+  const dnsFallback = await resolveDohWithFallback(hostname);
   if (!dnsFallback.address) return { ...initial, dnsFallback };
-  return { ...await requestText(url, 5_000, { connectHost: dnsFallback.address, servername: hostname, hostHeader: hostname }), dnsFallback };
+
+  const directProbe = await requestText(url, 5_000, {
+    connectHost: dnsFallback.address,
+    servername: hostname,
+    hostHeader: hostname,
+  });
+
+  return { ...directProbe, dnsFallback };
 }
 
 function classifyHealthProbe(probe) {
   if (probe.errorName) {
-    return { ready: false, retryable: probe.errorName !== "TypeError" || probe.errorCode !== "ERR_INVALID_URL", reason: `NETWORK_${probe.errorCode || probe.errorName}` };
+    return {
+      ready: false,
+      retryable: probe.errorName !== "TypeError" || probe.errorCode !== "ERR_INVALID_URL",
+      reason: `NETWORK_${probe.errorCode || probe.errorName}`,
+    };
   }
   const excerpt = safeBodyExcerpt(probe.body);
   if (probe.statusCode === 200) {
@@ -198,7 +354,10 @@ async function isHealthy(url) {
 function isPortListening(port) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: "127.0.0.1", port });
-    socket.once("connect", () => { socket.destroy(); resolve(true); });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
     socket.once("error", () => resolve(false));
   });
 }
@@ -208,7 +367,11 @@ function getWindowsPortOwner(port) {
   const command = `$connection = Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | Select-Object -First 1; if ($connection) { $process = Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue; [pscustomobject]@{ pid = $connection.OwningProcess; name = $process.ProcessName } | ConvertTo-Json -Compress }`;
   const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8", windowsHide: true });
   if (result.status !== 0 || !result.stdout.trim()) return null;
-  try { return JSON.parse(result.stdout); } catch { return null; }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
 }
 
 function quoteForWindowsCommandProcessor(value) {
@@ -250,8 +413,10 @@ function isChildAlive(child) {
 function formatReadinessAttempt(attempt, elapsedMs, childAlive, probe, classification) {
   const prefix = `Tunnel readiness #${attempt} +${elapsedMs}ms cloudflared=${childAlive ? "alive" : "stopped"} GET ${probe.url}`;
   const fallback = probe.dnsFallback?.address
-    ? ` via Cloudflare DNS A ${probe.dnsFallback.address}`
-    : probe.dnsFallback?.errorCode ? ` Cloudflare DNS fallback=${probe.dnsFallback.errorCode}` : "";
+    ? ` via DoH A ${probe.dnsFallback.address} (${probe.dnsFallback.resolver || "DoH"})`
+    : probe.dnsFallback?.errorCode
+    ? ` DoH fallback=${probe.dnsFallback.errorCode} (${probe.dnsFallback.resolver || "DoH"})`
+    : "";
   if (probe.errorName) {
     return `${prefix} -> ${classification.reason}: ${probe.errorName}: ${probe.errorMessage}${fallback}`;
   }
@@ -261,7 +426,11 @@ function formatReadinessAttempt(attempt, elapsedMs, childAlive, probe, classific
 
 function independentPublicCheck(url) {
   const command = process.platform === "win32" ? "curl.exe" : "curl";
-  const result = spawnSync(command, ["--silent", "--show-error", "--max-time", "5", "--output", "-", "--write-out", "\n__DEV_MOBILE_HTTP_STATUS__:%{http_code}", url], { encoding: "utf8", windowsHide: true });
+  const result = spawnSync(
+    command,
+    ["--silent", "--show-error", "--max-time", "5", "--output", "-", "--write-out", "\n__DEV_MOBILE_HTTP_STATUS__:%{http_code}", url],
+    { encoding: "utf8", windowsHide: true }
+  );
   if (result.error) return { errorName: result.error.name, errorMessage: result.error.message };
   const stdout = result.stdout || "";
   const stderr = result.stderr || "";
@@ -296,7 +465,13 @@ async function waitForPublicBackend(healthUrl, tunnel, timeoutMs) {
       if (independent.errorName) {
         log(`Independent curl check GET ${healthUrl} -> ${independent.errorName}: ${independent.errorMessage}`);
       } else {
-        log(`Independent curl check GET ${healthUrl} -> HTTP ${independent.statusCode || "none"} exit=${independent.exitCode ?? "unknown"}${independent.errorMessage ? ` error="${independent.errorMessage}"` : ""}${safeBodyExcerpt(independent.body) ? ` body="${safeBodyExcerpt(independent.body)}"` : ""}`);
+        log(
+          `Independent curl check GET ${healthUrl} -> HTTP ${independent.statusCode || "none"} exit=${
+            independent.exitCode ?? "unknown"
+          }${independent.errorMessage ? ` error="${independent.errorMessage}"` : ""}${
+            safeBodyExcerpt(independent.body) ? ` body="${safeBodyExcerpt(independent.body)}"` : ""
+          }`
+        );
       }
     }
     await wait(Math.min(1_000 * 2 ** Math.min(attempt - 1, 3), 8_000));
@@ -307,19 +482,29 @@ async function waitForPublicBackend(healthUrl, tunnel, timeoutMs) {
 function waitForTunnelUrl(child, timeoutMs) {
   return new Promise((resolve, reject) => {
     let output = "";
-    const timeout = setTimeout(() => finish(new LauncherError("TUNNEL_URL_NOT_FOUND", "Cloudflare Quick Tunnel did not publish a URL within two minutes.")), timeoutMs);
+    const timeout = setTimeout(
+      () => finish(new LauncherError("TUNNEL_URL_NOT_FOUND", "Cloudflare Quick Tunnel did not publish a URL within two minutes.")),
+      timeoutMs
+    );
     const onOutput = (chunk) => {
       output += chunk.toString();
       const tunnelUrl = parseQuickTunnelUrl(output);
       if (tunnelUrl) finish(null, tunnelUrl);
     };
-    const onExit = (code, signal) => finish(new LauncherError("TUNNEL_START_FAILED", `cloudflared exited before publishing a tunnel URL (code ${code ?? "unknown"}, signal ${signal ?? "none"}).`));
+    const onExit = (code, signal) =>
+      finish(
+        new LauncherError(
+          "TUNNEL_START_FAILED",
+          `cloudflared exited before publishing a tunnel URL (code ${code ?? "unknown"}, signal ${signal ?? "none"}).`
+        )
+      );
     function finish(error, value) {
       clearTimeout(timeout);
       child.stdout.off("data", onOutput);
       child.stderr.off("data", onOutput);
       child.off("exit", onExit);
-      if (error) reject(error); else resolve(value);
+      if (error) reject(error);
+      else resolve(value);
     }
     child.stdout.on("data", onOutput);
     child.stderr.on("data", onOutput);
@@ -358,14 +543,17 @@ function waitForShutdown(children) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const signalHandler = () => finish();
-    const exits = children.map(({ name }) => () => finish(new LauncherError("PROCESS_EXITED", `${name} stopped unexpectedly.`)));
+    const exits = children.map(({ name }) => () =>
+      finish(new LauncherError("PROCESS_EXITED", `${name} stopped unexpectedly.`))
+    );
     function finish(error) {
       if (settled) return;
       settled = true;
       process.off("SIGINT", signalHandler);
       process.off("SIGTERM", signalHandler);
       children.forEach(({ child }, index) => child.off("exit", exits[index]));
-      if (error) reject(error); else resolve();
+      if (error) reject(error);
+      else resolve();
     }
     process.once("SIGINT", signalHandler);
     process.once("SIGTERM", signalHandler);
@@ -379,19 +567,32 @@ async function main() {
     log("Checking backend...");
     if (!(await isHealthy(HEALTH_URL))) {
       if (await isPortListening(5000)) {
-        throw new LauncherError("BACKEND_UNHEALTHY", "Port 5000 is occupied, but GET /api/v1/health did not report a healthy TESTIMONIUM backend. Stop or fix that process, then retry.");
+        throw new LauncherError(
+          "BACKEND_UNHEALTHY",
+          "Port 5000 is occupied, but GET /api/v1/health did not report a healthy TESTIMONIUM backend. Stop or fix that process, then retry."
+        );
       }
       log("Starting existing TESTIMONIUM backend package...");
-      ownedChildren.push(startChild("backend", npmCommand(), ["run", "dev", "--prefix", "testimonium-backend"], ROOT_DIR, { useWindowsCommandProcessor: true }));
+      ownedChildren.push(
+        startChild("backend", npmCommand(), ["run", "dev", "--prefix", "testimonium-backend"], ROOT_DIR, {
+          useWindowsCommandProcessor: true,
+        })
+      );
       if (!(await waitFor(() => isHealthy(HEALTH_URL), STARTUP_TIMEOUT_MS))) {
-        throw new LauncherError("BACKEND_START_FAILED", "The TESTIMONIUM backend did not become healthy on http://localhost:5000/api/v1/health within two minutes.");
+        throw new LauncherError(
+          "BACKEND_START_FAILED",
+          "The TESTIMONIUM backend did not become healthy on http://localhost:5000/api/v1/health within two minutes."
+        );
       }
     }
     log("Backend ready on http://localhost:5000");
 
     const cloudflared = resolveCloudflared();
     if (!cloudflared) {
-      throw new LauncherError("CLOUDFLARED_NOT_FOUND", "cloudflared was not found on PATH or at C:\\tmp\\testimonium-cloudflared\\cloudflared.exe. Install it on PATH or place it at that path, then retry.");
+      throw new LauncherError(
+        "CLOUDFLARED_NOT_FOUND",
+        "cloudflared was not found on PATH or at C:\\tmp\\testimonium-cloudflared\\cloudflared.exe. Install it on PATH or place it at that path, then retry."
+      );
     }
     log("Starting Cloudflare Quick Tunnel...");
     const tunnel = startChild("cloudflared", cloudflared, ["tunnel", "--url", "http://localhost:5000"], ROOT_DIR);
@@ -410,11 +611,23 @@ async function main() {
     if (await isPortListening(8081)) {
       const owner = getWindowsPortOwner(8081);
       const detail = owner ? ` (${owner.name || "unknown process"}, PID ${owner.pid})` : "";
-      throw new LauncherError("METRO_START_FAILED", `Port 8081 is already in use${detail}. Stop the existing Expo/Metro server if it belongs to another session, then retry. This launcher will not kill it or change ports.`);
+      throw new LauncherError(
+        "METRO_START_FAILED",
+        `Port 8081 is already in use${detail}. Stop the existing Expo/Metro server if it belongs to another session, then retry. This launcher will not kill it or change ports.`
+      );
     }
     log("Starting Expo development server...");
-    ownedChildren.push(startChild("metro", npxCommand(), ["expo", "start", "--dev-client", "--tunnel"], MOBILE_DIR, { useWindowsCommandProcessor: true }));
-    await waitForShutdown(ownedChildren.map((child, index) => ({ name: ["backend", "cloudflared", "metro"][index], child })));
+    ownedChildren.push(
+      startChild("metro", npxCommand(), ["expo", "start", "--dev-client", "--tunnel"], MOBILE_DIR, {
+        useWindowsCommandProcessor: true,
+      })
+    );
+    await waitForShutdown(
+      ownedChildren.map((child, index) => ({
+        name: ["backend", "cloudflared", "metro"][index],
+        child,
+      }))
+    );
   } finally {
     if (ownedChildren.length) {
       log("Stopping launcher-owned processes...");
@@ -430,4 +643,21 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildPublicHealthUrl, classifyHealthProbe, CLOUDFLARED_FALLBACK, createCommandInvocation, derivePublicApiUrl, parseQuickTunnelUrl, resolveCloudflared, sanitizeQuickTunnelUrl, updateEnvApiBaseUrl };
+module.exports = {
+  buildPublicHealthUrl,
+  classifyHealthProbe,
+  CLOUDFLARED_FALLBACK,
+  createCommandInvocation,
+  derivePublicApiUrl,
+  DOH_RESOLVERS,
+  isValidIpv4,
+  parseQuickTunnelUrl,
+  queryDohResolver,
+  requestPublicHealth,
+  requestText,
+  resolveCloudflared,
+  resolveDohWithFallback,
+  sanitizeQuickTunnelUrl,
+  updateEnvApiBaseUrl,
+  waitForPublicBackend,
+};

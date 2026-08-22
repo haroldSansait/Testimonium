@@ -15,19 +15,11 @@ Therefore:
 
 Do not simulate push with local polling notifications.
 
-## 2. Initial mobile notification implementation
+## 2. Initial mobile notification implementation (Phase 2 Status)
 
-Implement:
-- notification list;
-- unread state/count;
-- pull-to-refresh;
-- mark one read;
-- mark all read;
-- reference-aware navigation.
+- **Phase 2 Implementation:** Header bell icon with accessible label (`accessibilityLabel="Notifications"`). Tapping the bell navigates to an intentional protected destination shell (`/notifications`) informing users that notifications and announcements will appear there in an upcoming update.
+- **Badge & Inbox Deferral:** Due to the absence of a cheap backend unread-count endpoint and unpaginated notification listings, full inbox fetching and unread counter badges are deferred to Phase 6.
 
-Recommended Home:
-- bell icon with unread badge;
-- no aggressive full-screen interruption.
 
 ## 3. Reference routing
 
