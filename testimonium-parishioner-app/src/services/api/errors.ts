@@ -1,4 +1,5 @@
 export type AppErrorKind =
+  | "CONFIGURATION"
   | "NETWORK"
   | "TIMEOUT"
   | "CANCELLED"
@@ -43,6 +44,7 @@ const safeStatusMessage = (status: number) => {
   if (status === 401) return "Your session has expired. Please sign in again.";
   if (status === 403) return "You do not have access to this action.";
   if (status === 404) return "The requested item is no longer available.";
+  if (status === 409) return "An account with this information already exists.";
   if (status === 413) return "The selected file is too large.";
   if (status === 429) return "Too many requests. Please try again later.";
   if (status >= 500) return "The service is temporarily unavailable. Please try again.";
@@ -65,18 +67,30 @@ export const appErrorFromResponse = async (response: Response): Promise<AppError
     // The status still provides a safe, useful error classification.
   }
 
-  const data = payload && typeof payload === "object" ? payload as Record<string, unknown> : undefined;
+  const data = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
   const backendMessage = typeof data?.message === "string" ? data.message : undefined;
   const code = typeof data?.code === "string" ? data.code : undefined;
-  const errors = data?.errors && typeof data.errors === "object" ? data.errors as Record<string, string[]> : undefined;
-  const kind: AppErrorKind = response.status === 401 ? "AUTH"
-    : response.status === 403 ? "FORBIDDEN"
-    : response.status === 400 || response.status === 422 ? "VALIDATION"
-    : response.status === 409 ? "CONFLICT"
-    : response.status === 404 ? "NOT_FOUND"
-    : response.status === 429 ? "RATE_LIMIT"
-    : response.status >= 500 ? "SERVER"
-    : "UNKNOWN";
+  const errors =
+    data?.errors && typeof data.errors === "object"
+      ? (data.errors as Record<string, string[]>)
+      : undefined;
+
+  const kind: AppErrorKind =
+    response.status === 401
+      ? "AUTH"
+      : response.status === 403
+        ? "FORBIDDEN"
+        : response.status === 400 || response.status === 422
+          ? "VALIDATION"
+          : response.status === 409
+            ? "CONFLICT"
+            : response.status === 404
+              ? "NOT_FOUND"
+              : response.status === 429
+                ? "RATE_LIMIT"
+                : response.status >= 500
+                  ? "SERVER"
+                  : "UNKNOWN";
 
   // Only backend-provided application messages are used; arbitrary HTML/text is never surfaced.
   return new AppError({
@@ -91,15 +105,88 @@ export const appErrorFromResponse = async (response: Response): Promise<AppError
 };
 
 export const firebaseErrorToAppError = (error: unknown): AppError => {
-  const code = typeof error === "object" && error && "code" in error ? String(error.code) : undefined;
-  const message = code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
-    ? "The email address or password is incorrect."
-    : code === "auth/too-many-requests"
-      ? "Too many sign-in attempts. Please try again later."
-      : code === "auth/network-request-failed"
-        ? "A network connection is required to sign in."
-        : "We could not complete sign-in. Please try again.";
-  return new AppError({ kind: code === "auth/network-request-failed" ? "NETWORK" : "AUTH", code, message, retryable: code === "auth/network-request-failed" });
+  if (isAppError(error)) return error;
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code: unknown }).code)
+      : undefined;
+
+  if (code === "auth/email-already-in-use") {
+    return new AppError({
+      kind: "CONFLICT",
+      code,
+      message: "An account with this email already exists. Please sign in instead.",
+    });
+  }
+
+  if (code === "auth/invalid-email") {
+    return new AppError({
+      kind: "VALIDATION",
+      code,
+      message: "Please enter a valid email address.",
+    });
+  }
+
+  if (code === "auth/weak-password") {
+    return new AppError({
+      kind: "VALIDATION",
+      code,
+      message: "Password must be at least 6 characters.",
+    });
+  }
+
+  if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+    return new AppError({
+      kind: "AUTH",
+      code,
+      message: "The email address or password is incorrect.",
+    });
+  }
+
+  if (code === "auth/too-many-requests") {
+    return new AppError({
+      kind: "RATE_LIMIT",
+      code,
+      message: "Too many attempts. Please try again later.",
+      retryable: true,
+    });
+  }
+
+  if (code === "auth/network-request-failed") {
+    return new AppError({
+      kind: "NETWORK",
+      code,
+      message: "Firebase Authentication could not be reached. Check the device internet connection and try again.",
+      retryable: true,
+    });
+  }
+
+  if (code === "auth/user-disabled") {
+    return new AppError({
+      kind: "FORBIDDEN",
+      code,
+      message: "This account has been disabled. Please contact the parish administration.",
+    });
+  }
+
+  if (code === "auth/account-exists-with-different-credential") {
+    return new AppError({
+      kind: "CONFLICT",
+      code,
+      message: "An account already exists with this email address. Please sign in using your existing method.",
+    });
+  }
+
+  const rawMessage =
+    typeof error === "object" && error && "message" in error
+      ? String((error as { message: unknown }).message)
+      : undefined;
+
+  return new AppError({
+    kind: "AUTH",
+    code,
+    message: rawMessage && !rawMessage.includes("Firebase:") ? rawMessage : "We could not complete that action. Please try again.",
+  });
 };
 
 export const isAppError = (value: unknown): value is AppError => value instanceof AppError;

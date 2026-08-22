@@ -1,250 +1,69 @@
 # TESTIMONIUM Parishioner Mobile — Implementation Roadmap
 
-## 0. Phase 0 — Scaffold Audit & Foundations
-
-### Goal
-Understand the existing `testimonium-parishioner-app` scaffold before implementation.
-
-### Audit
-- Expo SDK/version.
-- TypeScript config.
-- navigation library.
-- Firebase packages.
-- existing theme/components.
-- existing env config.
-- testing tools.
-- EAS config.
-- package scripts.
-
-### Implement
-- final folder boundaries;
-- theme tokens;
-- API client skeleton;
-- normalized error type;
-- auth provider/bootstrap skeleton;
-- app-level loading/error boundary;
-- base navigation shell.
-
-### Exit criteria
-- app launches;
-- no placeholder architecture conflicts;
-- dev API config works;
-- lint/type checks clean.
+## 0. Phase 0 — Scaffold Audit & Foundations (STATUS: COMPLETED)
+- Audited repository and scaffold structure.
+- Initialized theme tokens, core API client with single-flight 401 retry, normalized `AppError`.
+- Configured native `@react-native-firebase/app` and `@react-native-firebase/auth`.
+- Base navigation shell with Expo Router and `Stack.Protected` state gates.
 
 ---
 
-## 1. Phase 1 — Authentication & Onboarding
+## 1. Phase 1 — Authentication & Onboarding (STATUS: COMPLETED)
+### Scope Implemented
+- **1A:** Configured `@react-native-google-signin/google-signin`, `expo-dev-client`, `react-hook-form`, `zod`, `eas.json` (dev and preview profiles), `environment.ts`, `legal.ts`.
+- **1B:** Email Registration (`app/(auth)/register.tsx`), typed `interactiveOperationRef` guard, partial-failure reconciliation (`GET /auth/profile`, never deleting Firebase user), initial verification dispatch.
+- **1C:** Email Verification (`app/(onboarding)/verify-email.tsx`), single-flight verification recheck, AppState foreground listener, 60s resend cooldown.
+- **1D:** Canonical Legal Acceptance (`LegalModal.tsx`, `TermsContent.tsx`, `PrivacyContent.tsx`) and Profile Completion (`app/(onboarding)/profile-completion.tsx`) with direct PUT response commit.
+- **1E:** Native Google Sign-In Adapter (`src/services/auth/googleAuth.ts`), Google JIT legal challenge (`POST /auth/login` with legal payload), cross-provider account collision handling.
 
+---
+
+## 2. Phase 2 — Mobile Shell, Home & Parish Directory (STATUS: READY FOR EXECUTION)
 ### Scope
-- login;
-- registration;
-- Google auth if supported;
-- email verification;
-- legal acceptance;
-- profile completion;
-- session restore;
-- logout.
-
-### Key risks
-- auth observer race;
-- backend bootstrap race;
-- profile completion loop;
-- user cache leakage;
-- Google account selection behavior.
-
-### Exit criteria
-- new and existing accounts work;
-- app restart restore works;
-- logout clears state;
-- no protected-screen flash;
-- backend profile is authoritative.
+- Bottom tabs navigation (`Home`, `Parishes`, `Requests`, `Appointments`, `Profile`).
+- Home screen: Parishioner welcome banner, active sacrament requests quick tracker, upcoming appointments card, parish announcements carousel.
+- Parish directory: Browse parishes within Diocese of San Carlos, search by municipality/name, view parish details, contact information, mass schedules, and sacraments offered.
+- Events preview: Diocese calendar highlights.
+- Notification shell: Header notification bell with unread badge.
 
 ---
 
-## 2. Phase 2 — Mobile Shell, Home & Parish Directory
-
+## 3. Phase 3 — Document Request Core (STATUS: PENDING)
 ### Scope
-- bottom tabs;
-- Home;
-- parish directory;
-- parish detail;
-- events preview;
-- notifications badge shell.
-
-### Optional
-- mobile-native map after list view is stable.
-
-### Exit criteria
-- parishioner can browse parishes/events;
-- no admin controls exposed;
-- shell/accessibility stable.
+- Request list & detail views.
+- Multi-step sacrament certificate request wizard (Baptismal, Confirmation, First Communion, Marriage, Death/Burial).
+- Canonical requirements checklists, applicant/purpose form validation, draft persistence.
 
 ---
 
-## 3. Phase 3 — Document Request Core
-
+## 4. Phase 4 — Payment & Receipt Capture (STATUS: PENDING)
 ### Scope
-- request list;
-- request detail;
-- request creation draft;
-- requirements;
-- applicant/purpose fields;
-- supporting files;
-- review/submit;
-- history;
-- cancel.
-
-### Key risks
-- duplicate drafts;
-- draft ID lifecycle;
-- file picker behavior;
-- stale status.
-
-### Exit criteria
-- full non-payment request lifecycle works against API.
+- GCash / Maya reference input and payment instructions.
+- Camera and photo gallery receipt picker with client-side image compression.
+- Multipart/form-data upload to backend (`/api/v1/requests/:id/receipt`).
 
 ---
 
-## 4. Phase 4 — Payment & Receipt Capture
-
+## 5. Phase 5 — Scheduling & Parish Appointments (STATUS: PENDING)
 ### Scope
-- payment config;
-- amount/QR;
-- camera/library receipt;
-- HEIC conversion;
-- multipart upload;
-- under-review state;
-- payment correction state.
-
-### Key risks
-- iOS HEIC;
-- >5 MB images;
-- ambiguous upload retry;
-- false OCR/verification copy.
-
-### Exit criteria
-- receipt upload is reliable on physical Android;
-- iOS path tested if in scope;
-- no duplicate submission;
-- status truth maintained.
+- Appointment booking for canonical interviews, counseling, and document release.
+- Real-time slot availability checking, reschedule response flows.
 
 ---
 
-## 5. Phase 5 — Scheduling
-
+## 6. Phase 6 — Notifications & Event Calendar (STATUS: PENDING)
 ### Scope
-- schedule list/detail;
-- event/service type;
-- parish/date;
-- available slots;
-- submit;
-- reschedule response.
-
-### Key risks
-- slot race;
-- timezone;
-- stale available slots;
-- duplicate submit.
-
-### Exit criteria
-- conflict path handled;
-- backend remains slot authority;
-- reschedule response works.
+- Notification inbox with read/unread tracking and deep links.
+- Diocesan liturgical events calendar.
 
 ---
 
-## 6. Phase 6 — Notifications & Event Calendar
-
+## 7. Phase 7 — Profile, Settings & Polish (STATUS: PENDING)
 ### Scope
-- notifications list;
-- read/unread;
-- references;
-- event calendar/list;
-- internal deep-link framework.
-
-### Native push
-Deferred unless backend device-token support is designed and implemented.
-
-### Exit criteria
-- in-app notifications useful without background polling abuse;
-- reference routing safe.
+- Profile edit, security settings, legal terms viewer, full accessibility compliance, reduced-motion polish.
 
 ---
 
-## 7. Phase 7 — Profile, Settings & Polish
-
+## 8. Phase 8 — Device QA & Release Engineering (STATUS: PENDING)
 ### Scope
-- profile edit;
-- legal info;
-- session/logout UX;
-- final empty/error/loading states;
-- accessibility;
-- reduced motion;
-- performance.
-
-### Exit criteria
-- complete parishioner feature set polished.
-
----
-
-## 8. Phase 8 — Device QA & Release Engineering
-
-### Scope
-- physical Android;
-- iOS if applicable;
-- camera/file auth;
-- app resume/background;
-- network loss;
-- staging build;
-- production build pipeline.
-
-### Exit criteria
-- preview build used by team;
-- no critical/high bugs;
-- store/privacy config reconciled.
-
----
-
-## 9. Phase 9 — Native Push (Optional Later)
-
-Prerequisites:
-- backend device-token model;
-- registration/unregistration endpoints;
-- server push provider;
-- privacy review;
-- deep-link routing already stable.
-
-Do not block mobile v1 on this.
-
----
-
-## 10. Phase 10 — RAG Assistant (Deferred)
-
-Prerequisites defined in `14_MOBILE_RAG_FUTURE.md`.
-
-Do not begin implementation just because a chat UI is easy to build.
-
----
-
-# Recommended implementation workflow for each phase
-
-1. User writes/updates product intent.
-2. Planning model audits actual repository and creates implementation plan.
-3. Review plan for architecture/security/races/error handling.
-4. Execute with implementation model.
-5. Focused independent review only for high-risk changes.
-6. Manual/device test proportional to risk.
-7. Commit.
-8. Update mobile docs/decision log.
-
-# Suggested first action
-
-Before writing mobile screens, perform **Phase 0 scaffold audit** and produce:
-- exact package inventory;
-- navigation recommendation based on existing scaffold;
-- Firebase mobile auth approach;
-- current file tree;
-- packages to keep/add/remove;
-- foundational implementation plan.
-
-Do not skip this audit because the repository already contains a scaffold.
+- Physical Android & iOS QA verification, EAS release builds, store privacy declarations.

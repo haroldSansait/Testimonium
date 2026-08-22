@@ -12,7 +12,20 @@
           "package_name": "com.testimonium.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "900241750208-bq947hhvhr80t4k7khql9jd758bb2vff.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.testimonium.app",
+            "certificate_hash": "cf7b87592028e34625f066c02af050866b8c81da"
+          }
+        },
+        {
+          "client_id": "900241750208-kclu82sicn6amkchcv2hd3h1fh8c7fft.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAMtXSISxGRiLyFOMKymSCmYJy665G0WrE"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "900241750208-kclu82sicn6amkchcv2hd3h1fh8c7fft.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

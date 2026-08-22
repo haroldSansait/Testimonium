@@ -20,6 +20,7 @@
 **/.env.production.local
 **/.env.*.local
 **/.env.*
+!testimonium-parishioner-app/.env.example
 
 # Prisma Client Database Specific Exclusions (Fixed subfolder tracking)
 **/prisma/migrations/**/*.sql

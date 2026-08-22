@@ -2,214 +2,116 @@
 
 **Purpose:** Prevent stale architecture assumptions as mobile and backend evolve.
 
-## 1. Baseline snapshot
+## 1. Baseline Snapshot
 
 As of 20 August 2026:
+- Backend: Express 5, Prisma 7, PostgreSQL, Firebase Admin, Cloudflare R2, Automated OCR.
+- Parishioner web: React/Vite/Firebase Auth.
+- Admin portal: React/Vite/Firebase Auth.
+- Mobile app: Expo SDK 57, React Native 0.86.2, React 19.2.3, TypeScript 6.0.3, @react-native-firebase/auth, @react-native-google-signin/google-signin.
+- Target role: PARISHIONER only.
 
-- Backend: Express 5, Prisma 7, PostgreSQL, Firebase Admin, R2, OCR.
-- Parishioner web: React/Vite/Firebase.
-- Admin portal: React/Vite/Firebase.
-- Mobile: Expo/React Native scaffold exists.
-- API namespace: `/api/v1`.
-- Roles: PARISHIONER, SECRETARY, PRIEST, DIOCESE_COORDINATOR.
-- Mobile target role: PARISHIONER.
-- R2 uploads go through backend.
-- OCR does not auto-verify payments.
-- Native push device registration is not documented yet.
-- RAG chatbot is deferred pending knowledge-base readiness.
+## 2. Decision Status Labels
 
-## 2. Decision status labels
-
-Use:
 - `PROPOSED`
 - `ACCEPTED`
 - `SUPERSEDED`
 - `REJECTED`
 - `DEFERRED`
 
-## 3. Initial decisions
+## 3. Decision Log
 
 ### M-001 — Existing backend is the mobile backend
 **Status:** ACCEPTED
-
 Mobile consumes `/api/v1`; it does not get a separate business backend.
 
 ### M-002 — Mobile is parishioner-only
 **Status:** ACCEPTED
-
-Staff remains in admin portal unless future product scope explicitly changes.
+Staff remains in admin portal. Non-parishioner roles rejected with `ACCOUNT_UNAVAILABLE` session issue.
 
 ### M-003 — API/business rules remain authoritative
 **Status:** ACCEPTED
-
 Mobile does not duplicate fee, status, tenancy, schedule conflict, payment verification, or profile-completion rules.
 
 ### M-004 — Native mobile UX, not pixel web port
 **Status:** ACCEPTED
-
-Use mobile navigation and controls while preserving capability/brand parity.
+Use mobile navigation and touch controls while preserving capability/brand parity.
 
 ### M-005 — RAG assistant deferred
 **Status:** ACCEPTED
-
 No production chatbot until knowledge governance/corpus exists.
 
 ### M-006 — Native push deferred until backend support
 **Status:** ACCEPTED
-
-Implement in-app notifications first.
+Implement in-app notifications first. Native device push deferred pending backend token infrastructure.
 
 ### M-007 — Direct R2 upload prohibited
 **Status:** ACCEPTED
-
-All uploads remain through backend.
+All uploads remain through backend endpoints.
 
 ### M-008 — Offline mutations deferred
 **Status:** ACCEPTED
-
 No background queue for transactional workflows in v1.
 
-## 4. Decisions still requiring scaffold audit
-
 ### M-009 — Navigation library
-**Status:** PROPOSED
-
-Decision after inspecting scaffold:
-- keep Expo Router if already established;
-- keep React Navigation if already established;
-- do not migrate without reason.
+**Status:** ACCEPTED
+Expo Router SDK 57 with `Stack.Protected` state gates.
 
 ### M-010 — Server-state library
-**Status:** PROPOSED
-
-Evaluate TanStack Query if no equivalent exists.
+**Status:** ACCEPTED
+TanStack Query with conservative retries and UID-isolated query keys.
 
 ### M-011 — Firebase mobile integration
-**Status:** PROPOSED
-
-Choose based on existing scaffold, Expo compatibility, and Google auth requirements.
+**Status:** ACCEPTED
+Native `@react-native-firebase/app` and `@react-native-firebase/auth` with platform-managed keychain/keystore persistence. Custom development build required (`expo-dev-client`); Expo Go unsupported.
 
 ### M-012 — Map library
-**Status:** PROPOSED
-
+**Status:** PROPOSED / DEFERRED
 Evaluate mobile-native map solution only after parish list/detail is stable.
 
 ### M-013 — E2E tool
-**Status:** PROPOSED
+**Status:** PROPOSED / DEFERRED
+Evaluate Maestro or Detox once native release build pipelines are established.
 
-Choose one compatible tool (e.g. Maestro or Detox) after build workflow is clear.
+### M-014 — Ambiguous registration error recovery
+**Status:** ACCEPTED
+- **Decision:** Never execute `firebaseUser.delete()` upon backend failure during registration.
+- **Rationale:** Prevents race conditions and unintended account destruction. Ambiguous errors reconcile against `GET /auth/profile`.
 
-## 5. Change protocol
+### M-015 — Typed interactive operation mutex
+**Status:** ACCEPTED
+- **Decision:** Synchronous in-flight ref `interactiveOperationRef` (`LOGIN | REGISTER | GOOGLE_LOGIN | GOOGLE_JIT_LEGAL`).
+- **Rationale:** Suppresses passive `onAuthStateChanged` bootstrap while an interactive operation owns the session.
 
-When a backend/API change occurs:
-1. record reason;
-2. update backend code;
-3. migration if schema changes;
-4. backend tests;
-5. update `API_DOCUMENTATION.md`;
-6. update relevant mobile doc;
-7. update mobile provider/types;
-8. consider compatibility with already released app versions;
-9. record decision if architectural.
+### M-016 — Google JIT legal challenge handling
+**Status:** ACCEPTED
+- **Decision:** First-time Google users encounter `400 LEGAL_ACCEPTANCE_REQUIRED` on `POST /auth/login`. Acceptance is submitted via `POST /auth/login` with `legalAcceptance` payload (not `POST /auth/legal-acceptance`).
+- **Rationale:** First-time Google user identity is JIT-provisioned inside the `POST /auth/login` endpoint itself.
 
-## 6. Documentation precedence
+### M-017 — Direct commitment of profile PUT responses
+**Status:** ACCEPTED
+- **Decision:** `PUT /auth/profile` returns updated `BackendUserProfile`, which is committed directly without follow-up `GET`.
+- **Rationale:** Prevents redirect loops on profile completion.
 
-Highest practical authority:
-1. live backend route/validator/controller/service + Prisma schema;
-2. reconciled API/database docs;
-3. mobile architecture docs;
-4. implementation plan;
-5. UI copy/comments.
+### M-018 — Native Google Sign-In local session sign-out
+**Status:** ACCEPTED
+- **Decision:** Use `@react-native-google-signin/google-signin` adapter. Execute local `GoogleSignin.signOut()` before an explicit Google login attempt to avoid retaining previous local SDK session state. `revokeAccess()` is NOT used.
+- **Verification Status:** Actual Google account-chooser behavior remains PENDING NATIVE RUNTIME VERIFICATION.
 
-If lower-level docs conflict, fix them.
+## 4. Phase 1 Implementation Reconciliation - 20 August 2026
 
-## 7. ADR template
-
-Add entries below as needed.
-
-```md
-## M-0XX — Decision title
-
-**Date:** YYYY-MM-DD
-**Status:** PROPOSED | ACCEPTED | SUPERSEDED | REJECTED | DEFERRED
-
-### Context
-What changed or what problem exists?
-
-### Decision
-What are we doing?
-
-### Alternatives considered
-- Option A
-- Option B
-
-### Security / data impact
-Any auth, privacy, tenancy, persistence, or migration effects.
-
-### Mobile compatibility impact
-Does this affect released clients?
-
-### Consequences
-Positive and negative.
-
-### Follow-up
-Tests/docs/migrations/tasks.
-```
-
-## 8. Feature change template
-
-```md
-### Feature
-Name:
-
-### Old behavior
-...
-
-### New behavior
-...
-
-### Backend contract changed?
-Yes/No
-
-### Schema changed?
-Yes/No
-
-### Security/role impact
-...
-
-### Mobile docs to update
-...
-
-### Release compatibility
-...
-```
-
-## 9. Known architectural watch items
-
-Track during mobile work:
-- Firebase mobile Google account-selection behavior;
-- exact mobile session timeout policy;
-- HEIC receipt conversion;
-- R2 public URL confidentiality;
-- native push backend support;
-- API idempotency if offline/retry needs grow;
-- old mobile-version compatibility after API changes;
-- parish/event map data shape;
-- RAG knowledge governance.
-
-## 10. Rule for future updates
-
-When the product owner provides a newer project document or confirmed implementation walkthrough:
-- treat the newer confirmed behavior as the new baseline;
-- update the relevant mobile doc rather than preserving outdated assumptions;
-- mark superseded architecture decisions explicitly when important.
-
-## 8. Phase 0 implementation reconciliation � 20 August 2026
-
-- **M-009 Expo Router:** ACCEPTED. Implemented with Expo SDK 57 and `Stack.Protected`; the root bootstrap gate exposes auth, onboarding, or parishioner tabs only after a deterministic state.
-- **M-010 TanStack Query:** ACCEPTED. Query retries are conservative and mutations never auto-retry. All future private query keys must include Firebase UID.
-- **M-011 Firebase mobile integration:** ACCEPTED (native development build required). Firebase JavaScript SDK 12 no longer exports React Native persistence, so the supported native `@react-native-firebase/app` + `auth` stack is used with platform-managed persistent auth. The obsolete `firebase/auth/react-native` import is not used.
-- **SDK/tooling:** Expo SDK 57, React 19.2.3, React Native 0.86.2, and TypeScript 6.0.3 were selected by Expo's resolver for the current Node 25.8.1 runtime.
-- **Deferred:** Google authentication (Firebase Android OAuth clients are absent), EAS configuration, SecureStore/session-limit policy, forms, image handling, proactive network monitoring, product features, and RAG.
-- **Auth safety:** Interactive email login owns its backend `POST /auth/login`; passive restores use only `GET /auth/profile`. Auth generation and UID checks discard stale results. A failed backend bootstrap clears local protected data and signs Firebase out.
-- **Environment:** `.env.example` contains public client configuration only. No server/database/storage credentials are present.
+- **Static & Build Verification:**
+  - `STATIC VERIFIED` — PASS
+  - `TYPECHECK` — PASS
+  - `UNIT/INTEGRATION TESTS` — PASS (8 suites, 31 tests)
+  - `LINT` — PASS (0 errors, 0 warnings)
+  - `EXPO DOCTOR` — PASS (21/21 checks)
+  - `JS/METRO ANDROID BUNDLE` — PASS (`npx expo export --platform android`)
+  - `GIT DIFF CHECK` — PASS
+- **Runtime Verification (Pending Device/Native Environment):**
+  - `ANDROID NATIVE COMPILE` — PENDING (Requires Gradle / EAS Build)
+  - `EMULATOR` — PENDING
+  - `PHYSICAL DEVICE` — PENDING
+  - `REAL FIREBASE/BACKEND` — PENDING
+  - `GOOGLE SIGN-IN RUNTIME` — PENDING (Requires Android OAuth client with SHA-1 in Firebase Console)
+  - `iOS` — PENDING

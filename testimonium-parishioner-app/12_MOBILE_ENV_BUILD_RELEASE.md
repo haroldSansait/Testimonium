@@ -1,235 +1,96 @@
-# TESTIMONIUM Parishioner Mobile — Environment, Build & Release
+# TESTIMONIUM Parishioner Mobile â€” Environment, Build & Release
 
 ## 1. Objective
 
-Create reproducible development, preview/testing, and production mobile builds without exposing server secrets.
+Provide reproducible local development, preview testing, and production builds with full native capability isolation and zero client secret leakage.
 
-The project is an Expo/React Native scaffold. Inspect existing `app.json`, `app.config.*`, `eas.json`, package IDs, Firebase files, and scripts before modifying build configuration.
+## 2. Environment Configuration & Variables
 
-## 2. Environment model
+Environment variables are managed in `.env` (using `.env.example` as canonical template) and accessed via typed helpers in `src/config/environment.ts`:
 
-Recommended environments:
-- development;
-- preview/staging;
-- production.
+| Variable | Description | Default | Required for Production |
+| :--- | :--- | :--- | :--- |
+| `EXPO_PUBLIC_API_BASE_URL` | Base URL of TESTIMONIUM backend API | None; required | Yes (HTTPS) |
+| `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` | Feature flag gating native Google Sign-In | `false` | When Google OAuth configured |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google OAuth Web Client ID for Firebase exchange | `""` | When Google OAuth enabled |
 
-Each should have:
-- correct API base URL;
-- correct Firebase client project/config;
-- correct app identifiers/build profiles;
-- environment label for diagnostics.
+> [!NOTE]
+> All `EXPO_PUBLIC_*` variables are embedded into client JS bundles and must not contain backend secrets (e.g. database credentials, Firebase Admin private keys, Cloudflare R2 secrets).
 
-Do not let development builds accidentally hit production if avoidable.
+### Physical Android development
 
-## 3. Environment variables
+`localhost`, `127.0.0.1`, and `::1` resolve to the phone, not the laptop. Use the root launcher for a physical Android development-client session:
 
-Client-visible values may include:
-- API base URL;
-- Firebase client config identifiers;
-- feature flags that are safe to expose.
+```powershell
+# Normal web/backend development, from the repository root
+npm run dev
 
-Server secrets must never be included:
-- database URL;
-- Firebase Admin private key;
-- R2 access key/secret;
-- OCR provider server key;
-- push provider server secret.
-
-Anything named `EXPO_PUBLIC_*` is visible to the app bundle and must be treated as public configuration.
-
-## 4. API base URL
-
-Recommended mobile-specific config variable:
-
-```text
-EXPO_PUBLIC_API_BASE_URL
+# Physical Android development, from the repository root
+npm run dev:mobile
 ```
 
-Only adopt this if it matches existing scaffold conventions.
+`npm run dev:mobile` supervises one local development session:
 
-Normalize base URL in one config module.
+```text
+TESTIMONIUM backend -> temporary HTTPS Cloudflare Quick Tunnel -> mobile .env API URL -> Expo development client Metro
+```
 
-Do not hardcode localhost in feature services.
+It reuses a healthy backend already listening on port 5000; otherwise it starts the existing backend package only. It finds `cloudflared` on `PATH` first, then falls back to `C:\tmp\testimonium-cloudflared\cloudflared.exe`. After Cloudflare publishes a temporary `https://*.trycloudflare.com` host, the launcher verifies `/api/v1/health`, updates only `EXPO_PUBLIC_API_BASE_URL` in `testimonium-parishioner-app/.env`, and starts `npx expo start --dev-client --tunnel` from the mobile app.
 
-For physical-device local testing:
-- `localhost` refers to the phone itself;
-- use reachable development host/tunnel as appropriate.
+The Quick Tunnel host changes whenever it restarts and is development-only infrastructure, never production configuration. Your physical Android development APK must already be installed. Normal JavaScript, UI, and API changes do not require an EAS rebuild; native dependency or native configuration changes are the exception. Press `Ctrl+C` to stop only processes started by this launcher. If port 8081 is already occupied, stop the existing Metro session first; the launcher will not kill it or switch ports.
 
-## 5. Firebase platform config
+## 3. Native Plugins & EAS Configuration
 
-Android/iOS Firebase configuration must match:
-- package/bundle identifiers;
-- OAuth redirect settings;
-- SHA fingerprints where required;
-- Google sign-in configuration.
+### `app.config.ts` Plugins:
+- `@react-native-firebase/app`
+- `@react-native-firebase/auth`
+- `@react-native-google-signin/google-signin`
 
-Do not reuse web redirect assumptions blindly.
+### EAS Profiles (`eas.json`):
+- `development`: `developmentClient: true`, `distribution: "internal"` (for building custom Expo Dev Client).
+- `preview`: `distribution: "internal"`, `channel: "preview"`, `android: { buildType: "apk" }` (for internal testing).
 
-## 6. App identifiers
+## 4. Development Workflow & Commands
 
-Choose stable identifiers before store submission.
+```bash
+# Typecheck
+npm run typecheck
 
-Do not invent/rename after production release without understanding store implications.
+# Jest test suite (single-band for stability)
+npm test -- --runInBand
 
-Track:
-- Android application ID;
-- iOS bundle identifier;
-- Expo project ID if used;
-- app display name;
-- scheme for deep linking.
+# ESLint verification (zero errors, zero warnings)
+npm run lint
 
-## 7. Build profiles
+# Expo Doctor health check (21/21 checks)
+npx expo-doctor
 
-Recommended if using EAS:
+# Local Metro / JS bundle verification (Platform Android)
+npx expo export --platform android
 
-### development
-- dev client;
-- dev backend;
-- debugging.
+# Native Prebuild generation
+npm run prebuild
 
-### preview
-- installable internal QA build;
-- staging/preview backend;
-- production-like optimizations.
+# Run local development client on Android / iOS
+npm run android:dev
+npm run ios:dev
+```
 
-### production
-- store build;
-- production API/Firebase;
-- no debug tooling.
+## 5. Verification Status Matrix
 
-Do not put secrets directly in `eas.json`.
+### Static & Tooling Verification:
+- **STATIC VERIFIED** â€” PASS
+- **TYPECHECK** â€” PASS (`npm run typecheck`)
+- **UNIT/INTEGRATION TESTS** â€” PASS (`npm test -- --runInBand`)
+- **LINT** â€” PASS (`npm run lint`, 0 errors, 0 warnings)
+- **EXPO DOCTOR** â€” PASS (`npx expo-doctor`, 21/21 checks)
+- **JS/METRO ANDROID BUNDLE** â€” PASS (`npx expo export --platform android`, 1,381 modules bundled)
+- **GIT DIFF CHECK** â€” PASS (`git diff --check`)
 
-## 8. Versioning
-
-Track:
-- human app version;
-- Android versionCode;
-- iOS buildNumber.
-
-Define release policy before first store build.
-
-Example semantic intention:
-- patch: bug fix;
-- minor: backward-compatible features;
-- major: substantial UX/contract changes.
-
-Do not treat mobile app version as backend API version.
-
-## 9. API compatibility
-
-Backend is currently `/api/v1`.
-
-Before backend breaking changes:
-- consider old installed mobile versions;
-- avoid immediately breaking live clients;
-- add backward-compatible fields/endpoints or versioning strategy when needed.
-
-Mobile introduces a new concern web clients do not have: users may stay on old builds for weeks/months.
-
-## 10. Feature flags
-
-Use only when needed.
-
-Safe feature flag examples:
-- map enabled;
-- native push enabled;
-- RAG assistant enabled.
-
-Critical security authorization must not be feature-flag-only on client.
-
-## 11. Production hardening
-
-Before release:
-- HTTPS API;
-- dev auth disabled;
-- production Firebase config;
-- production backend CORS/network rules as applicable;
-- no debug menu in production;
-- no sensitive console logging;
-- no hardcoded test accounts;
-- correct R2/server secrets only on backend;
-- crash reporting redaction if enabled.
-
-## 12. Store permissions
-
-Only request permissions used by a visible feature.
-
-Potential:
-- camera;
-- photo library;
-- notifications (future);
-- location (only if "near me"/map feature uses it).
-
-Provide user-facing permission descriptions.
-
-Do not request location/camera on first app launch without context.
-
-## 13. Privacy/store declarations
-
-Before publishing, reconcile:
-- collected account/profile data;
-- uploaded sacramental/request documents;
-- receipt/payment evidence;
-- location permission if used;
-- diagnostics/crash data;
-- push tokens if later implemented.
-
-Store privacy answers must reflect actual code/backend behavior.
-
-## 14. Release checklist
-
-### Code
-- clean status;
-- reviewed commit;
-- lint/type/tests;
-- no debug secrets.
-
-### Backend
-- production reachable;
-- migrations applied;
-- health endpoint healthy;
-- auth provider configured;
-- R2/OCR configured as intended.
-
-### Mobile
-- correct API base;
-- correct Firebase;
-- login/register;
-- profile;
-- requests;
-- receipt;
-- schedule;
-- logout;
-- app restart.
-
-### Devices
-- Android physical;
-- iOS if in scope.
-
-### Documentation
-- current API docs;
-- current mobile decision log;
-- release notes.
-
-## 15. Rollback
-
-Mobile store rollback is slower than web rollback.
-
-Before release:
-- backend changes should remain backward compatible where practical;
-- keep previous production build information;
-- use feature flags for risky optional features;
-- avoid destructive schema migrations without rollback/data plan.
-
-## 16. First release recommendation
-
-Do an internal/closed test before public production.
-
-Suggested sequence:
-1. developer build;
-2. team preview build;
-3. small parishioner pilot;
-4. fix telemetry/UX issues;
-5. broader release.
-
-Do not make RAG/chatbot part of first release critical path.
+### Runtime & Native Target Verification:
+- **ANDROID NATIVE COMPILE** â€” PENDING (Requires Gradle / EAS Build)
+- **EMULATOR** â€” PENDING
+- **PHYSICAL DEVICE** â€” PENDING
+- **REAL FIREBASE/BACKEND** â€” PENDING
+- **GOOGLE SIGN-IN RUNTIME** â€” PENDING (Requires Android OAuth client with SHA-1 in Firebase Console)
+- **iOS** â€” PENDING

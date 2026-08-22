@@ -4,6 +4,8 @@
     "description":  "TESTIMONIUM Portal Suite — unified monorepo workspace for the Roman Catholic Diocese of San Carlos sacramental document processing system.",
     "scripts":  {
                     "dev":  "concurrently --kill-others-on-fail --names \"Backend,Parishioner,Admin\" --prefix-colors \"blue,green,magenta\" \"npm run dev --prefix testimonium-backend\" \"npm run dev --prefix testimonium-parishioner-web\" \"npm run dev --prefix testimonium-admin-portal\"",
+                    "dev:mobile":  "node scripts/dev-mobile.js",
+                    "test:dev-mobile":  "node --test scripts/dev-mobile.test.js",
                     "backend":  "npm run dev --prefix testimonium-backend",
                     "parishioner":  "npm run dev --prefix testimonium-parishioner-web",
                     "admin":  "npm run dev --prefix testimonium-admin-portal",

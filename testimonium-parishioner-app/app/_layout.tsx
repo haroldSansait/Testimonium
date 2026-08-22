@@ -1,25 +1,25 @@
-import { Stack } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { LoadingState } from "@/components/Screen";
-import { AuthProvider, useAuth } from "@/providers/AuthProvider";
-import { queryClient } from "@/services/queryClient";
+import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { LoadingState } from '@/components/Screen';
+import { AuthProvider, useAuth } from '@/providers/AuthProvider';
+import { getProtectedRouteGuards } from '@/services/auth/guards';
+import { queryClient } from '@/services/queryClient';
 
 void SplashScreen.preventAutoHideAsync();
 
 const Router = () => {
   const { state } = useAuth();
-  const isResolving = state === "BOOTING" || state === "FIREBASE_USER_PENDING_BACKEND";
+  const isResolving = state === 'BOOTING' || state === 'FIREBASE_USER_PENDING_BACKEND';
   useEffect(() => { if (!isResolving) void SplashScreen.hideAsync(); }, [isResolving]);
-  if (isResolving) return <LoadingState label="Preparing TESTIMONIUM…" />;
-  const authGuard = state === "NO_FIREBASE_USER" || state === "SESSION_ERROR";
-  const onboardingGuard = ["EMAIL_VERIFICATION_REQUIRED", "LEGAL_REQUIRED", "PROFILE_COMPLETION_REQUIRED"].includes(state);
+  if (state === 'BOOTING') return <LoadingState label={'Preparing TESTIMONIUM\u2026'} />;
+  const guards = getProtectedRouteGuards(state);
   return <Stack screenOptions={{ headerShown: false }}>
-    <Stack.Protected guard={authGuard}><Stack.Screen name="(auth)" /></Stack.Protected>
-    <Stack.Protected guard={onboardingGuard}><Stack.Screen name="(onboarding)" /></Stack.Protected>
-    <Stack.Protected guard={state === "AUTHENTICATED_READY"}><Stack.Screen name="(app)" /></Stack.Protected>
-    <Stack.Screen name="+not-found" />
+    <Stack.Protected guard={guards.auth}><Stack.Screen name='(auth)' /></Stack.Protected>
+    <Stack.Protected guard={guards.onboarding}><Stack.Screen name='(onboarding)' /></Stack.Protected>
+    <Stack.Protected guard={guards.app}><Stack.Screen name='(app)' /></Stack.Protected>
+    <Stack.Screen name='+not-found' />
   </Stack>;
 };
 

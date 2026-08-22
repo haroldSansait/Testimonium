@@ -21,3 +21,43 @@ describe("API 401 handling", () => {
     expect(getIdToken.mock.calls.filter(([force]: [boolean]) => force).length).toBe(1); expect(fetchImpl).toHaveBeenCalledTimes(4); expect(expired).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("API connection error classification", () => {
+  it("does not relabel API configuration failures as device network failures", async () => {
+    const configurationError = new AppError({
+      kind: "CONFIGURATION",
+      code: "MISSING_API_BASE_URL",
+      message: "Missing API URL",
+    });
+    const fetchImpl = jest.fn();
+    const client = createApiClient({
+      getCurrentUser: () => user,
+      getBaseUrl: () => {
+        throw configurationError;
+      },
+      fetchImpl,
+    });
+
+    await expect(client.request({ method: "POST", path: "/auth/login" })).rejects.toBe(
+      configurationError
+    );
+    expect(getIdToken).toHaveBeenCalledWith(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("reports an unreachable backend without claiming that the device is offline", async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new TypeError("Network request failed"));
+    const client = createApiClient({
+      getCurrentUser: () => user,
+      getBaseUrl: () => "https://api.test/api/v1",
+      fetchImpl,
+    });
+
+    await expect(client.request({ method: "POST", path: "/auth/login" })).rejects.toMatchObject({
+      kind: "NETWORK",
+      code: "BACKEND_UNREACHABLE",
+      message:
+        "The TESTIMONIUM backend could not be reached. Check the configured API URL or development tunnel and try again.",
+    });
+  });
+});
