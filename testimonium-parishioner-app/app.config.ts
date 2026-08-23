@@ -34,5 +34,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "@react-native-firebase/app",
     "@react-native-firebase/auth",
     "@react-native-google-signin/google-signin",
+    [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "Allow TESTIMONIUM to access your photos to attach payment receipts.",
+        cameraPermission:
+          "Allow TESTIMONIUM to access your camera to capture payment receipts.",
+      },
+    ],
   ],
 });

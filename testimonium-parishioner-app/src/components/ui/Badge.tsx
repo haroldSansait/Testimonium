@@ -14,12 +14,14 @@ export type BadgeVariant =
   | "secondary"
   | "success"
   | "warning"
+  | "danger"
   | "info"
   | "neutral";
 
 export interface BadgeProps {
   label: string;
   variant?: BadgeVariant;
+  size?: "sm" | "md" | "lg";
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
@@ -28,6 +30,7 @@ export interface BadgeProps {
 export const Badge: React.FC<BadgeProps> = ({
   label,
   variant = "primary",
+  size = "md",
   style,
   textStyle,
   icon,
@@ -36,10 +39,13 @@ export const Badge: React.FC<BadgeProps> = ({
     <View
       style={[
         styles.badge,
+        size === "sm" && styles.badgeSm,
+        size === "lg" && styles.badgeLg,
         variant === "primary" && styles.variantPrimary,
         variant === "secondary" && styles.variantSecondary,
         variant === "success" && styles.variantSuccess,
         variant === "warning" && styles.variantWarning,
+        variant === "danger" && styles.variantDanger,
         variant === "info" && styles.variantInfo,
         variant === "neutral" && styles.variantNeutral,
         style,
@@ -53,6 +59,7 @@ export const Badge: React.FC<BadgeProps> = ({
           variant === "secondary" && styles.textSecondary,
           variant === "success" && styles.textSuccess,
           variant === "warning" && styles.textWarning,
+          variant === "danger" && styles.textDanger,
           variant === "info" && styles.textInfo,
           variant === "neutral" && styles.textNeutral,
           textStyle,
@@ -74,6 +81,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xxs + 1,
     borderRadius: radii.pill,
+  },
+  badgeSm: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: spacing.xxs,
+  },
+  badgeLg: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   iconContainer: {
     marginRight: spacing.xs,
@@ -104,6 +119,12 @@ const styles = StyleSheet.create({
   },
   textWarning: {
     color: colors.warning,
+  },
+  variantDanger: {
+    backgroundColor: colors.dangerSoft,
+  },
+  textDanger: {
+    color: colors.danger,
   },
   variantInfo: {
     backgroundColor: colors.infoSoft,

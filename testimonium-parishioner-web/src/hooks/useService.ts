@@ -207,7 +207,6 @@ export const useEvent = (id: string) => {
   return useQuery(() => services.event.getEventById(id), [id]);
 };
 
-export const usePaymentConfiguration = (parishId?: string) => {
-  return useQuery(() => services.payment.getPaymentConfiguration(parishId), [parishId]);
+export const usePaymentConfiguration = (requestId?: string) => {
+  return useQuery(() => requestId ? services.payment.getPaymentConfiguration(requestId) : Promise.reject(new Error("A request ID is required.")), [requestId]);
 };
-

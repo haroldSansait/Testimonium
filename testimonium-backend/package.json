@@ -5,7 +5,8 @@
     "main": "server.js",
     "scripts": {
         "dev": "nodemon server.js",
-        "start": "node server.js"
+        "start": "node server.js",
+        "test": "node --test scripts/phase3_phase4_backend.test.js scripts/phase3_phase4_concurrency.test.js scripts/supporting_upload_middleware.test.js"
     },
     "keywords": [],
     "author": "",

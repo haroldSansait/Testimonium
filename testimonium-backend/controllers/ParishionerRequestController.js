@@ -2,12 +2,20 @@ import { ParishionerRequestService } from "../services/ParishionerRequestService
 import { FileUploadService } from "../services/FileUploadService.js";
 import { ReceiptVerificationService } from "../services/ReceiptVerificationService.js";
 
+import { DocumentRequirementService } from "../services/DocumentRequirementService.js";
+
 const requestService = new ParishionerRequestService();
 
 export const create = async (req, res, next) => {
   try {
     const userId = req.user.id; // derived from authenticated user token context
-    const draft = await requestService.createDraft(userId, req.body);
+    const idempotencyKey =
+      req.headers["idempotency-key"] ||
+      req.headers["x-idempotency-key"] ||
+      req.body?.idempotencyKey ||
+      null;
+
+    const draft = await requestService.createDraft(userId, req.body, idempotencyKey);
 
     return res.status(201).json({
       success: true,
@@ -15,6 +23,12 @@ export const create = async (req, res, next) => {
       data: draft,
     });
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+      });
+    }
     return next(err);
   }
 };
@@ -123,8 +137,30 @@ export const uploadFiles = async (req, res, next) => {
     const { id } = req.params;
     const requestId = parseInt(id, 10);
 
+    if (isNaN(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request ID.",
+      });
+    }
+
     // Verify ownership of request first
     const request = await requestService.getRequestById(requestId, userId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Request not found or does not belong to this user.",
+      });
+    }
+
+    // State check: allow uploads only for draft or needs correction
+    if (!request.isDraft && request.status !== "NEEDS_CORRECTION") {
+      return res.status(400).json({
+        success: false,
+        message: "Attachments cannot be uploaded for requests in the current status.",
+        errors: [],
+      });
+    }
 
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -134,10 +170,36 @@ export const uploadFiles = async (req, res, next) => {
       });
     }
 
+    if (!req.body.category || typeof req.body.category !== "string" || req.body.category.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Attachment category is required and must match a configured requirement ID.",
+        errors: [],
+      });
+    }
+
+    const category = req.body.category.trim();
+
+    // Validate category against authoritative requirements for this document type & parish
+    const reqConfig = await DocumentRequirementService.getRequirements(
+      request.documentType,
+      request.parishId
+    );
+    const validRequirementIds = new Set(
+      (reqConfig?.requiredDocuments || []).map((d) => d.id)
+    );
+
+    if (!validRequirementIds.has(category)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid attachment category "${category}" for document type "${request.documentType}". Must match a valid requirement ID.`,
+        errors: [],
+      });
+    }
+
     // Upload files to R2 and create DB records
     const uploads = [];
     for (const file of req.files) {
-      const category = req.body.category || "supporting";
       const attachment = await FileUploadService.uploadAttachment(requestId, file, category);
       uploads.push(attachment);
     }
@@ -148,6 +210,12 @@ export const uploadFiles = async (req, res, next) => {
       data: uploads,
     });
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+      });
+    }
     return next(err);
   }
 };

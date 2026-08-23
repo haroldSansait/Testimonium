@@ -1,4 +1,4 @@
-import { Alert, Linking, Platform } from "react-native";
+import { Alert, Linking } from "react-native";
 import { OfficeHoursRecord } from "./types";
 
 export const buildPhoneUrl = (phone?: string | null): string | null => {
@@ -48,19 +48,14 @@ export const buildMapUrl = (params: {
   if (isValidCoordinate(latitude, longitude)) {
     const lat = latitude as number;
     const lng = longitude as number;
-    if (Platform.OS === "android") {
-      const label = encodeURIComponent(name || address || "Parish");
-      return `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
-    }
-    return `https://maps.google.com/?q=${lat},${lng}`;
+    const label = encodeURIComponent(name || address || "Parish");
+    // Standard universal Google Maps URL - opens in Maps app or browser
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}&query_place_id=${label}`;
   }
 
   if (address && typeof address === "string" && address.trim().length > 0) {
     const query = encodeURIComponent(address.trim());
-    if (Platform.OS === "android") {
-      return `geo:0,0?q=${query}`;
-    }
-    return `https://maps.google.com/?q=${query}`;
+    return `https://www.google.com/maps/search/?api=1&query=${query}`;
   }
 
   return null;
@@ -69,35 +64,35 @@ export const buildMapUrl = (params: {
 export const openExternalUrl = async (url: string | null): Promise<boolean> => {
   if (!url) return false;
   try {
-    const supported = await Linking.canOpenURL(url);
-    if (supported) {
-      await Linking.openURL(url);
-      return true;
-    }
-    // If Android geo: protocol fails, fallback to web Google Maps URL
+    // Attempt opening directly: avoids Android 11+ canOpenURL package-visibility false negatives
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    // If a custom protocol (e.g., geo:) fails, fallback to universal web URL
     if (url.startsWith("geo:")) {
       let webUrl: string;
       if (url.startsWith("geo:0,0?q=")) {
         const query = url.replace("geo:0,0?q=", "");
-        webUrl = `https://maps.google.com/?q=${query}`;
+        webUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
       } else {
         const coordMatch = url.match(/^geo:([-\d.]+),([-\d.]+)/);
         if (coordMatch) {
-          webUrl = `https://maps.google.com/?q=${coordMatch[1]},${coordMatch[2]}`;
+          webUrl = `https://www.google.com/maps/search/?api=1&query=${coordMatch[1]},${coordMatch[2]}`;
         } else {
-          webUrl = `https://maps.google.com/?q=${encodeURIComponent(url)}`;
+          webUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(url)}`;
         }
       }
-      const webSupported = await Linking.canOpenURL(webUrl);
-      if (webSupported) {
+      try {
         await Linking.openURL(webUrl);
         return true;
+      } catch {
+        // Fall through to alert
       }
     }
-    Alert.alert("Unable to Open Link", "No compatible application was found to handle this action.");
-    return false;
-  } catch {
-    Alert.alert("Error", "Could not open the requested destination.");
+    Alert.alert(
+      "Unable to Open Action",
+      "No compatible application (e.g., Phone, Email, or Maps) was found on this device to handle this action."
+    );
     return false;
   }
 };

@@ -1,4 +1,3 @@
-import { logger } from "../config/logger.js";
 import { PaymentConfigurationRepository } from "../repositories/PaymentConfigurationRepository.js";
 
 export class PaymentConfigurationService {
@@ -7,51 +6,55 @@ export class PaymentConfigurationService {
   }
 
   /**
-   * Resolves the payment configuration. Falls back to default if parish not found.
-   * @param {number|string|undefined} parishId
+   * Resolves the one authoritative generic payment QR for an owned request.
+   * The parish is derived only from that request, so a client cannot substitute
+   * another parish ID to retrieve its payment configuration.
    */
-  async resolveConfiguration(parishId) {
-    let parish = null;
-    if (parishId) {
-      parish = await this.paymentConfigurationRepository.findByParishId(parishId);
+  async getConfiguration({ requestId, userId } = {}) {
+    if (!/^[1-9]\d*$/.test(String(requestId ?? "").trim())) {
+      const error = new Error("A valid request ID is required.");
+      error.statusCode = 400;
+      throw error;
     }
 
-    let mayaEnabled = false;
-    if (parish && parish.documentSettings) {
-      try {
-        const settings = JSON.parse(parish.documentSettings);
-        if (settings.paymentMethods && settings.paymentMethods.maya !== undefined) {
-          mayaEnabled = !!settings.paymentMethods.maya;
-        }
-      } catch (e) {
-        logger.error({ err: e }, "Error parsing settings for payment config");
-      }
+    if (!/^[1-9]\d*$/.test(String(userId ?? "").trim())) {
+      const error = new Error("Authentication is required.");
+      error.statusCode = 401;
+      throw error;
     }
 
-    if (parish) {
-      const qrCodeUrl = (parish.paymentQrEnabled && parish.paymentQrImage) ? parish.paymentQrImage : null;
-      return {
-        gcash: {
-          accountName: `${parish.parishName} Sacramental Fees`,
-          accountNumber: parish.contactNumber || "0917-111-2222",
-          qrCodeUrl: qrCodeUrl
-        },
-        maya: mayaEnabled ? {
-          accountName: `${parish.parishName} Maya Registry`,
-          accountNumber: parish.contactNumber || "0917-111-2222",
-          qrCodeUrl: qrCodeUrl
-        } : null
-      };
+    const request = await this.paymentConfigurationRepository.findOwnedRequestById(requestId, userId);
+    if (!request) {
+      const error = new Error("Request not found or unauthorized.");
+      error.statusCode = 404;
+      throw error;
     }
 
-    // Default Diocesan configuration (Maya disabled by default)
+    const parish = await this.paymentConfigurationRepository.findByParishId(request.parishId);
+    const imageUrl = this.getValidImageUrl(parish?.paymentQrImage);
+    const enabled = Boolean(parish?.paymentQrEnabled);
+    const configured = Boolean(enabled && imageUrl);
+
     return {
-      gcash: {
-        accountName: "TESTIMONIUM Sacramental Registry",
-        accountNumber: "09171234567",
-        qrCodeUrl: null
+      configured,
+      qrCode: {
+        enabled,
+        imageUrl: configured ? imageUrl : null,
       },
-      maya: null
+      ...(!configured && {
+        message: "Online payment details are not yet configured for this parish.",
+      }),
     };
+  }
+
+  getValidImageUrl(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+
+    try {
+      const url = new URL(value.trim());
+      return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+    } catch {
+      return null;
+    }
   }
 }

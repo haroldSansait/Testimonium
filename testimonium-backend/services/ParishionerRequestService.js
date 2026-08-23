@@ -10,7 +10,10 @@ import {
   normalizeDocumentType,
   getEffectiveOfferedDocuments,
 } from "../config/documents.js";
-
+import {
+  IdempotencyService,
+  computeRequestPayloadHash,
+} from "./IdempotencyService.js";
 
 export class ParishionerRequestService {
   constructor(parishionerRequestRepository = new ParishionerRequestRepository()) {
@@ -18,9 +21,9 @@ export class ParishionerRequestService {
   }
 
   /**
-   * Creates a new request in Draft state.
+   * Creates a new request in Draft state, supporting user-scoped idempotent creation.
    */
-  async createDraft(userId, requestData) {
+  async createDraft(userId, requestData, idempotencyKey = null) {
     const normalizedDocType = normalizeDocumentType(requestData.documentType);
     if (!normalizedDocType) {
       const error = new Error(`Unsupported document type "${requestData.documentType}".`);
@@ -35,69 +38,208 @@ export class ParishionerRequestService {
       throw error;
     }
 
-    return prisma.$transaction(async (tx) => {
-      const parish = await tx.parish.findUnique({
-        where: { id: numericParishId },
-      });
-
-      if (!parish) {
-        const error = new Error("Selected parish does not exist.");
-        error.statusCode = 404;
-        throw error;
-      }
-
-      const effectiveOffered = getEffectiveOfferedDocuments(parish.availableDocuments);
-      if (!effectiveOffered.includes(normalizedDocType)) {
-        const error = new Error(
-          `The requested document type "${normalizedDocType}" is not currently offered by ${parish.parishName}.`
-        );
-        error.statusCode = 400;
-        throw error;
-      }
-
-      // Resolve fee snapshot from parish document requirements configuration
-      const reqConfig = await DocumentRequirementService.getRequirements(normalizedDocType, numericParishId);
-      const feeSnapshot = reqConfig?.baseFee !== undefined ? parseFloat(reqConfig.baseFee) : 100.00;
-
-      // Create request with isDraft: true and authoritative fee snapshot
-      const draft = await tx.documentRequest.create({
-        data: {
-          userId,
-          parishId: numericParishId,
-          documentType: normalizedDocType,
-          applicantName: requestData.applicantName,
-          relationship: requestData.relationship || "Self",
-          purpose: requestData.purpose || "",
-          isDraft: true,
-          status: "PENDING",
-          fee: feeSnapshot,
-        },
-      });
-
-      // Generate tracking number using SR-YYYY-000000 sequence
-      const year = new Date().getFullYear();
-      const trackingNumber = `SR-${year}-${String(draft.id).padStart(6, "0")}`;
-
-      // Update draft with tracking number
-      const updatedDraft = await tx.documentRequest.update({
-        where: { id: draft.id },
-        data: { trackingNumber },
-      });
-
-      // Create history entry
-      await tx.requestHistory.create({
-        data: {
-          requestId: updatedDraft.id,
-          actorId: userId,
-          action: "DRAFT_CREATED",
-          remarks: "Draft request initialized",
-        },
-      });
-
-      await AuditLogService.log(userId, `Created request draft tracking number ${trackingNumber}`, tx);
-
-      return updatedDraft;
+    const hasValidKey = IdempotencyService.isValidKey(idempotencyKey);
+    const payloadHash = computeRequestPayloadHash({
+      parishId: numericParishId,
+      documentType: normalizedDocType,
+      applicantName: requestData.applicantName,
+      relationship: requestData.relationship,
+      purpose: requestData.purpose,
     });
+
+    const executeCreate = async () => {
+      return await prisma.$transaction(async (tx) => {
+        // 1. If idempotency key provided, check for existing record in transaction
+        if (hasValidKey) {
+          const existingRecord = await IdempotencyService.findRecord(
+            userId,
+            idempotencyKey,
+            "DOCUMENT_REQUEST_CREATE",
+            tx
+          );
+
+          if (existingRecord) {
+            if (existingRecord.payloadHash === payloadHash) {
+              // Recover and return existing draft
+              const existingDraft = await tx.documentRequest.findFirst({
+                where: { id: existingRecord.resourceId, userId },
+                include: {
+                  parish: {
+                    select: {
+                      id: true,
+                      parishName: true,
+                      type: true,
+                      municipalityCity: true,
+                      province: true,
+                    },
+                  },
+                  attachments: true,
+                  requestHistory: true,
+                },
+              });
+              if (existingDraft) {
+                return existingDraft;
+              }
+            } else {
+              // Different payload with same key => 409 Conflict
+              const conflictErr = new Error(
+                "Idempotency key conflict: This key was already used with a different request payload."
+              );
+              conflictErr.statusCode = 409;
+              throw conflictErr;
+            }
+          }
+        }
+
+        // 2. Validate parish and offerings
+        const parish = await tx.parish.findUnique({
+          where: { id: numericParishId },
+        });
+
+        if (!parish) {
+          const error = new Error("Selected parish does not exist.");
+          error.statusCode = 404;
+          throw error;
+        }
+
+        const effectiveOffered = getEffectiveOfferedDocuments(parish.availableDocuments);
+        if (!effectiveOffered.includes(normalizedDocType)) {
+          const error = new Error(
+            `The requested document type "${normalizedDocType}" is not currently offered by ${parish.parishName}.`
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // 3. Resolve fee snapshot from parish document requirements configuration
+        const reqConfig = await DocumentRequirementService.getRequirements(normalizedDocType, numericParishId);
+        const feeSnapshot = reqConfig?.baseFee !== undefined ? parseFloat(reqConfig.baseFee) : 100.00;
+
+        // 4. Validate dynamic required fields
+        if (reqConfig?.requiredFields) {
+          for (const field of reqConfig.requiredFields) {
+            if (field.required) {
+              const val = requestData[field.id];
+              if (!val || (typeof val === "string" && val.trim() === "")) {
+                const fieldErr = new Error(`Required field "${field.label || field.id}" is required.`);
+                fieldErr.statusCode = 400;
+                throw fieldErr;
+              }
+            }
+          }
+        }
+
+        // 5. Create request with isDraft: true and authoritative fee snapshot
+        const draft = await tx.documentRequest.create({
+          data: {
+            userId,
+            parishId: numericParishId,
+            documentType: normalizedDocType,
+            applicantName: (requestData.applicantName || "").trim(),
+            relationship: (requestData.relationship || "Self").trim(),
+            purpose: (requestData.purpose || "").trim(),
+            isDraft: true,
+            status: "PENDING",
+            fee: feeSnapshot,
+          },
+        });
+
+        // Generate tracking number using SR-YYYY-000000 sequence
+        const year = new Date().getFullYear();
+        const trackingNumber = `SR-${year}-${String(draft.id).padStart(6, "0")}`;
+
+        // Update draft with tracking number
+        const updatedDraft = await tx.documentRequest.update({
+          where: { id: draft.id },
+          data: { trackingNumber },
+          include: {
+            parish: {
+              select: {
+                id: true,
+                parishName: true,
+                type: true,
+                municipalityCity: true,
+                province: true,
+              },
+            },
+            attachments: true,
+            requestHistory: true,
+          },
+        });
+
+        // 6. Record idempotency key inside transaction (throws on race conflict)
+        if (hasValidKey) {
+          await IdempotencyService.recordKey(
+            {
+              userId,
+              key: idempotencyKey,
+              resourceType: "DOCUMENT_REQUEST_CREATE",
+              resourceId: updatedDraft.id,
+              payloadHash,
+            },
+            tx
+          );
+        }
+
+        // Create history entry
+        await tx.requestHistory.create({
+          data: {
+            requestId: updatedDraft.id,
+            actorId: userId,
+            action: "DRAFT_CREATED",
+            remarks: "Draft request initialized",
+          },
+        });
+
+        await AuditLogService.log(userId, `Created request draft tracking number ${trackingNumber}`, tx);
+
+        return updatedDraft;
+      });
+    };
+
+    try {
+      return await executeCreate();
+    } catch (err) {
+      // If a concurrent transaction won the idempotency key race, recover the winning draft
+      if (hasValidKey && IdempotencyService.isUniqueConstraintError(err)) {
+        const winningRecord = await IdempotencyService.findRecord(
+          userId,
+          idempotencyKey,
+          "DOCUMENT_REQUEST_CREATE",
+          prisma
+        );
+        if (winningRecord) {
+          if (winningRecord.payloadHash === payloadHash) {
+            const winningDraft = await prisma.documentRequest.findFirst({
+              where: { id: winningRecord.resourceId, userId },
+              include: {
+                parish: {
+                  select: {
+                    id: true,
+                    parishName: true,
+                    type: true,
+                    municipalityCity: true,
+                    province: true,
+                  },
+                },
+                attachments: true,
+                requestHistory: true,
+              },
+            });
+            if (winningDraft) {
+              return winningDraft;
+            }
+          } else {
+            const conflictErr = new Error(
+              "Idempotency key conflict: This key was already used with a different request payload."
+            );
+            conflictErr.statusCode = 409;
+            throw conflictErr;
+          }
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -121,17 +263,40 @@ export class ParishionerRequestService {
         throw error;
       }
 
-      // Check if there are attachments uploaded (conditional on requirements)
+      // Check authoritative requirements for this parish and document type
       const reqConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
-      const requiredDocs = reqConfig?.requiredDocuments || [];
 
+      // 1. Verify required form fields
+      if (reqConfig?.requiredFields) {
+        for (const field of reqConfig.requiredFields) {
+          if (field.required) {
+            const val = request[field.id];
+            if (!val || (typeof val === "string" && val.trim() === "")) {
+              const error = new Error(`Cannot submit request: Required field "${field.label || field.id}" is missing.`);
+              error.statusCode = 400;
+              throw error;
+            }
+          }
+        }
+      }
+
+      // 2. Verify all required document requirements exist (authoritative requirement IDs)
+      const requiredDocs = (reqConfig?.requiredDocuments || []).filter((d) => d.required);
       if (requiredDocs.length > 0) {
-        const attachmentCount = await tx.requestAttachment.count({
+        const attachments = await tx.requestAttachment.findMany({
           where: { requestId },
         });
+        const uploadedRequirementIds = new Set(attachments.map((a) => a.category));
 
-        if (attachmentCount === 0) {
-          const error = new Error("Cannot submit request without supporting attachments.");
+        const missing = [];
+        for (const reqDoc of requiredDocs) {
+          if (!uploadedRequirementIds.has(reqDoc.id)) {
+            missing.push(reqDoc.label || reqDoc.id);
+          }
+        }
+
+        if (missing.length > 0) {
+          const error = new Error(`Cannot submit request without required attachments: ${missing.join(", ")}`);
           error.statusCode = 400;
           throw error;
         }

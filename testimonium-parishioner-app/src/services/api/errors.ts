@@ -45,7 +45,8 @@ const safeStatusMessage = (status: number) => {
   if (status === 403) return "You do not have access to this action.";
   if (status === 404) return "The requested item is no longer available.";
   if (status === 409) return "An account with this information already exists.";
-  if (status === 413) return "The selected file is too large.";
+  if (status === 413) return "File is larger than the 5 MB limit.";
+  if (status === 415) return "Unsupported file type.";
   if (status === 429) return "Too many requests. Please try again later.";
   if (status >= 500) return "The service is temporarily unavailable. Please try again.";
   return "We could not complete that request.";
@@ -80,7 +81,7 @@ export const appErrorFromResponse = async (response: Response): Promise<AppError
       ? "AUTH"
       : response.status === 403
         ? "FORBIDDEN"
-        : response.status === 400 || response.status === 422
+        : response.status === 400 || response.status === 413 || response.status === 415 || response.status === 422
           ? "VALIDATION"
           : response.status === 409
             ? "CONFLICT"

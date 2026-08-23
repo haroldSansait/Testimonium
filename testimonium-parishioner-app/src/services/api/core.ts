@@ -1,4 +1,5 @@
 import type { User } from "@react-native-firebase/auth";
+import { fetch as reactNativeFetch } from "whatwg-fetch";
 import { devDiagnostic, safeErrorDetails } from "@/services/devDiagnostics";
 import { AppError, appErrorFromResponse } from "./errors";
 
@@ -6,6 +7,7 @@ export interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
+  createBody?: () => unknown;
   signal?: AbortSignal;
   auth?: boolean;
   isMultipart?: boolean;
@@ -60,8 +62,55 @@ const responseData = async <T>(response: Response): Promise<T> => {
   ) {
     return undefined as T;
   }
-  const payload = (await response.json()) as { data?: T };
+  const payload = (await response.json()) as Record<string, unknown>;
+
+  // Paginated endpoints return metadata beside `data`, so unwrapping only
+  // `data` would discard pagination and change the response into a bare array.
+  if (Object.prototype.hasOwnProperty.call(payload, "pagination")) {
+    return payload as T;
+  }
+
   return (payload.data ?? payload) as T;
+};
+
+const transportError = (error: unknown): AppError => {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("unsupported formdatapart implementation") ||
+    normalized.includes("unsupported formdata implementation") ||
+    normalized.includes("could not retrieve file for uri")
+  ) {
+    return new AppError({
+      kind: "VALIDATION",
+      code: "UPLOAD_BODY_UNREADABLE",
+      message:
+        "The selected file could not be uploaded. Choose a PDF, JPEG, PNG, or WebP file under 5 MB.",
+    });
+  }
+
+  if (
+    normalized.includes("network request failed") ||
+    normalized.includes("failed to fetch") ||
+    normalized.startsWith("fetch failed") ||
+    normalized.includes("connection refused") ||
+    normalized.includes("unable to resolve host")
+  ) {
+    return new AppError({
+      kind: "NETWORK",
+      code: "API_CONNECTION_FAILED",
+      message: "Unable to connect to TESTIMONIUM.",
+      retryable: true,
+    });
+  }
+
+  return new AppError({
+    kind: "UNKNOWN",
+    code: "REQUEST_TRANSPORT_FAILED",
+    message: "We could not complete that request. Please try again.",
+    retryable: true,
+  });
 };
 
 export const createApiClient = (dependencies: ApiClientDependencies) => ({
@@ -69,51 +118,80 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
     const method = options.method ?? "GET";
     const needsAuth = options.auth ?? true;
     const timeout = options.timeout ?? 30_000;
-    const fetchImpl = dependencies.fetchImpl ?? fetch;
+    // Expo SDK 57 installs expo/fetch globally. expo/fetch cannot serialize React Native's
+    // proprietary { uri, name, type } FormData file parts, while RN's fetch polyfill can.
+    const fetchImpl =
+      dependencies.fetchImpl ?? (options.isMultipart ? reactNativeFetch : fetch);
     const user = needsAuth ? dependencies.getCurrentUser() : null;
 
     if (needsAuth && !user) {
       throw new AppError({ kind: "AUTH", message: "Please sign in to continue." });
     }
 
+    if (options.body !== undefined && options.createBody) {
+      throw new AppError({
+        kind: "CONFIGURATION",
+        code: "AMBIGUOUS_REQUEST_BODY",
+        message: "A request cannot define both body and createBody.",
+      });
+    }
+
     const path = options.path.startsWith("/") ? options.path : `/${options.path}`;
 
     const execute = async (forcedToken?: string) => {
       const combined = combineSignals(options.signal, timeout);
-      const headers = new Headers(options.headers);
-      if (!options.isMultipart && options.body !== undefined) {
-        headers.set("Content-Type", "application/json");
-      }
+      try {
+        const requestBody = options.createBody ? options.createBody() : options.body;
+        const requestHeaders: Record<string, string> = {};
+        if (options.headers) {
+          if (options.headers instanceof Headers) {
+            options.headers.forEach((value, key) => {
+              requestHeaders[key] = value;
+            });
+          } else if (Array.isArray(options.headers)) {
+            options.headers.forEach(([key, value]) => {
+              requestHeaders[key] = value;
+            });
+          } else {
+            Object.assign(requestHeaders, options.headers);
+          }
+        }
 
-      if (needsAuth) {
-        devDiagnostic("API", "Firebase ID token acquisition started", {
-          forceRefresh: Boolean(forcedToken),
-        });
-        try {
-          headers.set("Authorization", `Bearer ${forcedToken ?? (await user!.getIdToken(false))}`);
-          devDiagnostic("API", "Firebase ID token acquisition succeeded", {
+        if (!options.isMultipart && requestBody !== undefined) {
+          requestHeaders["Content-Type"] = "application/json";
+        } else if (options.isMultipart) {
+          delete requestHeaders["Content-Type"];
+          delete requestHeaders["content-type"];
+        }
+
+        if (needsAuth) {
+          devDiagnostic("API", "Firebase ID token acquisition started", {
             forceRefresh: Boolean(forcedToken),
           });
-        } catch (error) {
-          devDiagnostic("API", "Firebase ID token acquisition failed", safeErrorDetails(error));
-          throw error;
+          try {
+            requestHeaders["Authorization"] = `Bearer ${forcedToken ?? (await user!.getIdToken(false))}`;
+            devDiagnostic("API", "Firebase ID token acquisition succeeded", {
+              forceRefresh: Boolean(forcedToken),
+            });
+          } catch (error) {
+            devDiagnostic("API", "Firebase ID token acquisition failed", safeErrorDetails(error));
+            throw error;
+          }
         }
-      }
 
-      const baseUrl = dependencies.getBaseUrl();
-      const requestUrl = `${baseUrl}${path}`;
-      devDiagnostic("API", "Resolved API base URL", { baseUrl });
-      devDiagnostic("API", "HTTP request attempted", { method, path, requestUrl });
-      try {
+        const baseUrl = dependencies.getBaseUrl();
+        const requestUrl = `${baseUrl}${path}`;
+        devDiagnostic("API", "Resolved API base URL", { baseUrl });
+        devDiagnostic("API", "HTTP request attempted", { method, path, requestUrl });
         const response = await fetchImpl(requestUrl, {
           method,
-          headers,
+          headers: requestHeaders,
           body:
-            options.body === undefined
+            requestBody === undefined
               ? undefined
               : options.isMultipart
-                ? (options.body as BodyInit)
-                : JSON.stringify(options.body),
+                ? (requestBody as BodyInit)
+                : JSON.stringify(requestBody),
           signal: combined.signal,
         });
         devDiagnostic("API", "HTTP response received", {
@@ -123,6 +201,10 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
         });
         return response;
       } catch (error) {
+        if (error instanceof AppError) {
+          throw error;
+        }
+
         devDiagnostic("API", "Raw fetch exception", {
           method,
           path,
@@ -142,15 +224,7 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
             kind: "CANCELLED",
             message: "Request cancelled.",
           });
-        } else {
-          normalized = new AppError({
-            kind: "NETWORK",
-            code: "BACKEND_UNREACHABLE",
-            message:
-              "The TESTIMONIUM backend could not be reached. Check the configured API URL or development tunnel and try again.",
-            retryable: true,
-          });
-        }
+        } else normalized = transportError(error);
         devDiagnostic("API", "Normalized API error", safeErrorDetails(normalized));
         throw normalized;
       } finally {

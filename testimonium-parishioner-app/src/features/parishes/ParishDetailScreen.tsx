@@ -20,6 +20,7 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { UpcomingEventsSection } from "@/features/events/UpcomingEventsSection";
+import { getEffectiveOfferedDocuments } from "@/features/requests/presentation";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useParishDetail } from "./api";
@@ -239,6 +240,35 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
               </View>
             ) : null}
 
+            {/* Request Document CTA (Only if parish offers online document requests) */}
+            {getEffectiveOfferedDocuments(parish.availableDocuments).length > 0 ? (
+              <Card style={styles.requestCtaCard}>
+                <View style={styles.requestCtaContent}>
+                  <View style={styles.requestCtaIconBox}>
+                    <Ionicons name="document-text" size={24} color={colors.primary} />
+                  </View>
+                  <View style={styles.requestCtaTextGroup}>
+                    <Text style={styles.requestCtaTitle} allowFontScaling>
+                      Request Sacramental Certificate
+                    </Text>
+                    <Text style={styles.requestCtaSubtitle} allowFontScaling>
+                      Apply online for baptismal, confirmation, or marriage records.
+                    </Text>
+                  </View>
+                </View>
+                <Button
+                  title="Request Document"
+                  variant="primary"
+                  size="md"
+                  icon="arrow-forward"
+                  onPress={() => {
+                    router.push(`/(app)/requests/new?parishId=${parish.id}` as any);
+                  }}
+                  accessibilityLabel={`Request document from ${parish.name}`}
+                />
+              </Card>
+            ) : null}
+
             {/* Description */}
             {parish.directoryDescription ? (
               <Card style={styles.sectionCard}>
@@ -392,5 +422,37 @@ const styles = StyleSheet.create({
   hoursText: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
+  },
+  requestCtaCard: {
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+  },
+  requestCtaContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  requestCtaIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.sm,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestCtaTextGroup: {
+    flex: 1,
+  },
+  requestCtaTitle: {
+    ...fontStyles.bodyMedium,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  requestCtaSubtitle: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
 });

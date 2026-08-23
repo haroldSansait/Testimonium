@@ -24,6 +24,22 @@ describe("application error normalization", () => {
     expect(error.message).toBe("Custom validation issue");
   });
 
+  it.each([
+    [413, "File is larger than the 5 MB limit."],
+    [415, "Unsupported file type."],
+  ])("maps upload HTTP %s to a precise validation error", async (status, message) => {
+    const error = await appErrorFromResponse(
+      new Response("", {
+        status,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    expect(error.kind).toBe("VALIDATION");
+    expect(error.status).toBe(status);
+    expect(error.message).toBe(message);
+  });
+
   it("extracts Retry-After header on 429 rate limit responses", async () => {
     const error = await appErrorFromResponse(
       new Response(JSON.stringify({ message: "Rate limited" }), {

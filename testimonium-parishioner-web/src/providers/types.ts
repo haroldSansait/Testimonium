@@ -83,20 +83,16 @@ export interface IEventProvider {
 }
 
 export interface PaymentConfiguration {
-  gcash: {
-    accountName: string;
-    accountNumber: string;
-    qrCodeUrl?: string;
+  configured: boolean;
+  qrCode: {
+    enabled: boolean;
+    imageUrl: string | null;
   };
-  maya: {
-    accountName: string;
-    accountNumber: string;
-    qrCodeUrl?: string;
-  };
+  message?: string;
 }
 
 export interface IPaymentConfigurationProvider {
-  getPaymentConfiguration(parishId?: string): Promise<PaymentConfiguration>;
+  getPaymentConfiguration(requestId: string): Promise<PaymentConfiguration>;
 }
 
 export interface IServiceProvider {
@@ -112,4 +108,3 @@ export interface IServiceProvider {
   event: IEventProvider;
   payment: IPaymentConfigurationProvider;
 }
-

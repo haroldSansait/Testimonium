@@ -20,14 +20,18 @@ const RECEIPT_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
+  const rawMime = (file.mimetype || "").trim().toLowerCase();
+  const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+
   // Check MIME Type
-  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+  if (!ALLOWED_MIME_TYPES.includes(normalizedMime)) {
     const err = new Error(
       `Invalid file type: ${file.mimetype}. Only PDF, PNG, JPG, JPEG, and WEBP files are allowed.`
     );
-    err.statusCode = 400;
+    err.statusCode = 415;
     return cb(err, false);
   }
+  file.mimetype = normalizedMime;
 
   // Check Extension
   const ext = path.extname(file.originalname).toLowerCase();
@@ -35,7 +39,7 @@ const fileFilter = (req, file, cb) => {
     const err = new Error(
       `Invalid extension: ${ext}. Only PDF, PNG, JPG, JPEG, and WEBP files are allowed.`
     );
-    err.statusCode = 400;
+    err.statusCode = 415;
     return cb(err, false);
   }
 

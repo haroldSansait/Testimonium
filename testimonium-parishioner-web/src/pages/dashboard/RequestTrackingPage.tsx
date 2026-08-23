@@ -498,7 +498,7 @@ export const RequestTrackingPage: React.FC = () => {
                             const fee = selectedRequest.fee !== undefined && selectedRequest.fee !== null && !isNaN(selectedRequest.fee)
                               ? selectedRequest.fee
                               : (selectedRequest.paymentTransactions?.[0]?.amount ? Number(selectedRequest.paymentTransactions[0].amount) : 100);
-                            return `₱${Number(fee).toFixed(2)}`;
+                            return `\u20B1${Number(fee).toFixed(2)}`;
                           })()}
                         </span>
                       </div>
@@ -507,7 +507,7 @@ export const RequestTrackingPage: React.FC = () => {
                     {/* Side-by-side Layout */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <PaymentInstructionsCard
-                        parishId={selectedRequest.parishId}
+                        requestId={selectedRequest.id}
                         amount={
                           selectedRequest.fee !== undefined && selectedRequest.fee !== null && !isNaN(selectedRequest.fee)
                             ? selectedRequest.fee
@@ -567,7 +567,7 @@ export const RequestTrackingPage: React.FC = () => {
 
                     {/* Replacement Upload */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <PaymentInstructionsCard parishId={selectedRequest.parishId} />
+                      <PaymentInstructionsCard requestId={selectedRequest.id} />
                       <ReceiptUploadCard
                         requestId={selectedRequest.id}
                         existingTransaction={undefined}
@@ -622,7 +622,7 @@ export const RequestTrackingPage: React.FC = () => {
                                 <div>
                                   <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Amount Detected</span>
                                   <span className="font-bold text-text-primary">
-                                    {selectedRequest.paymentTransactions[0].amount ? `₱${selectedRequest.paymentTransactions[0].amount}` : 'N/A'}
+                                    {selectedRequest.paymentTransactions[0].amount ? `\u20B1${selectedRequest.paymentTransactions[0].amount}` : 'N/A'}
                                   </span>
                                 </div>
                                 <div>

@@ -216,6 +216,7 @@ model User {
   createdParishEvents       ParishEvent[]      @relation("ParishEventCreator")
   assignedParishEvents      ParishEvent[]      @relation("ParishEventPriest")
   massTemplates             MassScheduleTemplate[] @relation("MassTemplatePriest")
+  idempotencyKeys           IdempotencyKey[]
 
   @@index([roleId])
   @@index([parishId])
@@ -563,4 +564,20 @@ model ParishEvent {
   @@index([parishId])
   @@index([eventDate])
   @@map("parish_events")
+}
+
+model IdempotencyKey {
+  id           Int      @id @default(autoincrement()) @map("idempotency_id")
+  key          String   @db.VarChar(128)
+  userId       Int      @map("user_id")
+  resourceType String   @map("resource_type") @db.VarChar(50)
+  resourceId   Int      @map("resource_id")
+  payloadHash  String   @map("payload_hash") @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key, resourceType])
+  @@index([userId, key])
+  @@map("idempotency_keys")
 }

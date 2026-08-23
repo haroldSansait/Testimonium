@@ -1,5 +1,5 @@
-import { RequestsShellScreen } from "@/features/requests/RequestsShellScreen";
+import { RequestListScreen } from "@/features/requests/RequestListScreen";
 
 export default function RequestsRoute() {
-  return <RequestsShellScreen />;
+  return <RequestListScreen />;
 }
