@@ -11,14 +11,16 @@ import {
   ViewStyle,
   type ViewProps,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { colors, spacing } from "@/theme/tokens";
+import { SafeAreaView, type Edge } from "react-native-safe-area-context";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export interface ScreenProps extends ViewProps {
   scrollable?: boolean;
   keyboardAvoiding?: boolean;
   safeArea?: boolean;
+  edges?: Edge[];
   contentContainerStyle?: StyleProp<ViewStyle>;
+  keyboardVerticalOffset?: number;
 }
 
 export const Screen: React.FC<ScreenProps> = ({
@@ -27,11 +29,11 @@ export const Screen: React.FC<ScreenProps> = ({
   scrollable = false,
   keyboardAvoiding = true,
   safeArea = true,
+  edges = ["top", "left", "right"],
   contentContainerStyle,
+  keyboardVerticalOffset = Platform.OS === "ios" ? 64 : 0,
   ...props
 }) => {
-  const Container = safeArea ? SafeAreaView : View;
-
   if (scrollable) {
     const scrollContent = (
       <ScrollView
@@ -44,44 +46,92 @@ export const Screen: React.FC<ScreenProps> = ({
       </ScrollView>
     );
 
+    const wrappedContent = keyboardAvoiding ? (
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={keyboardVerticalOffset}
+      >
+        {scrollContent}
+      </KeyboardAvoidingView>
+    ) : (
+      scrollContent
+    );
+
+    if (safeArea) {
+      return (
+        <SafeAreaView edges={edges} style={[styles.screen, style]} {...props}>
+          {wrappedContent}
+        </SafeAreaView>
+      );
+    }
+
     return (
-      <Container style={[styles.screen, style]} {...props}>
+      <View style={[styles.screen, style]} {...props}>
+        {wrappedContent}
+      </View>
+    );
+  }
+
+  if (safeArea) {
+    return (
+      <SafeAreaView edges={edges} style={[styles.screen, style]} {...props}>
         {keyboardAvoiding ? (
           <KeyboardAvoidingView
             style={styles.flex}
             behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={keyboardVerticalOffset}
           >
-            {scrollContent}
+            {children}
           </KeyboardAvoidingView>
         ) : (
-          scrollContent
+          children
         )}
-      </Container>
+      </SafeAreaView>
     );
   }
 
   return (
-    <Container style={[styles.screen, style]} {...props}>
+    <View style={[styles.screen, style]} {...props}>
       {children}
-    </Container>
+    </View>
   );
 };
 
-export const LoadingState: React.FC<{ label?: string }> = ({ label = "Loading..." }) => (
-  <Screen style={styles.center}>
-    <ActivityIndicator color={colors.primary} size="large" />
-    <Text style={styles.label} allowFontScaling>
-      {label}
-    </Text>
-  </Screen>
+export const LoadingState: React.FC<{ label?: string }> = ({
+  label = "Loading TESTIMONIUM\u2026",
+}) => (
+  <View style={styles.centerScreen}>
+    <View style={styles.loadingCard}>
+      <ActivityIndicator color={colors.primary} size="large" />
+      <Text style={styles.loadingLabel} allowFontScaling>
+        {label}
+      </Text>
+    </View>
+  </View>
 );
 
-export const ErrorState: React.FC<{ message: string }> = ({ message }) => (
-  <Screen style={styles.center}>
-    <Text accessibilityRole="alert" style={styles.error} allowFontScaling>
-      {message}
-    </Text>
-  </Screen>
+export const ErrorState: React.FC<{
+  message: string;
+  onRetry?: () => void;
+}> = ({ message, onRetry }) => (
+  <View style={styles.centerScreen}>
+    <View style={styles.errorCard}>
+      <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
+        {message}
+      </Text>
+      {onRetry ? (
+        <Text
+          onPress={onRetry}
+          style={styles.retryLink}
+          accessibilityRole="button"
+          allowFontScaling
+        >
+          Try Again
+        </Text>
+      ) : null}
+    </View>
+  </View>
 );
 
 const styles = StyleSheet.create({
@@ -91,25 +141,50 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
-    padding: spacing.md,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
-    paddingVertical: spacing.md,
   },
-  center: {
+  centerScreen: {
+    flex: 1,
+    backgroundColor: colors.background,
     justifyContent: "center",
     alignItems: "center",
+    padding: spacing.lg,
+  },
+  loadingCard: {
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: radii.lg,
+    alignItems: "center",
     gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
-  label: {
+  loadingLabel: {
+    ...fontStyles.bodyMedium,
     color: colors.textSecondary,
-    fontSize: 16,
   },
-  error: {
+  errorCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    maxWidth: 320,
+    width: "100%",
+  },
+  errorText: {
+    ...fontStyles.bodySmall,
     color: colors.danger,
     textAlign: "center",
-    fontSize: 16,
+  },
+  retryLink: {
+    ...fontStyles.button,
+    color: colors.primary,
+    marginTop: spacing.xs,
   },
 });

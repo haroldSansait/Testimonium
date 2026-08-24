@@ -30,6 +30,8 @@ The TESTIMONIUM mobile app uses a warm ecclesiastical design language distinct f
 | Component | Purpose & Accessibility Behavior |
 | --- | --- |
 | `AppHeader` | Top navigation bar with contextual title, back button, and optional trailing actions (e.g. notification bell). |
+| `BottomActionBar` | Sticky bottom container with safe-area padding for primary wizard and modal actions. |
+| `FilterChip` | Interactive pill chip for category, date, and status filtering with 44pt touch target. |
 | `Card` | Bounded surface container with subtle border radius and shadow for grouping content. |
 | `IconButton` | Touch-accessible button with minimum 44×44 pt hit area and explicit `accessibilityLabel`. |
 | `Badge` | Status indicator combining text, icon, and semantic color pairings with high contrast. |
@@ -39,8 +41,7 @@ The TESTIMONIUM mobile app uses a warm ecclesiastical design language distinct f
 | `InlineError` | Localized error banner with a clear retry trigger to isolate screen section failures. |
 | `LoadingOverlay` | Semi-transparent spinner overlay for blocking asynchronous operations. |
 | `Button` | Primary maroon, secondary outline, ghost, and destructive button variants with built-in loading states. |
-| `Input` | Text input field supporting icons, error messages, and platform-specific keyboard types. |
-| `StepIndicator` | Multi-step progress tracker for document and scheduling wizards. |
+| `TextInput` | Text input field supporting icons, error messages, and platform-specific keyboard types. |
 
 ## 3. Typography scale
 

@@ -15,7 +15,6 @@ import {
   Badge,
   Button,
   Card,
-  SectionHeader,
 } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -121,14 +120,18 @@ export const ProfileScreen: React.FC = () => {
         {/* Account Details */}
         <Card style={styles.detailsCard}>
           <View style={styles.cardHeaderWithAction}>
-            <SectionHeader title="Account Information" />
+            <Text style={styles.cardSectionTitle} allowFontScaling>
+              Account Information
+            </Text>
             <TouchableOpacity
               onPress={() => handleNavigate("/(app)/profile/edit")}
               activeOpacity={0.7}
               style={styles.editLinkBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile details"
             >
-              <Ionicons name="pencil" size={14} color={colors.primary} />
-              <Text style={styles.editLinkText}>Edit</Text>
+              <Ionicons name="pencil" size={13} color={colors.primary} />
+              <Text style={styles.editLinkText} allowFontScaling>Edit</Text>
             </TouchableOpacity>
           </View>
 
@@ -250,6 +253,7 @@ const styles = StyleSheet.create({
   profileCard: {
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   avatarContainer: {
     flexDirection: "row",
@@ -270,6 +274,7 @@ const styles = StyleSheet.create({
   userName: {
     ...fontStyles.heading,
     color: colors.textPrimary,
+    fontWeight: "700",
   },
   userEmail: {
     ...fontStyles.bodySmall,
@@ -284,12 +289,20 @@ const styles = StyleSheet.create({
   detailsCard: {
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   cardHeaderWithAction: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacing.xs,
+  },
+  cardSectionTitle: {
+    ...fontStyles.subheading,
+    color: colors.textPrimary,
+    fontWeight: "700",
+    flex: 1,
+    paddingRight: spacing.sm,
   },
   editLinkBtn: {
     flexDirection: "row",
@@ -299,6 +312,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: radii.sm,
     backgroundColor: colors.primarySoft,
+    flexShrink: 0,
   },
   editLinkText: {
     ...fontStyles.caption,
@@ -320,11 +334,12 @@ const styles = StyleSheet.create({
   detailValue: {
     ...fontStyles.bodySmall,
     color: colors.textPrimary,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   linksCard: {
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
     padding: 0,
     overflow: "hidden",
   },
@@ -339,11 +354,13 @@ const styles = StyleSheet.create({
   linkText: {
     ...fontStyles.body,
     color: colors.textPrimary,
+    fontWeight: "500",
     flex: 1,
   },
   actionsCard: {
     marginTop: spacing.xs,
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   logoutNotice: {
     ...fontStyles.caption,

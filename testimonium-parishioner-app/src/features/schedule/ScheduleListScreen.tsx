@@ -10,7 +10,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Button, EmptyState, Skeleton } from "@/components/ui";
+import { AppHeader, Button, EmptyState, FilterChip, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useScheduleList } from "./api";
 import {
@@ -60,20 +60,23 @@ export const ScheduleListScreen: React.FC = () => {
       >
         {hasProposal && (
           <View style={styles.proposalBanner}>
-            <Ionicons name="alert-circle" size={16} color="#1E40AF" />
-            <Text style={styles.proposalBannerText}>
-              Reschedule Proposed by Parish Staff
+            <Ionicons name="alert-circle" size={15} color="#1E40AF" />
+            <Text style={styles.proposalBannerText} allowFontScaling>
+              Alternative Date Proposed by Parish Staff
             </Text>
+            <Ionicons name="chevron-forward" size={14} color="#1E40AF" />
           </View>
         )}
 
         <View style={styles.cardHeader}>
           <View style={styles.titleContainer}>
-            <Text style={styles.eventTitle} numberOfLines={1}>
+            <Text style={styles.eventTitle} numberOfLines={1} allowFontScaling>
               {item.displayTitle || eventLabel}
             </Text>
             {item.displayTitle && item.displayTitle !== eventLabel && (
-              <Text style={styles.eventSubtitle}>{eventLabel}</Text>
+              <Text style={styles.eventSubtitle} numberOfLines={1} allowFontScaling>
+                {eventLabel}
+              </Text>
             )}
           </View>
           <View
@@ -82,35 +85,35 @@ export const ScheduleListScreen: React.FC = () => {
               { backgroundColor: badge.bg, borderColor: badge.border },
             ]}
           >
-            <Text style={[styles.statusText, { color: badge.text }]}>
+            <Text style={[styles.statusText, { color: badge.text }]} allowFontScaling>
               {badge.label}
             </Text>
           </View>
         </View>
 
         <View style={styles.infoRow}>
-          <Ionicons name="business-outline" size={16} color={colors.textMuted} />
-          <Text style={styles.infoText} numberOfLines={1}>
+          <Ionicons name="business-outline" size={14} color={colors.textMuted} />
+          <Text style={styles.infoText} numberOfLines={1} allowFontScaling>
             {item.parish?.parishName || "Parish"}
           </Text>
         </View>
 
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Ionicons name="calendar-outline" size={15} color={colors.textMuted} />
-            <Text style={styles.metaText}>{dateFormatted}</Text>
+            <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
+            <Text style={styles.metaText} allowFontScaling>{dateFormatted}</Text>
           </View>
           <View style={styles.metaItem}>
-            <Ionicons name="time-outline" size={15} color={colors.textMuted} />
-            <Text style={styles.metaText}>{timeSlot}</Text>
+            <Ionicons name="time-outline" size={13} color={colors.textMuted} />
+            <Text style={styles.metaText} allowFontScaling>{timeSlot}</Text>
           </View>
         </View>
 
         {item.assignedPriest?.fullName && (
           <View style={styles.priestRow}>
-            <Ionicons name="person-outline" size={14} color={colors.textMuted} />
-            <Text style={styles.priestText} numberOfLines={1}>
-              Priest: {item.assignedPriest.fullName}
+            <Ionicons name="person-outline" size={13} color={colors.textMuted} />
+            <Text style={styles.priestText} numberOfLines={1} allowFontScaling>
+              Celebrant: {item.assignedPriest.fullName}
             </Text>
           </View>
         )}
@@ -125,7 +128,7 @@ export const ScheduleListScreen: React.FC = () => {
         subtitle="Sacraments, Masses & Blessings"
         rightAction={
           <Button
-            title="New"
+            title="Book Schedule"
             size="sm"
             variant="primary"
             icon="add"
@@ -137,36 +140,18 @@ export const ScheduleListScreen: React.FC = () => {
 
       {/* Scope Filter Tabs */}
       <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "upcoming" && styles.activeTab]}
+        <FilterChip
+          label="Upcoming Schedules"
+          selected={activeTab === "upcoming"}
           onPress={() => setActiveTab("upcoming")}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "upcoming" && styles.activeTabText,
-            ]}
-          >
-            Upcoming
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "history" && styles.activeTab]}
+        />
+        <FilterChip
+          label="History / Completed"
+          selected={activeTab === "history"}
           onPress={() => setActiveTab("history")}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "history" && styles.activeTabText,
-            ]}
-          >
-            History
-          </Text>
-        </TouchableOpacity>
+        />
       </View>
+
 
       {/* Content Body */}
       {isLoading ? (
@@ -231,42 +216,25 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: "row",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
     gap: spacing.sm,
   },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: "center",
-    borderRadius: radii.sm,
-  },
-  activeTab: {
-    backgroundColor: colors.primarySoft,
-  },
-  tabText: {
-    ...fontStyles.caption,
-    fontWeight: "600",
-    color: colors.textMuted,
-  },
-  activeTabText: {
-    color: colors.primary,
-    fontWeight: "700",
-  },
   listContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: spacing.md,
+    gap: spacing.sm,
     flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   loadingContainer: {
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.md,
   },
   skeleton: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   errorContainer: {
     flex: 1,
@@ -282,12 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: colors.cardBorder,
   },
   cardHighlight: {
     borderColor: "#BFDBFE",
@@ -298,16 +261,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
     backgroundColor: "#EFF6FF",
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    borderRadius: radii.xs,
+    borderRadius: radii.sm,
     marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
   },
   proposalBannerText: {
     ...fontStyles.caption,
     fontSize: 12,
     fontWeight: "700",
     color: "#1E40AF",
+    flex: 1,
   },
   cardHeader: {
     flexDirection: "row",
@@ -321,14 +287,13 @@ const styles = StyleSheet.create({
   },
   eventTitle: {
     ...fontStyles.subheading,
-    fontSize: 16,
     color: colors.textPrimary,
     fontWeight: "700",
   },
   eventSubtitle: {
     ...fontStyles.caption,
     color: colors.textMuted,
-    fontSize: 12,
+    marginTop: 2,
   },
   statusBadge: {
     paddingHorizontal: spacing.sm,

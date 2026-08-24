@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { TextInput } from "@/components/ui/TextInput";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
-import { colors, radii, spacing, typography } from "@/theme/tokens";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export default function ProfileCompletionScreen() {
   const { profile, isUpdatingProfile, updateProfile, logout } = useAuth();
@@ -65,91 +67,106 @@ export default function ProfileCompletionScreen() {
 
   return (
     <Screen scrollable style={styles.screen}>
-      <View style={styles.content}>
+      <View style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.badgeContainer}>
-            <Text style={styles.badgeText}>ACCOUNT ONBOARDING</Text>
+          <View style={styles.dioceseBadge}>
+            <Text style={styles.dioceseBadgeText}>PROFILE SETUP</Text>
           </View>
           <Text style={styles.title} allowFontScaling>
             Complete Your Profile
           </Text>
           <Text style={styles.copy} allowFontScaling>
-            Please provide your official contact details so our parish secretaries can process your sacramental requests and notify you of status updates.
+            Please provide your official contact details so our parish offices can process your sacramental requests and send notification updates.
           </Text>
         </View>
 
-        <View style={styles.formSection}>
-          <Text style={styles.sectionHeader} allowFontScaling>
-            Full Legal Name
-          </Text>
-          <TextInput
-            label="First Name *"
-            value={firstName}
-            onChangeText={setFirstName}
-            placeholder="e.g. Juan"
-            autoCapitalize="words"
-            editable={!isUpdatingProfile}
-          />
-          <TextInput
-            label="Middle Name (Optional)"
-            value={middleName}
-            onChangeText={setMiddleName}
-            placeholder="e.g. Santos"
-            autoCapitalize="words"
-            editable={!isUpdatingProfile}
-          />
-          <TextInput
-            label="Last Name *"
-            value={lastName}
-            onChangeText={setLastName}
-            placeholder="e.g. Dela Cruz"
-            autoCapitalize="words"
-            editable={!isUpdatingProfile}
-          />
-          <TextInput
-            label="Suffix (Optional)"
-            value={suffix}
-            onChangeText={setSuffix}
-            placeholder="e.g. Jr., III"
-            autoCapitalize="words"
-            editable={!isUpdatingProfile}
-          />
-        </View>
-
-        <View style={styles.formSection}>
-          <Text style={styles.sectionHeader} allowFontScaling>
-            Contact & Address Details
-          </Text>
-          <TextInput
-            label="Contact Number *"
-            value={contactNumber}
-            onChangeText={setContactNumber}
-            keyboardType="phone-pad"
-            placeholder="e.g. 09123456789 or +639123456789"
-            helperText="Used for official SMS and certificate verification notices."
-            editable={!isUpdatingProfile}
-          />
-          <TextInput
-            label="Home / Permanent Address (Optional)"
-            value={address}
-            onChangeText={setAddress}
-            placeholder="e.g. Barangay, Municipality/City, Province"
-            autoCapitalize="words"
-            editable={!isUpdatingProfile}
-          />
-        </View>
-
+        {/* Error Notice */}
         {error && (
           <View style={styles.errorContainer}>
+            <Ionicons
+              name="alert-circle"
+              size={18}
+              color={colors.danger}
+              style={{ marginTop: 1 }}
+            />
             <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
               {error}
             </Text>
           </View>
         )}
 
+        {/* Full Legal Name Card */}
+        <Card style={styles.formCard}>
+          <Text style={styles.cardHeaderTitle} allowFontScaling>
+            Full Legal Name
+          </Text>
+          <View style={styles.fields}>
+            <TextInput
+              label="First Name *"
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder="e.g. Juan"
+              autoCapitalize="words"
+              editable={!isUpdatingProfile}
+            />
+            <TextInput
+              label="Middle Name (Optional)"
+              value={middleName}
+              onChangeText={setMiddleName}
+              placeholder="e.g. Santos"
+              autoCapitalize="words"
+              editable={!isUpdatingProfile}
+            />
+            <TextInput
+              label="Last Name *"
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="e.g. Dela Cruz"
+              autoCapitalize="words"
+              editable={!isUpdatingProfile}
+            />
+            <TextInput
+              label="Suffix (Optional)"
+              value={suffix}
+              onChangeText={setSuffix}
+              placeholder="e.g. Jr., III"
+              autoCapitalize="words"
+              editable={!isUpdatingProfile}
+            />
+          </View>
+        </Card>
+
+        {/* Contact & Address Card */}
+        <Card style={styles.formCard}>
+          <Text style={styles.cardHeaderTitle} allowFontScaling>
+            Contact & Address Details
+          </Text>
+          <View style={styles.fields}>
+            <TextInput
+              label="Contact Number *"
+              value={contactNumber}
+              onChangeText={setContactNumber}
+              keyboardType="phone-pad"
+              placeholder="e.g. 09123456789 or +639123456789"
+              helperText="Used for official SMS notices and verification."
+              editable={!isUpdatingProfile}
+            />
+            <TextInput
+              label="Home / Permanent Address (Optional)"
+              value={address}
+              onChangeText={setAddress}
+              placeholder="e.g. Barangay, Municipality/City, Province"
+              autoCapitalize="words"
+              editable={!isUpdatingProfile}
+            />
+          </View>
+        </Card>
+
+        {/* Actions */}
         <View style={styles.actions}>
           <Button
             title={isUpdatingProfile ? "Saving Profile..." : "Save & Continue to App"}
+            size="lg"
             loading={isUpdatingProfile}
             disabled={isUpdatingProfile || !firstName.trim() || !lastName.trim() || !contactNumber.trim()}
             onPress={() => {
@@ -160,6 +177,7 @@ export default function ProfileCompletionScreen() {
           <Button
             title="Sign Out"
             variant="outline"
+            size="lg"
             disabled={isUpdatingProfile}
             onPress={() => {
               void logout();
@@ -173,64 +191,82 @@ export default function ProfileCompletionScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    justifyContent: "center",
+    backgroundColor: colors.background,
   },
-  content: {
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   header: {
-    gap: spacing.xs,
+    marginBottom: spacing.lg,
   },
-  badgeContainer: {
+  dioceseBadge: {
     alignSelf: "flex-start",
     backgroundColor: colors.primarySoft,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs + 2,
     borderRadius: radii.sm,
     marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary + "20",
   },
-  badgeText: {
+  dioceseBadgeText: {
+    ...fontStyles.meta,
     color: colors.primary,
-    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   title: {
-    color: colors.primary,
-    fontSize: typography.title,
-    fontWeight: "700",
+    ...fontStyles.title,
+    color: colors.textPrimary,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "800",
   },
   copy: {
+    ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    fontSize: typography.body,
-    lineHeight: 22,
+    lineHeight: 20,
+    marginTop: spacing.xs,
   },
-  formSection: {
-    gap: spacing.sm,
+  formCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
-  sectionHeader: {
-    fontSize: typography.caption,
-    fontWeight: "700",
+  cardHeaderTitle: {
+    ...fontStyles.captionBold,
     color: colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  fields: {
+    gap: spacing.md,
   },
   errorContainer: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FCA5A5",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
   },
   errorText: {
+    ...fontStyles.caption,
     color: colors.danger,
-    fontSize: typography.caption,
-    lineHeight: 20,
+    lineHeight: 18,
+    flex: 1,
   },
   actions: {
-    gap: spacing.md,
+    gap: spacing.sm,
     marginTop: spacing.sm,
+    marginBottom: spacing.xl,
   },
 });

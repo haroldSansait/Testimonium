@@ -121,16 +121,20 @@ In-app notifications inbox renders alerts categorized by reference type (`DOCUME
 **Status:** ACCEPTED
 Profile editing synchronizes with the backend via `PUT /auth/profile`. Settings screen embeds canonical terms and privacy policy viewers. Screen sections incorporate `ErrorBoundary` and `InlineError` retry primitives.
 
+### M-027 — Mobile UI/UX Token Parity & Dynamic Safe Area Architecture
+**Status:** ACCEPTED
+Design tokens across colors, typography scale, radii, spacing, and elevation are harmonized with the Parishioner Web portal. The bottom navigation bar and screen containers dynamically account for Android 3-button and gesture navigation insets via `useSafeAreaInsets()`.
+
 ## 4. Implementation reconciliation snapshot — 24 August 2026
 
 - **Backend & Database:**
   - 18 Prisma models (including `idempotency_keys`).
   - Strict `SchedulingConfiguration` and `BookingValidator` service layers.
   - All 28 backend unit/integration tests passing.
-- **Mobile Application:**
+- **Mobile Application (Phases 1–8):**
   - `STATIC VERIFIED` — PASS
   - `TYPECHECK` — PASS (`npm run typecheck`, 0 errors)
   - `AUTOMATED TESTS` — PASS (22 suites, 161 tests passing)
   - `LINT` — PASS (`eslint . --max-warnings=0`, 0 errors, 0 warnings)
-  - `JS/METRO ANDROID EXPORT` — PASS (`npx expo export --platform android`)
+  - `JS/METRO ANDROID EXPORT` — PASS (`npx expo export --platform android`, 0 errors)
   - `PHYSICAL ANDROID RUNTIME QA` — ACTIVE (supported via `npm run dev:mobile`)

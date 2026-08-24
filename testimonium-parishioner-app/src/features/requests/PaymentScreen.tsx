@@ -11,11 +11,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import {
   AppHeader,
+  BottomActionBar,
   Button,
   Card,
   EmptyState,
   Skeleton,
 } from "@/components/ui";
+
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
@@ -258,8 +260,11 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
               Receipts are securely verified by parish staff. Please ensure the reference number, amount, and date are clearly visible.
             </Text>
           </View>
+        </ScrollView>
+      )}
 
-          {/* Submit Action */}
+      {isEligible && hasValidFee && (
+        <BottomActionBar>
           <Button
             title={isUploading ? "Submitting Proof..." : "Submit Receipt for Review"}
             variant="primary"
@@ -268,10 +273,9 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
             onPress={handleReceiptUpload}
             loading={isUploading}
             disabled={!selectedReceipt || isUploading}
-            style={styles.submitBtn}
             accessibilityLabel="Submit payment receipt for staff review"
           />
-        </ScrollView>
+        </BottomActionBar>
       )}
     </Screen>
   );
@@ -287,7 +291,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xxl + 80,
   },
   loadingContainer: {
     padding: spacing.md,
@@ -304,6 +308,8 @@ const styles = StyleSheet.create({
   summaryCard: {
     padding: spacing.md,
     marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   summaryHeader: {
     flexDirection: "row",
@@ -317,6 +323,7 @@ const styles = StyleSheet.create({
   docType: {
     ...fontStyles.subheading,
     color: colors.textPrimary,
+    fontWeight: "700",
   },
   applicant: {
     ...fontStyles.bodySmall,
@@ -334,15 +341,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   feeCaption: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+    fontWeight: "600",
   },
   feeAmount: {
     ...fontStyles.subheading,
     color: colors.primary,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   correctionNoteBox: {
     flexDirection: "row",
@@ -372,7 +382,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
-  submitBtn: {
+  submitErrorText: {
+    ...fontStyles.caption,
+    color: colors.danger,
     marginTop: spacing.xs,
+    textAlign: "center",
   },
 });

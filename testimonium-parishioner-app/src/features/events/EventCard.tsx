@@ -171,6 +171,7 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: spacing.sm,
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   topRow: {
     flexDirection: "row",
@@ -192,10 +193,12 @@ const styles = StyleSheet.create({
   dateText: {
     ...fontStyles.captionMedium,
     color: colors.primary,
+    fontWeight: "700",
   },
   title: {
-    ...fontStyles.heading,
+    ...fontStyles.subheading,
     color: colors.textPrimary,
+    fontWeight: "700",
     marginVertical: spacing.xxs,
   },
   detailsContainer: {
@@ -235,5 +238,6 @@ const styles = StyleSheet.create({
     ...fontStyles.captionMedium,
     color: colors.primary,
     flex: 1,
+    fontWeight: "600",
   },
 });

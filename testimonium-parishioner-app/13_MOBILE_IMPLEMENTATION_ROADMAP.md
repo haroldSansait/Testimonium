@@ -69,7 +69,17 @@
 
 ---
 
-## Phase 8 — Device QA & Release Engineering (STATUS: IN PROGRESS)
-- **8A:** Local physical Android testing via root launcher (`npm run dev:mobile` using Cloudflare Quick Tunnel).
-- **8B:** EAS build profile configuration for preview APKs and production builds.
-- **8C:** Physical device test checklist execution.
+## Phase 8 — Mobile UI/UX Enhancement & Release Validation (STATUS: COMPLETED)
+- **8A:** Design tokens synchronized with Parishioner Web (`src/theme/tokens.ts` - colors, typography, radii, spacing, shadows).
+- **8B:** Safe area foundation (`Screen.tsx`, `app/(app)/(tabs)/_layout.tsx`) preventing overlap with Android 3-button and gesture bars.
+- **8C:** Shared UI primitives (`BottomActionBar.tsx`, `FilterChip.tsx`, updated `AppHeader.tsx` & `Badge.tsx` status variants).
+- **8D:** Welcome, Auth & Recovery (`welcome.tsx`, `login.tsx`, `forgot-password.tsx`, `register.tsx`, `verify-email.tsx`, `legal.tsx`, `profile-completion.tsx`).
+- **8E:** App shell, Tab navigation, and Home dashboard (`HomeScreen.tsx`) with 6-service quick access grid, active requests, schedule summary, and event previews.
+- **8F:** Document requests & wizard (`RequestListScreen.tsx`, `RequestCard.tsx`, `RequestWizardScreen.tsx`, `RequestDetailScreen.tsx`).
+- **8G:** Payment & receipt capture (`PaymentScreen.tsx`, `PaymentQrCard.tsx`, `ReceiptCapturePicker.tsx`).
+- **8H:** Scheduling & appointments (`ScheduleListScreen.tsx`, `ScheduleWizardScreen.tsx`, `ScheduleDetailScreen.tsx`).
+- **8I:** Parish directory & detail (`ParishDirectoryScreen.tsx`, `ParishCard.tsx`, `ParishDetailScreen.tsx`).
+- **8J:** Events & notifications (`EventsListScreen.tsx`, `EventDetailScreen.tsx`, `UpcomingEventsSection.tsx`, `NotificationListScreen.tsx`).
+- **8K:** Profile, settings & legal (`ProfileScreen.tsx`, `EditProfileScreen.tsx`, `SettingsScreen.tsx`, `TermsOfServiceScreen.tsx`, `PrivacyPolicyScreen.tsx`).
+- **8L:** Accessibility, responsiveness, and safe-area insets sweep across all screens.
+- **8M:** Static regression and bundle validation (`npm run typecheck`, `npm run lint`, `npm test -- --runInBand`, `npx expo export --platform android`).

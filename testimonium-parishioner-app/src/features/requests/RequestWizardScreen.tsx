@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import {
   AppHeader,
+  BottomActionBar,
   Button,
   Card,
   EmptyState,
@@ -361,7 +362,10 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          step >= 3 && styles.scrollContentWithBottomAction,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {/* ================= STEP 1: PARISH SELECTION ================= */}
@@ -535,15 +539,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 />
               </View>
             </Card>
-
-            <Button
-              title="Next: Supporting Documents"
-              variant="primary"
-              size="lg"
-              icon="arrow-forward"
-              onPress={handleValidateFormAndNext}
-              style={styles.nextBtn}
-            />
           </View>
         ) : null}
 
@@ -593,15 +588,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 </Text>
               </Card>
             )}
-
-            <Button
-              title="Next: Review Request"
-              variant="primary"
-              size="lg"
-              icon="arrow-forward"
-              onPress={handleValidateFilesAndNext}
-              style={styles.nextBtn}
-            />
           </View>
         ) : null}
 
@@ -688,21 +674,45 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 By submitting this request, you attest that the information provided is true, accurate, and for lawful ecclesiastical purposes.
               </Text>
             </View>
-
-            <Button
-              title={isSubmitting ? submissionStage || "Submitting..." : "Confirm & Submit Request"}
-              variant="primary"
-              size="lg"
-              icon="checkmark-circle-outline"
-              onPress={handleConfirmAndSubmit}
-              loading={isSubmitting}
-              disabled={isSubmitting || !hasValidRequirementsFee}
-              style={styles.nextBtn}
-              accessibilityLabel="Confirm and submit your document request"
-            />
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Sticky Bottom Actions for Steps 3, 4, 5 */}
+      {step === 3 ? (
+        <BottomActionBar>
+          <Button
+            title="Next: Supporting Documents"
+            variant="primary"
+            size="lg"
+            icon="arrow-forward"
+            onPress={handleValidateFormAndNext}
+          />
+        </BottomActionBar>
+      ) : step === 4 ? (
+        <BottomActionBar>
+          <Button
+            title="Next: Review Request"
+            variant="primary"
+            size="lg"
+            icon="arrow-forward"
+            onPress={handleValidateFilesAndNext}
+          />
+        </BottomActionBar>
+      ) : step === 5 ? (
+        <BottomActionBar>
+          <Button
+            title={isSubmitting ? submissionStage || "Submitting..." : "Confirm & Submit Request"}
+            variant="primary"
+            size="lg"
+            icon="checkmark-circle-outline"
+            onPress={handleConfirmAndSubmit}
+            loading={isSubmitting}
+            disabled={isSubmitting || !hasValidRequirementsFee}
+            accessibilityLabel="Confirm and submit your document request"
+          />
+        </BottomActionBar>
+      ) : null}
     </Screen>
   );
 };
@@ -737,6 +747,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xxl,
   },
+  scrollContentWithBottomAction: {
+    paddingBottom: spacing.xxl + 80,
+  },
   stepContainer: {
     flex: 1,
   },
@@ -744,6 +757,7 @@ const styles = StyleSheet.create({
     ...fontStyles.subheading,
     color: colors.textPrimary,
     marginBottom: 2,
+    fontWeight: "700",
   },
   stepSubtext: {
     ...fontStyles.caption,
@@ -833,6 +847,7 @@ const styles = StyleSheet.create({
   formCard: {
     padding: spacing.md,
     marginBottom: spacing.md,
+    backgroundColor: colors.surface,
   },
   formGroup: {
     marginBottom: spacing.md,
@@ -935,8 +950,5 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.textSecondary,
     flex: 1,
-  },
-  nextBtn: {
-    marginTop: spacing.xs,
   },
 });

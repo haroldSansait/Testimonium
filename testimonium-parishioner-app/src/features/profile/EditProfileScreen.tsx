@@ -163,12 +163,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.lg,
+    padding: spacing.md,
     paddingBottom: spacing.xxl,
   },
   formCard: {
     backgroundColor: colors.surface,
-    padding: spacing.lg,
+    borderColor: colors.cardBorder,
+    padding: spacing.md,
     gap: spacing.md,
   },
   sectionHeader: {
@@ -186,6 +187,8 @@ const styles = StyleSheet.create({
   readOnlyLabel: {
     ...fontStyles.caption,
     color: colors.textMuted,
+    fontWeight: "600",
+    textTransform: "uppercase",
   },
   readOnlyValue: {
     ...fontStyles.body,
@@ -202,11 +205,11 @@ const styles = StyleSheet.create({
   errorBanner: {
     ...fontStyles.caption,
     color: colors.danger,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: colors.dangerSoft,
     padding: spacing.sm,
     borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: colors.danger,
   },
   saveButton: {
     marginTop: spacing.sm,

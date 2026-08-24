@@ -82,12 +82,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
+    padding: spacing.md,
     paddingBottom: spacing.xxl,
   },
   card: {
     backgroundColor: colors.surface,
-    padding: spacing.lg,
+    borderColor: colors.cardBorder,
+    padding: spacing.md,
     gap: spacing.sm,
   },
   effectiveDate: {

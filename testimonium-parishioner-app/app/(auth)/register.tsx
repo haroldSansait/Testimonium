@@ -1,16 +1,17 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { LegalModal } from "@/components/legal/LegalModal";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { TextInput } from "@/components/ui/TextInput";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/config/legal";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
-import { colors, radii, spacing, typography } from "@/theme/tokens";
-
-import { navigateBackOrReplace } from '@/services/navigation/back';
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { navigateBackOrReplace } from "@/services/navigation/back";
 
 export default function RegisterScreen() {
   const { signUpWithEmail, isRegistering } = useAuth();
@@ -85,179 +86,243 @@ export default function RegisterScreen() {
     }
   };
 
+  const isFormValid =
+    firstName.trim() !== "" &&
+    lastName.trim() !== "" &&
+    email.trim() !== "" &&
+    password.length >= 6 &&
+    password === confirmPassword &&
+    termsAccepted &&
+    privacyAccepted;
+
   return (
     <Screen scrollable style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.title} allowFontScaling>
-          Create Account
-        </Text>
-        <Text style={styles.copy} allowFontScaling>
-          Register for parishioner services with the Diocese of San Carlos.
-        </Text>
-      </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.sectionHeader} allowFontScaling>
-          Personal Information
-        </Text>
-        <TextInput
-          label="First Name *"
-          value={firstName}
-          onChangeText={setFirstName}
-          placeholder="e.g. Juan"
-          autoCapitalize="words"
-          editable={!isRegistering}
-        />
-        <TextInput
-          label="Middle Name (Optional)"
-          value={middleName}
-          onChangeText={setMiddleName}
-          placeholder="e.g. Santos"
-          autoCapitalize="words"
-          editable={!isRegistering}
-        />
-        <TextInput
-          label="Last Name *"
-          value={lastName}
-          onChangeText={setLastName}
-          placeholder="e.g. Dela Cruz"
-          autoCapitalize="words"
-          editable={!isRegistering}
-        />
-        <TextInput
-          label="Suffix (Optional)"
-          value={suffix}
-          onChangeText={setSuffix}
-          placeholder="e.g. Jr., III"
-          autoCapitalize="words"
-          editable={!isRegistering}
-        />
-      </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.sectionHeader} allowFontScaling>
-          Account Credentials
-        </Text>
-        <TextInput
-          label="Email Address *"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoComplete="email"
-          placeholder="e.g. juan.delacruz@example.com"
-          editable={!isRegistering}
-        />
-        <TextInput
-          label="Password *"
-          value={password}
-          onChangeText={setPassword}
-          isPassword
-          autoComplete="new-password"
-          placeholder="Minimum 6 characters"
-          editable={!isRegistering}
-        />
-        <TextInput
-          label="Confirm Password *"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          isPassword
-          autoComplete="new-password"
-          placeholder="Re-enter your password"
-          editable={!isRegistering}
-        />
-      </View>
-
-      <View style={styles.legalSection}>
-        <Text style={styles.sectionHeader} allowFontScaling>
-          Legal Compliance
-        </Text>
-
-        <Pressable
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: termsAccepted }}
-          accessibilityLabel="Accept Terms of Service"
-          onPress={() => setTermsAccepted((prev) => !prev)}
-          style={styles.checkboxRow}
-        >
-          <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
-            {termsAccepted && <Text style={styles.checkmark}>✓</Text>}
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.dioceseBadge}>
+            <Text style={styles.dioceseBadgeText}>PARISHIONER REGISTRATION</Text>
           </View>
-          <View style={styles.checkboxTextContainer}>
-            <Text style={styles.checkboxLabel} allowFontScaling>
-              I agree to the{" "}
-            </Text>
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel="View Terms of Service"
-              onPress={() => setActiveModal("TERMS")}
-              hitSlop={4}
-            >
-              <Text style={styles.linkText} allowFontScaling>
-                Terms of Service
-              </Text>
-            </Pressable>
-          </View>
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: privacyAccepted }}
-          accessibilityLabel="Accept Privacy Policy"
-          onPress={() => setPrivacyAccepted((prev) => !prev)}
-          style={styles.checkboxRow}
-        >
-          <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
-            {privacyAccepted && <Text style={styles.checkmark}>✓</Text>}
-          </View>
-          <View style={styles.checkboxTextContainer}>
-            <Text style={styles.checkboxLabel} allowFontScaling>
-              I agree to the{" "}
-            </Text>
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel="View Privacy Policy"
-              onPress={() => setActiveModal("PRIVACY")}
-              hitSlop={4}
-            >
-              <Text style={styles.linkText} allowFontScaling>
-                Privacy Policy
-              </Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </View>
-
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
-            {error}
+          <Text style={styles.title} allowFontScaling>
+            Create Account
+          </Text>
+          <Text style={styles.copy} allowFontScaling>
+            Register for sacramental services and certificate records with the Diocese of San Carlos.
           </Text>
         </View>
-      )}
 
-      <View style={styles.actions}>
-        <Button
-          title={isRegistering ? "Creating Account..." : "Create Account"}
-          loading={isRegistering}
-          disabled={isRegistering}
-          onPress={() => {
-            void handleSubmit();
-          }}
-        />
+        {/* Error Notice */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Ionicons
+              name="alert-circle"
+              size={18}
+              color={colors.danger}
+              style={{ marginTop: 1 }}
+            />
+            <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
+              {error}
+            </Text>
+          </View>
+        )}
 
-        <Button
-          title="Already have an account? Sign In"
-          variant="outline"
-          disabled={isRegistering}
-          onPress={() =>
-            navigateBackOrReplace(
-              router.canGoBack,
-              router.back,
-              () => router.replace('/(auth)/login')
-            )
-          }
-        />
+        {/* Personal Details Card */}
+        <Card style={styles.formCard}>
+          <Text style={styles.cardHeaderTitle} allowFontScaling>
+            Personal Information
+          </Text>
+          <View style={styles.fields}>
+            <TextInput
+              label="First Name *"
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder="e.g. Juan"
+              autoCapitalize="words"
+              editable={!isRegistering}
+            />
+            <TextInput
+              label="Middle Name (Optional)"
+              value={middleName}
+              onChangeText={setMiddleName}
+              placeholder="e.g. Santos"
+              autoCapitalize="words"
+              editable={!isRegistering}
+            />
+            <TextInput
+              label="Last Name *"
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="e.g. Dela Cruz"
+              autoCapitalize="words"
+              editable={!isRegistering}
+            />
+            <TextInput
+              label="Suffix (Optional)"
+              value={suffix}
+              onChangeText={setSuffix}
+              placeholder="e.g. Jr., III"
+              autoCapitalize="words"
+              editable={!isRegistering}
+            />
+          </View>
+        </Card>
+
+        {/* Account Credentials Card */}
+        <Card style={styles.formCard}>
+          <Text style={styles.cardHeaderTitle} allowFontScaling>
+            Account Credentials
+          </Text>
+          <View style={styles.fields}>
+            <TextInput
+              label="Email Address *"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              placeholder="e.g. juan.delacruz@example.com"
+              leftIcon="mail-outline"
+              editable={!isRegistering}
+            />
+            <TextInput
+              label="Password *"
+              value={password}
+              onChangeText={setPassword}
+              isPassword
+              autoComplete="new-password"
+              placeholder="Minimum 6 characters"
+              leftIcon="lock-closed-outline"
+              editable={!isRegistering}
+            />
+            <TextInput
+              label="Confirm Password *"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              isPassword
+              autoComplete="new-password"
+              placeholder="Re-enter your password"
+              leftIcon="lock-closed-outline"
+              editable={!isRegistering}
+            />
+
+            {/* Password Validation Hints */}
+            <View style={styles.passwordHints}>
+              <Text style={styles.hintTitle} allowFontScaling>
+                Password Requirements:
+              </Text>
+              <Text
+                style={[
+                  styles.hintItem,
+                  password.length >= 6 ? styles.hintValid : styles.hintMuted,
+                ]}
+                allowFontScaling
+              >
+                • Minimum 6 characters {password.length >= 6 ? "✓" : ""}
+              </Text>
+              {confirmPassword.length > 0 && (
+                <Text
+                  style={[
+                    styles.hintItem,
+                    password === confirmPassword ? styles.hintValid : styles.hintInvalid,
+                  ]}
+                  allowFontScaling
+                >
+                  • Passwords {password === confirmPassword ? "match ✓" : "do not match ✗"}
+                </Text>
+              )}
+            </View>
+          </View>
+        </Card>
+
+        {/* Legal Consent Card */}
+        <Card style={styles.formCard}>
+          <Text style={styles.cardHeaderTitle} allowFontScaling>
+            Legal Terms & Privacy Consent *
+          </Text>
+
+          <View style={styles.legalCheckboxes}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: termsAccepted }}
+              accessibilityLabel="Accept Terms of Service"
+              onPress={() => setTermsAccepted((prev) => !prev)}
+              style={styles.checkboxRow}
+            >
+              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+                {termsAccepted && <Ionicons name="checkmark" size={16} color="#FFF" />}
+              </View>
+              <View style={styles.checkboxTextContainer}>
+                <Text style={styles.checkboxLabel} allowFontScaling>
+                  I agree to the{" "}
+                </Text>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="View Terms of Service"
+                  onPress={() => setActiveModal("TERMS")}
+                  hitSlop={8}
+                >
+                  <Text style={styles.linkText} allowFontScaling>
+                    Terms of Service
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: privacyAccepted }}
+              accessibilityLabel="Accept Privacy Policy"
+              onPress={() => setPrivacyAccepted((prev) => !prev)}
+              style={styles.checkboxRow}
+            >
+              <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
+                {privacyAccepted && <Ionicons name="checkmark" size={16} color="#FFF" />}
+              </View>
+              <View style={styles.checkboxTextContainer}>
+                <Text style={styles.checkboxLabel} allowFontScaling>
+                  I acknowledge the{" "}
+                </Text>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="View Privacy Policy"
+                  onPress={() => setActiveModal("PRIVACY")}
+                  hitSlop={8}
+                >
+                  <Text style={styles.linkText} allowFontScaling>
+                    Privacy Policy
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </View>
+        </Card>
+
+        {/* Actions */}
+        <View style={styles.actions}>
+          <Button
+            title={isRegistering ? "Creating Account..." : "Register Account"}
+            size="lg"
+            loading={isRegistering}
+            disabled={!isFormValid || isRegistering}
+            onPress={() => {
+              void handleSubmit();
+            }}
+          />
+
+          <Button
+            title="Already have an account? Sign In"
+            size="lg"
+            variant="outline"
+            disabled={isRegistering}
+            onPress={() =>
+              navigateBackOrReplace(
+                router.canGoBack,
+                router.back,
+                () => router.replace("/(auth)/login")
+              )
+            }
+          />
+        </View>
       </View>
 
       <LegalModal
@@ -271,42 +336,92 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    paddingVertical: spacing.md,
+    backgroundColor: colors.background,
+  },
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   header: {
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  title: {
-    color: colors.primary,
-    fontSize: typography.title,
-    fontWeight: "700",
-  },
-  copy: {
-    color: colors.textSecondary,
-    fontSize: typography.body,
-    lineHeight: 22,
-  },
-  formSection: {
-    gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  sectionHeader: {
-    fontSize: typography.caption,
+  dioceseBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs + 2,
+    borderRadius: radii.sm,
+    marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary + "20",
+  },
+  dioceseBadgeText: {
+    ...fontStyles.meta,
+    color: colors.primary,
     fontWeight: "700",
+    letterSpacing: 0.8,
+  },
+  title: {
+    ...fontStyles.title,
+    color: colors.textPrimary,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "800",
+  },
+  copy: {
+    ...fontStyles.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginTop: spacing.xs,
+  },
+  formCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  cardHeaderTitle: {
+    ...fontStyles.captionBold,
     color: colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  legalSection: {
+  fields: {
     gap: spacing.md,
-    marginBottom: spacing.lg,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radii.md,
+  },
+  passwordHints: {
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
+    gap: 2,
+  },
+  hintTitle: {
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  hintItem: {
+    ...fontStyles.caption,
+  },
+  hintValid: {
+    color: colors.success,
+    fontWeight: "600",
+  },
+  hintInvalid: {
+    color: colors.danger,
+    fontWeight: "600",
+  },
+  hintMuted: {
+    color: colors.textSecondary,
+  },
+  legalCheckboxes: {
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
   },
   checkboxRow: {
     flexDirection: "row",
@@ -314,11 +429,11 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: radii.xs,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     justifyContent: "center",
     alignItems: "center",
     marginRight: spacing.sm,
@@ -328,11 +443,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  checkmark: {
-    color: colors.surface,
-    fontSize: 14,
-    fontWeight: "800",
-  },
   checkboxTextContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -340,31 +450,35 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   checkboxLabel: {
-    fontSize: typography.caption,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
   },
   linkText: {
-    fontSize: typography.caption,
+    ...fontStyles.bodySmall,
     color: colors.primary,
     fontWeight: "700",
     textDecorationLine: "underline",
   },
   errorContainer: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FCA5A5",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
     marginBottom: spacing.md,
+    gap: spacing.xs,
   },
   errorText: {
+    ...fontStyles.caption,
     color: colors.danger,
-    fontSize: typography.caption,
-    lineHeight: 20,
+    lineHeight: 18,
+    flex: 1,
   },
   actions: {
-    gap: spacing.md,
-    marginTop: spacing.xs,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
 });

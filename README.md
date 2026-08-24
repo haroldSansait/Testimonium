@@ -85,6 +85,7 @@ Admin Portal     ──┘         │
 
 ## Documentation
 
+- [Setup & Deployment Guide](SETUP.md)
 - [API reference](API_DOCUMENTATION.md)
 - [Database operations](DATABASE.md) and [schema reference](Testimonium_Database_Schema.md)
 - [Cloudflare R2 and OCR pipeline](CLOUDFLARE_R2.md)
@@ -92,3 +93,4 @@ Admin Portal     ──┘         │
 - [Project context and implementation map](testimonium_context.md)
 - [Mobile application documentation pack](testimonium-parishioner-app/00_MOBILE_DOCS_INDEX.md)
 - [Backend developer guide](testimonium-backend/DEVELOPER_GUIDE.md)
+

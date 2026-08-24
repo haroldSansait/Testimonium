@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
+    padding: spacing.md,
     paddingBottom: spacing.xxl,
   },
   sectionHeader: {
@@ -188,6 +188,7 @@ const styles = StyleSheet.create({
   },
   menuCard: {
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
     padding: 0,
     overflow: "hidden",
   },
@@ -224,6 +225,7 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
     padding: spacing.md,
     gap: spacing.xs,
   },

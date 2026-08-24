@@ -2,7 +2,7 @@
 
 **Baseline date:** 24 August 2026
 **Target application:** `testimonium-parishioner-app`
-**Status:** Phases 1–7 fully implemented, statically and unit verified (22 suites, 161 tests passing).
+**Status:** Phases 1–8 fully implemented, statically and unit verified (22 suites, 161 tests passing, Expo Android static export clean).
 
 ## Purpose
 

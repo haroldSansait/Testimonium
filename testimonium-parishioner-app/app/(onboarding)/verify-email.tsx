@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
-import { colors, radii, spacing, typography } from "@/theme/tokens";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export default function VerifyEmailScreen() {
   const { user, isCheckingVerification, checkEmailVerification, resendVerification, logout } = useAuth();
@@ -64,25 +66,30 @@ export default function VerifyEmailScreen() {
 
   return (
     <Screen scrollable style={styles.screen}>
-      <View style={styles.content}>
+      <View style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.badgeContainer}>
-            <Text style={styles.badgeText}>SECURITY & INTEGRITY</Text>
+          <View style={styles.dioceseBadge}>
+            <Text style={styles.dioceseBadgeText}>EMAIL VERIFICATION</Text>
           </View>
           <Text style={styles.title} allowFontScaling>
             Verify Your Email
           </Text>
           <Text style={styles.copy} allowFontScaling>
-            To access your sacramental document requests and appointments, please verify ownership of your email address.
+            To access your sacramental document requests and canonical appointments, please confirm ownership of your email address.
           </Text>
         </View>
 
-        <View style={styles.emailCard}>
-          <Text style={styles.emailCardLabel}>Verification sent to:</Text>
-          <Text style={styles.emailCardValue} allowFontScaling>
-            {destinationEmail}
-          </Text>
-        </View>
+        <Card style={styles.emailCard}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="mail-unread-outline" size={28} color={colors.primary} />
+          </View>
+          <View style={styles.emailTextContainer}>
+            <Text style={styles.emailCardLabel}>Verification Link Sent To:</Text>
+            <Text style={styles.emailCardValue} numberOfLines={1} allowFontScaling>
+              {destinationEmail}
+            </Text>
+          </View>
+        </Card>
 
         {feedback && (
           <View
@@ -93,6 +100,24 @@ export default function VerifyEmailScreen() {
               feedback.type === "info" && styles.feedbackInfo,
             ]}
           >
+            <Ionicons
+              name={
+                feedback.type === "success"
+                  ? "checkmark-circle"
+                  : feedback.type === "error"
+                  ? "alert-circle"
+                  : "information-circle"
+              }
+              size={18}
+              color={
+                feedback.type === "success"
+                  ? colors.success
+                  : feedback.type === "error"
+                  ? colors.danger
+                  : colors.info
+              }
+              style={{ marginTop: 1 }}
+            />
             <Text
               accessibilityRole="alert"
               style={[
@@ -111,6 +136,7 @@ export default function VerifyEmailScreen() {
         <View style={styles.actions}>
           <Button
             title={isCheckingVerification ? "Checking Status..." : "I've Verified My Email"}
+            size="lg"
             loading={isCheckingVerification}
             disabled={isCheckingVerification}
             onPress={() => {
@@ -123,10 +149,11 @@ export default function VerifyEmailScreen() {
               isResending
                 ? "Sending..."
                 : cooldown > 0
-                  ? `Resend in ${cooldown}s`
-                  : "Resend Verification Email"
+                ? `Resend in ${cooldown}s`
+                : "Resend Verification Email"
             }
             variant="outline"
+            size="lg"
             loading={isResending}
             disabled={isResending || cooldown > 0 || isCheckingVerification}
             onPress={() => {
@@ -136,7 +163,9 @@ export default function VerifyEmailScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Wrong account?</Text>
+          <Text style={styles.footerText} allowFontScaling>
+            Wrong account?
+          </Text>
           <Button
             title="Sign Out / Use Another Account"
             variant="ghost"
@@ -152,101 +181,128 @@ export default function VerifyEmailScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    justifyContent: "center",
+    backgroundColor: colors.background,
   },
-  content: {
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   header: {
-    gap: spacing.xs,
+    marginBottom: spacing.lg,
   },
-  badgeContainer: {
+  dioceseBadge: {
     alignSelf: "flex-start",
     backgroundColor: colors.primarySoft,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs + 2,
     borderRadius: radii.sm,
     marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary + "20",
   },
-  badgeText: {
+  dioceseBadgeText: {
+    ...fontStyles.meta,
     color: colors.primary,
-    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   title: {
-    color: colors.primary,
-    fontSize: typography.title,
-    fontWeight: "700",
+    ...fontStyles.title,
+    color: colors.textPrimary,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "800",
   },
   copy: {
+    ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    fontSize: typography.body,
-    lineHeight: 22,
+    lineHeight: 20,
+    marginTop: spacing.xs,
   },
   emailCard: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.cardBorder,
     borderWidth: 1,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     padding: spacing.md,
-    gap: spacing.xs,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+  },
+  iconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emailTextContainer: {
+    flex: 1,
   },
   emailCardLabel: {
-    fontSize: 12,
+    ...fontStyles.meta,
     color: colors.textSecondary,
     fontWeight: "600",
     textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   emailCardValue: {
-    fontSize: typography.body,
+    ...fontStyles.bodyMedium,
     color: colors.textPrimary,
     fontWeight: "700",
+    marginTop: 2,
   },
   feedbackContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     padding: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
   },
   feedbackSuccess: {
-    backgroundColor: "#ECFDF5",
-    borderColor: "#A7F3D0",
+    backgroundColor: colors.successSoft,
+    borderColor: colors.successBorder,
   },
   feedbackError: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FCA5A5",
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
   },
   feedbackInfo: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
+    backgroundColor: colors.infoSoft,
+    borderColor: colors.infoBorder,
   },
   feedbackText: {
-    fontSize: typography.caption,
-    lineHeight: 20,
+    ...fontStyles.caption,
+    lineHeight: 18,
+    flex: 1,
   },
   feedbackSuccessText: {
-    color: "#065F46",
+    color: colors.success,
   },
   feedbackErrorText: {
     color: colors.danger,
   },
   feedbackInfoText: {
-    color: "#1E40AF",
+    color: colors.info,
   },
   actions: {
-    gap: spacing.md,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   footer: {
     alignItems: "center",
     gap: spacing.xs,
-    marginTop: spacing.md,
+    marginTop: spacing.xl,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: colors.borderLight,
     paddingTop: spacing.md,
   },
   footerText: {
-    fontSize: typography.caption,
+    ...fontStyles.caption,
     color: colors.textSecondary,
   },
 });

@@ -398,6 +398,8 @@ const styles = StyleSheet.create({
   },
   sectionCard: {
     marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   descriptionText: {
     ...fontStyles.body,
@@ -417,7 +419,7 @@ const styles = StyleSheet.create({
   dayText: {
     ...fontStyles.bodySmall,
     color: colors.textPrimary,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   hoursText: {
     ...fontStyles.bodySmall,
@@ -426,6 +428,7 @@ const styles = StyleSheet.create({
   requestCtaCard: {
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
     padding: spacing.md,
   },
   requestCtaContent: {

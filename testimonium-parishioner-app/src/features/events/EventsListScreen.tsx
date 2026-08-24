@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
@@ -206,12 +206,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   listContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: spacing.md,
+    gap: spacing.xs,
     flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   loadingContainer: {
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.md,
   },
   skeleton: {

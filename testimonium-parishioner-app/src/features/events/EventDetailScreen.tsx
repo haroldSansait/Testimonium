@@ -188,8 +188,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.md,
+    paddingBottom: spacing.xxl,
   },
   skeleton: {
     marginBottom: spacing.sm,
@@ -201,11 +202,12 @@ const styles = StyleSheet.create({
   },
   mainCard: {
     backgroundColor: colors.surface,
-    padding: spacing.lg,
+    padding: spacing.md,
+    borderColor: colors.cardBorder,
   },
   badgeRow: {
     flexDirection: "row",
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   eventTypeBadge: {
     backgroundColor: colors.primarySoft,
@@ -220,17 +222,18 @@ const styles = StyleSheet.create({
   },
   titleText: {
     ...fontStyles.heading,
-    fontSize: 20,
     color: colors.textPrimary,
+    fontWeight: "700",
   },
   sectionCard: {
     backgroundColor: colors.surface,
     padding: spacing.md,
+    borderColor: colors.cardBorder,
   },
   sectionTitle: {
     ...fontStyles.subheading,
-    fontSize: 16,
     color: colors.textPrimary,
+    fontWeight: "700",
     marginBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
@@ -253,6 +256,8 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.textMuted,
     fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
   },
   detailValue: {
     ...fontStyles.body,

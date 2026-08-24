@@ -16,7 +16,12 @@ export type BadgeVariant =
   | "warning"
   | "danger"
   | "info"
-  | "neutral";
+  | "neutral"
+  | "pending"
+  | "under-review"
+  | "ready"
+  | "rejected"
+  | "correction";
 
 export interface BadgeProps {
   label: string;
@@ -35,19 +40,65 @@ export const Badge: React.FC<BadgeProps> = ({
   textStyle,
   icon,
 }) => {
+  const getVariantStyle = () => {
+    switch (variant) {
+      case "secondary":
+        return styles.variantSecondary;
+      case "success":
+      case "ready":
+        return styles.variantSuccess;
+      case "warning":
+      case "pending":
+        return styles.variantWarning;
+      case "danger":
+      case "rejected":
+        return styles.variantDanger;
+      case "info":
+      case "under-review":
+        return styles.variantInfo;
+      case "correction":
+        return styles.variantCorrection;
+      case "neutral":
+        return styles.variantNeutral;
+      case "primary":
+      default:
+        return styles.variantPrimary;
+    }
+  };
+
+  const getTextStyle = () => {
+    switch (variant) {
+      case "secondary":
+        return styles.textSecondary;
+      case "success":
+      case "ready":
+        return styles.textSuccess;
+      case "warning":
+      case "pending":
+        return styles.textWarning;
+      case "danger":
+      case "rejected":
+        return styles.textDanger;
+      case "info":
+      case "under-review":
+        return styles.textInfo;
+      case "correction":
+        return styles.textCorrection;
+      case "neutral":
+        return styles.textNeutral;
+      case "primary":
+      default:
+        return styles.textPrimary;
+    }
+  };
+
   return (
     <View
       style={[
         styles.badge,
         size === "sm" && styles.badgeSm,
         size === "lg" && styles.badgeLg,
-        variant === "primary" && styles.variantPrimary,
-        variant === "secondary" && styles.variantSecondary,
-        variant === "success" && styles.variantSuccess,
-        variant === "warning" && styles.variantWarning,
-        variant === "danger" && styles.variantDanger,
-        variant === "info" && styles.variantInfo,
-        variant === "neutral" && styles.variantNeutral,
+        getVariantStyle(),
         style,
       ]}
     >
@@ -55,13 +106,8 @@ export const Badge: React.FC<BadgeProps> = ({
       <Text
         style={[
           styles.text,
-          variant === "primary" && styles.textPrimary,
-          variant === "secondary" && styles.textSecondary,
-          variant === "success" && styles.textSuccess,
-          variant === "warning" && styles.textWarning,
-          variant === "danger" && styles.textDanger,
-          variant === "info" && styles.textInfo,
-          variant === "neutral" && styles.textNeutral,
+          size === "sm" && styles.textSm,
+          getTextStyle(),
           textStyle,
         ]}
         numberOfLines={1}
@@ -79,12 +125,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "flex-start",
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs + 1,
+    paddingVertical: 3,
     borderRadius: radii.pill,
+    borderWidth: 1,
   },
   badgeSm: {
     paddingHorizontal: spacing.xs + 2,
-    paddingVertical: spacing.xxs,
+    paddingVertical: 1,
   },
   badgeLg: {
     paddingHorizontal: spacing.md,
@@ -94,47 +141,64 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   text: {
-    ...fontStyles.captionMedium,
+    ...fontStyles.meta,
+    fontWeight: "700",
+  },
+  textSm: {
+    fontSize: 10,
+    lineHeight: 14,
   },
   variantPrimary: {
     backgroundColor: colors.tagBg,
+    borderColor: colors.primary + "30",
   },
   textPrimary: {
     color: colors.tagText,
   },
   variantSecondary: {
     backgroundColor: colors.surfaceVariant,
+    borderColor: colors.border,
   },
   textSecondary: {
     color: colors.textSecondary,
   },
   variantSuccess: {
     backgroundColor: colors.successSoft,
+    borderColor: colors.successBorder,
   },
   textSuccess: {
     color: colors.success,
   },
   variantWarning: {
     backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
   },
   textWarning: {
     color: colors.warning,
   },
   variantDanger: {
     backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
   },
   textDanger: {
     color: colors.danger,
   },
   variantInfo: {
     backgroundColor: colors.infoSoft,
+    borderColor: colors.infoBorder,
   },
   textInfo: {
     color: colors.info,
   },
+  variantCorrection: {
+    backgroundColor: colors.correctionSoft,
+    borderColor: colors.correctionBorder,
+  },
+  textCorrection: {
+    color: colors.correction,
+  },
   variantNeutral: {
     backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
     borderColor: colors.border,
   },
   textNeutral: {

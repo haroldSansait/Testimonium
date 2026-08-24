@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { LegalModal } from "@/components/legal/LegalModal";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/config/legal";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
-import { colors, radii, spacing, typography } from "@/theme/tokens";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export default function LegalScreen() {
   const { isAcceptingLegal, acceptLegal, pendingLegalAction, cancelGoogleJitLegal, logout } = useAuth();
@@ -51,10 +53,10 @@ export default function LegalScreen() {
 
   return (
     <Screen scrollable style={styles.screen}>
-      <View style={styles.content}>
+      <View style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.badgeContainer}>
-            <Text style={styles.badgeText}>COMPLIANCE & TERMS</Text>
+          <View style={styles.dioceseBadge}>
+            <Text style={styles.dioceseBadgeText}>COMPLIANCE & TERMS</Text>
           </View>
           <Text style={styles.title} allowFontScaling>
             Legal Acceptance Required
@@ -66,68 +68,76 @@ export default function LegalScreen() {
           </Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardHeader} allowFontScaling>
+        <Card style={styles.formCard}>
+          <Text style={styles.cardHeaderTitle} allowFontScaling>
             Diocese of San Carlos Terms & Privacy
           </Text>
 
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: termsAccepted }}
-            accessibilityLabel="Accept Terms of Service"
-            onPress={() => setTermsAccepted((prev) => !prev)}
-            style={styles.checkboxRow}
-          >
-            <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
-              {termsAccepted && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <View style={styles.checkboxTextContainer}>
-              <Text style={styles.checkboxLabel} allowFontScaling>
-                I have read and agree to the{" "}
-              </Text>
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="View Terms of Service"
-                onPress={() => setActiveModal("TERMS")}
-                hitSlop={4}
-              >
-                <Text style={styles.linkText} allowFontScaling>
-                  Terms of Service
+          <View style={styles.legalCheckboxes}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: termsAccepted }}
+              accessibilityLabel="Accept Terms of Service"
+              onPress={() => setTermsAccepted((prev) => !prev)}
+              style={styles.checkboxRow}
+            >
+              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+                {termsAccepted && <Ionicons name="checkmark" size={16} color="#FFF" />}
+              </View>
+              <View style={styles.checkboxTextContainer}>
+                <Text style={styles.checkboxLabel} allowFontScaling>
+                  I have read and agree to the{" "}
                 </Text>
-              </Pressable>
-            </View>
-          </Pressable>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="View Terms of Service"
+                  onPress={() => setActiveModal("TERMS")}
+                  hitSlop={8}
+                >
+                  <Text style={styles.linkText} allowFontScaling>
+                    Terms of Service
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
 
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: privacyAccepted }}
-            accessibilityLabel="Accept Privacy Policy"
-            onPress={() => setPrivacyAccepted((prev) => !prev)}
-            style={styles.checkboxRow}
-          >
-            <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
-              {privacyAccepted && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <View style={styles.checkboxTextContainer}>
-              <Text style={styles.checkboxLabel} allowFontScaling>
-                I have read and agree to the{" "}
-              </Text>
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="View Privacy Policy"
-                onPress={() => setActiveModal("PRIVACY")}
-                hitSlop={4}
-              >
-                <Text style={styles.linkText} allowFontScaling>
-                  Privacy Policy
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: privacyAccepted }}
+              accessibilityLabel="Accept Privacy Policy"
+              onPress={() => setPrivacyAccepted((prev) => !prev)}
+              style={styles.checkboxRow}
+            >
+              <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
+                {privacyAccepted && <Ionicons name="checkmark" size={16} color="#FFF" />}
+              </View>
+              <View style={styles.checkboxTextContainer}>
+                <Text style={styles.checkboxLabel} allowFontScaling>
+                  I have read and agree to the{" "}
                 </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </View>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="View Privacy Policy"
+                  onPress={() => setActiveModal("PRIVACY")}
+                  hitSlop={8}
+                >
+                  <Text style={styles.linkText} allowFontScaling>
+                    Privacy Policy
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </View>
+        </Card>
 
         {error && (
           <View style={styles.errorContainer}>
+            <Ionicons
+              name="alert-circle"
+              size={18}
+              color={colors.danger}
+              style={{ marginTop: 1 }}
+            />
             <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
               {error}
             </Text>
@@ -137,6 +147,7 @@ export default function LegalScreen() {
         <View style={styles.actions}>
           <Button
             title={isAcceptingLegal ? "Saving Acceptance..." : "Accept & Continue"}
+            size="lg"
             loading={isAcceptingLegal}
             disabled={isAcceptingLegal || !termsAccepted || !privacyAccepted}
             onPress={() => {
@@ -147,72 +158,81 @@ export default function LegalScreen() {
           <Button
             title="Cancel / Sign Out"
             variant="outline"
+            size="lg"
             disabled={isAcceptingLegal}
             onPress={() => {
               void handleCancel();
             }}
           />
         </View>
-
-        <LegalModal
-          visible={activeModal !== null}
-          type={activeModal || "TERMS"}
-          onClose={() => setActiveModal(null)}
-        />
       </View>
+
+      <LegalModal
+        visible={activeModal !== null}
+        type={activeModal || "TERMS"}
+        onClose={() => setActiveModal(null)}
+      />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    justifyContent: "center",
+    backgroundColor: colors.background,
   },
-  content: {
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   header: {
-    gap: spacing.xs,
+    marginBottom: spacing.lg,
   },
-  badgeContainer: {
+  dioceseBadge: {
     alignSelf: "flex-start",
     backgroundColor: colors.primarySoft,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs + 2,
     borderRadius: radii.sm,
     marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary + "20",
   },
-  badgeText: {
+  dioceseBadgeText: {
+    ...fontStyles.meta,
     color: colors.primary,
-    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   title: {
-    color: colors.primary,
-    fontSize: typography.title,
-    fontWeight: "700",
+    ...fontStyles.title,
+    color: colors.textPrimary,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "800",
   },
   copy: {
+    ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    fontSize: typography.body,
-    lineHeight: 22,
+    lineHeight: 20,
+    marginTop: spacing.xs,
   },
-  card: {
+  formCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    gap: spacing.md,
+    borderColor: colors.cardBorder,
   },
-  cardHeader: {
-    fontSize: typography.caption,
-    fontWeight: "700",
+  cardHeaderTitle: {
+    ...fontStyles.captionBold,
     color: colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  legalCheckboxes: {
+    gap: spacing.sm,
   },
   checkboxRow: {
     flexDirection: "row",
@@ -220,11 +240,11 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: radii.xs,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     justifyContent: "center",
     alignItems: "center",
     marginRight: spacing.sm,
@@ -234,11 +254,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  checkmark: {
-    color: colors.surface,
-    fontSize: 14,
-    fontWeight: "800",
-  },
   checkboxTextContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -246,28 +261,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   checkboxLabel: {
-    fontSize: typography.caption,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
   },
   linkText: {
-    fontSize: typography.caption,
+    ...fontStyles.bodySmall,
     color: colors.primary,
     fontWeight: "700",
     textDecorationLine: "underline",
   },
   errorContainer: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FCA5A5",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
   },
   errorText: {
+    ...fontStyles.caption,
     color: colors.danger,
-    fontSize: typography.caption,
-    lineHeight: 20,
+    lineHeight: 18,
+    flex: 1,
   },
   actions: {
-    gap: spacing.md,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
 });

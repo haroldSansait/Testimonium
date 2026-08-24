@@ -133,7 +133,9 @@ const styles = StyleSheet.create({
   card: {
     padding: 0,
     overflow: "hidden",
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   imageContainer: {
     width: "100%",
@@ -160,6 +162,7 @@ const styles = StyleSheet.create({
   title: {
     ...fontStyles.titleMedium,
     color: colors.textPrimary,
+    fontWeight: "700",
   },
   typeBadge: {
     marginTop: spacing.xxs,
@@ -177,6 +180,7 @@ const styles = StyleSheet.create({
   patronText: {
     ...fontStyles.bodySmall,
     color: colors.primary,
+    fontWeight: "600",
     flex: 1,
   },
   locationText: {
@@ -197,6 +201,6 @@ const styles = StyleSheet.create({
     ...fontStyles.captionMedium,
     color: colors.primary,
     marginRight: spacing.xxs,
+    fontWeight: "600",
   },
 });
-

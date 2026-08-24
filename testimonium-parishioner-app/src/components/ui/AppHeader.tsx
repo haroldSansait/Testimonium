@@ -38,18 +38,17 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               onPress={onBack}
               accessibilityLabel={backAccessibilityLabel}
               accessibilityHint="Navigates to the previous screen"
+              size={44}
             >
-              <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+              <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
             </IconButton>
           </View>
-        ) : (
-          <View style={styles.leftEmptySlot} />
-        )}
+        ) : null}
 
         {!largeTitle ? (
-          <View style={styles.centerSlot}>
+          <View style={[styles.titleSlot, !onBack && styles.titleSlotNoBack]}>
             <Text
-              style={styles.title}
+              style={[styles.title, !onBack && styles.titleNoBack]}
               numberOfLines={1}
               accessibilityRole="header"
               allowFontScaling
@@ -58,7 +57,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </Text>
             {subtitle ? (
               <Text
-                style={styles.subtitle}
+                style={[styles.subtitle, !onBack && styles.subtitleNoBack]}
                 numberOfLines={1}
                 allowFontScaling
               >
@@ -70,9 +69,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <View style={styles.flexFill} />
         )}
 
-        <View style={styles.rightSlot}>
-          {rightAction || <View style={styles.rightEmptySlot} />}
-        </View>
+        {rightAction ? (
+          <View style={styles.rightSlot}>
+            {rightAction}
+          </View>
+        ) : onBack ? (
+          <View style={styles.rightEmptySlot} />
+        ) : null}
       </View>
 
       {largeTitle ? (
@@ -99,7 +102,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: colors.cardBorder,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
@@ -108,28 +111,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 48,
+    gap: spacing.xs,
   },
   leftSlot: {
     width: 44,
     justifyContent: "center",
     alignItems: "flex-start",
   },
-  leftEmptySlot: {
-    width: 44,
-  },
-  centerSlot: {
+  titleSlot: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xs,
   },
+  titleSlotNoBack: {
+    alignItems: "flex-start",
+    paddingHorizontal: 0,
+    paddingRight: spacing.sm,
+  },
   flexFill: {
     flex: 1,
   },
   rightSlot: {
-    width: 44,
     justifyContent: "center",
     alignItems: "flex-end",
+    flexShrink: 0,
   },
   rightEmptySlot: {
     width: 44,
@@ -139,11 +145,17 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: "center",
   },
+  titleNoBack: {
+    textAlign: "left",
+  },
   subtitle: {
     ...fontStyles.caption,
     color: colors.textSecondary,
     textAlign: "center",
     marginTop: spacing.xxs,
+  },
+  subtitleNoBack: {
+    textAlign: "left",
   },
   largeTitleContainer: {
     paddingVertical: spacing.sm,

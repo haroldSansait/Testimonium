@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -14,13 +13,14 @@ import { Screen } from "@/components/Screen";
 import {
   AppHeader,
   EmptyState,
+  FilterChip,
   IconButton,
   InlineError,
   ParishCardSkeleton,
   TextInput,
   Button,
 } from "@/components/ui";
-import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { colors, fontStyles, spacing } from "@/theme/tokens";
 import { useInfiniteParishes } from "./api";
 import { ParishCard } from "./ParishCard";
 import {
@@ -129,35 +129,14 @@ export const ParishDirectoryScreen: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterChipsContainer}
         >
-          {PARISH_TYPE_FILTERS.map((item) => {
-            const isSelected = selectedType === item.value;
-            return (
-              <Pressable
-                key={item.value}
-                onPress={() => handleTypeSelect(item.value)}
-                accessible={true}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter by ${item.label}`}
-                accessibilityState={{ selected: isSelected }}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                style={({ pressed }) => [
-                  styles.filterChip,
-                  isSelected && styles.filterChipSelected,
-                  pressed && styles.filterChipPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    isSelected && styles.filterChipTextSelected,
-                  ]}
-                  allowFontScaling
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {PARISH_TYPE_FILTERS.map((item) => (
+            <FilterChip
+              key={item.value}
+              label={item.label}
+              selected={selectedType === item.value}
+              onPress={() => handleTypeSelect(item.value)}
+            />
+          ))}
         </ScrollView>
 
         {/* Result count / active filter indicator */}
@@ -170,6 +149,7 @@ export const ParishDirectoryScreen: React.FC = () => {
           </View>
         ) : null}
       </View>
+
 
       {/* Non-blocking background refresh error banner if cached data exists */}
       {isBackgroundError ? (
@@ -287,32 +267,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     gap: spacing.xs,
   },
-  filterChip: {
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  filterChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterChipPressed: {
-    opacity: 0.8,
-  },
-  filterChipText: {
-    ...fontStyles.captionMedium,
-    color: colors.textSecondary,
-  },
-  filterChipTextSelected: {
-    color: colors.surface,
-    fontWeight: "600",
-  },
   countRow: {
     paddingTop: spacing.xs,
   },
@@ -326,10 +280,12 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: spacing.md,
+    gap: spacing.sm,
   },
   listContent: {
     padding: spacing.md,
     flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   errorContainer: {
     padding: spacing.md,

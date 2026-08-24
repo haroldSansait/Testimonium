@@ -37,16 +37,13 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
         accessibilityLabel={`${docTypeLabel} for ${request.applicantName}, status: ${statusInfo.label}, tracking number: ${request.trackingNumber || "Draft"}`}
         style={styles.touchable}
       >
-        <View style={styles.headerRow}>
-          <View style={styles.titleContainer}>
-            <Text style={styles.docType} numberOfLines={1} allowFontScaling>
-              {docTypeLabel}
-            </Text>
-            <Text style={styles.applicant} numberOfLines={1} allowFontScaling>
-              For: {request.applicantName}
+        <View style={styles.topRow}>
+          <View style={styles.trackingBox}>
+            <Ionicons name="document-text" size={15} color={colors.primary} />
+            <Text style={styles.trackingText} allowFontScaling numberOfLines={1}>
+              {request.trackingNumber || "Draft Request"}
             </Text>
           </View>
-
           <Badge
             label={statusInfo.label}
             variant={statusInfo.variant}
@@ -54,17 +51,24 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
           />
         </View>
 
-        <View style={styles.divider} />
+        <View style={styles.mainInfo}>
+          <Text style={styles.docType} numberOfLines={1} allowFontScaling>
+            {docTypeLabel}
+          </Text>
+          <Text style={styles.applicant} numberOfLines={1} allowFontScaling>
+            Applicant: {request.applicantName}
+          </Text>
+        </View>
+
+        <View style={styles.metaDivider} />
 
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
             <Ionicons
               name="business-outline"
-              size={14}
-              color={colors.textSecondary}
+              size={13}
+              color={colors.textMuted}
               style={styles.metaIcon}
-              accessibilityElementsHidden={true}
-              importantForAccessibility="no"
             />
             <Text style={styles.metaText} numberOfLines={1} allowFontScaling>
               {parishName}
@@ -74,11 +78,9 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
           <View style={styles.metaItemRight}>
             <Ionicons
               name="calendar-outline"
-              size={14}
-              color={colors.textSecondary}
+              size={13}
+              color={colors.textMuted}
               style={styles.metaIcon}
-              accessibilityElementsHidden={true}
-              importantForAccessibility="no"
             />
             <Text style={styles.metaText} allowFontScaling>
               {dateLabel}
@@ -86,42 +88,41 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
           </View>
         </View>
 
-        <View style={styles.footerRow}>
-          <Text style={styles.trackingText} allowFontScaling>
-            {request.trackingNumber ? `Ref: ${request.trackingNumber}` : "Draft Request"}
-          </Text>
-
-          {request.fee !== null && request.fee !== undefined ? (
-            <Text style={styles.feeText} allowFontScaling>
-              Fee: {feeLabel}
+        {request.fee !== null && request.fee !== undefined ? (
+          <View style={styles.feeRow}>
+            <Text style={styles.feeLabel} allowFontScaling>
+              Processing Fee
             </Text>
-          ) : null}
-        </View>
+            <Text style={styles.feeValue} allowFontScaling>
+              {feeLabel}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Attention Action Banners */}
         {request.isDraft ? (
           <View style={[styles.alertBanner, styles.draftBanner]}>
-            <Ionicons name="create-outline" size={16} color={colors.primary} />
+            <Ionicons name="create-outline" size={15} color={colors.primary} />
             <Text style={styles.alertText} allowFontScaling>
               Continue Draft & Attach Documents
             </Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
           </View>
         ) : showPaymentAlert ? (
           <View style={[styles.alertBanner, styles.paymentBanner]}>
-            <Ionicons name="card-outline" size={16} color={colors.primary} />
+            <Ionicons name="card-outline" size={15} color={colors.primary} />
             <Text style={styles.alertText} allowFontScaling>
-              Payment Required: {feeLabel}
+              Payment Required — Settle {feeLabel}
             </Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
           </View>
         ) : showCorrectionAlert ? (
           <View style={[styles.alertBanner, styles.correctionBanner]}>
-            <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+            <Ionicons name="alert-circle-outline" size={15} color={colors.danger} />
             <Text style={[styles.alertText, { color: colors.danger }]} allowFontScaling>
               Action Required: Submit Corrections
             </Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.danger} />
+            <Ionicons name="chevron-forward" size={14} color={colors.danger} />
           </View>
         ) : null}
       </TouchableOpacity>
@@ -133,44 +134,63 @@ const styles = StyleSheet.create({
   card: {
     padding: 0,
     marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   touchable: {
     padding: spacing.md,
     minHeight: 44,
   },
-  headerRow: {
+  topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.sm,
+    alignItems: "center",
+    marginBottom: spacing.xs,
   },
-  titleContainer: {
+  trackingBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     flex: 1,
+    paddingRight: spacing.xs,
+  },
+  trackingText: {
+    ...fontStyles.caption,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    fontFamily: "monospace",
+    letterSpacing: 0.3,
+  },
+  mainInfo: {
+    marginTop: spacing.xxs,
+    marginBottom: spacing.xs,
   },
   docType: {
     ...fontStyles.subheading,
     color: colors.textPrimary,
+    fontWeight: "700",
   },
   applicant: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  divider: {
+  metaDivider: {
     height: 1,
     backgroundColor: colors.borderLight,
-    marginVertical: spacing.sm,
+    marginVertical: spacing.xs,
   },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.xs,
+    paddingVertical: 2,
   },
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    paddingRight: spacing.xs,
   },
   metaItemRight: {
     flexDirection: "row",
@@ -183,19 +203,23 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.textSecondary,
   },
-  footerRow: {
+  feeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
   },
-  trackingText: {
-    ...fontStyles.captionMedium,
+  feeLabel: {
+    ...fontStyles.caption,
     color: colors.textMuted,
   },
-  feeText: {
+  feeValue: {
     ...fontStyles.captionMedium,
     color: colors.primary,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   alertBanner: {
     flexDirection: "row",

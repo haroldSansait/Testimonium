@@ -208,12 +208,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: spacing.md,
+    gap: spacing.sm,
     flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   loadingContainer: {
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.md,
   },
   skeleton: {
@@ -233,11 +234,13 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.cardBorder,
   },
   unreadCard: {
-    borderColor: colors.primary + "30",
-    backgroundColor: "#FDFBFA",
+    borderColor: colors.primary + "35",
+    backgroundColor: colors.surface,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
   },
   cardHeader: {
     flexDirection: "row",

@@ -615,13 +615,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xxl + 24,
   },
   loadingContainer: {
     padding: spacing.md,
+    gap: spacing.md,
   },
   skeletonCard: {
-    marginBottom: spacing.md,
     borderRadius: radii.md,
   },
   centerContainer: {
@@ -632,6 +632,8 @@ const styles = StyleSheet.create({
   headerCard: {
     padding: spacing.md,
     marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   statusRow: {
     flexDirection: "row",
@@ -640,19 +642,24 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   trackingRef: {
-    ...fontStyles.captionMedium,
-    color: colors.textSecondary,
+    ...fontStyles.caption,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    fontFamily: "monospace",
   },
   statusDescription: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
     marginVertical: spacing.xs,
+    lineHeight: 18,
   },
   draftBox: {
     backgroundColor: colors.primarySoft,
     padding: spacing.md,
-    borderRadius: radii.sm,
+    borderRadius: radii.md,
     marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   draftBoxHeader: {
     flexDirection: "row",
@@ -675,7 +682,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: colors.surface,
     padding: spacing.sm,
-    borderRadius: radii.xs,
+    borderRadius: radii.sm,
     marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.borderLight,
@@ -699,8 +706,10 @@ const styles = StyleSheet.create({
   paymentBox: {
     backgroundColor: colors.primarySoft,
     padding: spacing.md,
-    borderRadius: radii.sm,
+    borderRadius: radii.md,
     marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   paymentBoxHeader: {
     flexDirection: "row",
@@ -721,8 +730,10 @@ const styles = StyleSheet.create({
   correctionBox: {
     backgroundColor: colors.dangerSoft,
     padding: spacing.md,
-    borderRadius: radii.sm,
+    borderRadius: radii.md,
     marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.dangerSoft,
   },
   correctionBoxHeader: {
     flexDirection: "row",
@@ -740,36 +751,46 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
   },
+  paymentButton: {
+    marginTop: spacing.md,
+  },
   actionBtn: {
     marginTop: spacing.sm,
   },
   sectionCard: {
     padding: spacing.md,
     marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
   },
   detailsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    rowGap: spacing.sm,
+    rowGap: spacing.md,
+    marginTop: spacing.xs,
   },
   detailItem: {
     width: "50%",
     paddingRight: spacing.xs,
   },
   fieldLabel: {
-    ...fontStyles.captionMedium,
-    color: colors.textSecondary,
+    ...fontStyles.caption,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    fontWeight: "600",
   },
   fieldValue: {
     ...fontStyles.bodyMedium,
     color: colors.textPrimary,
+    fontWeight: "600",
     marginTop: 2,
   },
   feeSummaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
@@ -778,14 +799,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   feeValue: {
-    ...fontStyles.heading,
+    ...fontStyles.subheading,
     color: colors.primary,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   attachmentRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
@@ -798,10 +819,12 @@ const styles = StyleSheet.create({
   attachmentName: {
     ...fontStyles.bodyMedium,
     color: colors.textPrimary,
+    fontWeight: "500",
   },
   attachmentMeta: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+    marginTop: 2,
   },
   cancelContainer: {
     marginTop: spacing.xs,

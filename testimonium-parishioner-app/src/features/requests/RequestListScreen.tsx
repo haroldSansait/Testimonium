@@ -4,14 +4,13 @@ import {
   FlatList,
   RefreshControl,
   StyleSheet,
-  Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Button, EmptyState, Skeleton } from "@/components/ui";
+import { AppHeader, Button, EmptyState, FilterChip, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useRequestList, useRequestTrackingLookup } from "./api";
 import { RequestCard } from "./components/RequestCard";
@@ -34,6 +33,14 @@ export const RequestListScreen: React.FC = () => {
   } = useRequestList();
 
   const requests = response?.data || [];
+
+  const activeCount = requests.filter(
+    (req) => !["COMPLETED", "CANCELLED", "REJECTED"].includes(req.status)
+  ).length;
+
+  const pastCount = requests.filter(
+    (req) => ["COMPLETED", "CANCELLED", "REJECTED"].includes(req.status)
+  ).length;
 
   const filteredRequests = requests.filter((req) => {
     if (activeTab === "ACTIVE") {
@@ -83,50 +90,58 @@ export const RequestListScreen: React.FC = () => {
         }
       />
 
+      {/* Tracking Search Bar */}
       <View style={styles.trackingBar}>
-        <TextInput
-          value={trackingNumber}
-          onChangeText={setTrackingNumber}
-          placeholder="Find a request by tracking number"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="characters"
-          style={styles.trackingInput}
-          accessibilityLabel="Request tracking number"
-          returnKeyType="search"
-          onSubmitEditing={() => void handleTrackingLookup()}
-        />
+        <View style={styles.inputWrapper}>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={colors.textSecondary}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            value={trackingNumber}
+            onChangeText={setTrackingNumber}
+            placeholder="Search by tracking number..."
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+            style={styles.trackingInput}
+            accessibilityLabel="Request tracking number"
+            returnKeyType="search"
+            onSubmitEditing={() => void handleTrackingLookup()}
+          />
+        </View>
         <Button
-          title="Find"
+          title="Track"
           size="sm"
           variant="outline"
           loading={trackingLookup.isPending}
+          disabled={!trackingNumber.trim()}
           onPress={() => void handleTrackingLookup()}
           accessibilityLabel="Find document request by tracking number"
         />
       </View>
 
-      {/* Filter Tabs */}
+      {/* Filter Chips Bar */}
       <View style={styles.tabBar}>
-        {(["ALL", "ACTIVE", "COMPLETED"] as FilterTab[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === tab }}
-            accessibilityLabel={`${tab.toLowerCase()} requests`}
-          >
-            <Text
-              style={[
-                styles.tabLabel,
-                activeTab === tab && styles.tabLabelActive,
-              ]}
-              allowFontScaling
-            >
-              {tab === "ALL" ? "All Requests" : tab === "ACTIVE" ? "Active" : "Past"}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <FilterChip
+          label="All Requests"
+          count={requests.length}
+          selected={activeTab === "ALL"}
+          onPress={() => setActiveTab("ALL")}
+        />
+        <FilterChip
+          label="Active"
+          count={activeCount}
+          selected={activeTab === "ACTIVE"}
+          onPress={() => setActiveTab("ACTIVE")}
+        />
+        <FilterChip
+          label="Past / Completed"
+          count={pastCount}
+          selected={activeTab === "COMPLETED"}
+          onPress={() => setActiveTab("COMPLETED")}
+        />
       </View>
 
       {/* Content */}
@@ -160,8 +175,8 @@ export const RequestListScreen: React.FC = () => {
               }
               description={
                 activeTab === "ALL"
-                  ? "Request official baptismal, confirmation, or marriage certificates from any diocese parish."
-                  : "You do not have any requests in this filter."
+                  ? "Request official baptismal, confirmation, or marriage certificates from any parish in the Diocese of San Carlos."
+                  : "You do not have any requests matching this filter."
               }
               actionLabel={activeTab === "ALL" ? "Start New Request" : undefined}
               onAction={activeTab === "ALL" ? handleStartRequest : undefined}
@@ -196,50 +211,43 @@ const styles = StyleSheet.create({
     padding: 0,
     backgroundColor: colors.background,
   },
-  tabBar: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-    gap: spacing.xs,
-  },
   trackingBar: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+    alignItems: "center",
+  },
+  inputWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+  },
+  searchIcon: {
+    marginRight: spacing.xs,
   },
   trackingInput: {
     flex: 1,
     minHeight: 40,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.sm,
     ...fontStyles.bodySmall,
     color: colors.textPrimary,
   },
-  tabItem: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.sm,
-    minHeight: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabItemActive: {
-    backgroundColor: colors.primarySoft,
-  },
-  tabLabel: {
-    ...fontStyles.bodyMedium,
-    color: colors.textSecondary,
-  },
-  tabLabelActive: {
-    color: colors.primary,
-    fontWeight: "700",
+  tabBar: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+    gap: spacing.xs,
   },
   content: {
     flex: 1,
