@@ -22,6 +22,7 @@ import type {
   LocalSelectedFile,
   LocalSelectedReceipt,
   PaymentConfiguration,
+  ReceiptUploadResponse,
   RequestAttachment,
 } from "./types";
 
@@ -150,6 +151,32 @@ export const useRequestDetail = (
     enabled: Boolean(user?.uid && isValidId),
     staleTime: 15 * 1000,
     ...options,
+  });
+};
+
+/** Looks up an owned request by its tracking number through the existing API route. */
+export const fetchRequestByTrackingNumber = async (
+  trackingNumber: string,
+  signal?: AbortSignal
+): Promise<DocumentRequestDetail> => {
+  const normalized = trackingNumber.trim();
+  if (!normalized) throw new Error("Enter a request tracking number.");
+  return apiClient.request<DocumentRequestDetail>({
+    path: `/requests/tracking/${encodeURIComponent(normalized)}`,
+    signal,
+    auth: true,
+  });
+};
+
+export const useRequestTrackingLookup = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: (trackingNumber: string) => fetchRequestByTrackingNumber(trackingNumber),
+    onSuccess: (request, trackingNumber) => {
+      queryClient.setQueryData(requestKeys.tracking(user?.uid, trackingNumber.trim()), request);
+      queryClient.setQueryData(requestKeys.detail(user?.uid, request.id), request);
+    },
   });
 };
 
@@ -408,12 +435,7 @@ export const useUploadPaymentReceipt = () => {
     }: {
       requestId: number | string;
       receipt: LocalSelectedReceipt;
-    }): Promise<{
-      success: boolean;
-      receiptId?: number;
-      ocrStatus?: string;
-      message?: string;
-    }> => {
+    }): Promise<ReceiptUploadResponse> => {
       const createBody = () => {
         const formData = new FormData();
         formData.append("receipt", {
@@ -424,12 +446,7 @@ export const useUploadPaymentReceipt = () => {
         return formData;
       };
 
-      return apiClient.request<{
-        success: boolean;
-        receiptId?: number;
-        ocrStatus?: string;
-        message?: string;
-      }>({
+      return apiClient.request<ReceiptUploadResponse>({
         method: "POST",
         path: `/requests/${requestId}/receipt`,
         createBody,

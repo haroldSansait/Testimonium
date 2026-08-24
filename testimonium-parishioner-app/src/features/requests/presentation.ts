@@ -167,8 +167,7 @@ export const isCancelEligible = (request?: DocumentRequestDetail | null): boolea
 
 export const isPaymentEligible = (request?: DocumentRequestDetail | null): boolean => {
   if (!request || request.isDraft) return false;
-  const fee = typeof request.fee === "string" ? parseFloat(request.fee) : request.fee;
-  const hasFee = typeof fee === "number" && !isNaN(fee) && fee > 0;
+  const hasFee = hasAuthoritativeFee(request.fee) && Number(request.fee) > 0;
   const eligibleStatuses: DocumentRequestStatus[] = [
     "PAYMENT_PENDING",
     "PAYMENT_NEEDS_CORRECTION",
@@ -184,18 +183,19 @@ export const isDocumentCorrectionEligible = (
 };
 
 export const isZeroFee = (fee?: number | string | null): boolean => {
-  if (fee === null || fee === undefined) return false;
-  const numeric = typeof fee === "string" ? parseFloat(fee) : fee;
-  return !isNaN(numeric) && numeric === 0;
+  return hasAuthoritativeFee(fee) && Number(fee) === 0;
+};
+
+export const hasAuthoritativeFee = (fee?: number | string | null): boolean => {
+  if (fee === null || fee === undefined || (typeof fee === "string" && !fee.trim())) return false;
+  const numeric = typeof fee === "string" ? Number(fee) : fee;
+  return typeof numeric === "number" && Number.isFinite(numeric) && numeric >= 0;
 };
 
 export const formatFee = (fee?: number | string | null): string => {
-  if (fee === null || fee === undefined) return "₱0.00";
-  const numeric = typeof fee === "string" ? parseFloat(fee) : fee;
-  if (isNaN(numeric)) return "₱0.00";
-  return `₱${numeric.toFixed(2)}`;
+  if (!hasAuthoritativeFee(fee)) return "Fee unavailable";
+  return `\u20B1${Number(fee).toFixed(2)}`;
 };
-
 export const formatDate = (dateString?: string | null): string => {
   if (!dateString) return "—";
   try {

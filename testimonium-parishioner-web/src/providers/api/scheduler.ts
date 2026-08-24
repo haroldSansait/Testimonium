@@ -1,12 +1,47 @@
-import type { ISchedulerProvider } from "../types";
+import type { AvailabilityDates, ISchedulerProvider, SchedulingConfiguration } from "../types";
 import type { Appointment } from "../../types";
 import { client } from "../../api/client";
-import { resolveEventType, resolveDisplayTitle } from "../../shared/EventTypeCatalog";
+import { resolveDisplayTitle } from "../../shared/EventTypeCatalog";
+
+let currentWebKeyRef = { payloadSignature: "", key: "" };
+
+function generateWebUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function getOrGenerateWebIdempotencyKey(payload: {
+  parishId: number | string;
+  eventType: string;
+  date: string;
+  timeSlot: string;
+  remarks?: string | null;
+}): string {
+  const normParish = Number(payload.parishId);
+  const normEvent = String(payload.eventType || "").toUpperCase().trim();
+  const normDate = String(payload.date || "").split("T")[0].trim();
+  const normSlot = String(payload.timeSlot || "").trim().toUpperCase();
+  const normRemarks = payload.remarks ? payload.remarks.trim().replace(/\s+/g, " ") : "";
+  const sig = `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}`;
+
+  if (currentWebKeyRef.payloadSignature === sig && currentWebKeyRef.key) {
+    return currentWebKeyRef.key;
+  }
+  const newKey = `web-sched-${generateWebUuid()}`;
+  currentWebKeyRef = { payloadSignature: sig, key: newKey };
+  return newKey;
+}
 
 const mapAppointment = (s: any): Appointment => {
   if (!s) return s;
 
-  let timeSlot = "09:00 AM";
+  let timeSlot = "TBD";
   let status: Appointment["status"] = "booked";
 
   if (s.remarks) {
@@ -75,17 +110,16 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     return list.map(mapAppointment);
   }
 
-  async getAvailableSlots(parishId: string, date: string, serviceName?: string): Promise<string[]> {
-    const params: Record<string, string> = {
-      parishId,
-      date,
-    };
-    if (serviceName) {
-      const resolved = resolveEventType(serviceName);
-      if (resolved) {
-        params.eventType = resolved;
-      }
-    }
+  async getSchedulingConfiguration(parishId: string): Promise<SchedulingConfiguration> {
+    return client.get<SchedulingConfiguration>("/schedule-requests/configuration", { parishId });
+  }
+
+  async getAvailabilityDates(parishId: string, eventType: string): Promise<AvailabilityDates> {
+    return client.get<AvailabilityDates>("/schedule-requests/availability-dates", { parishId, eventType });
+  }
+
+  async getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]> {
+    const params: Record<string, string> = { parishId, date, eventType };
     const response = await client.get<any>("/schedule-requests/available-slots", params);
     return Array.isArray(response)
       ? response
@@ -94,21 +128,28 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
 
   async bookAppointment(appointment: {
     parishId: string;
-    serviceName: string;
+    eventType: string;
+    displayTitle: string;
     date: string;
     timeSlot: string;
     location?: string;
   }): Promise<Appointment> {
     const payload = {
       parishId: parseInt(appointment.parishId, 10),
-      eventType: resolveEventType(appointment.serviceName) || "MASS_INTENTION",
-      displayTitle: appointment.serviceName,
+      eventType: appointment.eventType,
+      displayTitle: appointment.displayTitle,
       date: appointment.date,
       timeSlot: appointment.timeSlot,
       remarks: appointment.location ? `Venue: ${appointment.location}.` : "Parishioner Portal Request",
     };
 
-    const data = await client.post<any>("/schedule-requests", payload);
+    const idempotencyKey = getOrGenerateWebIdempotencyKey(payload);
+
+    const data = await client.post<any>("/schedule-requests", payload, {
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+      },
+    });
     const item = data?.data !== undefined ? data.data : data;
     return mapAppointment(item);
   }

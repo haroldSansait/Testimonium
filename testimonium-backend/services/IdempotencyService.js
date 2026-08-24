@@ -18,6 +18,23 @@ export function computeRequestPayloadHash(payload) {
     .digest("hex");
 }
 
+/**
+ * Normalizes and hashes the canonical schedule payload for idempotent comparison.
+ */
+export function computeSchedulePayloadHash(payload) {
+  const canonical = {
+    parishId: Number(payload.parishId),
+    eventType: String(payload.eventType || "").trim().toUpperCase(),
+    requestedDate: String(payload.requestedDate || payload.date || "").split("T")[0].trim(),
+    timeSlot: String(payload.timeSlot || "").trim().toUpperCase(),
+    remarks: String(payload.remarks || "").trim(),
+  };
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(canonical))
+    .digest("hex");
+}
+
 export class IdempotencyService {
   /**
    * Validates idempotency key format.

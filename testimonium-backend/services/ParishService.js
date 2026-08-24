@@ -12,6 +12,7 @@ import {
   normalizeAvailableDocumentsForSave,
   getEffectiveOfferedDocuments,
 } from "../config/documents.js";
+import { validateSchedulingSettingsForSave } from "./SchedulingConfiguration.js";
 
 const generateSlug = (name) => {
   return name
@@ -464,7 +465,8 @@ export class ParishService {
       updatePayload.documentSettings = data.documentSettings && typeof data.documentSettings === "object" ? JSON.stringify(data.documentSettings) : data.documentSettings;
     }
     if (data.eventSettings !== undefined) {
-      updatePayload.eventSettings = data.eventSettings && typeof data.eventSettings === "object" ? JSON.stringify(data.eventSettings) : data.eventSettings;
+      const normalizedSettings = validateSchedulingSettingsForSave(data.eventSettings);
+      updatePayload.eventSettings = JSON.stringify(normalizedSettings);
     }
     if (data.officeHours !== undefined) {
       this.validateOfficeHours(data.officeHours);

@@ -203,3 +203,10 @@ export interface PaymentConfiguration {
   qrCode: PaymentQrCode;
   message?: string;
 }
+
+export interface ReceiptUploadResponse {
+  autoVerified: boolean;
+  ocrPending: boolean;
+  receiptId: number;
+  ocrStatus: string;
+}

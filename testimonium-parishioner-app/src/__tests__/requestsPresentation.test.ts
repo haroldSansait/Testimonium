@@ -152,10 +152,11 @@ describe("Requests Presentation & Helpers", () => {
 
   describe("Formatting Utilities", () => {
     it("formats fee correctly", () => {
-      expect(formatFee(100)).toBe("₱100.00");
-      expect(formatFee("150.5")).toBe("₱150.50");
-      expect(formatFee(0)).toBe("₱0.00");
-      expect(formatFee(null)).toBe("₱0.00");
+      expect(formatFee(100)).toBe("\u20B1100.00");
+      expect(formatFee("150.5")).toBe("\u20B1150.50");
+      expect(formatFee(0)).toBe("\u20B10.00");
+      expect(formatFee(null)).toBe("Fee unavailable");
+      expect(formatFee("invalid")).toBe("Fee unavailable");
     });
 
     it("formats dates safely", () => {

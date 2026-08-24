@@ -4,14 +4,10 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-reac
 interface DatePickerCalendarProps {
   selectedDate: string; // YYYY-MM-DD
   onSelectDate: (date: string) => void;
-  minDate?: string;
-  maxDate?: string;
-  officeHours?: string | Record<string, { isClosed?: boolean; closed?: boolean; openTime?: string; closeTime?: string }>;
-  parishName?: string;
+  availableDates: string[];
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const FULL_DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -20,10 +16,7 @@ const MONTH_NAMES = [
 export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
   selectedDate,
   onSelectDate,
-  minDate,
-  maxDate,
-  officeHours,
-  parishName,
+  availableDates,
 }) => {
   // Parse initial view month from selectedDate or today
   const initialDate = useMemo(() => {
@@ -53,37 +46,7 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
     return `${y}-${m}-${d}`;
   }, [today]);
 
-  const minDateObj = useMemo(() => {
-    if (minDate) {
-      const d = new Date(minDate);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
-    return today;
-  }, [minDate, today]);
-
-  const maxDateObj = useMemo(() => {
-    if (maxDate) {
-      const d = new Date(maxDate);
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    // Default 6 months in future
-    const d = new Date();
-    d.setMonth(d.getMonth() + 6);
-    return d;
-  }, [maxDate]);
-
-  // Parse parsed office hours map
-  const parsedHoursMap = useMemo(() => {
-    if (!officeHours) return null;
-    if (typeof officeHours === 'object') return officeHours;
-    try {
-      return JSON.parse(officeHours);
-    } catch {
-      return null;
-    }
-  }, [officeHours]);
+  const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
 
   const handlePrevMonth = () => {
     if (viewMonth === 0) {
@@ -107,7 +70,6 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
     const now = new Date();
     setViewYear(now.getFullYear());
     setViewMonth(now.getMonth());
-    onSelectDate(todayStr);
   };
 
   // Build 42-day calendar grid
@@ -162,22 +124,6 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
     return days;
   }, [viewYear, viewMonth]);
 
-  const isDayClosed = (dateObj: Date): boolean => {
-    if (!parsedHoursMap) return false;
-    const dayOfWeek = dateObj.getDay();
-    const dayName = FULL_DAY_NAMES[dayOfWeek];
-    const conf = parsedHoursMap[dayName];
-    return Boolean(conf && (conf.isClosed || conf.closed));
-  };
-
-  const isDayDisabled = (dateObj: Date): boolean => {
-    dateObj.setHours(0, 0, 0, 0);
-    if (dateObj.getTime() < minDateObj.getTime()) return true;
-    if (dateObj.getTime() > maxDateObj.getTime()) return true;
-    if (isDayClosed(dateObj)) return true;
-    return false;
-  };
-
   return (
     <div className="w-full bg-white rounded-2xl border border-border/80 shadow-sm overflow-hidden select-none">
       {/* Calendar Header */}
@@ -227,11 +173,11 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
 
       {/* 42-cell Month Grid */}
       <div className="grid grid-cols-7 p-2 gap-1.5">
-        {calendarGrid.map(({ dateStr, dayNum, isCurrentMonth, dateObj }) => {
+        {calendarGrid.map(({ dateStr, dayNum, isCurrentMonth }) => {
           const isSelected = selectedDate === dateStr;
           const isToday = todayStr === dateStr;
-          const closed = isDayClosed(dateObj);
-          const disabled = isDayDisabled(dateObj);
+          const available = availableDateSet.has(dateStr);
+          const disabled = !available;
 
           let cellClass = 'relative h-10 md:h-12 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer font-medium text-xs';
 
@@ -252,16 +198,11 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
               disabled={disabled}
               onClick={() => onSelectDate(dateStr)}
               className={cellClass}
-              title={closed ? `${parishName || 'Parish'} office is closed on this day` : `${dateStr}`}
+              title={available ? `${dateStr} is available` : `${dateStr} is unavailable`}
             >
               <span className="text-xs">{dayNum}</span>
               {isToday && !isSelected && (
                 <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-crimson" />
-              )}
-              {closed && isCurrentMonth && (
-                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mt-0.5 leading-none">
-                  Closed
-                </span>
               )}
             </button>
           );
@@ -281,7 +222,7 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-md bg-gray-200 inline-block" />
-            <span>Closed / Past</span>
+            <span>Unavailable</span>
           </div>
         </div>
 

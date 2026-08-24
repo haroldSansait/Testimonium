@@ -47,15 +47,36 @@ export interface IRequestProvider {
 
 export interface ISchedulerProvider {
   getAppointments(): Promise<Appointment[]>;
-  getAvailableSlots(parishId: string, date: string, serviceName?: string): Promise<string[]>;
+  getSchedulingConfiguration(parishId: string): Promise<SchedulingConfiguration>;
+  getAvailabilityDates(parishId: string, eventType: string): Promise<AvailabilityDates>;
+  getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]>;
   bookAppointment(appointment: {
     parishId: string;
-    serviceName: string;
+    eventType: string;
+    displayTitle: string;
     date: string;
     timeSlot: string;
     location?: string;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean): Promise<Appointment>;
+}
+
+export interface SchedulingConfiguration {
+  parishId: number;
+  schedulingAvailable: boolean;
+  configurationUnavailable: boolean;
+  services: Array<{ eventType: string; label: string }>;
+  timeSlots: string[];
+  capacity: { dailyLimit: number; slotCapacity: number } | null;
+  venueCapacity: number | null;
+  horizonDays: number;
+  configurationUpdatedAt: string | null;
+}
+
+export interface AvailabilityDates {
+  eventType: string;
+  serviceAvailable: boolean;
+  dates: string[];
 }
 
 export interface INotificationProvider {

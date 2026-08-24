@@ -22,7 +22,7 @@ const FILTER_TABS: { label: string; value: ScheduleFilter }[] = [
 
 // ─── Details Modal ────────────────────────────────────────────────────────────
 
-import { getPriestColor } from '@/utils/priestColors';
+import { getManilaTodayDateString, isBeforeManilaToday } from '@/utils/date';
 
 interface DetailsModalProps {
   request: ScheduleRequest;
@@ -42,6 +42,8 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   const [selectedPriestId, setSelectedPriestId] = useState('');
   const [loadingPriests, setLoadingPriests] = useState(false);
   const [priestValidationError, setPriestValidationError] = useState(false);
+
+  const minDate = getManilaTodayDateString();
 
   useEffect(() => {
     const fetchPriests = async () => {
@@ -95,6 +97,9 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleProposeReschedule = async () => {
+    if (!proposedDate || isBeforeManilaToday(proposedDate) || !proposedTime) {
+      return;
+    }
     setIsUpdating(true);
     try {
       let timeOffset = '09:00:00';
@@ -114,7 +119,6 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
     }
   };
 
-  const priestColor = getPriestColor(request.assignedPriest || 'TBD');
   const allowsActions = request.status === 'Pending' || request.status === 'Under Review' || request.status === 'Tentative';
 
   return createPortal(
@@ -141,8 +145,15 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Proposed Date</label>
                   <input
                     type="date"
+                    min={minDate}
                     value={proposedDate}
-                    onChange={e => setProposedDate(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val && isBeforeManilaToday(val)) {
+                        return;
+                      }
+                      setProposedDate(val);
+                    }}
                     className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A]"
                   />
                 </div>
@@ -181,7 +192,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
               </button>
               <button
                 onClick={() => void handleProposeReschedule()}
-                disabled={isUpdating || !proposedDate || !proposedTime}
+                disabled={isUpdating || !proposedDate || !proposedTime || isBeforeManilaToday(proposedDate)}
                 className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-40"
               >
                 Send Proposal to Parishioner
@@ -250,24 +261,17 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
           {/* Priest Assignment Selector */}
           <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-2">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Priest Assignment</span>
-            <div className="flex items-center gap-3">
-              <select
-                value={selectedPriestId}
-                onChange={e => setSelectedPriestId(e.target.value)}
-                disabled={loadingPriests}
-                className="flex-1 p-2 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none bg-white"
-              >
-                <option value="">{loadingPriests ? 'Loading Priests...' : 'Select Priest (Primary / Assistant)...'}</option>
-                {priests.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest'})</option>
-                ))}
-              </select>
-              {request.assignedPriest && (
-                <span className={cn('px-2.5 py-1 text-[10px] font-bold rounded-full border', priestColor.bg, priestColor.text, priestColor.border)}>
-                  {priestColor.badgeText}
-                </span>
-              )}
-            </div>
+            <select
+              value={selectedPriestId}
+              onChange={e => setSelectedPriestId(e.target.value)}
+              disabled={loadingPriests}
+              className="w-full p-2 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none bg-white"
+            >
+              <option value="">{loadingPriests ? 'Loading Priests...' : 'Select Priest (Primary / Assistant)...'}</option>
+              {priests.map((p: any) => (
+                <option key={p.id} value={p.id}>{p.name} ({p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest'})</option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

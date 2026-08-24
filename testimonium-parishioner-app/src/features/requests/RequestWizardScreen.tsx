@@ -37,6 +37,7 @@ import {
   formatDocumentType,
   formatFee,
   getEffectiveOfferedDocuments,
+  hasAuthoritativeFee,
 } from "./presentation";
 import {
   CanonicalDocumentType,
@@ -110,6 +111,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const createDraftMutation = useCreateRequestDraft();
   const uploadFileMutation = useUploadSupportingFile();
   const submitDraftMutation = useSubmitRequestDraft();
+  const hasValidRequirementsFee = hasAuthoritativeFee(requirements?.baseFee);
 
   const handleBack = () => {
     if (step > 1 && !isSubmitting) {
@@ -185,6 +187,13 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   // Step 4 -> Step 5
   const handleValidateFilesAndNext = () => {
+    if (!hasValidRequirementsFee) {
+      Alert.alert(
+        "Fee Configuration Unavailable",
+        "This parish has not supplied a valid fee for this document request. Please contact the parish office."
+      );
+      return;
+    }
     const requiredDocs = (requirements?.requiredDocuments || []).filter((d) => d.required);
     const missing = requiredDocs.filter((d) => !selectedFiles[d.id]);
 
@@ -214,6 +223,10 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   const handleConfirmAndSubmit = async () => {
     if (!selectedParish || !selectedDocType || inFlightGuard.current) return;
+    if (!hasValidRequirementsFee) {
+      Alert.alert("Fee Configuration Unavailable", "A valid parish fee is required before this request can be submitted.");
+      return;
+    }
 
     inFlightGuard.current = true;
     setIsSubmitting(true);
@@ -683,7 +696,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               icon="checkmark-circle-outline"
               onPress={handleConfirmAndSubmit}
               loading={isSubmitting}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !hasValidRequirementsFee}
               style={styles.nextBtn}
               accessibilityLabel="Confirm and submit your document request"
             />

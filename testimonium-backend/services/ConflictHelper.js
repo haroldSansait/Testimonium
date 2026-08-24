@@ -2,6 +2,72 @@ import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
 
 /**
+ * Returns a YYYY-MM-DD string in Asia/Manila (UTC+8) timezone.
+ *
+ * @param {Date|string|number} dateInput
+ * @returns {string}
+ */
+export function getManilaDateString(dateInput = new Date()) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(d);
+}
+
+/**
+ * Parses date-only inputs safely in Asia/Manila timezone.
+ *
+ * @param {Date|string} dateInput
+ * @returns {{ year: number, month: number, day: number, dateObj: Date, dateStr: string, dayName: string } | null}
+ */
+export function parseManilaDateOnly(dateInput) {
+  if (!dateInput) return null;
+  let year = 0;
+  let month = 0;
+  let day = 0;
+
+  if (typeof dateInput === "string") {
+    const cleanStr = dateInput.split("T")[0].trim();
+    const parts = cleanStr.split("-");
+    if (parts.length === 3) {
+      year = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10);
+      day = parseInt(parts[2], 10);
+    }
+  }
+
+  if (!year || !month || !day) {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(d.getTime())) return null;
+    const manilaStr = getManilaDateString(d);
+    if (!manilaStr) return null;
+    const parts = manilaStr.split("-");
+    year = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10);
+    day = parseInt(parts[2], 10);
+  }
+
+  const paddedMonth = String(month).padStart(2, "0");
+  const paddedDay = String(day).padStart(2, "0");
+  const dateStr = `${year}-${paddedMonth}-${paddedDay}`;
+  const dateObj = new Date(`${dateStr}T00:00:00.000+08:00`);
+  if (isNaN(dateObj.getTime())) return null;
+
+  const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    weekday: "long",
+  });
+  const dayName = weekdayFormatter.format(dateObj).toLowerCase();
+
+  return { year, month, day, dateObj, dateStr, dayName };
+}
+
+/**
  * Constructs an accurate Date object in Asia/Manila (UTC+8) timezone.
  *
  * @param {Date|string} dateInput
@@ -10,12 +76,8 @@ import { AuditLogService } from "./AuditLogService.js";
  */
 export function parseManilaDateTime(dateInput, timeStr = "08:00 AM") {
   try {
-    const d = new Date(dateInput);
-    if (isNaN(d.getTime())) return null;
-
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
+    const parsed = parseManilaDateOnly(dateInput);
+    if (!parsed) return null;
 
     let [hourMin, period] = (timeStr || "08:00 AM").trim().split(" ");
     let [hours, minutes] = (hourMin || "08:00").split(":").map(Number);
@@ -25,10 +87,27 @@ export function parseManilaDateTime(dateInput, timeStr = "08:00 AM") {
     const hStr = String(hours).padStart(2, "0");
     const mStr = String(minutes || 0).padStart(2, "0");
 
-    return new Date(`${year}-${month}-${day}T${hStr}:${mStr}:00.000+08:00`);
+    return new Date(`${parsed.dateStr}T${hStr}:${mStr}:00.000+08:00`);
   } catch {
     return null;
   }
+}
+
+/** Formats an instant as the booking-slot representation in Asia/Manila. */
+export function formatManilaTimeSlot(dateInput) {
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+  const hour = get("hour");
+  const minute = get("minute");
+  const dayPeriod = get("dayPeriod");
+  return hour && minute && dayPeriod ? `${hour.padStart(2, "0")}:${minute} ${dayPeriod.toUpperCase()}` : null;
 }
 
 export class ConflictHelper {
@@ -130,8 +209,8 @@ export class ConflictHelper {
     }
 
     // 4. Check overlap with recurring Mass Schedule Templates for the applicable day of the week
-    const dayOfWeek = checkDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    const isSunday = dayOfWeek === 0;
+    const parsedCheckDate = parseManilaDateOnly(date);
+    const isSunday = parsedCheckDate?.dayName === "sunday";
     const applicableDayTypes = isSunday ? ["SUNDAY"] : ["WEEKDAY"];
 
     const targetTemplates = await prisma.massScheduleTemplate.findMany({

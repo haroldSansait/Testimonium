@@ -1,12 +1,13 @@
 import { ScheduleService } from "../services/ScheduleService.js";
-import { resolveEventType } from "../shared/EventTypeCatalog.js";
+import { resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatalog.js";
+import { CANONICAL_SCHEDULE_EVENT_TYPES } from "../services/BookingValidator.js";
 
 const scheduleService = new ScheduleService();
 
 export const list = async (req, res, next) => {
   try {
-    const { page, limit, search, status } = req.query;
-    
+    const { page, limit, search, status, scope } = req.query;
+
     // Scoping check: parishioners see only their own schedules.
     // Staff see schedules from their parish, and diocese coordinator sees all.
     let userId;
@@ -16,10 +17,10 @@ export const list = async (req, res, next) => {
     if (req.user.role === "PARISHIONER") {
       userId = req.user.id;
     } else if (req.user.role === "PRIEST") {
-      parishId = req.user.parish?.id;
+      parishId = req.user.parish?.id || req.user.parishId;
       priestId = req.user.id;
     } else if (req.user.role !== "DIOCESE_COORDINATOR") {
-      parishId = req.user.parish?.id;
+      parishId = req.user.parish?.id || req.user.parishId;
     }
 
     const { data, total } = await scheduleService.list({
@@ -30,6 +31,7 @@ export const list = async (req, res, next) => {
       parishId,
       userId,
       priestId,
+      scope,
     });
 
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
@@ -50,15 +52,52 @@ export const list = async (req, res, next) => {
   }
 };
 
+export const getById = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid schedule ID.",
+      });
+    }
+
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
+
+    const data = await scheduleService.getById(id, actorId, actorRole, actorParishId);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const create = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { parishId, eventType, date, timeSlot, displayTitle, remarks } = req.body;
+    const { parishId, eventType, date, timeSlot, remarks } = req.body;
+    const idempotencyKey = req.headers["idempotency-key"] || null;
+
+    // Staff role isolation check: Secretary/Priest can only schedule within their assigned parish
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(req.user.role)) {
+      const staffParishId = req.user.parish?.id || req.user.parishId;
+      if (staffParishId && Number(parishId) !== Number(staffParishId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Staff members may only create schedule appointments for their assigned parish.",
+        });
+      }
+    }
 
     const canonicalEventType = resolveEventType(eventType);
-    const resolvedDisplayTitle = displayTitle || eventType;
+    const resolvedDisplayTitle = resolveEventMetadata(canonicalEventType)?.title || canonicalEventType;
 
-    const schedule = await scheduleService.create({
+    const result = await scheduleService.create({
       userId,
       parishId,
       eventType: canonicalEventType,
@@ -66,12 +105,71 @@ export const create = async (req, res, next) => {
       requestedDate: date,
       timeSlot,
       remarks,
-    });
+    }, idempotencyKey);
 
     return res.status(201).json({
       success: true,
-      message: "Schedule request booked successfully.",
-      data: schedule,
+      message: result.isReplay ? "Schedule request replayed from idempotency key." : "Schedule request booked successfully.",
+      data: result.schedule,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getConfiguration = async (req, res, next) => {
+  try {
+    const { parishId } = req.query;
+    if (!parishId) {
+      return res.status(400).json({
+        success: false,
+        message: "parishId query parameter is required.",
+      });
+    }
+
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(req.user.role)) {
+      const staffParishId = req.user.parish?.id || req.user.parishId;
+      if (staffParishId && Number(parishId) !== Number(staffParishId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Staff members may only view scheduling configuration for their assigned parish.",
+        });
+      }
+    }
+
+    const data = await scheduleService.getSchedulingConfiguration(parishId);
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getAvailabilityDates = async (req, res, next) => {
+  try {
+    const { parishId, eventType } = req.query;
+    if (!parishId) {
+      return res.status(400).json({
+        success: false,
+        message: "parishId query parameter is required.",
+      });
+    }
+
+    // Staff role isolation check: Secretary/Priest can only query their own parish
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(req.user.role)) {
+      const staffParishId = req.user.parish?.id || req.user.parishId;
+      if (staffParishId && Number(parishId) !== Number(staffParishId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Staff members may only view availability for their assigned parish.",
+        });
+      }
+    }
+
+    const data = await scheduleService.getAvailabilityDates(parishId, eventType);
+
+    return res.status(200).json({
+      success: true,
+      data,
     });
   } catch (err) {
     return next(err);
@@ -81,15 +179,34 @@ export const create = async (req, res, next) => {
 export const getAvailableSlots = async (req, res, next) => {
   try {
     const { parishId, date, eventType } = req.query;
-    if (!parishId || !date) {
+    if (!parishId || !date || !eventType) {
       return res.status(400).json({
         success: false,
-        message: "parishId and date query parameters are required.",
+        message: "parishId, date, and eventType query parameters are required.",
         errors: [],
       });
     }
 
-    const canonicalEventType = eventType ? resolveEventType(eventType) : null;
+    // Staff role isolation check: Secretary/Priest can only query their own parish
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(req.user.role)) {
+      const staffParishId = req.user.parish?.id || req.user.parishId;
+      if (staffParishId && Number(parishId) !== Number(staffParishId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Staff members may only view available slots for their assigned parish.",
+        });
+      }
+    }
+
+    const canonicalEventType = resolveEventType(eventType);
+    if (!canonicalEventType || !CANONICAL_SCHEDULE_EVENT_TYPES.includes(canonicalEventType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid event type: '${eventType}'. Must be one of the 16 canonical schedule event types.`,
+        errors: [],
+      });
+    }
+
     const slots = await scheduleService.getAvailableSlots(parishId, date, canonicalEventType);
 
     return res.status(200).json({
@@ -233,5 +350,3 @@ export const respondPriestAssignment = async (req, res, next) => {
     return next(err);
   }
 };
-
-

@@ -12,6 +12,19 @@ describe("application error normalization", () => {
     expect(error.message).toBe("The service is temporarily unavailable. Please try again.");
   });
 
+  it("does not expose JSON server-error internals", async () => {
+    const error = await appErrorFromResponse(
+      new Response(JSON.stringify({ message: "Invalid prisma.idempotencyKey.create() invocation" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    expect(error.kind).toBe("SERVER");
+    expect(error.message).toBe("The service is temporarily unavailable. Please try again.");
+    expect(error.message).not.toContain("prisma");
+  });
+
   it("extracts backend JSON message when provided", async () => {
     const error = await appErrorFromResponse(
       new Response(JSON.stringify({ message: "Custom validation issue", code: "VALIDATION_FAILED" }), {

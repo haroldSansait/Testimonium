@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Image as ImageIcon, Trash2, RefreshCw, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
 import services from '../../../providers/factory';
-import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 
 interface ReceiptUploadCardProps {
@@ -128,17 +127,22 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
   };
 
   return (
-    <Card className="shadow-md overflow-hidden border-border/80">
-      <CardHeader className="bg-app-page border-b border-border/40 py-3.5">
-        <CardTitle className="text-xs sm:text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
-          <UploadCloud className="w-4 h-4 text-crimson" />
-          <span>Receipt Upload</span>
-        </CardTitle>
-      </CardHeader>
+    <div className="bg-white rounded-card border border-border/80 shadow-sm overflow-hidden flex flex-col">
+      {/* Full-width seamless header */}
+      <div className="px-5 py-3.5 bg-gradient-to-r from-red-50/70 via-red-50/40 to-transparent border-b border-crimson/10 flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-red-100/80 border border-crimson/15 flex items-center justify-center flex-shrink-0 text-crimson">
+          <UploadCloud className="w-4 h-4" />
+        </div>
+        <div>
+          <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+            Receipt Upload
+          </h3>
+        </div>
+      </div>
 
-      <CardContent className="p-5 space-y-4 text-left">
+      <div className="p-5 space-y-4 text-left flex-1 flex flex-col justify-between">
         {errorMessage && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-card flex items-start gap-2.5 text-xs text-red-900 animate-in fade-in duration-150">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-xs text-red-900 animate-in fade-in duration-150">
             <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
             <span className="font-medium">{errorMessage}</span>
           </div>
@@ -147,7 +151,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         {/* Existing uploaded receipt mode */}
         {existingReceiptUrl && !file && (
           <div className="space-y-4 text-center">
-            <div className="p-4 bg-green-50/50 border border-green-200 rounded-card space-y-3">
+            <div className="p-4 bg-green-50/50 border border-green-200/80 rounded-xl space-y-3">
               <div className="flex items-center justify-center gap-1.5 text-green-800 text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-green-700" />
                 <span>Receipt Uploaded Successfully</span>
@@ -217,7 +221,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
 
         {/* OCR Result View immediately after upload */}
         {ocrResult && !isUploading && !existingReceiptUrl && (
-          <div className="p-4 rounded-card border space-y-4 animate-in fade-in duration-200 text-left bg-white shadow-xs border-border">
+          <div className="p-4 rounded-xl border space-y-4 animate-in fade-in duration-200 text-left bg-white shadow-xs border-border">
             {ocrResult.autoVerified ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-green-800 text-xs font-bold">
@@ -268,7 +272,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
 
         {/* Upload State: Honest Indeterminate Progress while request is genuinely active */}
         {isUploading && (
-          <div className="p-6 border border-border/80 rounded-card bg-app-page/50 text-center space-y-3" role="status">
+          <div className="p-6 border border-border/80 rounded-xl bg-app-page/50 text-center space-y-3" role="status">
             <span className="text-xs font-bold text-text-primary">Uploading &amp; Verifying Receipt…</span>
             <div className="w-full bg-border rounded-full h-2 overflow-hidden shadow-inner relative">
               <div className="bg-crimson h-2 rounded-full w-2/5 animate-pulse" />
@@ -284,18 +288,20 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-card p-8 text-center cursor-pointer transition-all duration-150 flex flex-col items-center justify-center gap-2.5 focus-within:ring-2 focus-within:ring-crimson ${
+            className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center cursor-pointer transition-all duration-150 flex flex-col items-center justify-center gap-2.5 focus-within:ring-2 focus-within:ring-crimson ${
               isDragging
-                ? 'border-crimson bg-red-50/15'
-                : 'border-border/80 hover:border-crimson hover:bg-red-50/5'
+                ? 'border-crimson bg-red-50/20'
+                : 'border-border/80 hover:border-crimson hover:bg-red-50/5 bg-app-base'
             }`}
           >
-            <UploadCloud className="w-10 h-10 text-text-muted/60" />
+            <div className="w-12 h-12 rounded-full bg-red-50 border border-crimson/15 flex items-center justify-center text-crimson mb-1">
+              <UploadCloud className="w-6 h-6" />
+            </div>
             <div>
               <span className="text-xs font-bold text-text-primary block">Upload Payment Receipt</span>
               <p className="text-[11px] text-text-muted mt-0.5 font-normal">Drag &amp; drop or click to browse files</p>
             </div>
-            <span className="text-[10px] text-text-muted bg-white px-2.5 py-0.5 rounded-full border border-border font-medium">
+            <span className="text-[10px] text-text-muted bg-white px-3 py-1 rounded-full border border-border/80 font-medium shadow-2xs">
               Supports PNG, JPG, JPEG, WEBP (Max 10 MB)
             </span>
             <input
@@ -311,15 +317,15 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
 
         {/* File Preview Area After Selection */}
         {file && previewUrl && !ocrResult && !isUploading && (
-          <div className="border border-border rounded-card p-4 bg-app-page/40 space-y-4 animate-in fade-in duration-150 text-left">
+          <div className="border border-border rounded-xl p-4 bg-app-base space-y-3.5 animate-in fade-in duration-150 text-left">
             <div className="flex items-center justify-between border-b border-border/40 pb-2">
               <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                <ImageIcon className="w-4 h-4 text-text-muted" /> Selected Preview
+                <ImageIcon className="w-4 h-4 text-crimson" /> Selected Preview
               </span>
               <button
                 type="button"
                 onClick={removeFile}
-                className="p-1 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-md transition-colors focus-ring"
+                className="p-1 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-md transition-colors focus-ring cursor-pointer"
                 aria-label="Remove selected file"
               >
                 <Trash2 className="w-4 h-4" />
@@ -360,8 +366,8 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
             />
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 

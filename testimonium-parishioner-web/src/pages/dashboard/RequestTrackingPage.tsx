@@ -90,6 +90,13 @@ export const RequestTrackingPage: React.FC = () => {
     return null;
   }, [requests, selectedRequestId, searchedRequest]);
 
+  const authoritativePaymentAmount = useMemo(() => {
+    if (!selectedRequest) return null;
+    const candidate = selectedRequest.fee ?? selectedRequest.paymentTransactions?.[0]?.amount;
+    const amount = typeof candidate === 'string' ? Number(candidate) : candidate;
+    return typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 ? amount : null;
+  }, [selectedRequest]);
+
   // Local presentation state for responsive tabs on mobile (<1024px)
   const [mobileView, setMobileView] = useState<'requests' | 'details'>('requests');
 
@@ -378,40 +385,38 @@ export const RequestTrackingPage: React.FC = () => {
               role={isMobile ? "tabpanel" : undefined}
               aria-labelledby={isMobile ? "tracking-tab-requests" : undefined}
               aria-label={!isMobile ? "My Submitted Requests" : undefined}
-              className={`space-y-6 ${mobileView === 'details' ? 'hidden lg:block lg:col-span-5' : 'block lg:col-span-5'}`}
+              className={`flex flex-col gap-6 ${mobileView === 'details' ? 'hidden lg:flex lg:col-span-5' : 'flex lg:col-span-5'}`}
             >
               {/* Search Form */}
-              <Card>
-                <CardContent className="pt-6">
-                  <form onSubmit={handleSearch} className="space-y-3.5">
-                    <div className="space-y-1">
-                      <label htmlFor="search-tracking-input" className="block text-xs font-bold text-text-primary uppercase tracking-wider">
-                        Search Tracking Number
-                      </label>
-                      <p className="text-[11px] text-text-muted">Enter the TX reference code from your submission.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <SearchInput
-                        id="search-tracking-input"
-                        placeholder="e.g. TX-2026-88401"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        aria-label="Tracking reference number"
-                      />
-                      <Button type="submit" size="sm" className="font-semibold">
-                        Search
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
+              <div className="bg-white rounded-card border border-border p-5 shadow-xs transition-all duration-fast">
+                <form onSubmit={handleSearch} className="space-y-3">
+                  <div className="space-y-1">
+                    <label htmlFor="search-tracking-input" className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                      Search Tracking Number
+                    </label>
+                    <p className="text-[11px] text-text-muted">Enter the TX reference code from your submission.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <SearchInput
+                      id="search-tracking-input"
+                      placeholder="e.g. TX-2026-88401"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      aria-label="Tracking reference number"
+                    />
+                    <Button type="submit" size="sm" className="font-semibold">
+                      Search
+                    </Button>
+                  </div>
+                </form>
+              </div>
 
               {/* Submissions List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-bold">My Submitted Requests</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2.5 pt-0">
+              <div className="bg-white rounded-card border border-border p-5 shadow-xs">
+                <div className="mb-3.5 border-b border-border pb-2.5">
+                  <h3 className="text-sm font-bold text-text-primary">My Submitted Requests</h3>
+                </div>
+                <div className="space-y-2.5 pt-0">
                   {requests.map(req => {
                     const isSelected = selectedRequest?.id === req.id;
                     return (
@@ -419,7 +424,7 @@ export const RequestTrackingPage: React.FC = () => {
                         key={req.id}
                         type="button"
                         onClick={() => handleSelectRequest(req)}
-                        className={`w-full p-3.5 rounded-button border text-left transition-all focus-ring relative group ${
+                        className={`w-full p-3.5 rounded-button border text-left transition-all focus-ring relative group cursor-pointer ${
                           isSelected
                             ? 'border-crimson bg-red-50/20 border-l-4 border-l-crimson shadow-xs'
                             : 'border-border/80 hover:bg-app-page hover:border-gray-300'
@@ -444,8 +449,8 @@ export const RequestTrackingPage: React.FC = () => {
                       </button>
                     );
                   })}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </section>
 
             {/* Right Side: Details, Payments & Timeline (Col-span 7 on desktop) */}
@@ -454,24 +459,30 @@ export const RequestTrackingPage: React.FC = () => {
               role={isMobile ? "tabpanel" : undefined}
               aria-labelledby={isMobile ? "tracking-tab-details" : undefined}
               aria-label={!isMobile ? "Request Details" : undefined}
-              className={`space-y-6 ${mobileView === 'requests' ? 'hidden lg:block lg:col-span-7' : 'block lg:col-span-7'}`}
+              className={`flex flex-col gap-6 ${mobileView === 'requests' ? 'hidden lg:flex lg:col-span-7' : 'flex lg:col-span-7'}`}
             >
               {/* Back button on mobile to return to list */}
-              <div className="lg:hidden">
-                <button
-                  type="button"
-                  onClick={() => setMobileView('requests')}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-crimson hover:underline py-1 focus-ring rounded"
-                >
-                  <ArrowLeft size={14} />
-                  <span>Back to My Requests List</span>
-                </button>
-              </div>
+              {isMobile && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileView('requests')}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-crimson hover:underline py-1 focus-ring rounded cursor-pointer"
+                  >
+                    <ArrowLeft size={14} />
+                    <span>Back to My Requests List</span>
+                  </button>
+                </div>
+              )}
 
 
               {selectedRequest ? (
-                selectedRequest.status === 'payment-pending' ? (
-                  <div className="space-y-6 animate-in fade-in duration-200">
+                selectedRequest.status === 'payment-pending' ? authoritativePaymentAmount === null ? (
+                  <div className="p-5 bg-amber-50 border border-amber-200 rounded-card text-sm text-amber-900">
+                    Payment instructions are unavailable because this request has no valid parish fee. Please contact the parish office.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-6 animate-in fade-in duration-200">
                     {/* Payment Required Banner Card */}
                     <div className="bg-amber-50 border border-amber-200 p-5 rounded-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs text-left">
                       <div className="space-y-2 max-w-xl">
@@ -494,12 +505,7 @@ export const RequestTrackingPage: React.FC = () => {
                       <div className="text-left bg-white p-3.5 rounded-xl border border-amber-200/80 shrink-0 flex flex-col justify-center shadow-xs">
                         <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Amount Due</span>
                         <span className="text-xl font-extrabold text-crimson mt-0.5">
-                          {(() => {
-                            const fee = selectedRequest.fee !== undefined && selectedRequest.fee !== null && !isNaN(selectedRequest.fee)
-                              ? selectedRequest.fee
-                              : (selectedRequest.paymentTransactions?.[0]?.amount ? Number(selectedRequest.paymentTransactions[0].amount) : 100);
-                            return `\u20B1${Number(fee).toFixed(2)}`;
-                          })()}
+                          {`\u20B1${authoritativePaymentAmount.toFixed(2)}`}
                         </span>
                       </div>
                     </div>
@@ -508,11 +514,7 @@ export const RequestTrackingPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <PaymentInstructionsCard
                         requestId={selectedRequest.id}
-                        amount={
-                          selectedRequest.fee !== undefined && selectedRequest.fee !== null && !isNaN(selectedRequest.fee)
-                            ? selectedRequest.fee
-                            : (selectedRequest.paymentTransactions?.[0]?.amount ? Number(selectedRequest.paymentTransactions[0].amount) : 100)
-                        }
+                        amount={authoritativePaymentAmount}
                       />
                       <ReceiptUploadCard
                         requestId={selectedRequest.id}
@@ -522,7 +524,7 @@ export const RequestTrackingPage: React.FC = () => {
                     </div>
                   </div>
                 ) : selectedRequest.status === 'payment-needs-correction' ? (
-                  <div className="space-y-6 animate-in fade-in duration-200 text-left">
+                  <div className="flex flex-col gap-6 animate-in fade-in duration-200 text-left">
                     {/* Correction Required Banner Card */}
                     <div className="p-5 bg-amber-50 border border-amber-200 rounded-card space-y-4 text-left shadow-xs">
                       <div className="flex items-start space-x-2.5">

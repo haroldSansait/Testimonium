@@ -6,12 +6,14 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api
 export class ApiError extends Error {
   statusCode: number;
   errors: any[];
+  code?: string;
 
-  constructor(message: string, statusCode: number, errors: any[] = []) {
+  constructor(message: string, statusCode: number, errors: any[] = [], code?: string) {
     super(message);
     this.name = "ApiError";
     this.statusCode = statusCode;
     this.errors = errors;
+    this.code = code;
   }
 }
 
@@ -79,7 +81,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     throw new ApiError(
       responseData.message || "Your session has expired for security reasons. Please sign in again.",
       response.status,
-      responseData.errors || []
+      responseData.errors || [],
+      typeof responseData.code === "string" ? responseData.code : undefined
     );
   }
 
@@ -87,27 +90,30 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 }
 
 export const client = {
-  get: <T>(endpoint: string, params?: Record<string, any>) =>
-    request<T>(endpoint, { method: "GET", params }),
+  get: <T>(endpoint: string, params?: Record<string, any>, options?: RequestOptions) =>
+    request<T>(endpoint, { method: "GET", params, ...options }),
     
-  post: <T>(endpoint: string, body?: any) =>
+  post: <T>(endpoint: string, body?: any, options?: RequestOptions) =>
     request<T>(endpoint, {
       method: "POST",
       body: body instanceof FormData ? body : JSON.stringify(body),
+      ...options,
     }),
     
-  put: <T>(endpoint: string, body?: any) =>
+  put: <T>(endpoint: string, body?: any, options?: RequestOptions) =>
     request<T>(endpoint, {
       method: "PUT",
       body: body instanceof FormData ? body : JSON.stringify(body),
+      ...options,
     }),
     
-  patch: <T>(endpoint: string, body?: any) =>
+  patch: <T>(endpoint: string, body?: any, options?: RequestOptions) =>
     request<T>(endpoint, {
       method: "PATCH",
       body: body instanceof FormData ? body : JSON.stringify(body),
+      ...options,
     }),
     
-  delete: <T>(endpoint: string) =>
-    request<T>(endpoint, { method: "DELETE" }),
+  delete: <T>(endpoint: string, options?: RequestOptions) =>
+    request<T>(endpoint, { method: "DELETE", ...options }),
 };

@@ -1,10 +1,79 @@
 import { ScheduleRepository } from "../repositories/ScheduleRepository.js";
 import { prisma } from "../config/db.js";
+import { logger } from "../config/logger.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
-import { ConflictHelper, parseManilaDateTime } from "./ConflictHelper.js";
+import { ConflictHelper, parseManilaDateTime, parseManilaDateOnly, getManilaDateString, formatManilaTimeSlot } from "./ConflictHelper.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
+import { IdempotencyService, computeSchedulePayloadHash } from "./IdempotencyService.js";
+import {
+  MAX_HORIZON_DAYS,
+  validateDateHorizon,
+  validateCanonicalEventType,
+  validateParishAndOffice,
+  validateParishAvailability,
+  PARISH_BOOKING_BLOCK_TYPES,
+  validateSlotAndCapacity,
+  validatePriestConflict,
+  getManilaHorizonMaxDate,
+} from "./BookingValidator.js";
+import { resolveEventMetadata } from "../shared/EventTypeCatalog.js";
+import { getParishSchedulingConfiguration, requireEnabledSchedulingService } from "./SchedulingConfiguration.js";
+
+const TERMINAL_STATUSES = ["COMPLETED", "CANCELLED", "REJECTED"];
+
+/**
+ * Checks whether a schedule occurrence has elapsed based on exact time in Asia/Manila.
+ * Boundary: now >= occurrence end instant means the schedule is elapsed.
+ * @param {object} schedule
+ * @param {Date} now
+ * @returns {boolean}
+ */
+export function isScheduleElapsed(schedule, now = new Date()) {
+  if (TERMINAL_STATUSES.includes(schedule.status)) {
+    return true;
+  }
+
+  if (schedule.endDatetime) {
+    const end = new Date(schedule.endDatetime);
+    if (!isNaN(end.getTime())) {
+      return now.getTime() >= end.getTime();
+    }
+  }
+
+  if (schedule.startDatetime) {
+    const start = new Date(schedule.startDatetime);
+    if (!isNaN(start.getTime())) {
+      const endEstimate = new Date(start.getTime() + 60 * 60 * 1000);
+      return now.getTime() >= endEstimate.getTime();
+    }
+  }
+
+  if (schedule.remarks && schedule.requestedDate) {
+    const match = schedule.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+    if (match) {
+      const dateStr = getManilaDateString(new Date(schedule.requestedDate));
+      const dt = parseManilaDateTime(dateStr, match[1].trim());
+      if (dt) {
+        const slotEnd = new Date(dt.getTime() + 60 * 60 * 1000);
+        return now.getTime() >= slotEnd.getTime();
+      }
+    }
+  }
+
+  if (schedule.requestedDate) {
+    const dateStr = getManilaDateString(new Date(schedule.requestedDate));
+    const parsed = parseManilaDateOnly(dateStr);
+    if (parsed) {
+      // End of Manila calendar day (23:59:59.999 UTC+8 is 15:59:59.999 UTC)
+      const endOfDayUtc = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day, 15, 59, 59, 999));
+      return now.getTime() >= endOfDayUtc.getTime();
+    }
+  }
+
+  return false;
+}
 
 export class ScheduleService {
   constructor(scheduleRepository = new ScheduleRepository()) {
@@ -12,49 +81,39 @@ export class ScheduleService {
   }
 
   /**
-   * Returns a paginated list of schedule requests with optional filters.
-   * @param {object} opts
-   * @param {number} opts.page
-   * @param {number} opts.limit
-   * @param {string|undefined} opts.search
-   * @param {string|undefined} opts.status
+   * Returns a paginated list of schedule requests with optional filters and scope.
    */
-  async list({ page = 1, limit = 10, search, status, parishId, userId, priestId } = {}) {
+  async list({ page = 1, limit = 10, search, status, parishId, userId, priestId, scope } = {}) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
-
-    // Custom filtering for parishioner context
     const skip = (parsedPage - 1) * parsedLimit;
-    const where = {};
 
-    if (userId) {
-      where.userId = parseInt(userId, 10);
-    }
+    // Scoped filtering for parishioner context
+    if (userId && (scope === "upcoming" || scope === "history")) {
+      const parsedUserId = parseInt(userId, 10);
+      const now = new Date();
 
-    if (parishId) {
-      where.parishId = parseInt(parishId, 10);
-    }
-
-    if (priestId) {
-      where.assignedPriestId = parseInt(priestId, 10);
-      if (status === "PENDING") {
-        where.priestResponseStatus = null;
+      let statusFilter;
+      if (scope === "upcoming") {
+        statusFilter = { in: ["PENDING", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE", "CONFIRMED"] };
       }
-    }
 
-    if (status && !priestId) {
-      where.status = status;
-    }
+      const where = {
+        userId: parsedUserId,
+        ...(parishId ? { parishId: parseInt(parishId, 10) } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(search
+          ? {
+              OR: [
+                { user: { fullName: { contains: search, mode: "insensitive" } } },
+                { remarks: { contains: search, mode: "insensitive" } },
+                { displayTitle: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      };
 
-    if (search) {
-      where.OR = [
-        { user: { fullName: { contains: search, mode: "insensitive" } } },
-        { remarks: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    const [data, total] = await Promise.all([
-      prisma.schedule.findMany({
+      const allUserSchedules = await prisma.schedule.findMany({
         where,
         include: {
           user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
@@ -62,801 +121,1046 @@ export class ScheduleService {
           processedBy: { select: { id: true, fullName: true } },
           assignedPriest: { select: { id: true, fullName: true } },
         },
-        orderBy: { createdAt: "desc" },
+      });
+
+      const filtered = allUserSchedules.filter((sched) => {
+        const elapsed = isScheduleElapsed(sched, now);
+        return scope === "upcoming" ? !elapsed : elapsed;
+      });
+
+      // Sort: upcoming ascending by date, history descending by date
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.startDatetime || a.requestedDate).getTime();
+        const dateB = new Date(b.startDatetime || b.requestedDate).getTime();
+        return scope === "upcoming" ? dateA - dateB : dateB - dateA;
+      });
+
+      const paginated = filtered.slice(skip, skip + parsedLimit);
+      return { data: paginated, total: filtered.length };
+    }
+
+    // Default standard listing (used by Web and Admin Portal)
+    const where = {
+      ...(parishId ? { parishId: parseInt(parishId, 10) } : {}),
+      ...(userId ? { userId: parseInt(userId, 10) } : {}),
+      ...(priestId ? { assignedPriestId: parseInt(priestId, 10) } : {}),
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { user: { fullName: { contains: search, mode: "insensitive" } } },
+              { remarks: { contains: search, mode: "insensitive" } },
+              { displayTitle: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+
+    const [data, total] = await Promise.all([
+      prisma.schedule.findMany({
+        where,
         skip,
         take: parsedLimit,
+        orderBy: { requestedDate: "desc" },
+        include: {
+          user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
+          parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+          processedBy: { select: { id: true, fullName: true } },
+          assignedPriest: { select: { id: true, fullName: true } },
+        },
       }),
       prisma.schedule.count({ where }),
     ]);
-
-    // If priestId is provided, also fetch ParishEvent assignments for this priest and merge them
-    if (priestId) {
-      const parsedPriestId = parseInt(priestId, 10);
-      
-      const eventWhere = {
-        assignedPriestId: parsedPriestId,
-        isActive: true,
-      };
-
-      // Filter by priestResponseStatus if filtering by status
-      if (status === "PENDING") {
-        eventWhere.priestResponseStatus = null;
-      }
-
-      const parishEvents = await prisma.parishEvent.findMany({
-        where: eventWhere,
-        include: {
-          parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
-          assignedPriest: { select: { id: true, fullName: true } },
-          createdBy: { select: { id: true, fullName: true, email: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      // Map ParishEvent to Schedule DTO shape
-      const mappedEvents = parishEvents.map(e => {
-        const combine = (d, timeStr) => {
-          try {
-            const temp = new Date(d);
-            let [hourMin, period] = timeStr.split(" ");
-            let [hours, minutes] = hourMin.split(":").map(Number);
-            if (period === "PM" && hours < 12) hours += 12;
-            if (period === "AM" && hours === 12) hours = 0;
-            temp.setHours(hours, minutes, 0, 0);
-            return temp;
-          } catch {
-            return null;
-          }
-        };
-
-        const start = e.startTime ? combine(e.eventDate, e.startTime) : null;
-        const end = e.endTime ? combine(e.eventDate, e.endTime) : null;
-
-        return {
-          id: e.id + 100000, // Safe offset key to distinguish ParishEvent from Schedule
-          isParishEvent: true, // flag
-          userId: e.createdById || 0,
-          parishId: e.parishId,
-          eventType: e.eventType,
-          displayTitle: e.title,
-          requestedDate: e.eventDate,
-          startDatetime: start,
-          endDatetime: end,
-          status: "CONFIRMED",
-          remarks: e.description || "",
-          createdAt: e.createdAt,
-          updatedAt: e.updatedAt,
-          user: {
-            id: e.createdById || 0,
-            fullName: e.createdBy?.fullName || "Staff",
-            email: e.createdBy?.email || "staff@diocese.org",
-            contactNumber: "",
-          },
-          parish: e.parish,
-          assignedPriest: e.assignedPriest,
-          priestResponseStatus: e.priestResponseStatus,
-          priestResponseReason: e.priestResponseReason,
-        };
-      });
-
-      // Fetch MassScheduleTemplate assignments for this priest and merge them
-      const templateWhere = {
-        assignedPriestId: parsedPriestId,
-        isActive: true,
-      };
-
-      if (status === "PENDING") {
-        templateWhere.priestResponseStatus = { notIn: ["ACCEPTED", "REJECTED"] };
-      }
-
-      const massTemplates = await prisma.massScheduleTemplate.findMany({
-        where: templateWhere,
-        include: {
-          parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
-          assignedPriest: { select: { id: true, fullName: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      const mappedTemplates = massTemplates.map(t => {
-        const getNextDayOfWeek = (dayName) => {
-          const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-          const targetDay = days.indexOf(dayName);
-          if (targetDay === -1) return new Date();
-          const resultDate = new Date();
-          resultDate.setDate(resultDate.getDate() + (targetDay + 7 - resultDate.getDay()) % 7);
-          return resultDate;
-        };
-        const nextOccur = getNextDayOfWeek(t.dayType);
-
-        return {
-          id: t.id + 200000, // Safe offset key to distinguish MassScheduleTemplate
-          isMassTemplate: true,
-          userId: 0,
-          parishId: t.parishId,
-          eventType: "PRIVATE_MASS",
-          displayTitle: `${t.label || "Holy Mass"} (${t.dayType})`,
-          requestedDate: nextOccur,
-          startDatetime: null,
-          endDatetime: null,
-          status: "CONFIRMED",
-          remarks: `Time Slot: ${t.timeSlot}. Recurring Mass schedule on ${t.dayType}.`,
-          createdAt: t.createdAt,
-          updatedAt: t.updatedAt,
-          user: {
-            id: 0,
-            fullName: "Parish Staff",
-            email: "staff@diocese.org",
-            contactNumber: "",
-          },
-          parish: t.parish,
-          assignedPriest: t.assignedPriest,
-          priestResponseStatus: t.priestResponseStatus,
-          priestResponseReason: t.priestResponseReason,
-        };
-      });
-
-      // Combine, sort by createdAt desc, and paginate
-      const combined = [...data, ...mappedEvents, ...mappedTemplates];
-      combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      const paginated = combined.slice(skip, skip + parsedLimit);
-      return {
-        data: paginated,
-        total: total + mappedEvents.length + mappedTemplates.length,
-      };
-    }
 
     return { data, total };
   }
 
   /**
-   * Book a new schedule slot with concurrency locking and multi-layer validation.
+   * Retrieves a single schedule request with authorization check.
    */
-  async create({ userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks = "" }) {
-    const parsedParishId = parseInt(parishId, 10);
-    if (isNaN(parsedParishId)) {
-      const err = new Error("Invalid parish ID provided.");
-      err.statusCode = 400;
-      throw err;
-    }
-
-    const targetDate = new Date(requestedDate);
-    if (isNaN(targetDate.getTime())) {
-      const err = new Error("Invalid requested date.");
-      err.statusCode = 400;
-      throw err;
-    }
-    targetDate.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (targetDate.getTime() < today.getTime()) {
-      const err = new Error("Cannot schedule appointments or sacraments for past dates.");
-      err.statusCode = 400;
-      throw err;
-    }
-
-    // 1. Fetch Parish Configuration
-    const parish = await prisma.parish.findUnique({
-      where: { id: parsedParishId },
-    });
-    if (!parish) {
-      const err = new Error("Parish not found.");
-      err.statusCode = 404;
-      throw err;
-    }
-
-    // 2. Validate Office Hours / Closed Days
-    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-    const targetDayName = dayNames[targetDate.getDay()];
-    if (parish.officeHours) {
-      try {
-        const officeConfig = typeof parish.officeHours === "string" ? JSON.parse(parish.officeHours) : parish.officeHours;
-        const daySchedule = officeConfig[targetDayName];
-        if (daySchedule && (daySchedule.isClosed || daySchedule.closed)) {
-          const formattedDay = targetDayName.charAt(0).toUpperCase() + targetDayName.slice(1);
-          const err = new Error(`The parish office is closed on ${formattedDay}s. Please choose an open day.`);
-          err.statusCode = 400;
-          throw err;
-        }
-      } catch (e) {
-        if (e.statusCode) throw e;
-        logger.warn({ err: e }, "[ScheduleService] Error parsing parish officeHours");
-      }
-    }
-
-    // 3. Parse Event Settings (Available Sacraments, Capacity, Configured Time Slots)
-    let eventSettings = null;
-    if (parish.eventSettings) {
-      try {
-        eventSettings = typeof parish.eventSettings === "string" ? JSON.parse(parish.eventSettings) : parish.eventSettings;
-      } catch (e) {
-        logger.warn({ err: e }, "[ScheduleService] Error parsing parish eventSettings");
-      }
-    }
-
-    // Validate if sacrament is offered
-    if (eventSettings && Array.isArray(eventSettings.availableEvents) && eventSettings.availableEvents.length > 0) {
-      const normalizedReqEvent = String(eventType).toUpperCase().replace(/[\s-]/g, "_");
-      const isOffered = eventSettings.availableEvents.some((ev) => {
-        const norm = String(ev).toUpperCase().replace(/[\s-]/g, "_");
-        return norm === normalizedReqEvent || norm.includes(normalizedReqEvent) || normalizedReqEvent.includes(norm);
-      });
-
-      if (!isOffered) {
-        const err = new Error(`The sacrament/event "${eventType}" is not currently offered for online scheduling by ${parish.parishName}.`);
-        err.statusCode = 400;
-        throw err;
-      }
-    }
-
-    // 4. Validate Allowable Time Slots
-    const isSaturday = targetDate.getDay() === 6;
-    const defaultSlots = isSaturday
-      ? ["06:00 AM", "08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]
-      : ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"];
-
-    let allowableSlots = defaultSlots;
-    if (eventSettings) {
-      if (eventType && eventSettings.eventTimeSlots && eventSettings.eventTimeSlots[eventType] && Array.isArray(eventSettings.eventTimeSlots[eventType])) {
-        allowableSlots = eventSettings.eventTimeSlots[eventType];
-      } else if (Array.isArray(eventSettings.timeSlots)) {
-        allowableSlots = eventSettings.timeSlots;
-      }
-    }
-
-    if (timeSlot && !allowableSlots.includes(timeSlot)) {
-      const err = new Error(`Selected time slot "${timeSlot}" is not valid for ${parish.parishName}. Available slots: ${allowableSlots.join(", ")}`);
-      err.statusCode = 400;
-      throw err;
-    }
-
-    // 5. Capacity Boundaries
-    const slotCapacity = eventSettings?.capacitySettings?.slotCapacity ? parseInt(eventSettings.capacitySettings.slotCapacity, 10) : 1;
-    const dailyLimit = eventSettings?.capacitySettings?.dailyLimit ? parseInt(eventSettings.capacitySettings.dailyLimit, 10) : 10;
-
-    // 6. Atomic Concurrency Lock inside Prisma Transaction
-    const startDatetime = timeSlot ? parseManilaDateTime(targetDate, timeSlot) : null;
-    const endDatetime = startDatetime ? new Date(startDatetime.getTime() + 60 * 60 * 1000) : null;
-    const finalRemarks = timeSlot ? `Time Slot: ${timeSlot}. ${remarks}`.trim() : remarks.trim();
-
-    const createdSchedule = await prisma.$transaction(async (tx) => {
-      // Check block entries inside transaction
-      const block = await tx.parishAvailability.findFirst({
-        where: {
-          parishId: parsedParishId,
-          startDate: { lte: targetDate },
-          endDate: { gte: targetDate },
-          type: { in: ["PARISH_CLOSED", "SECRETARY_LEAVE", "FULLY_BOOKED"] }
-        }
-      });
-
-      if (block) {
-        const err = new Error(`Parish is unavailable on this date: ${block.title} (${block.type}).`);
-        err.statusCode = 400;
-        throw err;
-      }
-
-      // Query active bookings for the day
-      const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
-      const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59, 999);
-
-      const activeBookings = await tx.schedule.findMany({
-        where: {
-          parishId: parsedParishId,
-          requestedDate: {
-            gte: dayStart,
-            lte: dayEnd,
-          },
-          status: { in: ["PENDING", "CONFIRMED", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"] },
-        },
-        select: { id: true, startDatetime: true, endDatetime: true, remarks: true },
-      });
-
-      // Daily Limit Check
-      if (activeBookings.length >= dailyLimit) {
-        const err = new Error(`Daily capacity reached for ${parish.parishName} on ${targetDate.toLocaleDateString()}. Maximum of ${dailyLimit} appointments allowed per day.`);
-        err.statusCode = 409;
-        throw err;
-      }
-
-      // Structured Slot Capacity Check (Using exact startDatetime/endDatetime intervals)
-      if (startDatetime && endDatetime) {
-        const matchingSlotBookings = activeBookings.filter((b) => {
-          if (b.startDatetime && b.endDatetime) {
-            return new Date(b.startDatetime) < endDatetime && new Date(b.endDatetime) > startDatetime;
-          }
-          return b.remarks && b.remarks.startsWith(`Time Slot: ${timeSlot}`);
-        });
-
-        if (matchingSlotBookings.length >= slotCapacity) {
-          const err = new Error(`Capacity full for time slot "${timeSlot}". Please select a different time slot or date.`);
-          err.statusCode = 409;
-          throw err;
-        }
-      }
-
-      // Create booking record
-      return tx.schedule.create({
-        data: {
-          userId: parseInt(userId, 10),
-          parishId: parsedParishId,
-          eventType,
-          displayTitle: displayTitle || `${eventType} Booking`,
-          requestedDate: targetDate,
-          startDatetime,
-          endDatetime,
-          remarks: finalRemarks,
-          status: "PENDING",
-        },
-        include: {
-          parish: { select: { id: true, parishName: true } },
-        },
-      });
-    }, {
-      isolationLevel: 'Serializable',
-      maxWait: 5000,
-      timeout: 10000,
-    });
-
-    // Notify parishioner + admins of new booking
-    try {
-      await RequestNotificationService.notifyScheduleChange(
-        parseInt(userId, 10),
-        createdSchedule.parishId,
-        createdSchedule.id,
-        createdSchedule.displayTitle || eventType,
-        "PENDING",
-        null,
-        true
-      );
-    } catch (notifErr) {
-      logger.warn({ err: notifErr }, "[ScheduleService] Failed to dispatch schedule notification");
-    }
-
-    // Audit log
-    await AuditLogService.log(userId, `Booked a new schedule request: ${displayTitle || eventType}`, null, false, {
-      affectedTable: "Schedule",
-      affectedRecordId: createdSchedule.id,
-      parishId: createdSchedule.parishId,
-      newValues: { eventType, displayTitle, requestedDate, timeSlot, remarks }
-    });
-
-    return createdSchedule;
-  }
-
-  /**
-   * Calculates available slots for a parish on a given date by subtracting booked slots and evaluating capacity.
-   */
-  async getAvailableSlots(parishId, date, eventType) {
-    const parsedParishId = parseInt(parishId, 10);
-    const targetDate = new Date(date);
-    if (isNaN(targetDate.getTime())) return [];
-    targetDate.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (targetDate.getTime() < today.getTime()) {
-      return [];
-    }
-
-    // 1. Fetch Parish
-    const parish = await prisma.parish.findUnique({
-      where: { id: parsedParishId },
-    });
-    if (!parish) return [];
-
-    // 2. Check Office Hours
-    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-    const targetDayName = dayNames[targetDate.getDay()];
-    if (parish.officeHours) {
-      try {
-        const officeConfig = typeof parish.officeHours === "string" ? JSON.parse(parish.officeHours) : parish.officeHours;
-        const daySchedule = officeConfig[targetDayName];
-        if (daySchedule && (daySchedule.isClosed || daySchedule.closed)) {
-          return [];
-        }
-      } catch (e) {
-        logger.warn({ err: e }, "[ScheduleService] Error parsing parish officeHours in getAvailableSlots");
-      }
-    }
-
-    // 3. Check parish availability block
-    const block = await prisma.parishAvailability.findFirst({
-      where: {
-        parishId: parsedParishId,
-        startDate: { lte: targetDate },
-        endDate: { gte: targetDate },
-        type: { in: ["PARISH_CLOSED", "SECRETARY_LEAVE", "FULLY_BOOKED"] }
-      }
-    });
-
-    if (block) {
-      return [];
-    }
-
-    // 4. Parse Event Settings
-    let eventSettings = null;
-    if (parish.eventSettings) {
-      try {
-        eventSettings = typeof parish.eventSettings === "string" ? JSON.parse(parish.eventSettings) : parish.eventSettings;
-      } catch (e) {
-        logger.warn({ err: e }, "[ScheduleService] Error parsing eventSettings in getAvailableSlots");
-      }
-    }
-
-    // Check if sacrament is offered
-    if (eventType && eventSettings && Array.isArray(eventSettings.availableEvents) && eventSettings.availableEvents.length > 0) {
-      const normalizedReqEvent = String(eventType).toUpperCase().replace(/[\s-]/g, "_");
-      const isOffered = eventSettings.availableEvents.some((ev) => {
-        const norm = String(ev).toUpperCase().replace(/[\s-]/g, "_");
-        return norm === normalizedReqEvent || norm.includes(normalizedReqEvent) || normalizedReqEvent.includes(norm);
-      });
-      if (!isOffered) return [];
-    }
-
-    // Determine configured time slots
-    const isSaturday = targetDate.getDay() === 6;
-    const defaultSlots = isSaturday
-      ? ["06:00 AM", "08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]
-      : ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"];
-
-    let candidateSlots = defaultSlots;
-    if (eventSettings) {
-      if (eventType && eventSettings.eventTimeSlots && eventSettings.eventTimeSlots[eventType] && Array.isArray(eventSettings.eventTimeSlots[eventType])) {
-        candidateSlots = eventSettings.eventTimeSlots[eventType];
-      } else if (Array.isArray(eventSettings.timeSlots)) {
-        candidateSlots = eventSettings.timeSlots;
-      }
-    }
-
-    const slotCapacity = eventSettings?.capacitySettings?.slotCapacity ? parseInt(eventSettings.capacitySettings.slotCapacity, 10) : 1;
-    const dailyLimit = eventSettings?.capacitySettings?.dailyLimit ? parseInt(eventSettings.capacitySettings.dailyLimit, 10) : 10;
-
-    // Fetch existing bookings for that day
-    const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
-    const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59, 999);
-
-    const bookings = await prisma.schedule.findMany({
-      where: {
-        parishId: parsedParishId,
-        requestedDate: {
-          gte: dayStart,
-          lte: dayEnd,
-        },
-        status: { in: ["PENDING", "CONFIRMED", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"] },
-      },
-      select: { startDatetime: true, endDatetime: true, remarks: true },
-    });
-
-    if (bookings.length >= dailyLimit) {
-      return [];
-    }
-
-    // Filter candidate slots by checking capacity against exact startDatetime interval
-    const available = candidateSlots.filter((slot) => {
-      const slotStart = parseManilaDateTime(targetDate, slot);
-      if (!slotStart) return false;
-      const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
-
-      const slotBookingsCount = bookings.filter((b) => {
-        if (b.startDatetime && b.endDatetime) {
-          return new Date(b.startDatetime) < slotEnd && new Date(b.endDatetime) > slotStart;
-        }
-        return b.remarks && b.remarks.startsWith(`Time Slot: ${slot}`);
-      }).length;
-
-      return slotBookingsCount < slotCapacity;
-    });
-
-    return available;
-  }
-
-  /**
-   * Updates the status of a schedule request.
-   */
-  async updateStatus(id, targetStatus, processedById, actorRole, actorParishId) {
-    const original = await prisma.schedule.findUnique({
-      where: { id: parseInt(id, 10) },
-    });
-
-    if (!original) {
-      const err = new Error("Schedule request not found.");
-      err.statusCode = 404;
-      throw err;
-    }
-
-    // Idempotency: if already in the target status, no-op
-    if (original.status === targetStatus) {
-      return original;
-    }
-
-    // Authorization & Ownership checks
-    if (actorRole === "PARISHIONER") {
-      if (targetStatus !== "CANCELLED" || original.userId !== parseInt(processedById, 10)) {
-        const err = new Error("Unauthorized to perform this status update.");
-        err.statusCode = 403;
-        throw err;
-      }
-    } else if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
-      if (original.parishId !== actorParishId) {
-        const err = new Error("Unauthorized: Request belongs to a different parish.");
-        err.statusCode = 403;
-        throw err;
-      }
-    } else if (actorRole !== "DIOCESE_COORDINATOR") {
-      const err = new Error("Unauthorized role.");
-      err.statusCode = 403;
-      throw err;
-    }
-
-    const updated = await prisma.schedule.update({
-      where: { id: parseInt(id, 10) },
-      data: {
-        status: targetStatus,
-        processedById: processedById ? parseInt(processedById, 10) : null,
-      },
-      include: {
-        user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
-        parish: { select: { id: true, parishName: true } },
-        processedBy: { select: { id: true, fullName: true } },
-      },
-    });
-
-    // Notify parishioner of status update (staff-driven: no admin fan-out)
-    await RequestNotificationService.notifyScheduleChange(
-      updated.userId,
-      updated.parishId,
-      updated.id,
-      updated.displayTitle || updated.eventType,
-      targetStatus,
-      null,
-      false
-    );
-
-    // Audit log
-    await AuditLogService.log(processedById, `Updated schedule request #${id} status from ${original.status} to ${targetStatus}`, null, false, {
-      affectedTable: "Schedule",
-      affectedRecordId: id,
-      parishId: updated.parishId,
-      previousValues: { status: original.status },
-      newValues: { status: targetStatus }
-    });
-
-    return updated;
-  }
-
-  /**
-   * Proposes an alternative date for a schedule request (Secretary -> Parishioner).
-   */
-  async proposeReschedule(id, { proposedDate, proposedStartDatetime, proposedEndDatetime, reason, actorId, actorRole, actorParishId }) {
-    const original = await prisma.schedule.findUnique({
-      where: { id: parseInt(id, 10) },
-    });
-
-    if (!original) {
-      const err = new Error("Schedule request not found.");
-      err.statusCode = 404;
-      throw err;
-    }
-
-    // Authorization & Ownership checks
-    if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
-      if (original.parishId !== actorParishId) {
-        const err = new Error("Unauthorized: Request belongs to a different parish.");
-        err.statusCode = 403;
-        throw err;
-      }
-    } else if (actorRole !== "DIOCESE_COORDINATOR") {
-      const err = new Error("Unauthorized: Only parish staff can propose reschedule.");
-      err.statusCode = 403;
-      throw err;
-    }
-
-    const updated = await prisma.schedule.update({
-      where: { id: parseInt(id, 10) },
-      data: {
-        status: "PROPOSED_RESCHEDULE",
-        proposedDate: proposedDate ? new Date(proposedDate) : null,
-        proposedStartDatetime: proposedStartDatetime ? new Date(proposedStartDatetime) : null,
-        proposedEndDatetime: proposedEndDatetime ? new Date(proposedEndDatetime) : null,
-        rescheduleReason: reason || null,
-        processedById: actorId ? parseInt(actorId, 10) : null,
-      },
-      include: {
-        user: { select: { id: true, fullName: true, email: true } },
-        parish: { select: { id: true, parishName: true } },
-      },
-    });
-
-    await RequestNotificationService.notifyScheduleChange(
-      updated.userId,
-      updated.parishId,
-      updated.id,
-      `${updated.displayTitle || updated.eventType} (Alternative Date Proposed)`,
-      "PROPOSED_RESCHEDULE",
-      null,
-      false
-    );
-
-    // Audit log
-    await AuditLogService.log(actorId, `Proposed rescheduling schedule request #${id} to ${proposedDate}`, null, false, {
-      affectedTable: "Schedule",
-      affectedRecordId: id,
-      parishId: updated.parishId,
-      previousValues: { status: original.status, proposedDate: original.proposedDate },
-      newValues: { status: "PROPOSED_RESCHEDULE", proposedDate, rescheduleReason: reason }
-    });
-
-    return updated;
-  }
-
-  /**
-   * Responds to a proposed reschedule (Parishioner -> Accept / Decline).
-   */
-  async respondReschedule(id, accept, actorId, actorRole) {
+  async getById(id, actorId, actorRole, actorParishId) {
     const schedule = await prisma.schedule.findUnique({
       where: { id: parseInt(id, 10) },
+      include: {
+        user: { select: { id: true, fullName: true, email: true, contactNumber: true, address: true } },
+        parish: {
+          select: {
+            id: true,
+            parishName: true,
+            type: true,
+            municipalityCity: true,
+            province: true,
+            contactNumber: true,
+            email: true,
+            address: true,
+          },
+        },
+        processedBy: { select: { id: true, fullName: true, email: true } },
+        assignedPriest: { select: { id: true, fullName: true, email: true } },
+      },
     });
 
     if (!schedule) {
       const err = new Error("Schedule request not found.");
       err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
       throw err;
     }
 
-    // Idempotency: if already responded and confirmed/cancelled, no-op
-    if (schedule.status === "CONFIRMED" || schedule.status === "CANCELLED") {
-      return schedule;
-    }
-
-    // Authorization & Ownership checks
+    // Role-based access control
     if (actorRole === "PARISHIONER") {
-      if (schedule.userId !== parseInt(actorId, 10)) {
-        const err = new Error("Unauthorized to respond to this reschedule proposal.");
+      if (schedule.userId !== actorId) {
+        const err = new Error("You do not have permission to view this schedule request.");
         err.statusCode = 403;
+        err.code = "FORBIDDEN";
+        throw err;
+      }
+    } else if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
+      if (actorParishId && schedule.parishId !== actorParishId) {
+        const err = new Error("You do not have permission to view schedules from other parishes.");
+        err.statusCode = 403;
+        err.code = "FORBIDDEN";
         throw err;
       }
     }
 
-    let data = {};
-    if (accept) {
-      data = {
-        status: "CONFIRMED",
-        requestedDate: schedule.proposedDate || schedule.requestedDate,
-        startDatetime: schedule.proposedStartDatetime || schedule.startDatetime,
-        endDatetime: schedule.proposedEndDatetime || schedule.endDatetime,
-      };
-    } else {
-      data = {
-        status: "CANCELLED",
-        remarks: `Reschedule proposal declined by parishioner. Original notes: ${schedule.remarks || ''}`,
-      };
+    return schedule;
+  }
+
+  /**
+   * Returns the parishioner-safe scheduling configuration used by every
+   * booking read/mutation path. No client receives or derives a fallback.
+   */
+  async getSchedulingConfiguration(parishId) {
+    const parsedParishId = parseInt(parishId, 10);
+    if (isNaN(parsedParishId)) {
+      const err = new Error("Invalid parishId.");
+      err.statusCode = 400;
+      err.code = "INVALID_PARISH_ID";
+      throw err;
     }
 
-    const updated = await prisma.schedule.update({
-      where: { id: schedule.id },
-      data,
-      include: {
-        user: { select: { id: true, fullName: true, email: true } },
-        parish: { select: { id: true, parishName: true } },
+    const parish = await prisma.parish.findUnique({
+      where: { id: parsedParishId },
+      select: {
+        id: true,
+        isActive: true,
+        eventSettings: true,
+        officeHours: true,
+        venueCapacity: true,
+        updatedAt: true,
       },
     });
 
-    // Notify parishioner + admins of status change
-    await RequestNotificationService.notifyScheduleChange(
-      updated.userId,
-      updated.parishId,
-      updated.id,
-      updated.displayTitle || updated.eventType,
-      updated.status,
-      null,
-      true
+    if (!parish) {
+      const err = new Error("Parish not found.");
+      err.statusCode = 404;
+      err.code = "PARISH_NOT_FOUND";
+      throw err;
+    }
+
+    const config = getParishSchedulingConfiguration(parish);
+    const schedulingAvailable = Boolean(
+      parish.isActive &&
+      config.isConfigured &&
+      config.enabledServices.length &&
+      config.timeSlots.length
     );
 
-    // Audit log
-    await AuditLogService.log(updated.userId, `Responded to reschedule proposal for schedule request #${id}: ${accept ? "ACCEPTED" : "DECLINED"}`, null, false, {
-      affectedTable: "Schedule",
-      affectedRecordId: id,
-      parishId: updated.parishId,
-      previousValues: { status: schedule.status },
-      newValues: { status: updated.status }
+    return {
+      parishId: parish.id,
+      schedulingAvailable,
+      configurationUnavailable: !config.isConfigured,
+      services: schedulingAvailable
+        ? config.enabledServices.map((eventType) => ({
+            eventType,
+            label: resolveEventMetadata(eventType)?.title || eventType,
+          }))
+        : [],
+      timeSlots: schedulingAvailable ? config.timeSlots : [],
+      capacity: schedulingAvailable
+        ? { dailyLimit: config.dailyCapacity, slotCapacity: config.slotCapacity }
+        : null,
+      venueCapacity: config.venueCapacity,
+      horizonDays: MAX_HORIZON_DAYS,
+      configurationUpdatedAt: parish.updatedAt?.toISOString?.() || null,
+    };
+  }
+
+  /**
+   * Evaluates available dates over the 90-Manila-calendar-day horizon.
+   * Batch loads parish-wide availability blocks and active bookings to eliminate N+1 queries.
+   */
+  async getAvailabilityDates(parishId, eventType) {
+    const parsedParishId = parseInt(parishId, 10);
+    if (isNaN(parsedParishId)) {
+      const err = new Error("Invalid parishId.");
+      err.statusCode = 400;
+      err.code = "INVALID_PARISH_ID";
+      throw err;
+    }
+
+    const canonicalEventType = validateCanonicalEventType(eventType);
+    const now = new Date();
+    const todayDateStr = getManilaDateString(now);
+    const maxHorizonDateStr = getManilaHorizonMaxDate(now, MAX_HORIZON_DAYS);
+
+    const parish = await prisma.parish.findUnique({
+      where: { id: parsedParishId },
+      include: {
+        availabilities: {
+          where: {
+            type: { in: PARISH_BOOKING_BLOCK_TYPES },
+          },
+        },
+      },
+    });
+
+    if (!parish || !parish.isActive) {
+      return {
+        eventType: canonicalEventType,
+        serviceAvailable: false,
+        dates: [],
+      };
+    }
+
+    let schedulingConfig;
+    try { schedulingConfig = requireEnabledSchedulingService(parish, canonicalEventType); } catch { return { eventType: canonicalEventType, serviceAvailable: false, dates: [] }; }
+    if (!schedulingConfig.timeSlots.length) {
+      return { eventType: canonicalEventType, serviceAvailable: false, dates: [] };
+    }
+    // Batch query all active bookings for this parish in the 90-day horizon window
+    const todayParsed = parseManilaDateOnly(todayDateStr);
+    const maxParsed = parseManilaDateOnly(maxHorizonDateStr);
+
+    const startUtc = new Date(Date.UTC(todayParsed.year, todayParsed.month - 1, todayParsed.day, 0, 0, 0));
+    const endUtc = new Date(Date.UTC(maxParsed.year, maxParsed.month - 1, maxParsed.day, 23, 59, 59, 999));
+
+    const activeBookings = await prisma.schedule.findMany({
+      where: {
+        parishId: parsedParishId,
+        status: { notIn: ["CANCELLED", "REJECTED"] },
+        requestedDate: {
+          gte: startUtc,
+          lte: endUtc,
+        },
+      },
+      select: {
+        id: true,
+        requestedDate: true,
+        remarks: true,
+        status: true,
+      },
+    });
+
+    // Group active bookings by Manila date string
+    const bookingsByDate = new Map();
+    for (const booking of activeBookings) {
+      const bDateStr = getManilaDateString(new Date(booking.requestedDate));
+      if (!bookingsByDate.has(bDateStr)) {
+        bookingsByDate.set(bDateStr, []);
+      }
+      bookingsByDate.get(bDateStr).push(booking);
+    }
+
+    const availableDates = [];
+
+    // Evaluate each day in the 0..90 days horizon (91 total Manila calendar days)
+    for (let dayOffset = 0; dayOffset <= MAX_HORIZON_DAYS; dayOffset++) {
+      const currUtc = new Date(Date.UTC(todayParsed.year, todayParsed.month - 1, todayParsed.day + dayOffset, 0, 0, 0));
+      const currDateStr = getManilaDateString(currUtc);
+      const currParsed = parseManilaDateOnly(currDateStr);
+
+      // 1. Office hours check for weekday
+      try {
+        validateParishAndOffice(parish, currParsed.dayName);
+      } catch {
+        continue; // Closed day
+      }
+
+      // 2. Parish-wide availability check
+      try {
+        validateParishAvailability(parish.availabilities, currDateStr);
+      } catch {
+        continue; // Blocked
+      }
+
+      // 3. Check if at least one allowable slot has remaining capacity
+      const bookingsOnDate = bookingsByDate.get(currDateStr) || [];
+      if (bookingsOnDate.length >= schedulingConfig.dailyCapacity) {
+        continue; // Daily capacity full
+      }
+
+      let hasOpenSlot = false;
+      for (const slot of schedulingConfig.timeSlots) {
+        // If today, check if slot has already passed
+        if (currDateStr === todayDateStr) {
+          const slotDt = parseManilaDateTime(currDateStr, slot);
+          if (slotDt && slotDt.getTime() <= now.getTime()) {
+            continue;
+          }
+        }
+
+        const slotCount = bookingsOnDate.filter((s) => {
+          if (s.remarks) {
+            const match = s.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+            if (match && match[1].trim().toUpperCase() === slot.trim().toUpperCase()) {
+              return true;
+            }
+          }
+          return false;
+        }).length;
+
+        if (slotCount < schedulingConfig.slotCapacity) {
+          hasOpenSlot = true;
+          break;
+        }
+      }
+
+      if (hasOpenSlot) {
+        availableDates.push(currDateStr);
+      }
+    }
+
+    return {
+      eventType: canonicalEventType,
+      serviceAvailable: true,
+      dates: availableDates,
+    };
+  }
+
+  /**
+   * Retrieves available time slots for a specific parish, date, and event type.
+   */
+  async getAvailableSlots(parishId, date, eventType) {
+    const parsedParishId = parseInt(parishId, 10);
+    if (isNaN(parsedParishId)) {
+      const err = new Error("Invalid parishId.");
+      err.statusCode = 400;
+      err.code = "INVALID_PARISH_ID";
+      throw err;
+    }
+
+    const now = new Date();
+    const horizon = validateDateHorizon(date, null, now);
+    const canonicalEventType = validateCanonicalEventType(eventType);
+
+    const parish = await prisma.parish.findUnique({
+      where: { id: parsedParishId },
+      include: {
+        availabilities: {
+          where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } },
+        },
+      },
+    });
+
+    if (!parish || !parish.isActive) {
+      return [];
+    }
+
+    let schedulingConfig;
+    try {
+      schedulingConfig = requireEnabledSchedulingService(parish, canonicalEventType);
+    } catch {
+      return [];
+    }
+    // 1. Office hours check
+    try {
+      validateParishAndOffice(parish, horizon.dayName);
+    } catch {
+      return [];
+    }
+
+    // 2. Parish-wide availability check. ParishAvailability records are
+    // parish-wide, so this applies to every enabled service.
+    try {
+      validateParishAvailability(parish.availabilities, horizon.dateStr);
+    } catch {
+      return [];
+    }
+
+    // 3. Fetch active bookings on that date
+    const startUtc = new Date(Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0));
+    const endUtc = new Date(Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 23, 59, 59, 999));
+
+    const activeBookings = await prisma.schedule.findMany({
+      where: {
+        parishId: parsedParishId,
+        status: { notIn: ["CANCELLED", "REJECTED"] },
+        requestedDate: {
+          gte: startUtc,
+          lte: endUtc,
+        },
+      },
+      select: {
+        id: true,
+        remarks: true,
+      },
+    });
+
+    if (activeBookings.length >= schedulingConfig.dailyCapacity) {
+      return [];
+    }
+
+    const openSlots = [];
+    for (const slot of schedulingConfig.timeSlots) {
+      // Same-day past-time check
+      if (horizon.dateStr === horizon.todayStr) {
+        const slotDt = parseManilaDateTime(horizon.dateStr, slot);
+        if (slotDt && slotDt.getTime() <= now.getTime()) {
+          continue;
+        }
+      }
+
+      const slotCount = activeBookings.filter((s) => {
+        if (s.remarks) {
+          const match = s.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+          if (match && match[1].trim().toUpperCase() === slot.trim().toUpperCase()) {
+            return true;
+          }
+        }
+        return false;
+      }).length;
+
+      if (slotCount < schedulingConfig.slotCapacity) {
+        openSlots.push(slot);
+      }
+    }
+
+    return openSlots;
+  }
+
+  /**
+   * Creates a schedule request with transaction-aware booking validation and Idempotency.
+   */
+  async create(payload, idempotencyKey = null) {
+    const { userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks } = payload;
+    const parsedUserId = parseInt(userId, 10);
+    const parsedParishId = parseInt(parishId, 10);
+
+    if (isNaN(parsedUserId) || isNaN(parsedParishId)) {
+      const err = new Error("Invalid userId or parishId.");
+      err.statusCode = 400;
+      err.code = "INVALID_REQUEST";
+      throw err;
+    }
+
+    const canonicalEventType = validateCanonicalEventType(eventType);
+    const now = new Date();
+    const horizon = validateDateHorizon(requestedDate, timeSlot, now);
+
+    const canonicalPayload = {
+      parishId: parsedParishId,
+      eventType: canonicalEventType,
+      requestedDate: horizon.dateStr,
+      timeSlot,
+      remarks,
+    };
+    const payloadHash = computeSchedulePayloadHash(canonicalPayload);
+
+    // 1. Check existing idempotency key if provided
+    if (idempotencyKey) {
+      const existingKey = await IdempotencyService.findRecord(
+        parsedUserId,
+        idempotencyKey,
+        "SCHEDULE_CREATE"
+      );
+
+      if (existingKey) {
+        if (existingKey.payloadHash === payloadHash) {
+          const existingSchedule = await prisma.schedule.findUnique({
+            where: { id: existingKey.resourceId },
+            include: {
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
+              parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+            },
+          });
+          if (existingSchedule) {
+            return { schedule: existingSchedule, isReplay: true };
+          }
+        } else {
+          const err = new Error(
+            "An idempotency key was reused with a different request payload. Please generate a new key."
+          );
+          err.statusCode = 409;
+          err.code = "IDEMPOTENCY_PAYLOAD_MISMATCH";
+          throw err;
+        }
+      }
+    }
+
+    // 2. Perform booking within a Serializable transaction to guarantee race protection
+    const fullRemarks = [
+      `Time Slot: ${timeSlot}.`,
+      remarks ? `Notes: ${remarks.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const scheduleDateUtc = new Date(
+      Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+    );
+    const startDatetime = parseManilaDateTime(horizon.dateStr, timeSlot);
+    const endDatetime = startDatetime ? new Date(startDatetime.getTime() + 60 * 60 * 1000) : null;
+
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          // Revalidate parish within transaction
+          const parish = await tx.parish.findUnique({
+            where: { id: parsedParishId },
+            include: {
+              availabilities: {
+                where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } },
+              },
+            },
+          });
+          const schedulingConfig = requireEnabledSchedulingService(parish, canonicalEventType);
+
+          validateParishAndOffice(parish, horizon.dayName, timeSlot);
+          validateParishAvailability(parish.availabilities, horizon.dateStr);
+
+          // Count active bookings on that date
+          const dateStartUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+          );
+          const dateEndUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 23, 59, 59, 999)
+          );
+
+          const activeBookings = await tx.schedule.findMany({
+            where: {
+              parishId: parsedParishId,
+              status: { notIn: ["CANCELLED", "REJECTED"] },
+              requestedDate: {
+                gte: dateStartUtc,
+                lte: dateEndUtc,
+              },
+            },
+            select: {
+              id: true,
+              remarks: true,
+            },
+          });
+
+          validateSlotAndCapacity(
+            schedulingConfig.timeSlots,
+            activeBookings,
+            timeSlot,
+            schedulingConfig.dailyCapacity,
+            schedulingConfig.slotCapacity
+          );
+
+          // Create the schedule record
+          const created = await tx.schedule.create({
+            data: {
+              userId: parsedUserId,
+              parishId: parsedParishId,
+              eventType: canonicalEventType,
+              displayTitle: displayTitle || canonicalEventType,
+              requestedDate: scheduleDateUtc,
+              startDatetime,
+              endDatetime,
+              status: "PENDING",
+              conflictFlag: false,
+              remarks: fullRemarks,
+            },
+            include: {
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
+              parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+            },
+          });
+
+          // Atomically persist idempotency key
+          if (idempotencyKey) {
+            await tx.idempotencyKey.create({
+              data: {
+                key: idempotencyKey,
+                userId: parsedUserId,
+                resourceType: "SCHEDULE_CREATE",
+                resourceId: created.id,
+                payloadHash,
+              },
+            });
+          }
+
+          return created;
+        },
+        {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 10000,
+        }
+      );
+
+      return { schedule: result, isReplay: false };
+    } catch (err) {
+      // Catch idempotency race or transaction serialization conflict
+      if (idempotencyKey && IdempotencyService.isUniqueConstraintError(err)) {
+        const raceWinner = await IdempotencyService.findRecord(
+          parsedUserId,
+          idempotencyKey,
+          "SCHEDULE_CREATE"
+        );
+        if (raceWinner) {
+          if (raceWinner.payloadHash !== payloadHash) {
+            const conflictErr = new Error(
+              "An idempotency key was reused with a different request payload. Please generate a new key."
+            );
+            conflictErr.statusCode = 409;
+            conflictErr.code = "IDEMPOTENCY_PAYLOAD_MISMATCH";
+            throw conflictErr;
+          }
+          const winnerSchedule = await prisma.schedule.findUnique({
+            where: { id: raceWinner.resourceId },
+            include: {
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
+              parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+            },
+          });
+          if (winnerSchedule) {
+            return { schedule: winnerSchedule, isReplay: true };
+          }
+        }
+      }
+
+      if (err?.code === "P2034" || err?.message?.includes("Serialization") || err?.message?.includes("could not serialize")) {
+        const conflictErr = new Error("Slot booking contention detected. Please retry your request.");
+        conflictErr.statusCode = 409;
+        conflictErr.code = "SCHEDULE_CONCURRENCY_CONFLICT";
+        throw conflictErr;
+      }
+
+      throw err;
+    }
+  }
+
+  /**
+   * Allows the owning parishioner to accept or decline a staff-proposed reschedule.
+   * On Accept: revalidates replacement date & slot using the shared BookingValidator inside a Serializable transaction.
+   * On Failure: returns 409 without modifying the original schedule.
+   */
+  async respondReschedule(scheduleId, accept, actorId, actorRole) {
+    const parsedId = parseInt(scheduleId, 10);
+    if (isNaN(parsedId)) {
+      const err = new Error("Invalid schedule ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    // Blocker 2 Fix: Strictly enforce that only the owning parishioner can respond to proposals
+    if (actorRole !== "PARISHIONER") {
+      const err = new Error("Only parishioners can respond to reschedule proposals on their schedule requests.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
+    const schedule = await prisma.schedule.findUnique({
+      where: { id: parsedId },
+      include: {
+        parish: {
+          include: {
+            availabilities: { where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } } },
+          },
+        },
+      },
+    });
+
+    if (!schedule) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
+      throw err;
+    }
+
+    if (schedule.userId !== actorId) {
+      const err = new Error("You do not have permission to respond to this schedule request.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
+    if (!["PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"].includes(schedule.status)) {
+      const err = new Error("This schedule is not awaiting a parishioner reschedule response.");
+      err.statusCode = 400;
+      err.code = "INVALID_STATE";
+      throw err;
+    }
+
+    if (!accept) {
+      // Parishioner declined: cancel the request
+      const updated = await prisma.schedule.update({
+        where: { id: parsedId },
+        data: {
+          status: "CANCELLED",
+          processedById: actorId,
+        },
+        include: {
+          user: { select: { id: true, fullName: true, email: true } },
+          parish: { select: { id: true, parishName: true } },
+        },
+      });
+      return updated;
+    }
+
+    // Parishioner accepted: revalidate target replacement slot within a Serializable transaction
+    if (!schedule.proposedDate || !schedule.proposedStartDatetime) {
+      const err = new Error("No proposed reschedule date or time is set on this request.");
+      err.statusCode = 400;
+      err.code = "MISSING_PROPOSAL_DATA";
+      throw err;
+    }
+
+    const proposedDateStr = getManilaDateString(new Date(schedule.proposedDate));
+    const now = new Date();
+    const horizon = validateDateHorizon(proposedDateStr, null, now);
+
+    // Extract proposed time slot from proposedStartDatetime
+    const proposedSlot = formatManilaTimeSlot(schedule.proposedStartDatetime);
+    if (!proposedSlot) {
+      const err = new Error("The proposed reschedule time is invalid.");
+      err.statusCode = 400;
+      err.code = "INVALID_PROPOSAL_TIME";
+      throw err;
+    }
+
+    try {
+      const updated = await prisma.$transaction(
+        async (tx) => {
+          // 1. Re-read schedule state within transaction
+          const current = await tx.schedule.findUnique({
+            where: { id: parsedId },
+            include: {
+              parish: {
+                include: {
+                  availabilities: { where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } } },
+                },
+              },
+            },
+          });
+
+          if (!["PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE"].includes(current.status)) {
+            const err = new Error("Schedule status was modified by another operation.");
+            err.statusCode = 409;
+            err.code = "SCHEDULE_STATUS_CONFLICT";
+            throw err;
+          }
+          const schedulingConfig = requireEnabledSchedulingService(current.parish, current.eventType);
+
+          // 2. Revalidate office hours and parish-wide availability using the shared validator
+          validateParishAndOffice(current.parish, horizon.dayName, proposedSlot);
+          validateParishAvailability(current.parish.availabilities, horizon.dateStr);
+
+          // 3. Count active bookings on the proposed replacement date (excluding this schedule itself)
+          const dateStartUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+          );
+          const dateEndUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 23, 59, 59, 999)
+          );
+
+          const activeBookings = await tx.schedule.findMany({
+            where: {
+              parishId: current.parishId,
+              id: { not: parsedId },
+              status: { notIn: ["CANCELLED", "REJECTED"] },
+              requestedDate: {
+                gte: dateStartUtc,
+                lte: dateEndUtc,
+              },
+            },
+            select: {
+              id: true,
+              remarks: true,
+            },
+          });
+
+          validateSlotAndCapacity(
+            schedulingConfig.timeSlots,
+            activeBookings,
+            proposedSlot,
+            schedulingConfig.dailyCapacity,
+            schedulingConfig.slotCapacity
+          );
+
+          // 4. Validate assigned priest conflict if priest is assigned
+          if (current.assignedPriestId) {
+            const priestSchedules = await tx.schedule.findMany({
+              where: {
+                assignedPriestId: current.assignedPriestId,
+                id: { not: parsedId },
+                status: { in: ["CONFIRMED", "PENDING", "REQUESTED"] },
+                requestedDate: {
+                  gte: dateStartUtc,
+                  lte: dateEndUtc,
+                },
+              },
+              select: { id: true, requestedDate: true, remarks: true, status: true },
+            });
+            validatePriestConflict(priestSchedules, [], horizon.dateStr, proposedSlot, parsedId);
+          }
+
+          // 5. Update schedule to accepted status and apply new proposed date/times
+          const proposedDateUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+          );
+          const newStartDatetime = schedule.proposedStartDatetime;
+          const newEndDatetime = schedule.proposedEndDatetime || new Date(new Date(schedule.proposedStartDatetime).getTime() + 60 * 60 * 1000);
+
+          const newRemarks = [
+            `Time Slot: ${proposedSlot}.`,
+            current.remarks ? current.remarks.replace(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)\.?/i, "").trim() : "",
+            `[Rescheduled from ${getManilaDateString(new Date(current.requestedDate))}]`,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          const result = await tx.schedule.update({
+            where: { id: parsedId },
+            data: {
+              status: "CONFIRMED",
+              requestedDate: proposedDateUtc,
+              startDatetime: newStartDatetime,
+              endDatetime: newEndDatetime,
+              proposedDate: null,
+              proposedStartDatetime: null,
+              proposedEndDatetime: null,
+              rescheduleReason: null,
+              remarks: newRemarks,
+              conflictFlag: false,
+              processedById: actorId,
+            },
+            include: {
+              user: { select: { id: true, fullName: true, email: true } },
+              parish: { select: { id: true, parishName: true } },
+              assignedPriest: { select: { id: true, fullName: true } },
+            },
+          });
+
+          return result;
+        },
+        {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 10000,
+        }
+      );
+
+      return updated;
+    } catch (err) {
+      if (err?.code === "P2034" || err?.message?.includes("Serialization") || err?.message?.includes("could not serialize")) {
+        const conflictErr = new Error("The proposed reschedule slot is no longer available due to a concurrent booking.");
+        conflictErr.statusCode = 409;
+        conflictErr.code = "RESCHEDULE_CONCURRENCY_CONFLICT";
+        throw conflictErr;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Updates schedule status (admin/staff workflow).
+   */
+  async updateStatus(id, status, processedById, actorRole, actorParishId) {
+    const parsedId = parseInt(id, 10);
+    if (isNaN(parsedId)) {
+      const err = new Error("Invalid schedule ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    const schedule = await prisma.schedule.findUnique({
+      where: { id: parsedId },
+    });
+
+    if (!schedule) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
+      throw err;
+    }
+
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
+      if (actorParishId && schedule.parishId !== actorParishId) {
+        const err = new Error("You do not have permission to update schedules from another parish.");
+        err.statusCode = 403;
+        err.code = "FORBIDDEN";
+        throw err;
+      }
+    }
+
+    const updated = await prisma.schedule.update({
+      where: { id: parsedId },
+      data: {
+        status,
+        processedById: parseInt(processedById, 10),
+      },
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+        parish: { select: { id: true, parishName: true } },
+        assignedPriest: { select: { id: true, fullName: true } },
+      },
     });
 
     return updated;
   }
 
   /**
-   * Assigns a priest (primary or assistant) to a schedule event.
+   * Staff proposes an alternative reschedule date/slot to the parishioner.
+   */
+  async proposeReschedule(id, { proposedDate, proposedStartDatetime, proposedEndDatetime, reason, actorId, actorRole, actorParishId }) {
+    const parsedId = parseInt(id, 10);
+    if (isNaN(parsedId)) {
+      const err = new Error("Invalid schedule ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    const schedule = await prisma.schedule.findUnique({
+      where: { id: parsedId },
+    });
+
+    if (!schedule) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
+      throw err;
+    }
+
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
+      if (actorParishId && schedule.parishId !== actorParishId) {
+        const err = new Error("You do not have permission to propose reschedules for another parish.");
+        err.statusCode = 403;
+        err.code = "FORBIDDEN";
+        throw err;
+      }
+    }
+
+    if (!proposedDate) {
+      const err = new Error("proposedDate is required.");
+      err.statusCode = 400;
+      err.code = "PROPOSED_DATE_REQUIRED";
+      throw err;
+    }
+
+    const now = new Date();
+    const horizon = validateDateHorizon(proposedDate, null, now);
+    const proposedDateUtc = new Date(
+      Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+    );
+
+    const updated = await prisma.schedule.update({
+      where: { id: parsedId },
+      data: {
+        status: "PROPOSED_RESCHEDULE",
+        proposedDate: proposedDateUtc,
+        proposedStartDatetime: proposedStartDatetime ? new Date(proposedStartDatetime) : null,
+        proposedEndDatetime: proposedEndDatetime ? new Date(proposedEndDatetime) : null,
+        rescheduleReason: reason || null,
+        processedById: parseInt(actorId, 10),
+      },
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+        parish: { select: { id: true, parishName: true } },
+        assignedPriest: { select: { id: true, fullName: true } },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Assigns a priest to a schedule request.
    */
   async assignPriest(id, priestId, actorId, actorRole, actorParishId) {
     const parsedId = parseInt(id, 10);
     const parsedPriestId = parseInt(priestId, 10);
 
-    const original = await prisma.schedule.findUnique({
+    if (isNaN(parsedId) || isNaN(parsedPriestId)) {
+      const err = new Error("Invalid schedule ID or priest ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    const schedule = await prisma.schedule.findUnique({
       where: { id: parsedId },
     });
 
-    if (!original) {
+    if (!schedule) {
       const err = new Error("Schedule request not found.");
       err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
       throw err;
     }
 
-    // Idempotency: if priest is already assigned, no-op
-    if (original.assignedPriestId === parsedPriestId) {
-      return original;
-    }
-
-    // Authorization & Ownership checks
-    if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
-      if (original.parishId !== actorParishId) {
-        const err = new Error("Unauthorized: Request belongs to a different parish.");
+    if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
+      if (actorParishId && schedule.parishId !== actorParishId) {
+        const err = new Error("You do not have permission to assign priests for another parish.");
         err.statusCode = 403;
+        err.code = "FORBIDDEN";
         throw err;
       }
-    } else if (actorRole !== "DIOCESE_COORDINATOR") {
-      const err = new Error("Unauthorized role.");
-      err.statusCode = 403;
-      throw err;
     }
-
-    const checkDate = original.proposedDate || original.requestedDate;
-    let start = original.proposedStartDatetime || original.startDatetime;
-    let end = original.proposedEndDatetime || original.endDatetime;
-
-    if (!start && original.remarks) {
-      const match = original.remarks.match(/Time Slot:\s*(\d{2}:\d{2}\s*[AP]M)/);
-      if (match) {
-        start = parseManilaDateTime(checkDate, match[1]);
-        end = start ? new Date(start.getTime() + 60 * 60 * 1000) : null;
-      }
-    }
-
-    await ConflictHelper.checkPriestConflict(parsedPriestId, checkDate, start, end, { excludeScheduleId: parsedId, actorId });
 
     const updated = await prisma.schedule.update({
       where: { id: parsedId },
       data: {
         assignedPriestId: parsedPriestId,
-        processedById: actorId ? parseInt(actorId, 10) : null,
+        processedById: parseInt(actorId, 10),
       },
       include: {
         user: { select: { id: true, fullName: true, email: true } },
-        assignedPriest: { select: { id: true, fullName: true, email: true } },
         parish: { select: { id: true, parishName: true } },
+        assignedPriest: { select: { id: true, fullName: true } },
       },
-    });
-
-    // Send notifications to both parishioner and priest
-    await RequestNotificationService.notifyPriestAssigned(
-      updated.userId,
-      updated.parishId,
-      updated.id,
-      updated.displayTitle || updated.eventType,
-      updated.assignedPriestId,
-      updated.assignedPriest?.fullName || "TBD",
-      null
-    );
-
-    // Audit log
-    await AuditLogService.log(actorId, `Assigned priest ${updated.assignedPriest?.fullName || 'TBD'} to schedule request #${id}`, null, false, {
-      affectedTable: "Schedule",
-      affectedRecordId: id,
-      parishId: updated.parishId,
-      previousValues: original ? { assignedPriestId: original.assignedPriestId } : null,
-      newValues: { assignedPriestId: priestId }
     });
 
     return updated;
   }
 
   /**
-   * Respond to priest assignment (Priest -> Accept / Reject).
+   * Priest responds to an assignment (ACCEPTED / REJECTED).
    */
   async respondPriestAssignment(id, priestId, status, reason) {
-    return PriestAssignmentHandler.handleResponse(id, priestId, status, reason, "SCHEDULE");
+    const parsedId = parseInt(id, 10);
+    const parsedPriestId = parseInt(priestId, 10);
+
+    const schedule = await prisma.schedule.findUnique({
+      where: { id: parsedId },
+    });
+
+    if (!schedule) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
+      throw err;
+    }
+
+    if (schedule.assignedPriestId !== parsedPriestId) {
+      const err = new Error("You are not the assigned priest for this schedule request.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
+    const updated = await prisma.schedule.update({
+      where: { id: parsedId },
+      data: {
+        priestResponseStatus: status,
+        priestResponseReason: reason || null,
+      },
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+        parish: { select: { id: true, parishName: true } },
+        assignedPriest: { select: { id: true, fullName: true } },
+      },
+    });
+
+    return updated;
   }
 }
-

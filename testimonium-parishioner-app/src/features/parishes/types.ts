@@ -41,6 +41,7 @@ export interface ParishDto {
   gallery?: string[];
   venueCapacity?: number | null;
   availableDocuments?: string[];
+  eventSettings?: { availableEvents?: string[]; timeSlots?: string[]; capacitySettings?: { dailyLimit?: number; slotCapacity?: number } } | null;
 }
 
 export interface ParishListResponse {

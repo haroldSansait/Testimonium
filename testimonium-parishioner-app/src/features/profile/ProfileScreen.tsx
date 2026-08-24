@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import {
@@ -18,23 +21,51 @@ import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export const ProfileScreen: React.FC = () => {
+  const router = useRouter();
   const { profile, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await logout();
-    } finally {
-      setLoggingOut(false);
-    }
+  const handleLogout = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out of TESTIMONIUM? Your local session and cached data will be cleared.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            setLoggingOut(true);
+            try {
+              await logout();
+            } finally {
+              setLoggingOut(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleNavigate = (path: string) => {
+    router.push(path as any);
   };
 
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
         title="Parishioner Account"
-        subtitle="Identity & Session"
+        subtitle="Identity & Settings"
+        rightAction={
+          <TouchableOpacity
+            style={styles.settingsIconBtn}
+            onPress={() => handleNavigate("/(app)/profile/settings")}
+            accessibilityLabel="Settings"
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        }
       />
 
       <ScrollView
@@ -89,7 +120,17 @@ export const ProfileScreen: React.FC = () => {
 
         {/* Account Details */}
         <Card style={styles.detailsCard}>
-          <SectionHeader title="Account Information" />
+          <View style={styles.cardHeaderWithAction}>
+            <SectionHeader title="Account Information" />
+            <TouchableOpacity
+              onPress={() => handleNavigate("/(app)/profile/edit")}
+              activeOpacity={0.7}
+              style={styles.editLinkBtn}
+            >
+              <Ionicons name="pencil" size={14} color={colors.primary} />
+              <Text style={styles.editLinkText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
 
           {profile?.contactNumber ? (
             <View style={styles.detailRow}>
@@ -98,6 +139,17 @@ export const ProfileScreen: React.FC = () => {
               </Text>
               <Text style={styles.detailValue} allowFontScaling>
                 {profile.contactNumber}
+              </Text>
+            </View>
+          ) : null}
+
+          {profile?.address ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel} allowFontScaling>
+                Address
+              </Text>
+              <Text style={styles.detailValue} allowFontScaling>
+                {profile.address}
               </Text>
             </View>
           ) : null}
@@ -111,7 +163,7 @@ export const ProfileScreen: React.FC = () => {
             </Text>
           </View>
 
-          <View style={styles.detailRow}>
+          <View style={[styles.detailRow, { borderBottomWidth: 0 }]}>
             <Text style={styles.detailLabel} allowFontScaling>
               Access Level
             </Text>
@@ -119,6 +171,39 @@ export const ProfileScreen: React.FC = () => {
               Diocesan Parishioner
             </Text>
           </View>
+        </Card>
+
+        {/* Quick Links / Settings Card */}
+        <Card style={styles.linksCard}>
+          <TouchableOpacity
+            style={styles.linkRow}
+            onPress={() => handleNavigate("/(app)/profile/settings")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={18} color={colors.primary} />
+            <Text style={styles.linkText}>App Settings & Information</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.linkRow}
+            onPress={() => handleNavigate("/(app)/profile/terms")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+            <Text style={styles.linkText}>Terms of Service</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.linkRow, { borderBottomWidth: 0 }]}
+            onPress={() => handleNavigate("/(app)/profile/privacy")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+            <Text style={styles.linkText}>Privacy Policy</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
         </Card>
 
         {/* Sign Out Card */}
@@ -132,9 +217,7 @@ export const ProfileScreen: React.FC = () => {
             size="lg"
             icon="log-out-outline"
             loading={loggingOut}
-            onPress={() => {
-              void handleLogout();
-            }}
+            onPress={handleLogout}
             accessibilityLabel="Sign out of TESTIMONIUM"
             accessibilityHint="Ends your session and returns to login"
           />
@@ -148,6 +231,14 @@ const styles = StyleSheet.create({
   screen: {
     padding: 0,
     backgroundColor: colors.background,
+  },
+  settingsIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scroll: {
     flex: 1,
@@ -194,6 +285,26 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
   },
+  cardHeaderWithAction: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  editLinkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    backgroundColor: colors.primarySoft,
+  },
+  editLinkText: {
+    ...fontStyles.caption,
+    fontWeight: "700",
+    color: colors.primary,
+  },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -211,8 +322,27 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: "500",
   },
+  linksCard: {
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    padding: 0,
+    overflow: "hidden",
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  linkText: {
+    ...fontStyles.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
   actionsCard: {
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     backgroundColor: colors.surface,
   },
   logoutNotice: {

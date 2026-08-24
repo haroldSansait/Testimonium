@@ -718,98 +718,111 @@ export function SettingsPage() {
         <div className="p-6">
           {/* Tab 1: Document Pricing & Requirements */}
           {activeTab === 'documents' && (
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-base font-bold text-gray-900">Document Certificates & Requirements</h4>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Configure certificate pricing and prerequisite requirement documents required from parishioners.
-                </p>
-              </div>
+            <div className="space-y-8">
+              {/* 1. Offered Document Certificates */}
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-base font-bold text-gray-900">Offered Document Certificates</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Enable or disable specific document certificates issued by this parish. Disabled documents cannot be requested online.
+                  </p>
+                </div>
 
-              {/* Available Documents Toggle Section */}
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200/60">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">
-                  Offered Document Certificates
-                </span>
-                <p className="text-xs text-gray-500 mb-3">
-                  Uncheck any document type that this parish does not currently issue to parishioners.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {CANONICAL_DOCUMENT_TYPES.map((doc) => {
                     const isOffered = availableDocuments.includes(doc.id);
                     return (
-                      <label
+                      <div
                         key={doc.id}
+                        onClick={() => handleToggleAvailableDocument(doc.id)}
                         className={cn(
-                          'flex items-center gap-2.5 p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all',
+                          'p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none',
                           isOffered
-                            ? 'bg-white border-crimson-700/30 text-gray-900 shadow-sm'
-                            : 'bg-gray-100/60 border-gray-200 text-gray-400'
+                            ? 'bg-white border-crimson-700/30 shadow-xs'
+                            : 'bg-gray-50/70 border-gray-200 opacity-60'
                         )}
                       >
-                        <input
-                          type="checkbox"
-                          checked={isOffered}
-                          onChange={() => handleToggleAvailableDocument(doc.id)}
-                          className="w-4 h-4 text-crimson-700 border-gray-300 rounded focus:ring-crimson-700"
-                        />
-                        <span>{doc.label}</span>
-                      </label>
+                        <div className="min-w-0 flex-1">
+                          <span className={cn('text-xs font-bold block truncate', isOffered ? 'text-gray-900' : 'text-gray-400')}>
+                            {doc.label}
+                          </span>
+                          <span className="text-[10px] text-gray-400 block mt-0.5 font-medium">
+                            {isOffered ? 'Offered for issuance' : 'Disabled'}
+                          </span>
+                        </div>
+                        <div
+                          className={cn(
+                            'w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold transition-all',
+                            isOffered ? 'bg-crimson-700 text-white' : 'bg-gray-200 text-transparent'
+                          )}
+                        >
+                          ✓
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Detailed Config Table */}
-              <div className="divide-y divide-gray-200 border border-gray-200 rounded-xl overflow-hidden">
-                {CANONICAL_DOCUMENT_TYPES.filter((doc) => availableDocuments.includes(doc.id)).map((doc) => {
-                  const conf = documentSettings[doc.id] || { price: doc.defaultPrice, requirements: {} };
-                  return (
-                    <div key={doc.id} className="p-4 bg-white hover:bg-gray-50/40 transition-colors">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                        <span className="font-bold text-gray-900 text-sm">{doc.label}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-gray-500">Fee (PHP):</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="10"
-                            value={conf.price}
-                            onChange={(e) => handlePriceChange(doc.id, parseFloat(e.target.value))}
-                            className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
-                          />
-                        </div>
-                      </div>
+              {/* 2. Certificate Pricing & Prerequisite Requirements */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <div>
+                  <h4 className="text-base font-bold text-gray-900">Certificate Pricing & Prerequisite Requirements</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Configure document issuance fees and required prerequisite documents for enabled certificates.
+                  </p>
+                </div>
 
-                      <div className="pl-2">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
-                          Prerequisite Requirements
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {doc.requirements.map((req) => {
-                            const isReq = conf.requirements?.[req.id] ?? true;
-                            return (
-                              <button
-                                key={req.id}
-                                type="button"
-                                onClick={() => handleDocRequirementToggle(doc.id, req.id)}
-                                className={cn(
-                                  'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
-                                  isReq
-                                    ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
-                                    : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
-                                )}
-                              >
-                                {isReq ? '✓ ' : '+ '}
-                                {req.label}
-                              </button>
-                            );
-                          })}
+                <div className="divide-y divide-gray-200 border border-gray-200 rounded-xl overflow-hidden">
+                  {CANONICAL_DOCUMENT_TYPES.filter((doc) => availableDocuments.includes(doc.id)).map((doc) => {
+                    const conf = documentSettings[doc.id] || { price: doc.defaultPrice, requirements: {} };
+                    return (
+                      <div key={doc.id} className="p-4 bg-white hover:bg-gray-50/40 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                          <span className="font-bold text-gray-900 text-sm">{doc.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-gray-500">Fee (PHP):</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={conf.price}
+                              onChange={(e) => handlePriceChange(doc.id, parseFloat(e.target.value))}
+                              className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="pl-2">
+                          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                            Prerequisite Requirements
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {doc.requirements.map((req) => {
+                              const isReq = conf.requirements?.[req.id] ?? true;
+                              return (
+                                <button
+                                  key={req.id}
+                                  type="button"
+                                  onClick={() => handleDocRequirementToggle(doc.id, req.id)}
+                                  className={cn(
+                                    'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
+                                    isReq
+                                      ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
+                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
+                                  )}
+                                >
+                                  {isReq ? '✓ ' : '+ '}
+                                  {req.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -1066,7 +1079,7 @@ export function SettingsPage() {
               <div>
                 <h4 className="text-base font-bold text-gray-900">Parish Office Operating Hours</h4>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Define daily opening and closing hours. Toggling "Closed" will block document requests and bookings on those days.
+                  Define daily opening and closing hours. Toggling &quot;Closed&quot; will block document requests and bookings on those days.
                 </p>
               </div>
 
@@ -1102,9 +1115,9 @@ export function SettingsPage() {
                             id={`hours-closed-${day}`}
                             checked={!dayConf.isClosed}
                             onChange={(e) => handleOfficeHoursChange(day, 'isClosed', !e.target.checked)}
-                            className="w-4.5 h-4.5 text-crimson-700 border-gray-300 focus:ring-crimson-700 rounded cursor-pointer"
+                            className="w-4.5 h-4.5 accent-crimson-700 text-crimson-700 border-gray-300 focus:ring-crimson-700 rounded cursor-pointer"
                           />
-                          <span className={cn('text-xs font-semibold uppercase', dayConf.isClosed ? 'text-gray-400' : 'text-emerald-700')}>
+                          <span className={cn('text-xs font-semibold uppercase', dayConf.isClosed ? 'text-gray-400' : 'text-crimson-700')}>
                             {dayConf.isClosed ? 'Office Closed' : 'Office Open'}
                           </span>
                         </label>

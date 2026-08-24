@@ -1,4 +1,4 @@
-import type { ISchedulerProvider } from '../types';
+import type { AvailabilityDates, ISchedulerProvider, SchedulingConfiguration } from '../types';
 import type { Appointment } from '../../types';
 
 const INITIAL_APPOINTMENTS: Appointment[] = [
@@ -21,6 +21,21 @@ const INITIAL_APPOINTMENTS: Appointment[] = [
     confirmationNumber: 'APT-24681'
   }
 ];
+
+const DEMO_SCHEDULING_CONFIGURATION: Omit<SchedulingConfiguration, 'parishId'> = {
+  schedulingAvailable: true,
+  configurationUnavailable: false,
+  services: [
+    { eventType: 'BAPTISM', label: 'Baptism Interview' },
+    { eventType: 'CONFIRMATION', label: 'Confirmation' },
+    { eventType: 'WEDDING', label: 'Marriage Canonical Interview' },
+  ],
+  timeSlots: ['08:00 AM', '09:30 AM', '01:30 PM', '03:30 PM'],
+  capacity: { dailyLimit: 10, slotCapacity: 1 },
+  venueCapacity: null,
+  horizonDays: 90,
+  configurationUpdatedAt: null,
+};
 
 export class DemoSchedulerProvider implements ISchedulerProvider {
   private appointments: Appointment[];
@@ -48,8 +63,23 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     return [...this.appointments];
   }
 
-  async getAvailableSlots(_parishId: string, date: string, _serviceName?: string): Promise<string[]> {
+  async getSchedulingConfiguration(parishId: string): Promise<SchedulingConfiguration> {
+    return { ...DEMO_SCHEDULING_CONFIGURATION, parishId: Number(parishId.replace(/\D/g, '')) || 0 };
+  }
+
+  async getAvailabilityDates(_parishId: string, eventType: string): Promise<AvailabilityDates> {
+    const serviceAvailable = DEMO_SCHEDULING_CONFIGURATION.services.some((service) => service.eventType === eventType);
+    const dates = serviceAvailable ? Array.from({ length: 21 }, (_value, offset) => {
+      const date = new Date();
+      date.setDate(date.getDate() + offset + 1);
+      return date.toISOString().split('T')[0];
+    }) : [];
+    return { eventType, serviceAvailable, dates };
+  }
+
+  async getAvailableSlots(_parishId: string, date: string, eventType: string): Promise<string[]> {
     await new Promise(resolve => setTimeout(resolve, 200));
+    if (!DEMO_SCHEDULING_CONFIGURATION.services.some((service) => service.eventType === eventType)) return [];
     const targetDate = new Date(date);
     const isSaturday = targetDate.getDay() === 6;
     const slots = isSaturday 
@@ -71,7 +101,8 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
 
   async bookAppointment(appointment: {
     parishId: string;
-    serviceName: string;
+    eventType: string;
+    displayTitle: string;
     date: string;
     timeSlot: string;
     location?: string;
@@ -82,7 +113,7 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     const newAppointment: Appointment = {
       id: `apt_${Date.now()}`,
       parishId: appointment.parishId,
-      serviceName: appointment.serviceName,
+      serviceName: appointment.displayTitle,
       date: appointment.date,
       timeSlot: appointment.timeSlot,
       status: 'booked',

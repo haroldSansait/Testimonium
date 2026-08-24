@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -11,7 +13,7 @@ import { useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { AppHeader, Button, EmptyState, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
-import { useRequestList } from "./api";
+import { useRequestList, useRequestTrackingLookup } from "./api";
 import { RequestCard } from "./components/RequestCard";
 import type { DocumentRequestDetail } from "./types";
 
@@ -20,6 +22,8 @@ type FilterTab = "ALL" | "ACTIVE" | "COMPLETED";
 export const RequestListScreen: React.FC = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const trackingLookup = useRequestTrackingLookup();
 
   const {
     data: response,
@@ -49,6 +53,19 @@ export const RequestListScreen: React.FC = () => {
     router.push(`/(app)/requests/${request.id}` as any);
   };
 
+  const handleTrackingLookup = async () => {
+    if (!trackingNumber.trim()) {
+      Alert.alert("Tracking Number Required", "Enter the tracking number shown on your request.");
+      return;
+    }
+    try {
+      const request = await trackingLookup.mutateAsync(trackingNumber);
+      router.push(`/(app)/requests/${request.id}` as any);
+    } catch (err: any) {
+      Alert.alert("Request Not Found", err?.message || "We could not find one of your requests with that tracking number.");
+    }
+  };
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -65,6 +82,28 @@ export const RequestListScreen: React.FC = () => {
           />
         }
       />
+
+      <View style={styles.trackingBar}>
+        <TextInput
+          value={trackingNumber}
+          onChangeText={setTrackingNumber}
+          placeholder="Find a request by tracking number"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          style={styles.trackingInput}
+          accessibilityLabel="Request tracking number"
+          returnKeyType="search"
+          onSubmitEditing={() => void handleTrackingLookup()}
+        />
+        <Button
+          title="Find"
+          size="sm"
+          variant="outline"
+          loading={trackingLookup.isPending}
+          onPress={() => void handleTrackingLookup()}
+          accessibilityLabel="Find document request by tracking number"
+        />
+      </View>
 
       {/* Filter Tabs */}
       <View style={styles.tabBar}>
@@ -165,6 +204,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
     gap: spacing.xs,
+  },
+  trackingBar: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  trackingInput: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
   },
   tabItem: {
     paddingVertical: 8,

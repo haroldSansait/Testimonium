@@ -101,7 +101,9 @@ export const appErrorFromResponse = async (response: Response): Promise<AppError
     fieldErrors: errors,
     retryAfterMs,
     retryable: kind === "SERVER" || kind === "RATE_LIMIT",
-    message: backendMessage || safeStatusMessage(response.status),
+    // Server-error payloads can contain infrastructure details when a backend
+    // is misconfigured. Preserve actionable 4xx business messages only.
+    message: response.status >= 500 ? safeStatusMessage(response.status) : backendMessage || safeStatusMessage(response.status),
   });
 };
 

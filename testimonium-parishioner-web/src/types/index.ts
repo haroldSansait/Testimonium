@@ -19,7 +19,7 @@ export interface Parish {
   phone: string;
   email: string;
   facebookPage: string;
-  officeHours: string;
+  officeHours: string | Record<string, unknown> | null;
   patronSaint: string;
   feastDay: string;
   description: string;
@@ -223,4 +223,3 @@ export interface Event {
   maxParticipants?: number;
   currentParticipants?: number;
 }
-

@@ -1,5 +1,6 @@
-import { ScheduleShellScreen } from "@/features/schedule/ScheduleShellScreen";
+import React from "react";
+import { ScheduleListScreen } from "@/features/schedule/ScheduleListScreen";
 
 export default function ScheduleRoute() {
-  return <ScheduleShellScreen />;
+  return <ScheduleListScreen />;
 }

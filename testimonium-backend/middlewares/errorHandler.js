@@ -1,5 +1,5 @@
 import { logger } from "../config/logger.js";
-import { env } from "../config/env.js";
+
 
 export const notFoundHandler = (req, res) => {
   res.status(404).json({
@@ -33,7 +33,7 @@ export const errorHandler = (err, req, res, _next) => {
   }
 
   const statusCode = Number.isInteger(err.statusCode) ? err.statusCode : 500;
-  const isProduction = env.nodeEnv === "production";
+
 
   if (statusCode >= 500) {
     logger.error(
@@ -62,14 +62,14 @@ export const errorHandler = (err, req, res, _next) => {
   const responseBody = {
     success: false,
     message:
-      statusCode >= 500 && isProduction
+      statusCode >= 500
         ? "TESTIMONIUM encountered an internal server error."
         : err.message,
-    errors: err.errors || [],
+    errors: statusCode >= 500 ? [] : err.errors || [],
   };
 
-  if (!isProduction && err.stack) {
-    responseBody.stack = err.stack;
+  if (statusCode < 500 && typeof err.code === "string") {
+    responseBody.code = err.code;
   }
 
   res.status(statusCode).json(responseBody);

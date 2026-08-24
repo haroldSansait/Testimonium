@@ -25,7 +25,7 @@ import {
 } from "./api";
 import { PaymentQrCard } from "./components/PaymentQrCard";
 import { ReceiptCapturePicker } from "./components/ReceiptCapturePicker";
-import { formatDocumentType, formatFee, isPaymentEligible } from "./presentation";
+import { formatDocumentType, formatFee, hasAuthoritativeFee, isPaymentEligible } from "./presentation";
 import type { LocalSelectedReceipt } from "./types";
 
 export interface PaymentScreenProps {
@@ -63,7 +63,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
   };
 
   const handleReceiptUpload = async () => {
-    if (!request || !selectedReceipt || inFlightGuard.current) return;
+    if (!request || !selectedReceipt || !hasAuthoritativeFee(request.fee) || inFlightGuard.current) return;
 
     inFlightGuard.current = true;
     setIsUploading(true);
@@ -143,7 +143,8 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
   }
 
   const isEligible = Boolean(request && isPaymentEligible(request));
-  const feeLabel = request ? formatFee(request.fee) : "₱0.00";
+  const hasValidFee = Boolean(request && hasAuthoritativeFee(request.fee));
+  const feeLabel = request ? formatFee(request.fee) : "Fee unavailable";
   const docTypeLabel = request ? formatDocumentType(request.documentType) : "Document";
 
   return (
@@ -161,7 +162,27 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
           <Skeleton width="100%" height={260} style={styles.skeletonItem} />
           <Skeleton width="100%" height={140} style={styles.skeletonItem} />
         </View>
-      ) : !request || !isEligible ? (
+      ) : !request ? (
+        <View style={styles.centerContainer}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Payment Unavailable"
+            description="The requested document application could not be loaded."
+            actionLabel="Return to Request Details"
+            onAction={handleBack}
+          />
+        </View>
+      ) : !hasValidFee ? (
+        <View style={styles.centerContainer}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Fee Configuration Unavailable"
+            description="The parish has not supplied a valid fee for this request. Receipt upload is unavailable until staff corrects the configuration."
+            actionLabel="Return to Request Details"
+            onAction={handleBack}
+          />
+        </View>
+      ) : !isEligible ? (
         <View style={styles.centerContainer}>
           <EmptyState
             icon="checkmark-circle-outline"

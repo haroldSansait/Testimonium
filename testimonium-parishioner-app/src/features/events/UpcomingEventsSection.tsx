@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
+import { useRouter } from "expo-router";
 import {
   EmptyState,
   EventCardSkeleton,
@@ -22,6 +23,7 @@ export interface UpcomingEventsSectionProps {
   title?: string;
   subtitle?: string;
   onParishPress?: (parishId: number) => void;
+  onSeeAll?: () => void;
   hideParishName?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -32,9 +34,11 @@ export const UpcomingEventsSection: React.FC<UpcomingEventsSectionProps> = ({
   title = "Upcoming This Month",
   subtitle,
   onParishPress,
+  onSeeAll,
   hideParishName = false,
   style,
 }) => {
+  const router = useRouter();
   const { data: rawEvents, isLoading, isFetching, error, refetch } =
     useCurrentMonthEvents();
 
@@ -51,9 +55,31 @@ export const UpcomingEventsSection: React.FC<UpcomingEventsSectionProps> = ({
     return sorted.slice(0, limit);
   }, [rawEvents, parishId, limit]);
 
+  const handleSeeAll = () => {
+    if (onSeeAll) {
+      onSeeAll();
+    } else {
+      router.push("/(app)/events" as any);
+    }
+  };
+
+  const handleEventPress = (event: PublicEventDto) => {
+    router.push({
+      pathname: "/(app)/events/[id]" as any,
+      params: {
+        id: String(event.id),
+      },
+    });
+  };
+
   return (
     <View style={[styles.container, style]}>
-      <SectionHeader title={title} subtitle={subtitle} />
+      <SectionHeader
+        title={title}
+        subtitle={subtitle}
+        actionLabel="See All"
+        onAction={handleSeeAll}
+      />
 
       {isLoading ? (
         <View>
@@ -85,6 +111,7 @@ export const UpcomingEventsSection: React.FC<UpcomingEventsSectionProps> = ({
           <EventCard
             key={String(event.id)}
             event={event}
+            onPress={() => handleEventPress(event)}
             onParishPress={onParishPress}
             hideParishName={hideParishName}
           />

@@ -28,7 +28,7 @@ const PRIEST_PALETTE: PriestColor[] = [
  * Hash string/ID deterministically to index into PRIEST_PALETTE.
  */
 export function getPriestColor(priestIdentifier?: string | number | null): PriestColor {
-  if (!priestIdentifier) {
+  if (!priestIdentifier || priestIdentifier === 'TBD') {
     // Default fallback neutral style for unassigned events
     return { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-300', badgeBg: 'bg-gray-100', badgeText: 'text-gray-800', hex: '#6B7280' };
   }

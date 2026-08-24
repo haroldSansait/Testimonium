@@ -18,16 +18,6 @@ const mapParish = (p: any): Parish => {
   const mappedCover = p.coverImage || getParishImage(lookupData);
   const mappedGallery = p.coverImage ? [p.coverImage] : getParishGallery(lookupData);
 
-  const defaultOfficeHours = {
-    Monday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
-    Tuesday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
-    Wednesday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
-    Thursday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
-    Friday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
-    Saturday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false },
-    Sunday: { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: true },
-  };
-
   return {
     id: String(p.id),
     name: lookupData.name,
@@ -40,15 +30,15 @@ const mapParish = (p: any): Parish => {
     phone: p.contactNumber || p.phone || "",
     email: p.email || "",
     facebookPage: p.facebookPage || "",
-    officeHours: p.officeHours || defaultOfficeHours,
+    officeHours: p.officeHours || null,
     patronSaint: p.patronSaint || "",
     feastDay: p.feastDay || "",
     description: p.directoryDescription || p.description || `${lookupData.name || "Parish"} of Canlaon Vicariate.`,
     assignedPriest: p.priest || "Unassigned",
     assignedSecretary: p.secretary || "Unassigned",
-    massSchedules: p.massSchedules || ["Sunday: 6:00 AM, 8:00 AM, 5:00 PM"],
+    massSchedules: p.massSchedules || [],
     upcomingEvents: p.upcomingEvents || [],
-    services: p.services || ["Baptism", "Confirmation", "Marriage", "Mass Intention"],
+    services: p.services || [],
     logoImage: p.logoImage || "",
     pinColor: p.pinColor || "#7B1C2A",
     showLabel: p.showLabel ?? true,

@@ -249,7 +249,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const docTypeLabel = request
     ? formatDocumentType(request.documentType)
     : "Document Request";
-  const feeLabel = request ? formatFee(request.fee) : "₱0.00";
+  const feeLabel = request ? formatFee(request.fee) : "Fee unavailable";
   const isPaymentActionAvailable = isPaymentEligible(request);
   const isCorrectionActionAvailable = isDocumentCorrectionEligible(request);
   const isCancellationAvailable = isCancelEligible(request);

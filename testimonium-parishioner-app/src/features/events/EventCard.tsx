@@ -4,6 +4,7 @@ import {
   StyleProp,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
   ViewStyle,
 } from "react-native";
@@ -15,6 +16,7 @@ import type { PublicEventDto } from "./types";
 
 export interface EventCardProps {
   event: PublicEventDto;
+  onPress?: () => void;
   onParishPress?: (parishId: number) => void;
   style?: StyleProp<ViewStyle>;
   hideParishName?: boolean;
@@ -22,6 +24,7 @@ export interface EventCardProps {
 
 export const EventCard: React.FC<EventCardProps> = ({
   event,
+  onPress,
   onParishPress,
   style,
   hideParishName = false,
@@ -36,7 +39,7 @@ export const EventCard: React.FC<EventCardProps> = ({
     parishName ? ` At ${parishName}.` : ""
   }`;
 
-  return (
+  const cardContent = (
     <Card
       accessibilityLabel={accessibilityLabel}
       style={[styles.card, style]}
@@ -115,7 +118,10 @@ export const EventCard: React.FC<EventCardProps> = ({
       {!hideParishName && parishName && onParishPress ? (
         <View style={styles.parishFooter}>
           <Pressable
-            onPress={() => onParishPress(event.parishId)}
+            onPress={(e) => {
+              e.stopPropagation();
+              onParishPress(event.parishId);
+            }}
             accessible={true}
             accessibilityRole="button"
             accessibilityLabel={`View ${parishName}`}
@@ -149,6 +155,16 @@ export const EventCard: React.FC<EventCardProps> = ({
       ) : null}
     </Card>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        {cardContent}
+      </TouchableOpacity>
+    );
+  }
+
+  return cardContent;
 };
 
 const styles = StyleSheet.create({
@@ -221,4 +237,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

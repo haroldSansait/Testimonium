@@ -1,5 +1,6 @@
-import { NotificationShellScreen } from "@/features/notifications/NotificationShellScreen";
+import React from "react";
+import { NotificationListScreen } from "@/features/notifications/NotificationListScreen";
 
 export default function NotificationsRoute() {
-  return <NotificationShellScreen />;
+  return <NotificationListScreen />;
 }
