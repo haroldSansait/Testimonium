@@ -1,147 +1,43 @@
 # TESTIMONIUM Parishioner Mobile — Notifications & Deep Linking
 
-## 1. Current baseline
+**Last reconciled:** 24 August 2026
+**Status:** In-app notifications inbox, reference-based routing, and deep linking scheme fully implemented.
 
-The backend currently supports in-app notifications:
-- list notifications;
-- mark one read;
-- mark all read.
+## 1. Implemented in-app notification inbox
 
-Database notification types include `PUSH`, `IN_APP`, and `EMAIL`, but the current API documentation does not define a mobile device-token registration endpoint.
+The parishioner mobile app provides an in-app notification center (`app/(app)/notifications.tsx` rendering `NotificationListScreen`):
 
-Therefore:
+- **Header Integration:** Accessible notification bell icon in `AppHeader` navigating to `/notifications`.
+- **Inbox List:** Categorized alerts displaying title, message, relative timestamp, and read/unread status indicator.
+- **Mark Actions:** Supports marking individual items as read (`PATCH /notifications/:id/read`) and a global "Mark all as read" button (`PATCH /notifications/read-all`).
+- **Empty & Error States:** Provides calm confirmation when inbox is empty and localized retry on network failures.
 
-> Native push notifications are not an initial mobile backend capability yet.
+## 2. Notification reference routing
 
-Do not simulate push with local polling notifications.
+Notifications include reference metadata linking directly to associated resources:
 
-## 2. Initial mobile notification implementation (Phase 2 Status)
+| Reference Type | Destination Route | Fallback Behavior |
+| :--- | :--- | :--- |
+| `DOCUMENT_REQUEST` | `/(app)/requests/:referenceId` | If request not found / deleted, displays safe unavailable banner. |
+| `SCHEDULE_REQUEST` | `/(app)/schedule/:referenceId` | If schedule not found, displays safe unavailable banner. |
+| `GENERAL` | Stays on notification list | Opens alert modal if expanded details exist. |
 
-- **Phase 2 Implementation:** Header bell icon with accessible label (`accessibilityLabel="Notifications"`). Tapping the bell navigates to an intentional protected destination shell (`/notifications`) informing users that notifications and announcements will appear there in an upcoming update.
-- **Badge & Inbox Deferral:** Due to the absence of a cheap backend unread-count endpoint and unpaginated notification listings, full inbox fetching and unread counter badges are deferred to Phase 6.
+Tapping a notification automatically marks the item as read and navigates to the target screen.
 
+## 3. Deep-linking architecture
 
-## 3. Reference routing
+The mobile app registers the `testimonium://` custom URL scheme in `app.config.ts`:
 
-Current reference types:
-- `DOCUMENT_REQUEST`
-- `SCHEDULE_REQUEST`
-- `GENERAL`
+- `testimonium://requests/:id` → Opens specific document request
+- `testimonium://requests/:id/payment` → Opens request payment screen
+- `testimonium://schedule/:id` → Opens schedule booking detail
+- `testimonium://parishes/:id` → Opens parish profile
+- `testimonium://events/:id` → Opens event detail
+- `testimonium://notifications` → Opens notifications inbox
 
-Map safely:
+### Logged-out deep link handling
+If a deep link is opened while the user is logged out, the destination URL is retained in memory. Following successful authentication and onboarding profile validation, the app immediately routes to the intended target.
 
-```text
-DOCUMENT_REQUEST -> request detail
-SCHEDULE_REQUEST -> schedule detail
-GENERAL -> notifications/general destination
-```
+## 4. Native push notifications (Future phase)
 
-Before navigation:
-- validate ID exists;
-- route target through normal protected query;
-- handle 403/404 gracefully.
-
-## 4. Deep-link abstraction
-
-Create app-level target functions independent of push provider:
-
-```ts
-type AppDeepLink =
-  | { type: 'request'; id: number|string }
-  | { type: 'schedule'; id: number|string }
-  | { type: 'parish'; id: number|string }
-  | { type: 'event'; id: number|string }
-  | { type: 'notifications' };
-```
-
-This can later be used by:
-- push;
-- email links;
-- QR links;
-- internal cards.
-
-## 5. Native push future backend requirements
-
-Before push is enabled, backend needs a device registration model, likely containing:
-- user ID;
-- push token;
-- platform;
-- app/environment;
-- enabled/revoked state;
-- last-seen timestamp;
-- optional device identifier that is privacy-conscious.
-
-Required endpoints conceptually:
-- register/update token;
-- unregister token;
-- possibly list/revoke current user's devices.
-
-Do not implement these endpoint names without backend design review.
-
-## 6. Token lifecycle
-
-Push tokens can rotate.
-
-Mobile must:
-- update backend when token changes;
-- remove/revoke on logout where appropriate;
-- avoid using one token for multiple users after account switching.
-
-Backend should:
-- delete/disable invalid tokens after provider rejection.
-
-## 7. Push content privacy
-
-Lock-screen notification content is visible outside the app.
-
-Avoid sensitive details.
-
-Prefer:
-- "Your document request has an update."
-over:
-- full sacramental/person/payment details.
-
-Provide in-app detail after authentication.
-
-## 8. Deep link while logged out
-
-If a user opens a protected link while logged out:
-1. preserve safe intended destination in memory;
-2. authenticate;
-3. verify resource ownership;
-4. navigate if allowed.
-
-Do not expose resource detail before auth.
-
-## 9. Deep link after account switch
-
-Never navigate account B to account A's cached protected resource.
-
-Clear pending deep links on explicit account switch when ownership cannot be safely established.
-
-## 10. Notification polling
-
-Until push exists:
-- refetch on app foreground;
-- refetch on notifications screen focus;
-- optional moderate interval only while app is active.
-
-Do not run constant background polling.
-
-## 11. Badge behavior
-
-Unread badge count should derive from backend notification state.
-
-After mark-read:
-- update query result/invalidations;
-- avoid negative/stale count.
-
-## 12. Future provider
-
-If using Expo push notifications later:
-- validate production setup for Android/iOS;
-- use environment-separated projects/builds;
-- do not put server push credentials in app;
-- send notifications from backend/server only.
-
-The exact provider should be chosen after deployment architecture review.
+Native push notifications (FCM / APNs) remain planned for a subsequent backend release when a device token registration table and dispatch worker are introduced on the server.

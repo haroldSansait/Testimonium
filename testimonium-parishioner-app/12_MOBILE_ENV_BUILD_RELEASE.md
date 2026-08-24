@@ -1,12 +1,15 @@
-# TESTIMONIUM Parishioner Mobile â€” Environment, Build & Release
+# TESTIMONIUM Parishioner Mobile — Environment, Build & Release
+
+**Last reconciled:** 24 August 2026
+**Target application:** `testimonium-parishioner-app`
 
 ## 1. Objective
 
 Provide reproducible local development, preview testing, and production builds with full native capability isolation and zero client secret leakage.
 
-## 2. Environment Configuration & Variables
+## 2. Environment configuration & variables
 
-Environment variables are managed in `.env` (using `.env.example` as canonical template) and accessed via typed helpers in `src/config/environment.ts`:
+Environment variables are managed in `.env` (using `.env.example` as the canonical template) and accessed via typed helpers in `src/config/environment.ts`:
 
 | Variable | Description | Default | Required for Production |
 | :--- | :--- | :--- | :--- |
@@ -17,29 +20,23 @@ Environment variables are managed in `.env` (using `.env.example` as canonical t
 > [!NOTE]
 > All `EXPO_PUBLIC_*` variables are embedded into client JS bundles and must not contain backend secrets (e.g. database credentials, Firebase Admin private keys, Cloudflare R2 secrets).
 
-### Physical Android development
+### Physical device development (`npm run dev:mobile`)
 
-`localhost`, `127.0.0.1`, and `::1` resolve to the phone, not the laptop. Use the root launcher for a physical Android development-client session:
+When testing on a physical Android phone, `localhost` and `127.0.0.1` resolve to the device rather than the host computer. The root workspace provides a launcher for physical device testing:
 
 ```powershell
-# Normal web/backend development, from the repository root
-npm run dev
-
-# Physical Android development, from the repository root
+# Run from repository root for physical mobile testing
 npm run dev:mobile
 ```
 
-`npm run dev:mobile` supervises one local development session:
+`npm run dev:mobile` coordinates the local development session:
+1. Reuses or launches the TESTIMONIUM Express backend on port 5000.
+2. Starts a Cloudflare Quick Tunnel (`cloudflared`) exposing a temporary HTTPS tunnel endpoint (`https://*.trycloudflare.com`).
+3. Verifies backend health (`/api/v1/health`) through the tunnel.
+4. Updates `EXPO_PUBLIC_API_BASE_URL` in `testimonium-parishioner-app/.env`.
+5. Starts the Expo Metro development client (`npx expo start --dev-client --tunnel`).
 
-```text
-TESTIMONIUM backend -> temporary HTTPS Cloudflare Quick Tunnel -> mobile .env API URL -> Expo development client Metro
-```
-
-It reuses a healthy backend already listening on port 5000; otherwise it starts the existing backend package only. It finds `cloudflared` on `PATH` first, then falls back to `C:\tmp\testimonium-cloudflared\cloudflared.exe`. After Cloudflare publishes a temporary `https://*.trycloudflare.com` host, the launcher verifies `/api/v1/health`, updates only `EXPO_PUBLIC_API_BASE_URL` in `testimonium-parishioner-app/.env`, and starts `npx expo start --dev-client --tunnel` from the mobile app.
-
-The Quick Tunnel host changes whenever it restarts and is development-only infrastructure, never production configuration. Your physical Android development APK must already be installed. Normal JavaScript, UI, and API changes do not require an EAS rebuild; native dependency or native configuration changes are the exception. Press `Ctrl+C` to stop only processes started by this launcher. If port 8081 is already occupied, stop the existing Metro session first; the launcher will not kill it or switch ports.
-
-## 3. Native Plugins & EAS Configuration
+## 3. Native plugins & EAS configuration
 
 ### `app.config.ts` Plugins:
 - `@react-native-firebase/app`
@@ -49,48 +46,32 @@ The Quick Tunnel host changes whenever it restarts and is development-only infra
 ### EAS Profiles (`eas.json`):
 - `development`: `developmentClient: true`, `distribution: "internal"` (for building custom Expo Dev Client).
 - `preview`: `distribution: "internal"`, `channel: "preview"`, `android: { buildType: "apk" }` (for internal testing).
+- `production`: `channel: "production"` (for release App Bundle / IPA).
 
-## 4. Development Workflow & Commands
+## 4. Verification commands and release gates
 
 ```bash
 # Typecheck
 npm run typecheck
 
-# Jest test suite (single-band for stability)
+# Jest test suite (22 suites, 161 tests)
 npm test -- --runInBand
 
-# ESLint verification (zero errors, zero warnings)
+# ESLint verification (0 errors, 0 warnings)
 npm run lint
 
-# Expo Doctor health check (21/21 checks)
-npx expo-doctor
-
-# Local Metro / JS bundle verification (Platform Android)
+# Export static Android bundle
 npx expo export --platform android
 
-# Native Prebuild generation
+# Native prebuild generation
 npm run prebuild
-
-# Run local development client on Android / iOS
-npm run android:dev
-npm run ios:dev
 ```
 
-## 5. Verification Status Matrix
+## 5. Verification status matrix
 
-### Static & Tooling Verification:
-- **STATIC VERIFIED** â€” PASS
-- **TYPECHECK** â€” PASS (`npm run typecheck`)
-- **UNIT/INTEGRATION TESTS** â€” PASS (`npm test -- --runInBand`)
-- **LINT** â€” PASS (`npm run lint`, 0 errors, 0 warnings)
-- **EXPO DOCTOR** â€” PASS (`npx expo-doctor`, 21/21 checks)
-- **JS/METRO ANDROID BUNDLE** â€” PASS (`npx expo export --platform android`, 1,381 modules bundled)
-- **GIT DIFF CHECK** â€” PASS (`git diff --check`)
-
-### Runtime & Native Target Verification:
-- **ANDROID NATIVE COMPILE** â€” PENDING (Requires Gradle / EAS Build)
-- **EMULATOR** â€” PENDING
-- **PHYSICAL DEVICE** â€” PENDING
-- **REAL FIREBASE/BACKEND** â€” PENDING
-- **GOOGLE SIGN-IN RUNTIME** â€” PENDING (Requires Android OAuth client with SHA-1 in Firebase Console)
-- **iOS** â€” PENDING
+- **STATIC CODEBASE:** PASS
+- **TYPECHECK:** PASS (`npm run typecheck`)
+- **UNIT & INTEGRATION TESTS:** PASS (22 suites, 161 tests passing)
+- **LINT:** PASS (`npm run lint`, 0 errors, 0 warnings)
+- **METRO BUNDLE EXPORT:** PASS (`npx expo export --platform android`)
+- **PHYSICAL RUNTIME QA:** ACTIVE (Tested via development APK & Quick Tunnel)

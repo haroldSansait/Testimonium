@@ -1,247 +1,103 @@
 # TESTIMONIUM Parishioner Mobile — Navigation & Screen Map
 
-## 1. Navigation goals
+**Last reconciled:** 24 August 2026
+**Status:** Full navigation hierarchy implemented with Expo Router SDK 57.
 
-The user should be able to answer these questions within one or two taps:
+## 1. Information architecture overview
 
-- What needs my attention?
-- Where is my request?
-- How do I request a document?
-- How do I schedule a service?
-- Which parish should I contact?
-- What events are upcoming?
-- What notifications are unread?
-- How do I update my profile?
-
-## 2. Recommended top-level navigation
-
-Recommended five-tab model:
+The application organizes parishioner tasks into a deterministic navigation hierarchy with an unauthenticated `(auth)` group, compliance-driven `(onboarding)` gate, and a root stack for `(app)` containing a 5-tab navigator alongside modal/drill-down destinations.
 
 ```text
-Home
-Requests
-Schedule
-Parishes
-Profile
+Root Layout (app/_layout.tsx)
+  │
+  ├──> (auth)/                   # Unauthenticated flow
+  │     ├── welcome.tsx
+  │     ├── login.tsx
+  │     ├── register.tsx
+  │     └── forgot-password.tsx
+  │
+  ├──> (onboarding)/             # Auth verification & profile completion gates
+  │     ├── verify-email.tsx
+  │     ├── legal.tsx
+  │     └── profile-completion.tsx
+  │
+  └──> (app)/                    # Authenticated parishioner experience
+        ├── _layout.tsx          # Root Stack (headerShown: false)
+        │
+        ├── (tabs)/              # 5-Tab Bottom Navigator
+        │     ├── (home)/index.tsx       # Home Screen
+        │     ├── (requests)/index.tsx   # Request List Screen
+        │     ├── (schedule)/index.tsx   # Schedule List Screen
+        │     ├── (parishes)/index.tsx   # Parish Directory Screen
+        │     └── (profile)/index.tsx    # Profile Screen
+        │
+        ├── parishes/[parishId].tsx      # Parish Details
+        ├── requests/
+        │     ├── new.tsx                # 5-Step Document Request Wizard
+        │     └── [requestId]/
+        │           ├── index.tsx        # Request Detail & Timeline
+        │           └── payment.tsx      # Payment & Receipt Upload
+        ├── schedule/
+        │     ├── new.tsx                # 5-Step Scheduling Wizard
+        │     └── [id].tsx               # Schedule Detail & Reschedule Response
+        ├── events/
+        │     ├── index.tsx              # Public Events Calendar List
+        │     └── [id].tsx               # Event Details
+        ├── notifications.tsx            # In-App Notifications Inbox
+        └── profile/
+              ├── edit.tsx               # Edit Profile Form
+              ├── settings.tsx           # App Settings & Sign-Out
+              ├── terms.tsx              # Terms of Service Viewer
+              └── privacy.tsx            # Privacy Policy Viewer
 ```
 
-Notifications should be reachable from a top-bar bell and deep links rather than consuming a permanent tab unless later usage data proves otherwise.
+## 2. Tab navigation behavior
 
-Events can appear:
-- on Home;
-- inside Parishes;
-- in a calendar/event screen pushed from Home.
+The 5-tab bottom navigator provides immediate access to the primary parishioner features:
 
-## 3. Auth route group
+| Tab | Route | Active Icon | Inactive Icon | Feature Scope |
+| :--- | :--- | :--- | :--- | :--- |
+| **Home** | `/(app)/(tabs)/(home)` | `home` | `home-outline` | Welcome banner, quick actions, active tracking summary, event previews. |
+| **Requests** | `/(app)/(tabs)/(requests)` | `document-text` | `document-text-outline` | Document requests list, status filtering, new request trigger. |
+| **Schedule** | `/(app)/(tabs)/(schedule)` | `calendar` | `calendar-outline` | Upcoming and past appointments, slot booking trigger. |
+| **Parishes** | `/(app)/(tabs)/(parishes)` | `business` | `business-outline` | Searchable directory of parishes, contact directory, and mass info. |
+| **Profile** | `/(app)/(tabs)/(profile)` | `person` | `person-outline` | Parishioner details, verification status, settings entry. |
 
-```text
-/auth
-  welcome
-  login
-  register
-  verify-email
-  legal
-  profile-completion
-  forgot-password (if currently supported)
-```
+## 3. Drill-down and modal flows
 
-Do not let authenticated app tabs render before backend profile bootstrap is resolved.
+All multi-step wizards, detail views, and sub-flows sit above the bottom tab bar inside the `(app)` Stack navigator:
 
-## 4. App route group (Phase 2 Implemented Structure)
+1. **Document Request Flow:**
+   `Requests Tab` → `requests/new` (Wizard) → `requests/[requestId]` (Detail) → `requests/[requestId]/payment` (Receipt Upload)
+2. **Scheduling Flow:**
+   `Schedule Tab` → `schedule/new` (Wizard) → `schedule/[id]` (Detail & Reschedule Response)
+3. **Parish Discovery Flow:**
+   `Parishes Tab` or `Home` → `parishes/[parishId]` (Detail) → Quick actions for documents or scheduling
+4. **Events Flow:**
+   `Home` or `Parish Detail` → `events/index` (Full calendar) → `events/[id]` (Event Details)
+5. **Notifications Flow:**
+   `AppHeader` Bell icon → `notifications` (Inbox) → Deep-link to referenced request or schedule
 
-The authenticated `(app)` route group uses a root `Stack` owning modal/drill-down destinations above a five-tab `(tabs)` navigator:
+## 4. Back navigation and tab fallbacks
 
-```text
-app/(app)/
-  _layout.tsx                       # Root Stack (headerShown: false)
-  notifications.tsx                 # Notification shell destination
-  parishes/[parishId].tsx           # Parish detail screen (above tabs)
-  (tabs)/
-    _layout.tsx                     # 5-Tab navigator (Ionicons, primary #7B1C2A active tint)
-    (home)/index.tsx                # Home Screen
-    (requests)/index.tsx            # Document Requests minimal shell (Phase 3)
-    (schedule)/index.tsx            # Schedule minimal shell (Phase 5)
-    (parishes)/index.tsx            # Parish Directory Screen
-    (profile)/index.tsx             # Profile & Sign-Out Screen
-```
+To ensure predictable back navigation across Android hardware back presses and iOS swipe gestures, modal and stack screens utilize `navigateBackOrReplace` (`src/utils/navigation.ts`). When the stack history is empty (e.g. following a direct deep link), back actions safely resolve to their canonical tab-root fallbacks:
 
-### Drill-down navigation
-- Tapping a parish card in Home or Directory pushes to `/parishes/:parishId` (sits above tabs with safe back navigation).
-- Tapping the notification bell in Home header pushes to `/notifications` (sits above tabs).
-- Back navigation uses `navigateBackOrReplace` with deterministic tab-root fallbacks (`/(app)/(tabs)/(parishes)` or `/(app)/(tabs)/(home)`).
+- `parishes/[parishId]` → `/(app)/(tabs)/(parishes)`
+- `requests/*` → `/(app)/(tabs)/(requests)`
+- `schedule/*` → `/(app)/(tabs)/(schedule)`
+- `events/*` → `/(app)/(tabs)/(home)`
+- `notifications` → `/(app)/(tabs)/(home)`
+- `profile/*` → `/(app)/(tabs)/(profile)`
 
+## 5. Deep linking scheme
 
-## 5. Tab reset behavior
+The application supports deep links configured in `app.config.ts` (`scheme: "testimonium"`):
 
-When a user taps the active tab again:
-- optionally pop to that tab's root if supported;
-- do not discard an active unsaved transactional form without confirmation.
+- `testimonium://requests/:id` → Opens document request detail
+- `testimonium://requests/:id/payment` → Opens payment screen
+- `testimonium://schedule/:id` → Opens schedule detail
+- `testimonium://parishes/:id` → Opens parish detail
+- `testimonium://events/:id` → Opens event detail
+- `testimonium://notifications` → Opens notifications inbox
 
-## 6. Auth gating
-
-Navigation gate order should be deterministic.
-
-Conceptually:
-
-```text
-No Firebase user
--> Auth routes
-
-Firebase user but email verification required
--> Verify Email
-
-Firebase user + backend profile says incomplete
--> Profile Completion
-
-Legal acceptance required
--> Legal flow
-
-Ready
--> Main tabs
-```
-
-Exact precedence should match existing backend/web policy after code audit.
-
-## 7. Deep-link target model
-
-Prepare stable internal route helpers for:
-
-```ts
-toRequest(id)
-toSchedule(id)
-toParish(id)
-toEvent(id)
-toNotifications()
-```
-
-This creates a clean future path for push notifications without requiring push implementation now.
-
-## 8. Notification routing
-
-Current notification references can be:
-- `DOCUMENT_REQUEST`
-- `SCHEDULE_REQUEST`
-- `GENERAL`
-
-Recommended:
-- DOCUMENT_REQUEST → request detail if accessible.
-- SCHEDULE_REQUEST → schedule detail if accessible.
-- GENERAL → notification detail/list unless explicit safe target exists.
-
-If referenced resource is unavailable:
-- show a graceful "This item is no longer available" state;
-- do not crash or loop.
-
-## 9. Back behavior
-
-Android hardware back:
-- close sheet/modal first;
-- pop stack second;
-- if at tab root, follow normal app exit behavior;
-- protect unsaved forms.
-
-Never intercept Back globally in a way that traps the user.
-
-## 10. Auth/logout navigation
-
-On logout:
-1. cancel/ignore protected queries;
-2. clear protected caches/state;
-3. sign out Firebase according to chosen auth architecture;
-4. reset navigation to auth root.
-
-Do not leave authenticated screens in back stack.
-
-## 11. Request creation UX
-
-Recommended flow:
-
-```text
-Requests
--> New Request
--> Select Parish
--> Select Document
--> Requirements
--> Applicant/Request Details
--> Attachments
--> Review
--> Create/Submit according to backend draft flow
--> Request Detail
-```
-
-Important: match actual backend draft creation semantics. If a draft must exist before attachment upload, create it at the correct step and retain its server ID.
-
-Do not create multiple drafts when navigating backward/forward.
-
-## 12. Payment flow
-
-```text
-Request Detail
--> Payment Required banner/action
--> Payment Instructions
--> QR enlarge
--> Capture/Select Receipt
--> Review File
--> Upload
--> Under Review state
-```
-
-After upload:
-- route to request detail or payment result;
-- refetch authoritative request/payment state.
-
-## 13. Schedule flow
-
-```text
-Schedule
--> New Schedule Request
--> Parish
--> Service/Event Type
--> Date
--> Available Slots
--> Details/Location if required
--> Review
--> Submit
--> Schedule Detail
-```
-
-When slot conflict occurs at submission:
-- do not keep user on a false success screen;
-- refetch slots and return to selection with explanation.
-
-## 14. Parish discovery
-
-List first, map optional.
-
-Filters may include only data already available from backend.
-
-Potential hierarchy:
-- search;
-- municipality/filter;
-- parish cards;
-- map toggle;
-- detail.
-
-No coordinator-only "edit map" or map-config endpoints.
-
-## 15. Screen transition rules
-
-Use stack push for:
-- details;
-- secondary flows.
-
-Use replace/reset for:
-- completed auth onboarding;
-- logout;
-- expired session requiring reauth.
-
-Do not use replace for normal drill-down because it breaks expected back navigation.
-
-## 16. Unsaved-change protection
-
-Protect:
-- request detail form;
-- schedule form;
-- profile edits where loss is meaningful.
-
-Do not prompt for trivial filter/search state.
+When a deep link is received while the user is logged out, the intended target is preserved in memory and navigated after successful authentication.

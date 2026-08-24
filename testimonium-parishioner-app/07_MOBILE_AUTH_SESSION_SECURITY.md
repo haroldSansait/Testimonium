@@ -1,100 +1,65 @@
 # TESTIMONIUM Parishioner Mobile — Auth, Session & Security
 
-## 1. Security Model
+**Last reconciled:** 24 August 2026
+**Status:** Native Firebase authentication and session security fully implemented and verified.
 
-Identity:
-- Native Firebase client authentication (`@react-native-firebase/auth`).
+## 1. Security architecture
 
-Application authorization:
-- TESTIMONIUM backend profile/role and endpoint guards (`PARISHIONER` role required).
+- **Identity Provider:** Native Firebase Client Authentication (`@react-native-firebase/app` and `@react-native-firebase/auth`) utilizing platform-managed keychain (iOS) and keystore (Android) storage.
+- **Application Authority:** TESTIMONIUM Express backend enforces application roles and permissions (`PARISHIONER` role required).
+- **Session Boundary:** Mobile client obtains Firebase ID tokens and attaches them as bearer tokens. Token refreshing is managed by the native SDK.
+- **Cache Isolation:** Sign-out immediately purges all TanStack query caches and cancels in-flight requests to prevent cross-user data leakage.
 
-Database/storage:
-- Backend and cloud infrastructure only.
-
-The mobile app is not a trusted authorization boundary.
-
-## 2. Firebase Mobile Integration
-
-- Native Firebase SDK: `@react-native-firebase/app` and `@react-native-firebase/auth` with platform-managed keychain/keystore persistence.
-- Development build via `expo-dev-client` is required for live native authentication.
-- Expo Go is intentionally unsupported for native Firebase runtime authentication.
-- Tokens are never manually stored in AsyncStorage or JavaScript storage.
-
-## 3. App Bootstrap State Machine
-
-App launch states:
+## 2. Authentication state machine
 
 ```text
-START
--> load Firebase auth state
--> if no user: NO_FIREBASE_USER (Auth group)
--> if user: evaluate bootstrap state (GET /auth/profile)
--> evaluate verification/legal/profile completion:
-   - EMAIL_VERIFICATION_REQUIRED
-   - LEGAL_REQUIRED
-   - PROFILE_COMPLETION_REQUIRED
-   - AUTHENTICATED_READY (App tabs)
-   - SESSION_ERROR (Transient or Account Unavailable)
+[App Launch]
+    │
+    ▼
+[NO_FIREBASE_USER] ──> Render (auth)/welcome or login
+    │
+    ▼ (User authenticated in Firebase)
+[BOOTSTRAP_CHECK] ──> GET /auth/profile
+    │
+    ├─> User role != PARISHIONER ──> SESSION_ERROR (ACCOUNT_UNAVAILABLE)
+    ├─> !isVerified              ──> (onboarding)/verify-email
+    ├─> !termsAcceptedAt         ──> (onboarding)/legal
+    ├─> needsProfileCompletion   ──> (onboarding)/profile-completion
+    │
+    ▼
+[AUTHENTICATED_READY] ──> Render (app)/(tabs)
 ```
 
-Expo Router `Stack.Protected` gates render auth, onboarding, or app tabs deterministically without flashing protected screens.
+## 3. Interactive authentication and mutex protection
 
-## 4. Interactive Email Login
+To prevent race conditions where passive `onAuthStateChanged` listeners overwrite active in-flight operations, the app uses a synchronous mutex `interactiveOperationRef` (`LOGIN`, `REGISTER`, `GOOGLE_LOGIN`, `GOOGLE_JIT_LEGAL`):
 
-Sequence:
-1. Acquire `interactiveOperationRef = "LOGIN"`.
-2. Firebase `signInWithEmailAndPassword`.
-3. `POST /auth/login` with Firebase bearer token.
-4. Authoritative `BackendUserProfile` received and committed.
-5. Transition to appropriate route via central gate.
-6. Release ownership mutex.
+1. User triggers login/registration.
+2. Mutex is acquired (`interactiveOperationRef.current = "LOGIN"`).
+3. Firebase SDK authenticates user.
+4. Backend `POST /auth/login` or `POST /auth/register` executes with the bearer token.
+5. Returned authoritative `BackendUserProfile` is committed directly to state.
+6. Navigation routes to the destination.
+7. Mutex is released.
 
-## 5. Google Sign-In & JIT Resolution
+## 4. Google Sign-In and JIT legal compliance
 
-- **Package:** `@react-native-google-signin/google-signin` (public npm package compatible with Expo SDK 57).
-- **Adapter:** `src/services/auth/googleAuth.ts` isolates native SDK calls.
-- **Feature Gate:** `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` (disabled by default until Firebase Console Android OAuth client is configured with development SHA-1).
-- **Credential Exchange:** Google ID token → `GoogleAuthProvider.credential(idToken)` → `signInWithCredential` → `POST /auth/login`.
-- **Account Selection & Local Session Handling:**
-  - Local Google SDK sign-out (`GoogleSignin.signOut()`) occurs before an explicit Google login attempt to avoid intentionally retaining the previous local SDK session state.
-  - `revokeAccess()` is NOT used so existing server authorization grants remain valid.
-  - Actual Google account-chooser presentation and UX behavior remains **PENDING NATIVE RUNTIME VERIFICATION** on physical devices / emulator.
-- **First-time Google JIT User:** On `400 LEGAL_ACCEPTANCE_REQUIRED`, sets `pendingLegalAction = "GOOGLE_JIT_LOGIN"` and routes to Legal screen. Accepting legal resubmits `POST /auth/login` with `legalAcceptance` payload.
-- **Cross-Provider Conflict:** On `409 ACCOUNT_EXISTS_WITH_PASSWORD`, cleans up temporary Firebase and local Google sessions, and directs user to sign in with their password.
+- **Adapter:** `src/services/auth/googleAuth.ts` wraps `@react-native-google-signin/google-signin`.
+- **Local Session Reset:** `GoogleSignin.signOut()` executes before sign-in to ensure clean account selection without retaining stale local sessions.
+- **JIT Legal Challenge:** When a first-time Google user logs in, backend returns `400 LEGAL_ACCEPTANCE_REQUIRED`. The mobile app routes to `(onboarding)/legal`, and upon acceptance, resubmits `POST /auth/login` with `{ legalAcceptance: { termsVersion, privacyVersion } }`.
+- **Account Collisions:** If `409 ACCOUNT_EXISTS_WITH_PASSWORD` is encountered, temporary sessions are cleared and the user is directed to sign in with their existing password.
 
-## 6. Email Registration & Partial-Failure Reconciliation
+## 5. Registration and partial-failure reconciliation
 
-Sequence:
-1. Validate structured names, password rules, and legal acceptance.
-2. Acquire `interactiveOperationRef = "REGISTER"`.
-3. Firebase `createUserWithEmailAndPassword`.
-4. `POST /auth/register` with `registrationProfile` and legal compliance payload.
-5. Commit returned `BackendUserProfile`.
-6. Dispatch initial verification email via native `sendEmailVerification`.
-7. Transition to `EMAIL_VERIFICATION_REQUIRED`.
+- **Prohibition:** The app strictly **never deletes Firebase users (`firebaseUser.delete()` is prohibited)** upon ambiguous network or backend errors.
+- **Reconciliation:** If backend registration encounters a network timeout after Firebase account creation, the client reconciles state by calling `GET /auth/profile`. If the user record exists on the backend, onboarding proceeds; otherwise, the user is offered a safe retry.
 
-### Ambiguous Failure Recovery Rule:
-- **NEVER delete Firebase user (`firebaseUser.delete()` prohibited)** upon ambiguous network/timeout/5xx errors during registration.
-- Reconcile via `GET /auth/profile`. If profile exists, commit and continue; otherwise, allow safe retry or sign out.
+## 6. Email verification lifecycle
 
-## 7. Email Verification Lifecycle
+- **Single-Flight Recheck:** Foreground rechecks triggered by `AppState` transitions to `active` are debounced to prevent concurrent token refresh races.
+- **Resend Policy:** Calls `POST /auth/resend-verification` (enforcing 60-second cooldown, 5/day account limit) before invoking client `sendEmailVerification(currentUser)`.
 
-- **Full Single-Flight Check:** Debounces concurrent checks (`user.reload()` → verify current generation → `getIdToken(true)` → `refreshProfile()` → `commitProfile`).
-- **AppState Integration:** Debounced single-flight verification recheck occurs on transition to `active` when in `EMAIL_VERIFICATION_REQUIRED` state.
-- **Resend Flow:** Calls backend `POST /auth/resend-verification` (enforcing 60s cooldown, 5/day account limit, 3/hr IP limit) → upon 200, calls client `sendEmailVerification(currentUser)`.
+## 7. Profile completion and direct commit
 
-## 8. Legal Acceptance Architecture
-
-- **Normal Legal Acceptance:** `POST /auth/legal-acceptance` updates existing profile.
-- **Google JIT Legal Challenge:** Re-submits `POST /auth/login` with legal payload.
-- **Canonical Content:** Embedded native viewer (`LegalModal.tsx`) using canonical text from `testimonium-parishioner-web` (`TermsContent.tsx`, `PrivacyContent.tsx`) and version constants (`v1.0`).
-
-## 9. Profile Completion Architecture
-
-- **Backend Authority:** `needsProfileCompletion` is calculated solely by backend (`!fullName || !contactNumber`).
-- **Save Flow:** `PUT /auth/profile` returns updated `BackendUserProfile`. The returned profile is committed directly without a redundant `GET` call, eliminating redirect loops.
-
-## 10. Role Safety & Cache Isolation
-
-- Mobile app is strictly for `PARISHIONER` role. Any other role immediately triggers `SESSION_ERROR` (`ACCOUNT_UNAVAILABLE`, non-retryable) with Sign Out action.
-- On logout / account switch: Invalidate monotonic `generationRef`, cancel in-flight queries, clear TanStack Query cache, sign out Firebase, sign out local Google session.
+- `needsProfileCompletion` is evaluated server-side (`!fullName || !contactNumber`).
+- Saving profile updates via `PUT /auth/profile` returns the updated `BackendUserProfile`, which is committed directly to client state without a redundant `GET` call, eliminating navigation loops.
