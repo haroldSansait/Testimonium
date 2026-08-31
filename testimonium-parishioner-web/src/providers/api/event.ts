@@ -2,7 +2,15 @@ import type { IEventProvider } from "../types";
 import type { Event } from "../../types";
 import { client } from "../../api/client";
 import { getParishImage } from "../../utils/parishImages";
-
+const getManilaYearMonth = (date = new Date()): { year: number; month: number } => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: 'numeric',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return { year: Number(values.year), month: Number(values.month) };
+};
 const mapCategory = (type: string): Event['category'] => {
   const t = String(type).toUpperCase();
   switch (t) {
@@ -27,9 +35,13 @@ const mapCategory = (type: string): Event['category'] => {
   }
 };
 
+const dateOnlyFromBackend = (value?: string): string => {
+  const match = value?.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || '';
+};
+
 const mapBackendEventToFrontend = (e: any): Event => {
-  const dateStr = e.eventDate ? new Date(e.eventDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-  
+  const dateStr = dateOnlyFromBackend(e.eventDate);
   const category = mapCategory(e.eventType);
   const parishName = e.parish?.parishName || e.parishName || 'Main Church';
   const coverImage = getParishImage({ name: parishName, address: e.location });
@@ -44,7 +56,7 @@ const mapBackendEventToFrontend = (e: any): Event => {
     coverImage,
     coverImageAlt: e.title || 'Parish Event',
     startDate: dateStr,
-    endDate: dateStr,
+    endDate: dateOnlyFromBackend(e.endDate) || dateStr,
     startTime: e.startTime || '08:00 AM',
     endTime: e.endTime || '12:00 PM',
     location: e.location || 'Parish Main Church',
@@ -58,21 +70,17 @@ const mapBackendEventToFrontend = (e: any): Event => {
 };
 
 export class ApiEventProvider implements IEventProvider {
+  private async getEventsForMonth(year: number, month: number): Promise<Event[]> {
+    const response = await client.get<any>(`/parish-events/all?year=${year}&month=${month}`);
+    const list = Array.isArray(response)
+      ? response
+      : response?.items || response?.data || [];
+    return list.map(mapBackendEventToFrontend);
+  }
+
   async getEvents(): Promise<Event[]> {
-    try {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-      
-      const response = await client.get<any>(`/parish-events/all?year=${year}&month=${month}`);
-      const list = Array.isArray(response)
-        ? response
-        : response?.items || response?.data || [];
-      return list.map(mapBackendEventToFrontend);
-    } catch (err) {
-      console.error("Failed to fetch API events:", err);
-      return [];
-    }
+    const { year, month } = getManilaYearMonth();
+    return this.getEventsForMonth(year, month);
   }
 
   async getFeaturedEvents(): Promise<Event[]> {

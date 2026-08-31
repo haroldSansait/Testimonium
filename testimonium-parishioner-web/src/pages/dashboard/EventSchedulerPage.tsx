@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CheckCircle, Users } from 'lucide-react';
 import services from '../../providers/factory';
@@ -29,6 +29,10 @@ const SCHEDULING_AVAILABILITY_CONFLICT_CODES = new Set([
   'DAILY_CAPACITY_EXCEEDED',
   'SLOT_CAPACITY_EXCEEDED',
   'SCHEDULE_CONCURRENCY_CONFLICT',
+  'PARISH_CLOSED',
+  'FULLY_BOOKED',
+  'SLOT_NOT_CONFIGURED',
+  'SCHEDULE_CONFLICT',
 ]);
 
 const isSchedulingAvailabilityConflict = (error: unknown) =>
@@ -67,20 +71,84 @@ export const EventSchedulerPage: React.FC = () => {
   const selectedParish = parishes.find((parish) => parish.id === selectedParishId);
   const selectedService = configuration?.services.find((service) => service.eventType === selectedEventType);
 
+  const reqGenRef = useRef(0);
+
   const reloadConfiguration = useCallback(async () => {
     if (!selectedParishId) return;
+    const currentGen = ++reqGenRef.current;
     setLoadingConfiguration(true);
     try {
       const next = await services.scheduler.getSchedulingConfiguration(selectedParishId);
+      if (currentGen !== reqGenRef.current) return;
       setConfiguration(next);
       setSelectedEventType((current) => next.services.some((service) => service.eventType === current) ? current : '');
     } catch {
+      if (currentGen !== reqGenRef.current) return;
       setConfiguration(null);
       setMessage('Could not load this parish scheduling configuration. Please try again.');
     } finally {
-      setLoadingConfiguration(false);
+      if (currentGen === reqGenRef.current) {
+        setLoadingConfiguration(false);
+      }
     }
   }, [selectedParishId]);
+
+  const revalidateSchedulingState = useCallback(async () => {
+    if (!selectedParishId) return;
+    const currentGen = ++reqGenRef.current;
+
+    try {
+      const nextConfig = await services.scheduler.getSchedulingConfiguration(selectedParishId);
+      if (currentGen !== reqGenRef.current) return;
+      setConfiguration(nextConfig);
+
+      // Downstream Check 1: Is currently selected service still offered?
+      if (!selectedEventType) {
+        return;
+      }
+      const isServiceValid = nextConfig.services.some((s) => s.eventType === selectedEventType);
+      if (!isServiceValid) {
+        // Service is no longer enabled -> clear service, date, time
+        setSelectedEventType('');
+        setSelectedDate('');
+        setSelectedTimeSlot('');
+        setAvailability(null);
+        setAvailableSlots([]);
+        return;
+      }
+
+      // Revalidate available dates for current service
+      const nextDates = await services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType);
+      if (currentGen !== reqGenRef.current) return;
+      setAvailability(nextDates);
+
+      // Downstream Check 2: Is currently selected date still available?
+      if (!selectedDate) {
+        return;
+      }
+      const isDateValid = nextDates.dates.includes(selectedDate);
+      if (!isDateValid) {
+        // Date is no longer available -> clear date, time
+        setSelectedDate('');
+        setSelectedTimeSlot('');
+        setAvailableSlots([]);
+        return;
+      }
+
+      // Revalidate available slots for current date
+      const nextSlots = await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType);
+      if (currentGen !== reqGenRef.current) return;
+      setAvailableSlots(nextSlots);
+
+      // Downstream Check 3: Is currently selected slot still available?
+      if (selectedTimeSlot && !nextSlots.includes(selectedTimeSlot)) {
+        // Time slot is no longer available -> clear time only
+        setSelectedTimeSlot('');
+      }
+    } catch {
+      // Non-fatal on background focus revalidation; preserve current UI
+    }
+  }, [selectedParishId, selectedEventType, selectedDate, selectedTimeSlot]);
 
   const fetchProposal = useCallback(async () => {
     try {
@@ -113,20 +181,40 @@ export const EventSchedulerPage: React.FC = () => {
 
   useEffect(() => { void fetchProposal(); }, [fetchProposal]);
 
+  // Focus and visibility revalidation with coalescing to avoid duplicate refetch storms
+  useEffect(() => {
+    let lastRefetch = 0;
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible' && selectedParishId) {
+        const now = Date.now();
+        if (now - lastRefetch > 500) {
+          lastRefetch = now;
+          void revalidateSchedulingState();
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
+  }, [revalidateSchedulingState, selectedParishId]);
+
   useEffect(() => {
     if (!selectedParishId || !selectedEventType) {
       setAvailability(null);
       return;
     }
-    let live = true;
+    const currentGen = ++reqGenRef.current;
     setLoadingDates(true);
     setSelectedDate('');
     setSelectedTimeSlot('');
     void services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType)
-      .then((result) => { if (live) setAvailability(result); })
-      .catch(() => { if (live) { setAvailability(null); setMessage('Could not load available dates. Please try again.'); } })
-      .finally(() => { if (live) setLoadingDates(false); });
-    return () => { live = false; };
+      .then((result) => { if (currentGen === reqGenRef.current) setAvailability(result); })
+      .catch(() => { if (currentGen === reqGenRef.current) { setAvailability(null); setMessage('Could not load available dates. Please try again.'); } })
+      .finally(() => { if (currentGen === reqGenRef.current) setLoadingDates(false); });
   }, [selectedEventType, selectedParishId]);
 
   useEffect(() => {
@@ -134,14 +222,13 @@ export const EventSchedulerPage: React.FC = () => {
       setAvailableSlots([]);
       return;
     }
-    let live = true;
+    const currentGen = ++reqGenRef.current;
     setLoadingSlots(true);
     setSelectedTimeSlot('');
     void services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType)
-      .then((result) => { if (live) setAvailableSlots(result); })
-      .catch(() => { if (live) { setAvailableSlots([]); setMessage('Could not load available time slots. Please try again.'); } })
-      .finally(() => { if (live) setLoadingSlots(false); });
-    return () => { live = false; };
+      .then((result) => { if (currentGen === reqGenRef.current) setAvailableSlots(result); })
+      .catch(() => { if (currentGen === reqGenRef.current) { setAvailableSlots([]); setMessage('Could not load available time slots. Please try again.'); } })
+      .finally(() => { if (currentGen === reqGenRef.current) setLoadingSlots(false); });
   }, [selectedDate, selectedEventType, selectedParishId]);
 
   const handleNext = () => {
@@ -171,6 +258,15 @@ export const EventSchedulerPage: React.FC = () => {
       if (isSchedulingAvailabilityConflict(error)) {
         setSelectedTimeSlot('');
         await reloadConfiguration();
+        const nextDates = await services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType);
+        setAvailability(nextDates);
+        if (selectedDate && nextDates.dates.includes(selectedDate)) {
+          setAvailableSlots(await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType));
+        } else {
+          setSelectedDate('');
+          setAvailableSlots([]);
+          setCurrentStep(2);
+        }
         setMessage('Scheduling availability changed before your request was submitted. Please review the current options.');
       } else {
         setMessage(scheduleSubmissionErrorMessage(error));

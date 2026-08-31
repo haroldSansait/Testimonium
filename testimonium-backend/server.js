@@ -33,6 +33,9 @@ import documentRequirementRoutes from "./routes/documentRequirementRoutes.js";
 import parishAvailabilityRoutes from "./routes/parishAvailabilityRoutes.js";
 import massScheduleRoutes from "./routes/massScheduleRoutes.js";
 import parishEventRoutes from "./routes/parishEventRoutes.js";
+import scheduleAvailabilityRoutes from "./routes/scheduleAvailabilityRoutes.js";
+import reportRoutes from "./routes/reportRoutes.js";
+import { EmailOutboxWorker } from "./services/EmailOutboxWorker.js";
 
 const app = express();
 app.set("etag", false);
@@ -100,6 +103,8 @@ app.use(`${apiVersion}/payment`, paymentRoutes);
 app.use(`${apiVersion}/parishes`, parishRoutes);
 app.use(`${apiVersion}/users`, userRoutes);
 app.use(`${apiVersion}/schedule-requests`, scheduleRoutes);
+app.use(`${apiVersion}/schedule-availability`, scheduleAvailabilityRoutes);
+app.use(`${apiVersion}/reports`, reportRoutes);
 app.use(`${apiVersion}/notifications`, notificationRoutes);
 app.use(`${apiVersion}/calendar`, calendarRoutes);
 app.use(`${apiVersion}/activity-log`, activityLogRoutes);
@@ -239,6 +244,7 @@ const server = app.listen(env.port, () => {
   logAuthenticationPolicy();
   logRateLimitSummary();
   validateParishesOnStartup();
+  EmailOutboxWorker.start();
 });
 
 // Graceful Shutdown Management
@@ -253,6 +259,7 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
   server.close(async () => {
     logger.info("[TESTIMONIUM] HTTP server closed.");
     try {
+      await EmailOutboxWorker.stop();
       await prisma.$disconnect();
       logger.info("[TESTIMONIUM] Prisma DB connection closed.");
     } catch (err) {

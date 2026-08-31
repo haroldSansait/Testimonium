@@ -1,7 +1,5 @@
 import { ScheduleRepository } from "../repositories/ScheduleRepository.js";
 import { prisma } from "../config/db.js";
-import { logger } from "../config/logger.js";
-import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { ConflictHelper, parseManilaDateTime, parseManilaDateOnly, getManilaDateString, formatManilaTimeSlot } from "./ConflictHelper.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
@@ -20,8 +18,59 @@ import {
 } from "./BookingValidator.js";
 import { resolveEventMetadata } from "../shared/EventTypeCatalog.js";
 import { getParishSchedulingConfiguration, requireEnabledSchedulingService } from "./SchedulingConfiguration.js";
+import {
+  evaluateSchedulingRules,
+  loadSchedulingRules,
+  lockParishSchedulingConfiguration,
+} from "./SchedulingAvailability.js";
 
 const TERMINAL_STATUSES = ["COMPLETED", "CANCELLED", "REJECTED"];
+
+function authorizeStaffScheduleMutation(actorRole, actorParishId, scheduleParishId, action) {
+  if (actorRole === "DIOCESE_COORDINATOR") return;
+  if (!["SECRETARY", "PRIEST"].includes(actorRole)) {
+    const error = new Error(`You do not have permission to ${action} schedule requests.`);
+    error.statusCode = 403;
+    error.code = "FORBIDDEN";
+    throw error;
+  }
+  if (!actorParishId || Number(scheduleParishId) !== Number(actorParishId)) {
+    const error = new Error(`You do not have permission to ${action} schedules from another parish.`);
+    error.statusCode = 403;
+    error.code = "FORBIDDEN";
+    throw error;
+  }
+}
+
+/**
+ * Enforcement invariant: a schedule MUST NOT reach CONFIRMED unless a priest
+ * is assigned AND has explicitly accepted the assignment.
+ *
+ * The canonical accepted value is 'ACCEPTED' — matching priestResponseStatus
+ * set by PriestAssignmentHandler and respondPriestAssignment().
+ *
+ * @param {object} schedule - Current schedule record from DB
+ * @throws 422 domain error if the invariant is not satisfied
+ */
+function requirePriestAccepted(schedule) {
+  if (!schedule.assignedPriestId) {
+    const err = new Error(
+      "A priest must be assigned to this schedule before it can be confirmed."
+    );
+    err.statusCode = 422;
+    err.code = "PRIEST_ASSIGNMENT_REQUIRED";
+    throw err;
+  }
+  if (schedule.priestResponseStatus !== "ACCEPTED") {
+    const err = new Error(
+      "The assigned priest has not yet accepted this assignment. " +
+        "Confirmation is only allowed after the priest accepts."
+    );
+    err.statusCode = 422;
+    err.code = "PRIEST_ASSIGNMENT_PENDING";
+    throw err;
+  }
+}
 
 /**
  * Checks whether a schedule occurrence has elapsed based on exact time in Asia/Manila.
@@ -248,6 +297,7 @@ export class ScheduleService {
         eventSettings: true,
         officeHours: true,
         venueCapacity: true,
+        schedulingConfigVersion: true,
         updatedAt: true,
       },
     });
@@ -283,6 +333,7 @@ export class ScheduleService {
         : null,
       venueCapacity: config.venueCapacity,
       horizonDays: MAX_HORIZON_DAYS,
+      schedulingConfigVersion: parish.schedulingConfigVersion,
       configurationUpdatedAt: parish.updatedAt?.toISOString?.() || null,
     };
   }
@@ -312,6 +363,11 @@ export class ScheduleService {
           where: {
             type: { in: PARISH_BOOKING_BLOCK_TYPES },
           },
+        },
+        weekdayRules: true,
+        serviceWeekdayRules: true,
+        scheduleDateRules: {
+          include: { serviceOverrides: true },
         },
       },
     });
@@ -385,7 +441,23 @@ export class ScheduleService {
         continue; // Blocked
       }
 
-      // 3. Check if at least one allowable slot has remaining capacity
+      // 3. Persisted date and weekday rules. Date-specific rules override
+      // weekly settings, but never bypass operational blocks above.
+      try {
+        evaluateSchedulingRules({
+          eventType: canonicalEventType,
+          dateInput: currDateStr,
+          weekdayRules: parish.weekdayRules,
+          serviceWeekdayRules: parish.serviceWeekdayRules,
+          dateRule: parish.scheduleDateRules.find(
+            (rule) => getManilaDateString(new Date(rule.exceptionDate)) === currDateStr
+          ),
+        });
+      } catch {
+        continue;
+      }
+
+      // 4. Check if at least one allowable slot has remaining capacity
       const bookingsOnDate = bookingsByDate.get(currDateStr) || [];
       if (bookingsOnDate.length >= schedulingConfig.dailyCapacity) {
         continue; // Daily capacity full
@@ -451,6 +523,12 @@ export class ScheduleService {
         availabilities: {
           where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } },
         },
+        weekdayRules: true,
+        serviceWeekdayRules: true,
+        scheduleDateRules: {
+          where: { exceptionDate: new Date(Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day)) },
+          include: { serviceOverrides: true },
+        },
       },
     });
 
@@ -475,6 +553,18 @@ export class ScheduleService {
     // parish-wide, so this applies to every enabled service.
     try {
       validateParishAvailability(parish.availabilities, horizon.dateStr);
+    } catch {
+      return [];
+    }
+
+    try {
+      evaluateSchedulingRules({
+        eventType: canonicalEventType,
+        dateInput: horizon.dateStr,
+        weekdayRules: parish.weekdayRules,
+        serviceWeekdayRules: parish.serviceWeekdayRules,
+        dateRule: parish.scheduleDateRules[0] || null,
+      });
     } catch {
       return [];
     }
@@ -606,6 +696,9 @@ export class ScheduleService {
     try {
       const result = await prisma.$transaction(
         async (tx) => {
+          // Booking and Admin configuration writes serialize on the same
+          // authoritative parish row before configuration is read.
+          await lockParishSchedulingConfiguration(tx, parsedParishId);
           // Revalidate parish within transaction
           const parish = await tx.parish.findUnique({
             where: { id: parsedParishId },
@@ -619,6 +712,12 @@ export class ScheduleService {
 
           validateParishAndOffice(parish, horizon.dayName, timeSlot);
           validateParishAvailability(parish.availabilities, horizon.dateStr);
+          const schedulingRules = await loadSchedulingRules(tx, parsedParishId, horizon.dateStr);
+          evaluateSchedulingRules({
+            eventType: canonicalEventType,
+            dateInput: horizon.dateStr,
+            ...schedulingRules,
+          });
 
           // Count active bookings on that date
           const dateStartUtc = new Date(
@@ -684,6 +783,18 @@ export class ScheduleService {
             });
           }
 
+          await NotificationDispatcher.notifyScheduleChange({
+            parishionerId: created.userId,
+            parishId: created.parishId,
+            scheduleId: created.id,
+            displayTitle: created.displayTitle || canonicalEventType,
+            oldStatus: null,
+            newStatus: created.status,
+            proposalVersion: created.proposalVersion,
+            transitionVersion: "submitted",
+            notifyAdmins: true,
+          }, tx);
+
           return created;
         },
         {
@@ -695,13 +806,26 @@ export class ScheduleService {
 
       return { schedule: result, isReplay: false };
     } catch (err) {
+      const isSerializationConflict =
+        err?.code === "P2034" ||
+        err?.message?.includes("Serialization") ||
+        err?.message?.includes("could not serialize");
+
       // Catch idempotency race or transaction serialization conflict
-      if (idempotencyKey && IdempotencyService.isUniqueConstraintError(err)) {
-        const raceWinner = await IdempotencyService.findRecord(
-          parsedUserId,
-          idempotencyKey,
-          "SCHEDULE_CREATE"
-        );
+      if (idempotencyKey && (IdempotencyService.isUniqueConstraintError(err) || isSerializationConflict)) {
+        let raceWinner = null;
+        const lookupAttempts = isSerializationConflict ? 5 : 1;
+        for (let attempt = 0; attempt < lookupAttempts; attempt += 1) {
+          raceWinner = await IdempotencyService.findRecord(
+            parsedUserId,
+            idempotencyKey,
+            "SCHEDULE_CREATE"
+          );
+          if (raceWinner) break;
+          if (attempt + 1 < lookupAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+          }
+        }
         if (raceWinner) {
           if (raceWinner.payloadHash !== payloadHash) {
             const conflictErr = new Error(
@@ -724,7 +848,7 @@ export class ScheduleService {
         }
       }
 
-      if (err?.code === "P2034" || err?.message?.includes("Serialization") || err?.message?.includes("could not serialize")) {
+      if (isSerializationConflict) {
         const conflictErr = new Error("Slot booking contention detected. Please retry your request.");
         conflictErr.statusCode = 409;
         conflictErr.code = "SCHEDULE_CONCURRENCY_CONFLICT";
@@ -829,6 +953,7 @@ export class ScheduleService {
     try {
       const updated = await prisma.$transaction(
         async (tx) => {
+          await lockParishSchedulingConfiguration(tx, schedule.parishId);
           // 1. Re-read schedule state within transaction
           const current = await tx.schedule.findUnique({
             where: { id: parsedId },
@@ -852,6 +977,12 @@ export class ScheduleService {
           // 2. Revalidate office hours and parish-wide availability using the shared validator
           validateParishAndOffice(current.parish, horizon.dayName, proposedSlot);
           validateParishAvailability(current.parish.availabilities, horizon.dateStr);
+          const schedulingRules = await loadSchedulingRules(tx, current.parishId, horizon.dateStr);
+          evaluateSchedulingRules({
+            eventType: current.eventType,
+            dateInput: horizon.dateStr,
+            ...schedulingRules,
+          });
 
           // 3. Count active bookings on the proposed replacement date (excluding this schedule itself)
           const dateStartUtc = new Date(
@@ -917,6 +1048,9 @@ export class ScheduleService {
             .filter(Boolean)
             .join(" ");
 
+          // Invariant: CONFIRMED requires an assigned priest who has ACCEPTED.
+          requirePriestAccepted(current);
+
           const result = await tx.schedule.update({
             where: { id: parsedId },
             data: {
@@ -938,6 +1072,18 @@ export class ScheduleService {
               assignedPriest: { select: { id: true, fullName: true } },
             },
           });
+
+          await NotificationDispatcher.notifyScheduleChange({
+            parishionerId: result.userId,
+            parishId: result.parishId,
+            scheduleId: result.id,
+            displayTitle: result.displayTitle || result.eventType,
+            oldStatus: current.status,
+            newStatus: result.status,
+            proposalVersion: result.proposalVersion,
+            transitionVersion: result.updatedAt.toISOString(),
+            schedule: result,
+          }, tx);
 
           return result;
         },
@@ -983,29 +1129,59 @@ export class ScheduleService {
       throw err;
     }
 
-    if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
-      if (actorParishId && schedule.parishId !== actorParishId) {
-        const err = new Error("You do not have permission to update schedules from another parish.");
-        err.statusCode = 403;
-        err.code = "FORBIDDEN";
-        throw err;
+    authorizeStaffScheduleMutation(actorRole, actorParishId, schedule.parishId, "update");
+
+    return prisma.$transaction(
+      async (tx) => {
+        const current = await tx.schedule.findUnique({ where: { id: parsedId } });
+        if (!current) {
+          const err = new Error("Schedule request not found.");
+          err.statusCode = 404;
+          err.code = "SCHEDULE_NOT_FOUND";
+          throw err;
+        }
+        authorizeStaffScheduleMutation(actorRole, actorParishId, current.parishId, "update");
+        if (current.status === status) {
+          return tx.schedule.findUnique({
+            where: { id: parsedId },
+            include: {
+              user: { select: { id: true, fullName: true, email: true } },
+              parish: { select: { id: true, parishName: true } },
+              assignedPriest: { select: { id: true, fullName: true } },
+            },
+          });
+        }
+        // Invariant: CONFIRMED requires an assigned priest who has ACCEPTED.
+        if (status === "CONFIRMED") {
+          requirePriestAccepted(current);
+        }
+        const updated = await tx.schedule.update({
+          where: { id: parsedId },
+          data: { status, processedById: parseInt(processedById, 10) },
+          include: {
+            user: { select: { id: true, fullName: true, email: true } },
+            parish: { select: { id: true, parishName: true } },
+            assignedPriest: { select: { id: true, fullName: true } },
+          },
+        });
+        await NotificationDispatcher.notifyScheduleChange({
+          parishionerId: updated.userId,
+          parishId: updated.parishId,
+          scheduleId: updated.id,
+          displayTitle: updated.displayTitle || updated.eventType,
+          oldStatus: current.status,
+          newStatus: updated.status,
+          proposalVersion: updated.proposalVersion,
+          transitionVersion: updated.updatedAt.toISOString(),
+          schedule: updated,
+        }, tx);
+        return updated;
+      },
+      {
+        maxWait: 5000,
+        timeout: 15000,
       }
-    }
-
-    const updated = await prisma.schedule.update({
-      where: { id: parsedId },
-      data: {
-        status,
-        processedById: parseInt(processedById, 10),
-      },
-      include: {
-        user: { select: { id: true, fullName: true, email: true } },
-        parish: { select: { id: true, parishName: true } },
-        assignedPriest: { select: { id: true, fullName: true } },
-      },
-    });
-
-    return updated;
+    );
   }
 
   /**
@@ -1031,14 +1207,7 @@ export class ScheduleService {
       throw err;
     }
 
-    if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
-      if (actorParishId && schedule.parishId !== actorParishId) {
-        const err = new Error("You do not have permission to propose reschedules for another parish.");
-        err.statusCode = 403;
-        err.code = "FORBIDDEN";
-        throw err;
-      }
-    }
+    authorizeStaffScheduleMutation(actorRole, actorParishId, schedule.parishId, "propose reschedules for");
 
     if (!proposedDate) {
       const err = new Error("proposedDate is required.");
@@ -1053,24 +1222,51 @@ export class ScheduleService {
       Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
     );
 
-    const updated = await prisma.schedule.update({
-      where: { id: parsedId },
-      data: {
-        status: "PROPOSED_RESCHEDULE",
-        proposedDate: proposedDateUtc,
-        proposedStartDatetime: proposedStartDatetime ? new Date(proposedStartDatetime) : null,
-        proposedEndDatetime: proposedEndDatetime ? new Date(proposedEndDatetime) : null,
-        rescheduleReason: reason || null,
-        processedById: parseInt(actorId, 10),
+    return prisma.$transaction(
+      async (tx) => {
+        const current = await tx.schedule.findUnique({ where: { id: parsedId } });
+        if (!current) {
+          const err = new Error("Schedule request not found.");
+          err.statusCode = 404;
+          err.code = "SCHEDULE_NOT_FOUND";
+          throw err;
+        }
+        authorizeStaffScheduleMutation(actorRole, actorParishId, current.parishId, "propose reschedules for");
+        const updated = await tx.schedule.update({
+          where: { id: parsedId },
+          data: {
+            status: "PROPOSED_RESCHEDULE",
+            proposedDate: proposedDateUtc,
+            proposedStartDatetime: proposedStartDatetime ? new Date(proposedStartDatetime) : null,
+            proposedEndDatetime: proposedEndDatetime ? new Date(proposedEndDatetime) : null,
+            rescheduleReason: reason || null,
+            processedById: parseInt(actorId, 10),
+            proposalVersion: { increment: 1 },
+          },
+          include: {
+            user: { select: { id: true, fullName: true, email: true } },
+            parish: { select: { id: true, parishName: true } },
+            assignedPriest: { select: { id: true, fullName: true } },
+          },
+        });
+        await NotificationDispatcher.notifyScheduleChange({
+          parishionerId: updated.userId,
+          parishId: updated.parishId,
+          scheduleId: updated.id,
+          displayTitle: updated.displayTitle || updated.eventType,
+          oldStatus: current.status,
+          newStatus: updated.status,
+          proposalVersion: updated.proposalVersion,
+          transitionVersion: updated.updatedAt.toISOString(),
+          schedule: updated,
+        }, tx);
+        return updated;
       },
-      include: {
-        user: { select: { id: true, fullName: true, email: true } },
-        parish: { select: { id: true, parishName: true } },
-        assignedPriest: { select: { id: true, fullName: true } },
-      },
-    });
-
-    return updated;
+      {
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
   }
 
   /**
@@ -1098,19 +1294,19 @@ export class ScheduleService {
       throw err;
     }
 
-    if (["SECRETARY", "PRIEST", "STAFF"].includes(actorRole)) {
-      if (actorParishId && schedule.parishId !== actorParishId) {
-        const err = new Error("You do not have permission to assign priests for another parish.");
-        err.statusCode = 403;
-        err.code = "FORBIDDEN";
-        throw err;
-      }
-    }
+    authorizeStaffScheduleMutation(actorRole, actorParishId, schedule.parishId, "assign priests for");
+
+    // Capture prior priest before update to detect genuine new assignments.
+    const previousPriestId = schedule.assignedPriestId;
 
     const updated = await prisma.schedule.update({
       where: { id: parsedId },
       data: {
         assignedPriestId: parsedPriestId,
+        // Reset priest response to null on new assignment so the prior priest's
+        // ACCEPTED status cannot be inherited by a newly assigned priest.
+        priestResponseStatus: previousPriestId !== parsedPriestId ? null : schedule.priestResponseStatus,
+        priestResponseReason: previousPriestId !== parsedPriestId ? null : schedule.priestResponseReason,
         processedById: parseInt(actorId, 10),
       },
       include: {
@@ -1119,6 +1315,18 @@ export class ScheduleService {
         assignedPriest: { select: { id: true, fullName: true } },
       },
     });
+
+    // Notify priest of new assignment (skip no-op same-priest reassignments).
+    if (previousPriestId !== parsedPriestId) {
+      await NotificationDispatcher.notifyPriestAssigned({
+        parishionerId: updated.userId,
+        parishId: updated.parishId,
+        scheduleId: updated.id,
+        displayTitle: updated.displayTitle || updated.eventType,
+        priestId: parsedPriestId,
+        priestName: updated.assignedPriest?.fullName || "Assigned Priest",
+      });
+    }
 
     return updated;
   }

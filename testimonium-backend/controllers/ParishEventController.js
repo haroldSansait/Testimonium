@@ -51,12 +51,6 @@ export const list = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     let parishId = getEffectiveParishId(req, req.body.parishId);
-    if (req.user.role === "DIOCESE_COORDINATOR" && !parishId) {
-      const defaultParish = await prisma.parish.findFirst({ select: { id: true } });
-      if (defaultParish) {
-        parishId = defaultParish.id;
-      }
-    }
 
     if (!parishId) {
       return res.status(400).json({ success: false, message: "Parish ID is required for this action." });

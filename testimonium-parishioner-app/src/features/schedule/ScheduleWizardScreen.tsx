@@ -247,11 +247,12 @@ export const ScheduleWizardScreen: React.FC = () => {
       ].includes(code);
       const dateChanged = [
         "OFFICE_CLOSED", "OUTSIDE_OFFICE_HOURS", "SERVICE_BLOCKED", "DATE_IN_PAST",
-        "DATE_OUT_OF_HORIZON", "TIME_IN_PAST",
+        "DATE_OUT_OF_HORIZON", "TIME_IN_PAST", "PARISH_CLOSED",
       ].includes(code);
       const slotChanged = [
         "INVALID_TIME_SLOT", "DAILY_CAPACITY_EXCEEDED", "SLOT_CAPACITY_EXCEEDED",
-        "SCHEDULE_CONCURRENCY_CONFLICT",
+        "SCHEDULE_CONCURRENCY_CONFLICT", "FULLY_BOOKED", "SLOT_NOT_CONFIGURED",
+        "SCHEDULE_CONFLICT",
       ].includes(code);
 
       const availabilityChanged = configurationChanged || dateChanged || slotChanged;

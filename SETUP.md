@@ -195,6 +195,24 @@ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=
 
 ## 5. Database Migration & Seeding
 
+### Transactional email
+
+The backend stores mandatory email in PostgreSQL before delivery. Configure generic SMTP in the backend environment:
+
+    SMTP_HOST=smtp.example.org
+    SMTP_PORT=587
+    SMTP_SECURE=false
+    SMTP_USER=service-account
+    SMTP_PASSWORD=secret-from-your-secret-manager
+    SMTP_FROM_NAME=TESTIMONIUM
+    SMTP_FROM_EMAIL=no-reply@example.org
+    EMAIL_WORKER_POLL_MS=5000
+    EMAIL_WORKER_BATCH_SIZE=10
+    EMAIL_WORKER_LEASE_SECONDS=120
+    EMAIL_MAX_ATTEMPTS=8
+
+If SMTP is absent, the API continues to commit business transitions and queued outbox rows remain durable. Never commit SMTP credentials. Before enabling delivery, deploy the planned-additions migration, verify sender authorization with the provider, and monitor queued/retry/failed outbox counts.
+
 Once the `DATABASE_URL` is set in `testimonium-backend/.env`, apply Prisma migrations and seed the initial parishes, roles, staff accounts, schedules, and test events:
 
 ```bash

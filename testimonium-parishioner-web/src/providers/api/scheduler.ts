@@ -85,9 +85,15 @@ const mapAppointment = (s: any): Appointment => {
     proposedTimeStr = `${hourStr}:${minStr} ${period}`;
   }
 
+  const assignedPriestId = s.assignedPriestId || s.assignedPriest?.id || null;
+  const assignedPriestName = s.assignedPriest?.fullName || null;
+  const priestResponseStatus = s.priestResponseStatus || null;
+  const parishName = s.parish?.parishName || s.parishName || undefined;
+
   return {
     id: String(s.id),
     parishId: String(s.parishId),
+    parishName,
     serviceName,
     date: s.requestedDate ? new Date(s.requestedDate).toISOString().split("T")[0] : "",
     timeSlot,
@@ -98,6 +104,9 @@ const mapAppointment = (s: any): Appointment => {
     proposedDate: proposedDateStr,
     proposedTime: proposedTimeStr,
     rescheduleReason: s.rescheduleReason || undefined,
+    assignedPriestId,
+    assignedPriestName,
+    priestResponseStatus,
   };
 };
 
@@ -156,6 +165,12 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
 
   async respondReschedule(id: string, accept: boolean): Promise<Appointment> {
     const response = await client.post<any>(`/schedule-requests/${id}/respond-reschedule`, { accept });
+    const item = response?.data !== undefined ? response.data : response;
+    return mapAppointment(item);
+  }
+
+  async getAppointmentById(id: string): Promise<Appointment> {
+    const response = await client.get<any>(`/schedule-requests/${id}`);
     const item = response?.data !== undefined ? response.data : response;
     return mapAppointment(item);
   }

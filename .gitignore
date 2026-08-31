@@ -21,9 +21,11 @@
 **/.env.*.local
 **/.env.*
 !testimonium-parishioner-app/.env.example
+!testimonium-backend/.env.example
 
 # Prisma Client Database Specific Exclusions (Fixed subfolder tracking)
 **/prisma/migrations/**/*.sql
+!testimonium-backend/prisma/migrations/20260829090000_planned_additions/migration.sql
 **/prisma/*.db
 **/prisma/*.db-journal
 

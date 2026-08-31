@@ -28,6 +28,9 @@ interface BackendScheduleDTO {
   } | null;
   remarks?: string | null;
   sourceType?: string;
+  location?: string | null;
+  visibility?: 'PUBLIC' | 'PARISH_PRIVATE';
+  version?: number | null;
 }
 
 export const ApiCalendarProvider: CalendarProvider = {
@@ -91,7 +94,7 @@ export const ApiCalendarProvider: CalendarProvider = {
         month: reqDate.getMonth(), // keep 0-indexed for frontend CalendarGrid mapping
         year: reqDate.getFullYear(),
         time: timeStr,
-        title: dbItem.sourceType === 'MASS' ? `${appointmentTitle}` : `${appointmentTitle}: ${requestorName}`,
+        title: dbItem.sourceType === 'MASS' || dbItem.sourceType === 'PARISH_EVENT' ? appointmentTitle : `${appointmentTitle}: ${requestorName}`,
         category,
         parish: dbItem.parish?.parishName || 'Main Church',
         priest: dbItem.assignedPriest?.fullName || dbItem.processedBy?.fullName || 'TBD',
@@ -100,6 +103,10 @@ export const ApiCalendarProvider: CalendarProvider = {
         requestor: requestorName,
         status: dbItem.status.charAt(0) + dbItem.status.slice(1).toLowerCase(),
         description: dbItem.remarks || 'Official schedule request event.',
+        location: dbItem.location || undefined,
+        sourceType: dbItem.sourceType,
+        visibility: dbItem.visibility,
+        version: dbItem.version,
       };
     });
   },

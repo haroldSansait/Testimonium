@@ -33,6 +33,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 
 import { downloadIcsFile, buildGoogleCalendarUrl, getUpcomingEvent } from '@/utils/calendarExport';
 import { ParishManagementService } from '@/services/ParishManagementService';
+import { to24Hour, to12Hour, isValidTimeRange } from '@/utils/date';
 import type { CalendarEvent, ManagedUser, Parish } from '@/types';
 
 const MONTH_NAMES = [
@@ -174,16 +175,28 @@ interface EventDetailsModalProps {
 function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModalProps) {
   const dateStr = `${MONTH_NAMES[event.month]} ${event.day}, ${event.year}`;
   
-  const canEdit = role === 'DIOCESE_COORDINATOR' && (event.id.startsWith('event-vicariate-meeting-') || event.title.includes('Vicariate Meeting'));
+  const canEdit = (role === 'DIOCESE_COORDINATOR' || role === 'SECRETARY') && event.sourceType === 'PARISH_EVENT';
   
   const [isEditing, setIsEditing] = useState(false);
   const [editLocation, setEditLocation] = useState(event.location || event.parish || 'Vicariate Pastoral Center (Default)');
   const [editDescription, setEditDescription] = useState(event.description || '');
-  const [editStartTime, setEditStartTime] = useState(event.time ? event.time.split(' - ')[0] : '09:00 AM');
-  const [editEndTime, setEditEndTime] = useState(event.time ? event.time.split(' - ')[1] : '12:00 PM');
+
+  const initialStartTime = event.time && event.time.includes(' - ')
+    ? event.time.split(' - ')[0]
+    : event.time && event.time !== 'All Day' ? event.time : '09:00 AM';
+  const initialEndTime = event.time && event.time.includes(' - ')
+    ? event.time.split(' - ')[1]
+    : '12:00 PM';
+
+  const [editStartTime, setEditStartTime] = useState(() => to24Hour(initialStartTime) || '09:00');
+  const [editEndTime, setEditEndTime] = useState(() => to24Hour(initialEndTime) || '12:00');
+  const [editVisibility, setEditVisibility] = useState<'PUBLIC' | 'PARISH_PRIVATE'>(event.visibility || 'PUBLIC');
   const [saving, setSaving] = useState(false);
 
+  const isEditTimeRangeInvalid = Boolean(editStartTime && editEndTime && !isValidTimeRange(editStartTime, editEndTime));
+
   const handleSave = async () => {
+    if (isEditTimeRangeInvalid) return;
     setSaving(true);
     try {
       const isDynamic = event.id.startsWith('event-vicariate-meeting-');
@@ -191,10 +204,12 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
         title: "Vicariate Meeting",
         eventType: "OTHER",
         eventDate: `${event.year}-${String(event.month + 1).padStart(2, '0')}-${String(event.day).padStart(2, '0')}`,
-        startTime: editStartTime,
-        endTime: editEndTime,
+        startTime: to12Hour(editStartTime),
+        endTime: to12Hour(editEndTime),
         location: editLocation,
         description: editDescription,
+        visibility: editVisibility,
+        ...(!isDynamic && event.version ? { expectedVersion: event.version } : {}),
       };
 
       if (isDynamic) {
@@ -245,6 +260,13 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
           {isEditing ? (
             <div className="space-y-4 text-xs font-semibold text-gray-500">
               <div className="space-y-1.5">
+                <label className="block uppercase tracking-wider">Visibility</label>
+                <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value as 'PUBLIC' | 'PARISH_PRIVATE')} className="w-full p-2.5 border border-gray-200 rounded-lg bg-white text-gray-800 font-medium">
+                  <option value="PUBLIC">Public</option>
+                  <option value="PARISH_PRIVATE">Parish private</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <label className="block uppercase tracking-wider">Location Settings</label>
                 <input
                   type="text"
@@ -258,7 +280,7 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
                 <div className="space-y-1.5">
                   <label className="block uppercase tracking-wider">Start Time</label>
                   <input
-                    type="text"
+                    type="time"
                     value={editStartTime}
                     onChange={(e) => setEditStartTime(e.target.value)}
                     className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
@@ -268,7 +290,7 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
                 <div className="space-y-1.5">
                   <label className="block uppercase tracking-wider">End Time</label>
                   <input
-                    type="text"
+                    type="time"
                     value={editEndTime}
                     onChange={(e) => setEditEndTime(e.target.value)}
                     className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
@@ -276,6 +298,11 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
                   />
                 </div>
               </div>
+              {isEditTimeRangeInvalid && (
+                <p className="text-red-600 text-[11px] font-semibold">
+                  End time must be later than start time.
+                </p>
+              )}
               <div className="space-y-1.5">
                 <label className="block uppercase tracking-wider">Description</label>
                 <textarea
@@ -349,7 +376,8 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Description</span>
                 <p className="text-gray-600 mt-1 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100 text-xs">
                   {event.description || 'No description provided.'}
-                </p>
+                 </p>
+                 {event.sourceType === 'PARISH_EVENT' && <p className="mt-2 text-xs font-semibold text-gray-500">Visibility: {event.visibility === 'PARISH_PRIVATE' ? 'Parish private' : 'Public'}</p>}
               </div>
             </>
           )}
@@ -367,8 +395,8 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
-                className="px-4 py-2 bg-[#7B1C2A] hover:bg-[#9B2C3A] text-white rounded-lg text-xs font-bold"
+                disabled={saving || isEditTimeRangeInvalid}
+                className="px-4 py-2 bg-[#7B1C2A] hover:bg-[#9B2C3A] text-white rounded-lg text-xs font-bold disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save Settings'}
               </button>
@@ -409,14 +437,17 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
   const [title, setTitle] = useState('');
   const [eventType, setEventType] = useState('MASS');
   const [eventDate, setEventDate] = useState('');
-  const [startTime, setStartTime] = useState('09:00 AM');
-  const [endTime, setEndTime] = useState('10:00 AM');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('10:00');
   const [location, setLocation] = useState('Parish Main Church');
   const [priests, setPriests] = useState<any[]>([]);
   const [assignedPriestId, setAssignedPriestId] = useState('');
   const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<'PUBLIC' | 'PARISH_PRIVATE'>('PUBLIC');
   const [loadingPriests, setLoadingPriests] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const isCreateTimeRangeInvalid = Boolean(startTime && endTime && !isValidTimeRange(startTime, endTime));
 
   useEffect(() => {
     const fetchPriests = async () => {
@@ -438,18 +469,20 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCreateTimeRangeInvalid) return;
     setSubmitting(true);
     try {
       await CalendarService.createParishEvent({
         title,
         eventType,
         eventDate,
-        startTime,
-        endTime,
+        startTime: to12Hour(startTime),
+        endTime: to12Hour(endTime),
         location,
         assignedPriestId: assignedPriestId || undefined,
         description,
         parishId: parishId || undefined,
+        visibility,
       });
       onSuccess();
       onClose();
@@ -473,6 +506,13 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
           </button>
         </div>
         <form onSubmit={e => void handleSubmit(e)} className="p-6 overflow-y-auto space-y-4 text-xs font-semibold text-gray-500">
+          <div className="space-y-1.5">
+            <label className="block uppercase tracking-wider">Visibility</label>
+            <select value={visibility} onChange={e => setVisibility(e.target.value as 'PUBLIC' | 'PARISH_PRIVATE')} className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium">
+              <option value="PUBLIC">Public</option>
+              <option value="PARISH_PRIVATE">Parish private</option>
+            </select>
+          </div>
           <div className="space-y-1.5">
             <label className="block uppercase tracking-wider">Event Title</label>
             <input
@@ -519,10 +559,9 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
             <div className="space-y-1.5">
               <label className="block uppercase tracking-wider">Start Time</label>
               <input
-                type="text"
+                type="time"
                 value={startTime}
                 onChange={e => setStartTime(e.target.value)}
-                placeholder="e.g. 09:00 AM"
                 className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
                 required
               />
@@ -530,15 +569,19 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
             <div className="space-y-1.5">
               <label className="block uppercase tracking-wider">End Time</label>
               <input
-                type="text"
+                type="time"
                 value={endTime}
                 onChange={e => setEndTime(e.target.value)}
-                placeholder="e.g. 10:30 AM"
                 className="w-full p-2.5 border border-gray-200 rounded-lg outline-none text-gray-800 font-medium focus:border-[#7B1C2A]"
                 required
               />
             </div>
           </div>
+          {isCreateTimeRangeInvalid && (
+            <p className="text-red-600 text-[11px] font-semibold">
+              End time must be later than start time.
+            </p>
+          )}
 
           <div className="space-y-1.5">
             <label className="block uppercase tracking-wider">Location</label>
@@ -588,8 +631,8 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
             </button>
             <button
               type="submit"
-              disabled={submitting}
-              className="px-4 py-2 bg-[#7B1C2A] hover:bg-[#9B2C3A] text-white rounded-lg font-bold"
+              disabled={submitting || isCreateTimeRangeInvalid}
+              className="px-4 py-2 bg-[#7B1C2A] hover:bg-[#9B2C3A] text-white rounded-lg font-bold disabled:opacity-50"
             >
               {submitting ? 'Creating...' : 'Create Event'}
             </button>

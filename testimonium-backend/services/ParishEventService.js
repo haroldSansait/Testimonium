@@ -1,8 +1,8 @@
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { ConflictHelper } from "./ConflictHelper.js";
-import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
+import { NotificationDispatcher } from "./NotificationDispatcher.js";
 
 function combineDateAndTime(date, timeStr) {
   try {
@@ -11,11 +11,23 @@ function combineDateAndTime(date, timeStr) {
     let [hours, minutes] = hourMin.split(":").map(Number);
     if (period === "PM" && hours < 12) hours += 12;
     if (period === "AM" && hours === 12) hours = 0;
-    d.setHours(hours, minutes, 0, 0);
+    d.setUTCHours(hours, minutes, 0, 0);
     return d;
   } catch (err) {
     return null;
   }
+}
+
+function formatTime(date) {
+  const hours24 = date.getUTCHours();
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const period = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 || 12;
+  return `${String(hours12).padStart(2, "0")}:${minutes} ${period}`;
+}
+
+function formatDateOnly(date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function toPublicEventDto(event) {
@@ -34,6 +46,17 @@ function toPublicEventDto(event) {
       parishName: event.parish.parishName
     } : undefined
   };
+}
+
+function normalizeVisibility(value, fallback = "PUBLIC") {
+  const visibility = value ?? fallback;
+  if (!["PUBLIC", "PARISH_PRIVATE"].includes(visibility)) {
+    const error = new Error("Event visibility must be PUBLIC or PARISH_PRIVATE.");
+    error.statusCode = 400;
+    error.code = "INVALID_EVENT_VISIBILITY";
+    throw error;
+  }
+  return visibility;
 }
 
 export class ParishEventService {
@@ -76,6 +99,7 @@ export class ParishEventService {
         startTime: data.startTime || null,
         endTime: data.endTime || null,
         assignedPriestId: data.assignedPriestId ? parseInt(data.assignedPriestId, 10) : null,
+        visibility: normalizeVisibility(data.visibility),
         isActive: true,
       },
       include: {
@@ -90,18 +114,43 @@ export class ParishEventService {
       newValues: data
     });
 
+    // Notify assigned priest of their new assignment (GENERAL type — no PARISH_EVENT ref in schema).
+    if (event.assignedPriestId) {
+      await NotificationDispatcher._persist(
+        [{
+          userId: event.assignedPriestId,
+          title: "New Pastoral Assignment",
+          message: `You have been assigned to lead the "${event.title}" event at the parish.`,
+          type: "IN_APP",
+          referenceType: "GENERAL",
+          referenceId: null,
+        }],
+        prisma
+      );
+    }
+
     return event;
   }
 
-  async getEvents(parishId, year, month) {
+  async getEvents(parishId, year, month, { publicOnly = false } = {}) {
     const parsedYear = parseInt(year, 10);
     const parsedMonth = parseInt(month, 10);
+    if (
+      !Number.isInteger(parsedYear) || parsedYear < 2000 || parsedYear > 2100 ||
+      !Number.isInteger(parsedMonth) || parsedMonth < 1 || parsedMonth > 12
+    ) {
+      const error = new Error("Invalid year or month. year must be 2000-2100 and month must be 1-12.");
+      error.statusCode = 400;
+      error.code = "INVALID_EVENT_DATE_RANGE";
+      throw error;
+    }
 
-    const startOfMonth = new Date(parsedYear, parsedMonth - 1, 1);
-    const startOfNextMonth = new Date(parsedYear, parsedMonth, 1);
+    const startOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+    const startOfNextMonth = new Date(Date.UTC(parsedYear, parsedMonth, 1));
 
     const whereClause = {
       isActive: true,
+      ...(publicOnly ? { visibility: "PUBLIC" } : {}),
       eventDate: {
         gte: startOfMonth,
         lt: startOfNextMonth
@@ -147,8 +196,8 @@ export class ParishEventService {
     const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
     for (let day = 1; day <= numDays; day++) {
-      const date = new Date(parsedYear, parsedMonth - 1, day);
-      const dayOfWeek = date.getDay();
+      const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, day));
+      const dayOfWeek = date.getUTCDay();
       const currentDayName = dayNames[dayOfWeek];
 
       const dailyTemplates = templates.filter((t) => {
@@ -162,7 +211,7 @@ export class ParishEventService {
         const end = start ? new Date(start.getTime() + 60 * 60 * 1000) : null;
         
         expandedMasses.push({
-          id: `mass-t-${t.id}-${day}`,
+          id: `mass-t-${t.id}-${formatDateOnly(date)}`,
           parishId: t.parishId,
           title: t.label || "Holy Mass",
           eventType: "PRIVATE_MASS", // matches 'Holy Mass' category on frontend mapping
@@ -170,7 +219,7 @@ export class ParishEventService {
           location: "Parish Sanctuary",
           eventDate: date,
           startTime: t.timeSlot,
-          endTime: t.timeSlot,
+          endTime: end ? formatTime(end) : t.timeSlot,
           assignedPriestId: t.assignedPriestId,
           isActive: true,
           parish: t.parish,
@@ -193,56 +242,39 @@ export class ParishEventService {
       return (a.startTime || "").localeCompare(b.startTime || "");
     });
 
-    const getSecretaryForParish = async (pId, creatorId) => {
-      let sec = await prisma.user.findFirst({
-        where: {
-          parishId: pId,
-          status: "ACTIVE",
-          role: { roleName: "SECRETARY" },
-          isAssistant: false,
-        },
-        select: { fullName: true, contactNumber: true },
-      });
-      if (!sec && creatorId) {
-        sec = await prisma.user.findFirst({
+    const parishIds = [...new Set(combined.map((item) => item.parishId).filter(Boolean))];
+    const secretaries = parishIds.length
+      ? await prisma.user.findMany({
           where: {
-            id: creatorId,
+            parishId: { in: parishIds },
             status: "ACTIVE",
             role: { roleName: "SECRETARY" },
           },
-          select: { fullName: true, contactNumber: true },
-        });
+          select: { parishId: true, fullName: true, contactNumber: true, isAssistant: true },
+          orderBy: [{ isAssistant: "asc" }, { id: "asc" }],
+        })
+      : [];
+    const secretaryByParish = new Map();
+    for (const secretary of secretaries) {
+      if (!secretaryByParish.has(secretary.parishId)) {
+        secretaryByParish.set(secretary.parishId, secretary);
       }
-      if (!sec) {
-        sec = await prisma.user.findFirst({
-          where: {
-            parishId: pId,
-            status: "ACTIVE",
-            role: { roleName: "SECRETARY" },
-          },
-          select: { fullName: true, contactNumber: true },
-        });
-      }
-      return sec;
-    };
+    }
 
-    const combinedWithSecretaries = await Promise.all(
-      combined.map(async (item) => {
-        const creatorId = item.createdById || (item.createdBy ? item.createdBy.id : null);
-        const sec = await getSecretaryForParish(item.parishId, creatorId);
-        return {
-          ...item,
-          secretaryName: sec?.fullName || "Parish Secretary",
-          secretaryContact: sec?.contactNumber || "+63 917 123 4567",
-        };
-      })
-    );
+    const combinedWithSecretaries = combined.map((item) => {
+      const secretary = secretaryByParish.get(item.parishId);
+      return {
+        ...item,
+        secretaryName: secretary?.fullName || null,
+        secretaryContact: secretary?.contactNumber || null,
+      };
+    });
 
     return combinedWithSecretaries;
   }
 
   async getPublicEvents(year, month) {
-    const events = await this.getEvents("all", year, month);
+    const events = await this.getEvents("all", year, month, { publicOnly: true });
     return events.map(toPublicEventDto);
   }
 
@@ -255,6 +287,14 @@ export class ParishEventService {
     if (!original) {
       const err = new Error("Parish event not found.");
       err.statusCode = 404;
+      throw err;
+    }
+
+    const expectedVersion = Number(data.expectedVersion);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      const err = new Error("expectedVersion is required to update an event.");
+      err.statusCode = 400;
+      err.code = "INVALID_EXPECTED_VERSION";
       throw err;
     }
 
@@ -287,8 +327,9 @@ export class ParishEventService {
       await ConflictHelper.checkPriestConflict(priestId, date, start, end, { excludeEventId: id, actorId });
     }
 
-    const event = await prisma.parishEvent.update({
-      where: { id: parsedId },
+    const nextVisibility = normalizeVisibility(data.visibility, original.visibility);
+    const result = await prisma.parishEvent.updateMany({
+      where: { id: parsedId, version: expectedVersion },
       data: {
         title: data.title,
         eventType: data.eventType,
@@ -298,10 +339,19 @@ export class ParishEventService {
         startTime: data.startTime !== undefined ? data.startTime : original.startTime,
         endTime: data.endTime !== undefined ? data.endTime : original.endTime,
         assignedPriestId: data.assignedPriestId !== undefined ? (data.assignedPriestId ? parseInt(data.assignedPriestId, 10) : null) : original.assignedPriestId,
+        visibility: nextVisibility,
+        version: { increment: 1 },
       },
-      include: {
-        assignedPriest: { select: { id: true, fullName: true } }
-      }
+    });
+    if (result.count !== 1) {
+      const err = new Error("This event changed elsewhere. Reload it before saving your edits.");
+      err.statusCode = 409;
+      err.code = "EVENT_STALE";
+      throw err;
+    }
+    const event = await prisma.parishEvent.findUnique({
+      where: { id: parsedId },
+      include: { assignedPriest: { select: { id: true, fullName: true } } },
     });
 
     await AuditLogService.log(actorId, `Updated parish event #${id}: ${event.title}`, null, false, {
@@ -311,6 +361,32 @@ export class ParishEventService {
       previousValues: original,
       newValues: data
     });
+    if (original.visibility !== event.visibility) {
+      await AuditLogService.log(actorId, "PARISH_EVENT_VISIBILITY_CHANGED", null, false, {
+        affectedTable: "ParishEvent",
+        affectedRecordId: parsedId,
+        parishId: event.parishId,
+        previousValues: { visibility: original.visibility },
+        newValues: { visibility: event.visibility },
+      });
+    }
+
+    // Notify newly assigned priest (only when the assignment genuinely changes to a new priest).
+    const newPriestId = event.assignedPriestId;
+    const oldPriestId = original.assignedPriestId;
+    if (newPriestId && newPriestId !== oldPriestId) {
+      await NotificationDispatcher._persist(
+        [{
+          userId: newPriestId,
+          title: "New Pastoral Assignment",
+          message: `You have been assigned to lead the "${event.title}" event at the parish.`,
+          type: "IN_APP",
+          referenceType: "GENERAL",
+          referenceId: null,
+        }],
+        prisma
+      );
+    }
 
     return event;
   }

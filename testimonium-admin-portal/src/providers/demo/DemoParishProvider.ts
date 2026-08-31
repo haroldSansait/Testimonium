@@ -245,7 +245,7 @@ export const DemoParishProvider: ParishProvider = {
     return updated;
   },
 
-  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish> {
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; expectedSchedulingConfigVersion?: number; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish> {
     store = store.map((p) => {
       if (p.id === id) {
         return {

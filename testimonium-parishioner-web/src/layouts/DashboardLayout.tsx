@@ -79,7 +79,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
       {/* Desktop Persistent Sidebar (≥1024px) */}
       <ParishionerSidebar
-        onOpenHelp={() => setModalType('help')}
+        onOpenHelp={() => navigate('/dashboard/help')}
         onOpenAbout={() => setModalType('about')}
       />
 
@@ -206,7 +206,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             onCloseMobileDrawer={() => setIsDrawerOpen(false)}
             onOpenHelp={() => {
               setIsDrawerOpen(false);
-              setModalType('help');
+              navigate('/dashboard/help');
             }}
             onOpenAbout={() => {
               setIsDrawerOpen(false);

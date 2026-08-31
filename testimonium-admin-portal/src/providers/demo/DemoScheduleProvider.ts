@@ -107,7 +107,8 @@ export const DemoScheduleProvider: ScheduleProvider = {
       if (r.id !== id) return r;
       return {
         ...r,
-        assignedPriest: `Priest ID ${priestId}`
+        assignedPriest: `Priest ID ${priestId}`,
+        assignedPriestId: priestId,
       };
     });
     const updated = store.find(r => r.id === id);
@@ -127,5 +128,10 @@ export const DemoScheduleProvider: ScheduleProvider = {
     const updated = store.find(r => r.id === id);
     if (!updated) throw new Error(`Schedule request ${id} not found`);
     return updated;
+  },
+
+  async getAvailableSlots(_parishId: string, _date: string, _eventType: string): Promise<string[]> {
+    // Demo stub — return representative canonical time slots
+    return ['08:00 AM', '09:30 AM', '10:30 AM', '02:00 PM', '03:30 PM'];
   }
 };

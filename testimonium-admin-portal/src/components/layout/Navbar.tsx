@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, HelpCircle, Info } from 'lucide-react';
+import { Bell, HelpCircle, Info, Menu } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { DATA_PROVIDER } from '@/config/demo';
 import { NotificationService } from '@/services/NotificationService';
@@ -31,9 +31,10 @@ const modeConfig = {
 
 interface NavbarProps {
   className?: string;
+  onOpenNavigation?: () => void;
 }
 
-export function Navbar({ className }: NavbarProps) {
+export function Navbar({ className, onOpenNavigation }: NavbarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
@@ -61,12 +62,13 @@ export function Navbar({ className }: NavbarProps) {
   return (
     <header
       className={cn(
-        'flex items-center justify-between px-6 py-3.5 bg-white border-b border-gray-200 sticky top-0 z-10',
+        'flex items-center justify-between px-3 sm:px-6 py-3.5 bg-white border-b border-gray-200 sticky top-0 z-10',
         className
       )}
     >
       {/* Title & Mode Indicator */}
       <div className="flex items-center gap-3">
+        <button type="button" aria-label="Open navigation" onClick={onOpenNavigation} className="rounded-md p-2 text-gray-600 hover:bg-gray-100 lg:hidden"><Menu className="h-5 w-5" /></button>
         <Tooltip content={`Connectivity mode: ${cfg.label} (${cfg.sub})`} side="bottom">
           <div
             tabIndex={0}

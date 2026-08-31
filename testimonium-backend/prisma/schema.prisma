@@ -110,14 +110,60 @@ enum NotificationReferenceType {
   GENERAL
 }
 
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum ScheduleDateRuleMode {
+  INHERIT
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum EventVisibility {
+  PUBLIC
+  PARISH_PRIVATE
+}
+
+enum ReportScope {
+  PARISH
+  DIOCESE
+}
+
+enum ReportCategory {
+  MEETING
+  ACTIVITY
+  IMPORTANT_EVENT
+  OTHER
+}
+
+enum EmailOutboxStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  RETRY
+  FAILED
+}
+
+enum EmailType {
+  DOCUMENT_READY_FOR_PICKUP
+  SCHEDULE_SUBMITTED
+  SCHEDULE_PROPOSED_RESCHEDULE
+  SCHEDULE_CONFIRMED
+}
+
 enum OcrStatus {
   PENDING
   PROCESSING
   COMPLETED
   FAILED
 }
-
-
 
 model Role {
   id          Int      @id @default(autoincrement()) @map("role_id")
@@ -129,48 +175,52 @@ model Role {
 }
 
 model Parish {
-  id               Int               @id @default(autoincrement()) @map("parish_id")
-  parishName       String            @unique @map("parish_name") @db.VarChar(150)
-  slug             String?           @unique @db.VarChar(150)
-  type             ParishType
-  address          String?           @db.Text
-  municipalityCity String            @map("municipality_city") @db.VarChar(100)
-  province         String            @db.VarChar(100)
-  contactNumber    String?           @map("contact_number") @db.VarChar(20)
-  patronSaint      String?           @map("patron_saint") @db.VarChar(150)
-  email            String?           @db.VarChar(150)
-  latitude         Float?
-  longitude        Float?
-  feastDay         String?           @map("feast_day") @db.VarChar(100)
-  coverImage       String?           @map("cover_image") @db.VarChar(255)
-  logoImage        String?           @map("logo_image") @db.VarChar(255)
-  mapZoom          Int?              @map("map_zoom")
-  pinColor         String?           @map("pin_color") @db.VarChar(20)
-  showLabel        Boolean           @default(true) @map("show_label")
-  directoryDescription String?       @map("directory_description") @db.Text
-  locationUpdatedBy Int?             @map("location_updated_by")
-  locationUpdatedAt DateTime?        @map("location_updated_at")
-  gallery          String[]          @default([])
-  isActive         Boolean           @default(true) @map("is_active")
-  documentSettings String?           @map("document_settings") @db.Text
-  eventSettings    String?           @map("event_settings") @db.Text
-  officeHours      String?           @map("office_hours") @db.Text
-  paymentQrImage   String?           @map("payment_qr_image") @db.VarChar(255)
-  paymentQrEnabled Boolean           @default(false) @map("payment_qr_enabled")
-  paymentQrUpdatedAt DateTime?       @map("payment_qr_updated_at")
-  paymentQrUpdatedBy Int?            @map("payment_qr_updated_by")
-  availableDocuments Json?           @map("available_documents")
-  venueCapacity    Int?              @map("venue_capacity")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  users            User[]
-  documentRequests DocumentRequest[]
-  schedules        Schedule[]
-  availabilities   ParishAvailability[]
-  massScheduleTemplates MassScheduleTemplate[]
-  parishEvents          ParishEvent[]
-  activityLogs          ActivityLog[]
-
+  id                      Int                        @id @default(autoincrement()) @map("parish_id")
+  parishName              String                     @unique @map("parish_name") @db.VarChar(150)
+  slug                    String?                    @unique @db.VarChar(150)
+  type                    ParishType
+  address                 String?                    @db.Text
+  municipalityCity        String                     @map("municipality_city") @db.VarChar(100)
+  province                String                     @db.VarChar(100)
+  contactNumber           String?                    @map("contact_number") @db.VarChar(20)
+  patronSaint             String?                    @map("patron_saint") @db.VarChar(150)
+  email                   String?                    @db.VarChar(150)
+  latitude                Float?
+  longitude               Float?
+  feastDay                String?                    @map("feast_day") @db.VarChar(100)
+  coverImage              String?                    @map("cover_image") @db.VarChar(255)
+  logoImage               String?                    @map("logo_image") @db.VarChar(255)
+  mapZoom                 Int?                       @map("map_zoom")
+  pinColor                String?                    @map("pin_color") @db.VarChar(20)
+  showLabel               Boolean                    @default(true) @map("show_label")
+  directoryDescription    String?                    @map("directory_description") @db.Text
+  locationUpdatedBy       Int?                       @map("location_updated_by")
+  locationUpdatedAt       DateTime?                  @map("location_updated_at")
+  gallery                 String[]                   @default([])
+  isActive                Boolean                    @default(true) @map("is_active")
+  documentSettings        String?                    @map("document_settings") @db.Text
+  eventSettings           String?                    @map("event_settings") @db.Text
+  officeHours             String?                    @map("office_hours") @db.Text
+  paymentQrImage          String?                    @map("payment_qr_image") @db.VarChar(255)
+  paymentQrEnabled        Boolean                    @default(false) @map("payment_qr_enabled")
+  paymentQrUpdatedAt      DateTime?                  @map("payment_qr_updated_at")
+  paymentQrUpdatedBy      Int?                       @map("payment_qr_updated_by")
+  availableDocuments      Json?                      @map("available_documents")
+  venueCapacity           Int?                       @map("venue_capacity")
+  schedulingConfigVersion Int                        @default(1) @map("scheduling_config_version")
+  createdAt               DateTime                   @default(now()) @map("created_at")
+  updatedAt               DateTime                   @updatedAt @map("updated_at")
+  users                   User[]
+  documentRequests        DocumentRequest[]
+  schedules               Schedule[]
+  availabilities          ParishAvailability[]
+  massScheduleTemplates   MassScheduleTemplate[]
+  parishEvents            ParishEvent[]
+  activityLogs            ActivityLog[]
+  weekdayRules            ParishWeekdayRule[]
+  serviceWeekdayRules     ParishServiceWeekdayRule[]
+  scheduleDateRules       ParishScheduleDateRule[]
+  dailyReports            DailyReport[]
 
   @@index([type])
   @@index([isActive])
@@ -179,81 +229,85 @@ model Parish {
 }
 
 model User {
-  id                        Int                @id @default(autoincrement()) @map("user_id")
-  firebaseUid               String?            @unique @map("firebase_uid") @db.VarChar(128)
-  fullName                  String             @map("full_name") @db.VarChar(150)
-  email                     String             @unique @db.VarChar(150)
-  contactNumber             String?            @map("contact_number") @db.VarChar(20)
-  address                   String?            @db.Text
-  roleId                    Int                @map("role_id")
-  parishId                  Int?               @map("parish_id")
-  isAssistant               Boolean            @default(false) @map("is_assistant")
-  isVerified                Boolean            @default(false) @map("is_verified")
-  status                    UserStatus         @default(ACTIVE)
-  color                     String?            @db.VarChar(50)
-  termsAcceptedAt           DateTime?          @map("terms_accepted_at")
-  privacyAcceptedAt         DateTime?          @map("privacy_accepted_at")
-  termsVersion              String?            @map("terms_version") @db.VarChar(20)
-  privacyVersion            String?            @map("privacy_version") @db.VarChar(20)
-  lastVerificationResentAt  DateTime?          @map("last_verification_resent_at")
-  verificationResentCount   Int                @default(0) @map("verification_resent_count")
-  createdAt                 DateTime           @default(now()) @map("created_at")
-  updatedAt                 DateTime           @updatedAt @map("updated_at")
-  role                      Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  parish                    Parish?            @relation(fields: [parishId], references: [id], onDelete: SetNull)
-  documentRequests          DocumentRequest[]  @relation("DocumentRequestSubmitter")
-  processedDocumentRequests DocumentRequest[]  @relation("DocumentRequestProcessor")
-  schedules                 Schedule[]         @relation("ScheduleRequester")
-  processedSchedules        Schedule[]         @relation("ScheduleProcessor")
-  assignedSchedules         Schedule[]         @relation("SchedulePriestAssignment")
+  id                        Int                      @id @default(autoincrement()) @map("user_id")
+  firebaseUid               String?                  @unique @map("firebase_uid") @db.VarChar(128)
+  fullName                  String                   @map("full_name") @db.VarChar(150)
+  email                     String                   @unique @db.VarChar(150)
+  contactNumber             String?                  @map("contact_number") @db.VarChar(20)
+  address                   String?                  @db.Text
+  roleId                    Int                      @map("role_id")
+  parishId                  Int?                     @map("parish_id")
+  isAssistant               Boolean                  @default(false) @map("is_assistant")
+  isVerified                Boolean                  @default(false) @map("is_verified")
+  status                    UserStatus               @default(ACTIVE)
+  color                     String?                  @db.VarChar(50)
+  termsAcceptedAt           DateTime?                @map("terms_accepted_at")
+  privacyAcceptedAt         DateTime?                @map("privacy_accepted_at")
+  termsVersion              String?                  @map("terms_version") @db.VarChar(20)
+  privacyVersion            String?                  @map("privacy_version") @db.VarChar(20)
+  lastVerificationResentAt  DateTime?                @map("last_verification_resent_at")
+  verificationResentCount   Int                      @default(0) @map("verification_resent_count")
+  createdAt                 DateTime                 @default(now()) @map("created_at")
+  updatedAt                 DateTime                 @updatedAt @map("updated_at")
+  role                      Role                     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  parish                    Parish?                  @relation(fields: [parishId], references: [id], onDelete: SetNull)
+  documentRequests          DocumentRequest[]        @relation("DocumentRequestSubmitter")
+  processedDocumentRequests DocumentRequest[]        @relation("DocumentRequestProcessor")
+  schedules                 Schedule[]               @relation("ScheduleRequester")
+  processedSchedules        Schedule[]               @relation("ScheduleProcessor")
+  assignedSchedules         Schedule[]               @relation("SchedulePriestAssignment")
   availabilities            ParishAvailability[]
   notifications             Notification[]
-  updatedFaqEntries         FaqKnowledgeBase[] @relation("FaqUpdater")
+  updatedFaqEntries         FaqKnowledgeBase[]       @relation("FaqUpdater")
   chatbotLogs               ChatbotLog[]
   activityLogs              ActivityLog[]
-  requestHistory            RequestHistory[]   @relation("RequestHistoryActor")
-  paymentTransactions       PaymentTransaction[] @relation("PaymentTransactionVerifier")
-  createdParishEvents       ParishEvent[]      @relation("ParishEventCreator")
-  assignedParishEvents      ParishEvent[]      @relation("ParishEventPriest")
-  massTemplates             MassScheduleTemplate[] @relation("MassTemplatePriest")
+  requestHistory            RequestHistory[]         @relation("RequestHistoryActor")
+  paymentTransactions       PaymentTransaction[]     @relation("PaymentTransactionVerifier")
+  createdParishEvents       ParishEvent[]            @relation("ParishEventCreator")
+  assignedParishEvents      ParishEvent[]            @relation("ParishEventPriest")
+  massTemplates             MassScheduleTemplate[]   @relation("MassTemplatePriest")
   idempotencyKeys           IdempotencyKey[]
+  createdScheduleDateRules  ParishScheduleDateRule[] @relation("ScheduleDateRuleCreator")
+  createdDailyReports       DailyReport[]            @relation("DailyReportCreator")
+  archivedDailyReports      DailyReport[]            @relation("DailyReportArchiver")
 
   @@index([roleId])
   @@index([parishId])
   @@index([status])
+  @@index([createdAt])
   @@map("users")
 }
 
 model DocumentRequest {
-  id                    Int                   @id @default(autoincrement()) @map("request_id")
-  userId                Int                   @map("user_id")
-  parishId              Int                   @map("parish_id")
-  trackingNumber        String?               @unique @map("tracking_number") @db.VarChar(50)
-  applicantName         String                @map("applicant_name") @db.VarChar(150)
-  relationship          String?               @db.VarChar(100)
-  isDraft               Boolean               @default(true) @map("is_draft")
-  documentType          DocumentType          @map("document_type")
-  purpose               String?               @db.Text
-  status                DocumentRequestStatus @default(PENDING)
-  paymentStatus         PaymentStatus         @default(UNPAID) @map("payment_status")
-  paymentProofObjectKey String?               @map("payment_proof_object_key") @db.VarChar(255)
-  paymentQrReference    String?               @map("payment_qr_reference") @db.VarChar(100)
-  fee                   Decimal?              @map("fee") @db.Decimal(10, 2)
-  processedById         Int?                  @map("processed_by")
-  remarks               String?               @db.Text
-  correctionNote        String?               @map("correction_note") @db.Text
-  paymentCorrectionNote String?               @map("payment_correction_note") @db.Text
-  correctionRequirementIds String[]           @default([]) @map("correction_requirement_ids")
-  dateRequested         DateTime              @default(now()) @map("date_requested")
-  dateProcessed         DateTime?             @map("date_processed")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
-  user                  User                  @relation("DocumentRequestSubmitter", fields: [userId], references: [id], onDelete: Restrict)
-  parish                Parish                @relation(fields: [parishId], references: [id], onDelete: Restrict)
-  processedBy           User?                 @relation("DocumentRequestProcessor", fields: [processedById], references: [id], onDelete: SetNull)
-  attachments           RequestAttachment[]
-  paymentTransactions   PaymentTransaction[]
-  requestHistory        RequestHistory[]
+  id                       Int                   @id @default(autoincrement()) @map("request_id")
+  userId                   Int                   @map("user_id")
+  parishId                 Int                   @map("parish_id")
+  trackingNumber           String?               @unique @map("tracking_number") @db.VarChar(50)
+  applicantName            String                @map("applicant_name") @db.VarChar(150)
+  relationship             String?               @db.VarChar(100)
+  isDraft                  Boolean               @default(true) @map("is_draft")
+  documentType             DocumentType          @map("document_type")
+  purpose                  String?               @db.Text
+  status                   DocumentRequestStatus @default(PENDING)
+  paymentStatus            PaymentStatus         @default(UNPAID) @map("payment_status")
+  paymentProofObjectKey    String?               @map("payment_proof_object_key") @db.VarChar(255)
+  paymentQrReference       String?               @map("payment_qr_reference") @db.VarChar(100)
+  fee                      Decimal?              @map("fee") @db.Decimal(10, 2)
+  processedById            Int?                  @map("processed_by")
+  remarks                  String?               @db.Text
+  correctionNote           String?               @map("correction_note") @db.Text
+  paymentCorrectionNote    String?               @map("payment_correction_note") @db.Text
+  correctionRequirementIds String[]              @default([]) @map("correction_requirement_ids")
+  dateRequested            DateTime              @default(now()) @map("date_requested")
+  dateProcessed            DateTime?             @map("date_processed")
+  createdAt                DateTime              @default(now()) @map("created_at")
+  updatedAt                DateTime              @updatedAt @map("updated_at")
+  user                     User                  @relation("DocumentRequestSubmitter", fields: [userId], references: [id], onDelete: Restrict)
+  parish                   Parish                @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  processedBy              User?                 @relation("DocumentRequestProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  attachments              RequestAttachment[]
+  paymentTransactions      PaymentTransaction[]
+  requestHistory           RequestHistory[]
 
   @@index([userId])
   @@index([parishId])
@@ -262,6 +316,7 @@ model DocumentRequest {
   @@index([status])
   @@index([paymentStatus])
   @@index([dateRequested])
+  @@index([parishId, dateRequested])
   @@index([trackingNumber])
   @@map("document_requests")
 }
@@ -291,92 +346,94 @@ model PaymentTransaction {
   verifiedById    Int?                      @map("verified_by")
   verifiedAt      DateTime?                 @map("verified_at")
   createdAt       DateTime                  @default(now()) @map("created_at")
-  
-  request         DocumentRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  verifier        User?                     @relation("PaymentTransactionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
-  receipts        ReceiptUpload[]
+
+  request  DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  verifier User?           @relation("PaymentTransactionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  receipts ReceiptUpload[]
 
   @@index([requestId])
   @@index([verifiedById])
+  @@index([status, createdAt])
   @@map("payment_transactions")
 }
 
 model ReceiptUpload {
-  id                    Int                @id @default(autoincrement()) @map("receipt_id")
-  paymentTransactionId  Int                @map("payment_transaction_id")
-  r2ObjectKey           String             @map("r2_object_key") @db.VarChar(255)
-  fileName              String             @map("file_name") @db.VarChar(255)
-  mimeType              String?            @map("mime_type") @db.VarChar(100)
-  fileSize              Int?               @map("file_size")
-  imageHash             String?            @map("image_hash") @db.VarChar(64)
-  uploadedAt            DateTime           @default(now()) @map("uploaded_at")
-  
-  transaction           PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
-  ocrResult             OcrResult?
+  id                   Int      @id @default(autoincrement()) @map("receipt_id")
+  paymentTransactionId Int      @map("payment_transaction_id")
+  r2ObjectKey          String   @map("r2_object_key") @db.VarChar(255)
+  fileName             String   @map("file_name") @db.VarChar(255)
+  mimeType             String?  @map("mime_type") @db.VarChar(100)
+  fileSize             Int?     @map("file_size")
+  imageHash            String?  @map("image_hash") @db.VarChar(64)
+  uploadedAt           DateTime @default(now()) @map("uploaded_at")
+
+  transaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  ocrResult   OcrResult?
 
   @@index([paymentTransactionId])
   @@index([imageHash])
+  @@index([uploadedAt])
   @@map("receipt_uploads")
 }
 
 model OcrResult {
-  id                 Int           @id @default(autoincrement()) @map("ocr_id")
-  receiptUploadId    Int           @unique @map("receipt_upload_id")
-  referenceNumber    String?       @map("reference_number") @db.VarChar(100)
-  amount             String?       @db.VarChar(50)
-  paymentDate        String?       @map("payment_date") @db.VarChar(100)
-  provider           String?       @db.VarChar(50)
-  confidenceScore    Float?        @map("confidence_score")
-  rawText            String?       @map("raw_text") @db.Text
-  processedAt        DateTime      @default(now()) @map("processed_at")
-  status             OcrStatus     @default(PENDING)
+  id                 Int       @id @default(autoincrement()) @map("ocr_id")
+  receiptUploadId    Int       @unique @map("receipt_upload_id")
+  referenceNumber    String?   @map("reference_number") @db.VarChar(100)
+  amount             String?   @db.VarChar(50)
+  paymentDate        String?   @map("payment_date") @db.VarChar(100)
+  provider           String?   @db.VarChar(50)
+  confidenceScore    Float?    @map("confidence_score")
+  rawText            String?   @map("raw_text") @db.Text
+  processedAt        DateTime  @default(now()) @map("processed_at")
+  status             OcrStatus @default(PENDING)
   // Expanded OCR metadata fields
-  merchant           String?       @db.VarChar(100)
-  paymentTime        String?       @map("payment_time") @db.VarChar(50)
-  accountName        String?       @map("account_name") @db.VarChar(150)
-  ocrProvider        String?       @map("ocr_provider") @db.VarChar(50)
-  ocrDurationMs      Int?          @map("ocr_duration_ms")
-  originalFileSize   Int?          @map("original_file_size")
-  compressedFileSize Int?          @map("compressed_file_size")
+  merchant           String?   @db.VarChar(100)
+  paymentTime        String?   @map("payment_time") @db.VarChar(50)
+  accountName        String?   @map("account_name") @db.VarChar(150)
+  ocrProvider        String?   @map("ocr_provider") @db.VarChar(50)
+  ocrDurationMs      Int?      @map("ocr_duration_ms")
+  originalFileSize   Int?      @map("original_file_size")
+  compressedFileSize Int?      @map("compressed_file_size")
 
   // Phase 2 additions
-  ocrConfidence      Float?        @map("ocr_confidence")
-  parserConfidence   Float?        @map("parser_confidence")
-  finalConfidence    Float?        @map("final_confidence")
-  ocrEngine          String?       @map("ocr_engine") @db.VarChar(20)
-  ocrLanguage        String?       @map("ocr_language") @db.VarChar(20)
-  compressionWidth   Int?          @map("compression_width")
-  compressionQuality Int?          @map("compression_quality")
-  normalizedAmount   String?       @map("normalized_amount") @db.VarChar(50)
-  normalizedDate     String?       @map("normalized_date") @db.VarChar(30)
+  ocrConfidence      Float?  @map("ocr_confidence")
+  parserConfidence   Float?  @map("parser_confidence")
+  finalConfidence    Float?  @map("final_confidence")
+  ocrEngine          String? @map("ocr_engine") @db.VarChar(20)
+  ocrLanguage        String? @map("ocr_language") @db.VarChar(20)
+  compressionWidth   Int?    @map("compression_width")
+  compressionQuality Int?    @map("compression_quality")
+  normalizedAmount   String? @map("normalized_amount") @db.VarChar(50)
+  normalizedDate     String? @map("normalized_date") @db.VarChar(30)
 
   // Fraud & Deduplication fields
-  isDuplicate        Boolean       @default(false) @map("is_duplicate")
-  duplicateRequestId Int?          @map("duplicate_request_id")
-  duplicateReason    String?       @map("duplicate_reason") @db.VarChar(255)
+  isDuplicate        Boolean @default(false) @map("is_duplicate")
+  duplicateRequestId Int?    @map("duplicate_request_id")
+  duplicateReason    String? @map("duplicate_reason") @db.VarChar(255)
 
-  receipt            ReceiptUpload @relation(fields: [receiptUploadId], references: [id], onDelete: Cascade)
+  receipt ReceiptUpload @relation(fields: [receiptUploadId], references: [id], onDelete: Cascade)
 
   @@index([referenceNumber])
   @@map("ocr_results")
 }
 
-
 model RequestHistory {
-  id          Int             @id @default(autoincrement()) @map("history_id")
-  requestId   Int             @map("request_id")
-  actorId     Int?            @map("actor_id")
-  action      String          @db.VarChar(255)
-  oldStatus   String?         @map("old_status") @db.VarChar(50)
-  newStatus   String?         @map("new_status") @db.VarChar(50)
-  remarks     String?         @db.Text
-  createdAt   DateTime        @default(now()) @map("created_at")
-  
-  request     DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  actor       User?           @relation("RequestHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id        Int      @id @default(autoincrement()) @map("history_id")
+  requestId Int      @map("request_id")
+  actorId   Int?     @map("actor_id")
+  action    String   @db.VarChar(255)
+  oldStatus String?  @map("old_status") @db.VarChar(50)
+  newStatus String?  @map("new_status") @db.VarChar(50)
+  remarks   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  request DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor   User?           @relation("RequestHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([requestId])
   @@index([actorId])
+  @@index([newStatus, createdAt])
   @@map("request_history")
 }
 
@@ -384,7 +441,7 @@ model Schedule {
   id                    Int               @id @default(autoincrement()) @map("schedule_id")
   userId                Int               @map("user_id")
   parishId              Int               @map("parish_id")
-  assignedPriestId       Int?              @map("assigned_priest_id")
+  assignedPriestId      Int?              @map("assigned_priest_id")
   eventType             ScheduleEventType @map("event_type")
   requestedDate         DateTime          @map("requested_date") @db.Date
   startDatetime         DateTime?         @map("start_datetime")
@@ -399,6 +456,7 @@ model Schedule {
   remarks               String?           @db.Text
   displayTitle          String?           @map("display_title") @db.VarChar(150)
   processedById         Int?              @map("processed_by")
+  proposalVersion       Int               @default(0) @map("proposal_version")
   priestResponseStatus  String?           @map("priest_response_status") @db.VarChar(50)
   priestResponseReason  String?           @map("priest_response_reason") @db.Text
   createdAt             DateTime          @default(now()) @map("created_at")
@@ -416,6 +474,8 @@ model Schedule {
   @@index([status])
   @@index([requestedDate])
   @@index([parishId, requestedDate])
+  @@index([createdAt])
+  @@index([parishId, createdAt])
   @@map("schedules")
 }
 
@@ -431,8 +491,8 @@ model ParishAvailability {
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
-  parish      Parish           @relation(fields: [parishId], references: [id], onDelete: Cascade)
-  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parish Parish @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([parishId])
   @@index([startDate, endDate])
@@ -504,14 +564,14 @@ model ActivityLog {
   archivedAt       DateTime? @map("archived_at")
   archivedBy       Int?      @map("archived_by")
   isSystem         Boolean   @default(false) @map("is_system")
-  
+
   // New Audit Logging fields
-  role             String?   @db.VarChar(50)
-  parishId         Int?      @map("parish_id")
-  previousValues   String?   @db.Text
-  newValues        String?   @db.Text
-  metadata         String?   @db.Text
-  parish           Parish?   @relation(fields: [parishId], references: [id], onDelete: SetNull)
+  role           String? @db.VarChar(50)
+  parishId       Int?    @map("parish_id")
+  previousValues String? @db.Text
+  newValues      String? @db.Text
+  metadata       String? @db.Text
+  parish         Parish? @relation(fields: [parishId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([affectedTable])
@@ -521,19 +581,19 @@ model ActivityLog {
 }
 
 model MassScheduleTemplate {
-  id               Int      @id @default(autoincrement()) @map("template_id")
-  parishId         Int      @map("parish_id")
-  dayType          String   @map("day_type") @db.VarChar(20)  // "WEEKDAY" | "SUNDAY" | "HOLIDAY" | "SPECIAL"
-  timeSlot         String   @map("time_slot") @db.VarChar(20) // "06:00 AM"
-  label            String   @db.VarChar(100)                  // "Morning Mass"
-  isActive         Boolean  @default(true) @map("is_active")
-  assignedPriestId Int?     @map("assigned_priest_id")
+  id                   Int      @id @default(autoincrement()) @map("template_id")
+  parishId             Int      @map("parish_id")
+  dayType              String   @map("day_type") @db.VarChar(20) // "WEEKDAY" | "SUNDAY" | "HOLIDAY" | "SPECIAL"
+  timeSlot             String   @map("time_slot") @db.VarChar(20) // "06:00 AM"
+  label                String   @db.VarChar(100) // "Morning Mass"
+  isActive             Boolean  @default(true) @map("is_active")
+  assignedPriestId     Int?     @map("assigned_priest_id")
   priestResponseStatus String?  @map("priest_response_status") @db.VarChar(50)
   priestResponseReason String?  @map("priest_response_reason") @db.Text
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  parish           Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
-  assignedPriest   User?    @relation("MassTemplatePriest", fields: [assignedPriestId], references: [id], onDelete: SetNull)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  parish               Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  assignedPriest       User?    @relation("MassTemplatePriest", fields: [assignedPriestId], references: [id], onDelete: SetNull)
 
   @@index([parishId])
   @@index([dayType])
@@ -541,29 +601,146 @@ model MassScheduleTemplate {
 }
 
 model ParishEvent {
-  id               Int      @id @default(autoincrement()) @map("event_id")
-  parishId         Int      @map("parish_id")
-  createdById      Int?     @map("created_by")
-  title            String   @db.VarChar(150)
-  eventType        String   @map("event_type") @db.VarChar(50)   // "BAPTISM" | "MARRIAGE" | "CONFESSION" | "OTHER"
-  description      String?  @db.Text
-  location         String?  @db.VarChar(150)
-  eventDate        DateTime @map("event_date") @db.Date
-  startTime        String?  @map("start_time") @db.VarChar(20)
-  endTime          String?  @map("end_time") @db.VarChar(20)
-  assignedPriestId Int?     @map("assigned_priest_id")
-  priestResponseStatus String?  @map("priest_response_status") @db.VarChar(50)
-  priestResponseReason String?  @map("priest_response_reason") @db.Text
-  isActive         Boolean  @default(true) @map("is_active")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  parish           Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
-  createdBy        User?    @relation("ParishEventCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  assignedPriest   User?    @relation("ParishEventPriest", fields: [assignedPriestId], references: [id], onDelete: SetNull)
+  id                   Int             @id @default(autoincrement()) @map("event_id")
+  parishId             Int             @map("parish_id")
+  createdById          Int?            @map("created_by")
+  title                String          @db.VarChar(150)
+  eventType            String          @map("event_type") @db.VarChar(50) // "BAPTISM" | "MARRIAGE" | "CONFESSION" | "OTHER"
+  description          String?         @db.Text
+  location             String?         @db.VarChar(150)
+  eventDate            DateTime        @map("event_date") @db.Date
+  startTime            String?         @map("start_time") @db.VarChar(20)
+  endTime              String?         @map("end_time") @db.VarChar(20)
+  assignedPriestId     Int?            @map("assigned_priest_id")
+  priestResponseStatus String?         @map("priest_response_status") @db.VarChar(50)
+  priestResponseReason String?         @map("priest_response_reason") @db.Text
+  isActive             Boolean         @default(true) @map("is_active")
+  visibility           EventVisibility @default(PUBLIC)
+  version              Int             @default(1)
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+  parish               Parish          @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  createdBy            User?           @relation("ParishEventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  assignedPriest       User?           @relation("ParishEventPriest", fields: [assignedPriestId], references: [id], onDelete: SetNull)
 
   @@index([parishId])
   @@index([eventDate])
+  @@index([parishId, eventDate])
+  @@index([visibility, eventDate])
   @@map("parish_events")
+}
+
+model ParishWeekdayRule {
+  id          Int      @id @default(autoincrement()) @map("rule_id")
+  parishId    Int      @map("parish_id")
+  weekday     Weekday
+  isAvailable Boolean  @default(true) @map("is_available")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  parish      Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
+
+  @@unique([parishId, weekday])
+  @@index([parishId])
+  @@map("parish_weekday_rules")
+}
+
+model ParishServiceWeekdayRule {
+  id          Int               @id @default(autoincrement()) @map("rule_id")
+  parishId    Int               @map("parish_id")
+  eventType   ScheduleEventType @map("event_type")
+  weekday     Weekday
+  isAvailable Boolean           @map("is_available")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  parish      Parish            @relation(fields: [parishId], references: [id], onDelete: Cascade)
+
+  @@unique([parishId, eventType, weekday])
+  @@index([parishId])
+  @@map("parish_service_weekday_rules")
+}
+
+model ParishScheduleDateRule {
+  id               Int                                 @id @default(autoincrement()) @map("date_rule_id")
+  parishId         Int                                 @map("parish_id")
+  exceptionDate    DateTime                            @map("exception_date") @db.Date
+  baseMode         ScheduleDateRuleMode                @default(INHERIT) @map("base_mode")
+  reason           String?                             @db.VarChar(255)
+  createdById      Int?                                @map("created_by")
+  createdAt        DateTime                            @default(now()) @map("created_at")
+  updatedAt        DateTime                            @updatedAt @map("updated_at")
+  parish           Parish                              @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  createdBy        User?                               @relation("ScheduleDateRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  serviceOverrides ParishScheduleDateServiceOverride[]
+
+  @@unique([parishId, exceptionDate])
+  @@index([parishId, exceptionDate])
+  @@map("parish_schedule_date_rules")
+}
+
+model ParishScheduleDateServiceOverride {
+  id         Int                    @id @default(autoincrement()) @map("override_id")
+  dateRuleId Int                    @map("date_rule_id")
+  eventType  ScheduleEventType      @map("event_type")
+  mode       ScheduleDateRuleMode
+  dateRule   ParishScheduleDateRule @relation(fields: [dateRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([dateRuleId, eventType])
+  @@index([dateRuleId])
+  @@map("parish_schedule_date_service_overrides")
+}
+
+model DailyReport {
+  id           Int            @id @default(autoincrement()) @map("report_id")
+  reportDate   DateTime       @map("report_date") @db.Date
+  scope        ReportScope
+  parishId     Int?           @map("parish_id")
+  title        String         @db.VarChar(255)
+  category     ReportCategory
+  description  String         @db.Text
+  createdById  Int            @map("created_by")
+  isArchived   Boolean        @default(false) @map("is_archived")
+  archivedAt   DateTime?      @map("archived_at")
+  archivedById Int?           @map("archived_by")
+  version      Int            @default(1)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  parish       Parish?        @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  createdBy    User           @relation("DailyReportCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  archivedBy   User?          @relation("DailyReportArchiver", fields: [archivedById], references: [id], onDelete: SetNull)
+
+  @@index([parishId, reportDate])
+  @@index([scope, reportDate])
+  @@index([category, reportDate])
+  @@index([createdById])
+  @@index([isArchived])
+  @@map("daily_reports")
+}
+
+model EmailOutbox {
+  id                Int               @id @default(autoincrement()) @map("email_outbox_id")
+  transitionKey     String            @unique @map("transition_key") @db.VarChar(255)
+  recipientEmail    String            @map("recipient_email") @db.VarChar(150)
+  emailType         EmailType         @map("email_type")
+  referenceType     String            @map("reference_type") @db.VarChar(50)
+  referenceId       Int               @map("reference_id")
+  payload           Json
+  status            EmailOutboxStatus @default(QUEUED)
+  attemptCount      Int               @default(0) @map("attempt_count")
+  nextAttemptAt     DateTime          @default(now()) @map("next_attempt_at")
+  lastError         String?           @map("last_error") @db.Text
+  providerMessageId String?           @map("provider_message_id") @db.VarChar(255)
+  processingToken   String?           @map("processing_token") @db.VarChar(64)
+  processingAt      DateTime?         @map("processing_at")
+  leaseExpiresAt    DateTime?         @map("lease_expires_at")
+  queuedAt          DateTime          @default(now()) @map("queued_at")
+  sentAt            DateTime?         @map("sent_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+  @@index([referenceType, referenceId])
+  @@map("email_outbox")
 }
 
 model IdempotencyKey {
@@ -575,7 +752,7 @@ model IdempotencyKey {
   payloadHash  String   @map("payload_hash") @db.VarChar(64)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key, resourceType])
   @@index([userId, key])

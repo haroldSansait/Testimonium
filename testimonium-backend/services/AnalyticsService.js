@@ -222,4 +222,58 @@ export class AnalyticsService {
       };
     });
   }
+
+  async getDescriptiveAnalytics(query, actor) {
+    const today = new Date();
+    const defaultTo = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const defaultFrom = new Date(defaultTo.getTime() - 364 * 24 * 60 * 60 * 1000);
+    const from = query.from ? new Date(`${query.from}T00:00:00.000Z`) : defaultFrom;
+    const to = query.to ? new Date(`${query.to}T00:00:00.000Z`) : defaultTo;
+    const rangeDays = Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (!Number.isFinite(rangeDays) || rangeDays < 1 || rangeDays > 366) {
+      const error = new Error("Analytics date range must be between 1 and 366 days.");
+      error.statusCode = 400;
+      error.code = "INVALID_ANALYTICS_DATE_RANGE";
+      throw error;
+    }
+    const toExclusive = new Date(to.getTime() + 24 * 60 * 60 * 1000);
+    let parishId = null;
+    if (actor.role === "SECRETARY") {
+      parishId = Number(actor.parish?.id || actor.parishId) || null;
+      if (!parishId) {
+        const error = new Error("Secretary account is not assigned to a parish.");
+        error.statusCode = 403;
+        error.code = "FORBIDDEN";
+        throw error;
+      }
+    } else if (actor.role === "DIOCESE_COORDINATOR") {
+      parishId = query.parishId ? Number(query.parishId) : null;
+    } else {
+      const error = new Error("You do not have permission to view administrative analytics.");
+      error.statusCode = 403;
+      error.code = "FORBIDDEN";
+      throw error;
+    }
+
+    const documentStatuses = [
+      "PENDING", "UNDER_REVIEW", "NEEDS_CORRECTION", "PAYMENT_PENDING",
+      "PAYMENT_UNDER_REVIEW", "PAYMENT_NEEDS_CORRECTION", "PAYMENT_VERIFIED",
+      "PROCESSING", "READY_FOR_PICKUP", "COMPLETED", "REJECTED", "CANCELLED",
+    ];
+    const scheduleStatuses = [
+      "PENDING", "REQUESTED", "PROPOSED_RESCHEDULE", "WAITING_PARISHIONER_RESPONSE",
+      "CONFIRMED", "COMPLETED", "CANCELLED", "REJECTED",
+    ];
+    return this.analyticsRepository.getDescriptiveAnalytics({
+      from,
+      toExclusive,
+      parishId,
+      documentType: query.documentType,
+      eventType: query.eventType,
+      documentStatus: documentStatuses.includes(query.status) ? query.status : null,
+      scheduleStatus: scheduleStatuses.includes(query.status) ? query.status : null,
+      category: query.category,
+      includeUsers: actor.role === "DIOCESE_COORDINATOR" && !parishId,
+    });
+  }
 }

@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 20 August 2026
+**Last reconciled:** 31 August 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -17,7 +17,13 @@ Keep connection strings in backend deployment secrets. Do not expose any databas
 
 ## Schema management
 
-The migration history is stored in `testimonium-backend/prisma/migrations/`. Current migrations establish the relational schema, rename the coordinator role, make Firebase UID optional, and add parish patron-saint/email fields.
+The migration history is stored in `testimonium-backend/prisma/migrations/`. Current committed migrations include:
+- `20260704123959_init_testimonium_relational_schema`
+- `20260704140000_rename_vicariate_admin_to_diocese_coordinator`
+- `20260705113749_make_firebase_uid_optional`
+- `20260707131952_add_patron_saint_and_email_to_parish`
+- `20260823120000_add_idempotency_keys`
+- `20260829090000_planned_additions`
 
 ### Development change flow
 
@@ -61,6 +67,11 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - Receipt evidence is retained in R2, while `ReceiptUpload`, `PaymentTransaction`, and one-to-one `OcrResult` persist verification state and OCR metadata.
 - Receipt image hashes are compared against receipts tied to verified payments to flag potential reuse. The flag requires staff review.
 - Scheduling has separate venue information, slot/daily controls in parish event settings, availability blocks, and a composite index on parish/date.
+- `ParishWeekdayRule`, `ParishServiceWeekdayRule`, and `ParishScheduleDateRule` persist booking policy. The migration backfills all weekdays as available, then persists Sunday unavailable service overrides for `WEDDING`, `MARRIAGE_SPECIAL`, and `FUNERAL`; these rows remain editable configuration, not source constants.
+- Scheduling settings share `Parish.schedulingConfigVersion`. Writers lock the parish row and increment the version; booking transactions take the same lock before final validation.
+- Existing `ParishEvent` rows are backfilled to `PUBLIC` before visibility becomes non-null. Event and report writes use optimistic integer versions.
+- `DailyReport` enforces `PARISH` plus non-null parish or `DIOCESE` plus null parish with a database check constraint. Reports archive in place.
+- `EmailOutbox.transitionKey` is unique. Claim queries use `FOR UPDATE SKIP LOCKED`, a processing token, and an expiring lease; status/next-attempt indexes support recovery and retries.
 - Parish settings such as document/event configuration, office hours, and directory metadata are stored as structured text/JSON fields; validate them at the service boundary.
 - Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; optional actor/processor assignments set null.
 

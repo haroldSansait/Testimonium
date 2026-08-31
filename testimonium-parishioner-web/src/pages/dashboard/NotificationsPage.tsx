@@ -119,8 +119,8 @@ export const NotificationsPage: React.FC = () => {
     // Contextual navigation
     if (notif.referenceType === 'DOCUMENT_REQUEST' && notif.referenceId) {
       navigate(`/dashboard/track?requestId=${notif.referenceId}`);
-    } else if (notif.referenceType === 'SCHEDULE_REQUEST') {
-      navigate('/dashboard/home');
+    } else if (notif.referenceType === 'SCHEDULE_REQUEST' && notif.referenceId) {
+      navigate(`/dashboard/schedule/${notif.referenceId}`);
     }
   };
 

@@ -36,12 +36,22 @@ export function PriestDashboard() {
   const fetchAssignments = useCallback(async () => {
     try {
       const res = await getScheduleRequests({ filter: 'all', page: 1, pageSize: 100 });
-      const pending = res.data.filter(r => 
-        (r.assignedPriest?.toLowerCase().includes(applicationUser?.name.toLowerCase() || '') || 
-         r.assignedPriest === `Priest ID ${applicationUser?.id}`) &&
-        r.priestResponseStatus !== 'ACCEPTED' &&
-        r.priestResponseStatus !== 'REJECTED'
-      );
+      const currentUserId = applicationUser?.id ? String(applicationUser.id) : null;
+      if (!currentUserId) {
+        setPendingAssignments([]);
+        return;
+      }
+
+      const pending = res.data.filter(r => {
+        // Identity Hardening: Strictly require schedule.assignedPriestId === currentPriest.userId
+        // Never use priest name, display name, or partial strings for identity decisions.
+        const isAssignedToCurrentPriest = Boolean(r.assignedPriestId && String(r.assignedPriestId) === currentUserId);
+
+        // Pending state: assignment has not reached terminal status (ACCEPTED or REJECTED)
+        const isPendingResponse = r.priestResponseStatus !== 'ACCEPTED' && r.priestResponseStatus !== 'REJECTED';
+
+        return isAssignedToCurrentPriest && isPendingResponse;
+      });
       setPendingAssignments(pending);
     } catch (err) {
       console.error('Failed to load pending assignments:', err);

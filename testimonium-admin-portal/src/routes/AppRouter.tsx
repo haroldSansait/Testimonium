@@ -19,6 +19,7 @@ import { PERMISSIONS } from '@/permissions/permissions';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { MapConfigurationPage } from '@/pages/MapConfigurationPage';
+import { ReportsPage } from '@/pages/ReportsPage';
 
 
 export function AppRouter() {
@@ -79,6 +80,11 @@ export function AppRouter() {
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.VIEW_ANALYTICS} />}>
         <Route element={<AdminLayout />}>
           <Route path="/analytics" element={<AnalyticsPage />} />
+        </Route>
+      </Route>
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_REPORTS} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/reports" element={<ReportsPage />} />
         </Route>
       </Route>
 

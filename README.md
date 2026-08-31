@@ -2,13 +2,13 @@
 
 TESTIMONIUM is the Roman Catholic Diocese of San Carlos portal suite for sacramental-document requests, parish scheduling, parish-directory management, and diocesan administration.
 
-**Implementation snapshot: 24 August 2026.** The backend routes and Prisma schema are the operational source of truth; this guide links to the focused reference documents in this repository.
+**Implementation snapshot: 31 August 2026.** The backend routes and Prisma schema are the operational source of truth; this guide links to the focused reference documents in this repository.
 
 ## Applications
 
 | Application | Purpose | Development address |
 | --- | --- | --- |
-| `testimonium-backend` | Express 5 REST API, Prisma 7, PostgreSQL, Firebase Admin, R2 and OCR | `http://localhost:5000` |
+| `testimonium-backend` | Express 5 REST API, Prisma 7, PostgreSQL, Firebase Admin, R2, OCR, and SMTP | `http://localhost:5000` |
 | `testimonium-parishioner-web` | React 19/Vite 8 parishioner web portal | `http://localhost:5173` |
 | `testimonium-admin-portal` | React 19/Vite 8 portal for secretaries, priests, and coordinators | `http://localhost:5174` |
 | `testimonium-parishioner-app` | Expo SDK 57 / React Native parishioner mobile application | `http://localhost:8081` (Metro) |
@@ -20,10 +20,10 @@ The two web portals are separate Vite applications. The mobile application is bu
 - **Identity and Security:** Firebase-authenticated role-based access for parishioners, secretaries, priests, and diocese coordinators. JIT Google authentication, single-flight email verification, profile completion gates, and isolated session lifecycles.
 - **Sacramental Document Requests:** Multi-step request wizard, draft persistence, document fee snapshots, supporting-file uploads (PDF/image), tracking numbers, request history, staff review, and structured correction resubmission.
 - **Payment and Cloudflare R2 Pipeline:** Parish payment QR code management, client receipt acquisition (with mobile HEIC conversion), R2 object storage, SHA-256 duplicate detection, asynchronous OCR enrichment, and mandatory staff verification.
-- **Parish Scheduling and Availability:** Authoritative backend parish scheduling configuration (enabled canonical services, time slots, daily and per-slot capacity limits), availability date ranges, dynamic slot calculation, reschedule proposals/responses, priest assignment, and database-backed idempotency deduplication.
+- **Parish Scheduling and Availability:** Authoritative backend parish scheduling configuration (enabled canonical services, time slots, daily and per-slot capacity limits), persisted parish/service weekday rules, date-specific overrides, availability date ranges, dynamic slot calculation, row-locked booking validation, reschedule proposals/responses, optimistic configuration versions, and database-backed idempotency.
 - **Parish Directory and Events:** Parish directory with search and municipality filtering, contact and location information, public monthly event discovery feed, interactive map configuration for coordinators, and mass schedule templates.
-- **Parishioner Mobile Experience:** Full-featured native mobile app (Phases 1–7 complete: Auth & Onboarding, Parish Directory & Home, Document Request Wizard, Payment/Receipts, Scheduling Wizard & Parity, In-App Notifications & Events, Profile & Settings, Deep-linking, and Error Boundaries).
-- **Administration, Notifications, and Audit:** Role-scoped dashboards, in-app notifications with reference routing, audit logging with retention administration, user directory administration, and diocesan analytics.
+- **Parishioner Mobile Experience:** Full-featured native mobile app (Auth & Onboarding, Parish Directory & Home, Document Request Wizard, Payment/Receipts, Scheduling Wizard, In-App Notifications & Events, Profile & Settings, Deep-linking, and Error Boundaries).
+- **Administration, Reports, and Notifications:** Role-scoped dashboards, parish/diocese daily reports, descriptive multi-domain analytics, public/private event visibility, in-app notifications, transactional PostgreSQL email outbox worker with generic SMTP delivery, audit logging, and user directory administration.
 
 ## Prerequisites
 
@@ -62,14 +62,16 @@ For local backend development without Firebase, set `ENABLE_DEV_AUTH=true` only 
 ## Useful commands
 
 ```bash
-npm run dev                    # backend + both web portals
-npm run dev:mobile             # backend + Cloudflare Quick Tunnel + mobile Metro dev server
-npm run backend                # backend only
-npm run parishioner            # parishioner web portal only
-npm run admin                  # admin portal only
-npm run mobile                 # mobile app only
-npm run build:all              # build both web portals
-npm run test                   # run test suites across packages
+npm run dev                           # backend + both web portals
+npm run dev:mobile                    # backend + Cloudflare Quick Tunnel + mobile Metro dev server
+npm run backend                       # backend only
+npm run parishioner                   # parishioner web portal only
+npm run admin                         # admin portal only
+npm run mobile                        # mobile app Metro bundler
+npm run mobile:android                # run mobile app on connected Android device/emulator
+npm run build:all                     # build both web portals
+npm test --prefix testimonium-backend # run backend test suite
+npm run test:dev-mobile               # run mobile dev tunnel script tests
 ```
 
 ## Architecture
@@ -80,7 +82,8 @@ Parishioner App  ──┼──> Express API (/api/v1) ──> PostgreSQL via P
 Admin Portal     ──┘         │
                              ├──> Firebase Admin token verification
                              ├──> Cloudflare R2 (document attachments & receipts)
-                             └──> OCR provider (asynchronous receipt enrichment)
+                             ├──> OCR provider (asynchronous receipt enrichment)
+                             └──> Transactional Email Outbox (SMTP delivery)
 ```
 
 ## Documentation
@@ -93,4 +96,3 @@ Admin Portal     ──┘         │
 - [Project context and implementation map](testimonium_context.md)
 - [Mobile application documentation pack](testimonium-parishioner-app/00_MOBILE_DOCS_INDEX.md)
 - [Backend developer guide](testimonium-backend/DEVELOPER_GUIDE.md)
-

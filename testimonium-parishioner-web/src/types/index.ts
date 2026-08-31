@@ -142,6 +142,7 @@ export interface SacramentalRequest {
 export interface Appointment {
   id: string;
   parishId: string;
+  parishName?: string;
   serviceName: string;
   date: string;
   timeSlot: string;
@@ -150,6 +151,9 @@ export interface Appointment {
   proposedDate?: string;
   proposedTime?: string;
   rescheduleReason?: string;
+  assignedPriestId?: string | number | null;
+  assignedPriestName?: string | null;
+  priestResponseStatus?: 'ACCEPTED' | 'REJECTED' | 'PENDING' | null;
 }
 
 export interface Announcement {

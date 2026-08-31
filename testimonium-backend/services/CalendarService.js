@@ -136,6 +136,8 @@ export class CalendarService {
         remarks: e.description,
         sourceType: "PARISH_EVENT",
         location: e.location,
+        visibility: e.visibility,
+        version: e.version,
       };
     });
 
@@ -167,6 +169,8 @@ export class CalendarService {
           remarks: "Quarterly assembly for vicariate coordinators and parish representatives.",
           sourceType: "PARISH_EVENT",
           location: "Vicariate Pastoral Center (Default)",
+          visibility: "PUBLIC",
+          version: null,
         });
       }
     }

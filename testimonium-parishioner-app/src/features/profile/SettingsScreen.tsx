@@ -95,6 +95,20 @@ export const SettingsScreen: React.FC = () => {
         <Card style={styles.menuCard}>
           <TouchableOpacity
             style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => handleNavigate("/(app)/profile/help")}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuIconBox}>
+              <Ionicons name="help-circle-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuTitle}>Help Center</Text>
+              <Text style={styles.menuSubtitle}>Requests, scheduling, payments and events</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
             onPress={() => handleNavigate("/(app)/profile/terms")}
             activeOpacity={0.7}
           >

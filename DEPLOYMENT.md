@@ -1,8 +1,8 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 20 August 2026
+**Last reconciled:** 31 August 2026
 
-Deploy the backend and the two Vite applications independently. All browser requests must target the same backend API version, currently `/api/v1`.
+Deploy the backend and the two Vite applications independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
 ## Production topology
 
@@ -10,14 +10,14 @@ Deploy the backend and the two Vite applications independently. All browser requ
 app.example.org -> parishioner-web/dist
 admin.example.org -> admin-portal/dist
 api.example.org -> reverse proxy -> Node/Express :5000
-                                  -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space (optional)
+                                  -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space, SMTP
 ```
 
 Use TLS for every public origin. Configure `CORS_ORIGINS` with the exact deployed portal origins.
 
 ## Backend configuration
 
-Create `testimonium-backend/.env` using its `.env.example`. The application requires a database URL and Firebase Admin credentials to start correctly. R2 is required for the implemented file-upload flows.
+Create `testimonium-backend/.env` using its `.env.example`. The application requires a database URL, Firebase Admin credentials, and R2 credentials to start correctly.
 
 | Variable group | Required production settings |
 | --- | --- |
@@ -26,7 +26,10 @@ Create `testimonium-backend/.env` using its `.env.example`. The application requ
 | Firebase Admin | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` |
 | R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` |
 | OCR | `OCR_ENABLED`, `OCR_PROVIDER`; when `ocrspace`, also `OCR_SPACE_API_KEY` and optional size/timeout/retry settings |
-| Protection | rate-limit maxima and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
+| Transactional Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`, `SMTP_CONNECTION_TIMEOUT_MS`, `SMTP_GREETING_TIMEOUT_MS`, `SMTP_SOCKET_TIMEOUT_MS` |
+| Email Worker | `EMAIL_WORKER_POLL_MS`, `EMAIL_WORKER_BATCH_SIZE`, `EMAIL_WORKER_LEASE_SECONDS`, `EMAIL_MAX_ATTEMPTS` |
+| Protection & Policy | `ADMIN_EMAIL_VERIFICATION_REQUIRED`, rate-limit maxima, and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
+| Maintenance | `ENABLE_ACTIVITY_PURGE=false`, `ACTIVITY_LOG_RETENTION_DAYS=365` |
 
 Never set `ENABLE_DEV_AUTH=true` in production. It bypasses Firebase token verification.
 
@@ -82,6 +85,10 @@ Vite variables are embedded at build time. Set them in each portal’s environme
 - Serve each Vite `dist/` directory with `try_files $uri $uri/ /index.html` so client-side routes work after refresh.
 - Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads are limited to 2 MB.
 - Enable `TRUST_PROXY=1` only when the proxy correctly supplies forwarding headers.
+
+## Transactional email worker
+
+The API process starts the PostgreSQL email-outbox worker after the HTTP listener and stops it gracefully before disconnecting Prisma. Multiple API replicas are supported: workers claim rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the lease. Configure bounded SMTP timeouts and all SMTP secrets in the deployment secret manager.
 
 ## Operational checks and rollback
 

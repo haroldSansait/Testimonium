@@ -40,3 +40,7 @@ export async function assignPriest(id: string, priestId: string): Promise<Schedu
 export async function respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest> {
   return providerFactory.getScheduleProvider().respondPriestAssignment(id, status, reason);
 }
+
+export async function getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]> {
+  return providerFactory.getScheduleProvider().getAvailableSlots(parishId, date, eventType);
+}

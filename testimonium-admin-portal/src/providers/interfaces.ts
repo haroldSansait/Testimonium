@@ -133,6 +133,7 @@ export interface ScheduleProvider {
   respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest>;
   assignPriest(id: string, priestId: string): Promise<ScheduleRequest>;
   respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest>;
+  getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]>;
 }
 
 export interface CreateParishEventPayload {
@@ -145,6 +146,8 @@ export interface CreateParishEventPayload {
   endTime?: string;
   assignedPriestId?: string;
   parishId?: string;
+  visibility?: 'PUBLIC' | 'PARISH_PRIVATE';
+  expectedVersion?: number;
 }
 
 export interface CalendarProvider {
@@ -195,7 +198,7 @@ export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
   addParish(data: CreateParishPayload | Omit<Parish, 'id' | 'status'>): Promise<Parish>;
   editParish(id: string, data: Partial<Parish>): Promise<Parish>;
-  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish>;
+  editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; expectedSchedulingConfigVersion?: number; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish>;
   uploadPaymentQr(id: string, file: File): Promise<Parish>;
   deletePaymentQr(id: string): Promise<Parish>;
   archiveParish(id: string): Promise<void>;

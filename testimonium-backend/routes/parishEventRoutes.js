@@ -11,8 +11,8 @@ router.use(authenticateFirebaseToken);
 // Express does not interpret "all" as a parish identifier.
 router.get("/all", listAll);
 
-// All staff can list parish events for a parish
-router.get("/:parishId", list);
+// Staff-only feed may include parish-private events within tenant scope.
+router.get("/:parishId", checkRole(["SECRETARY", "DIOCESE_COORDINATOR", "PRIEST"]), list);
 
 // Only secretaries and diocese coordinators can perform mutations
 router.patch("/:id", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), update);

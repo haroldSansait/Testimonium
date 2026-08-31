@@ -26,7 +26,6 @@ export const CANONICAL_SCHEDULE_EVENT_TYPES = [
 ];
 
 export const MAX_HORIZON_DAYS = 90; // 0..90 days inclusive (91 total Manila calendar days)
-export const SCHEDULE_SLOT_DURATION_MINUTES = 60;
 
 // These are parish-wide booking blocks created from the Admin availability
 // configuration. PRIEST_LEAVE remains person-specific and is evaluated when
@@ -148,8 +147,8 @@ export function validateParishAndOffice(parish, dayName, timeSlot = null) {
   }
 
   // Check office hours if configured. A configured open/close interval is
-  // authoritative too; accepting a listed slot outside that interval would
-  // bypass the parish's Admin configuration.
+  // authoritative for the configured slot start. The scheduling contract has
+  // no duration field, so validation must not invent an end time for the slot.
   if (officeHours && typeof officeHours === "object") {
     const daySchedule = officeHours[dayName] || officeHours[dayName.charAt(0).toUpperCase() + dayName.slice(1)];
     if (daySchedule) {
@@ -170,8 +169,7 @@ export function validateParishAndOffice(parish, dayName, timeSlot = null) {
         const requested = parseTimeSlotMinutes(timeSlot);
 
         if (open !== null && close !== null && requested !== null) {
-          const endsAt = requested + SCHEDULE_SLOT_DURATION_MINUTES;
-          if (requested < open || endsAt > close) {
+          if (requested < open || requested >= close) {
             const err = new Error("Requested time slot is outside this parish's office hours.");
             err.statusCode = 400;
             err.code = "OUTSIDE_OFFICE_HOURS";
@@ -200,9 +198,7 @@ export function validateParishAvailability(availabilities, dateStr) {
         availability.description || availability.title || `Scheduling is unavailable on ${dateStr}.`
       );
       err.statusCode = 409;
-      // Retain the established scheduling conflict code while sourcing the
-      // block from the canonical ParishAvailability model.
-      err.code = "SERVICE_BLOCKED";
+      err.code = availability.type === "FULLY_BOOKED" ? "FULLY_BOOKED" : "PARISH_CLOSED";
       throw err;
     }
   }
@@ -239,7 +235,7 @@ export function validateSlotAndCapacity(
       `Requested time slot '${timeSlot}' is not an allowable booking slot for this service.`
     );
     err.statusCode = 400;
-    err.code = "INVALID_TIME_SLOT";
+    err.code = "SLOT_NOT_CONFIGURED";
     throw err;
   }
 
@@ -252,7 +248,7 @@ export function validateSlotAndCapacity(
   if (activeBookings.length >= dailyLimit) {
     const err = new Error("Daily booking capacity reached for the selected date.");
     err.statusCode = 409;
-    err.code = "DAILY_CAPACITY_EXCEEDED";
+    err.code = "FULLY_BOOKED";
     throw err;
   }
 
@@ -271,7 +267,7 @@ export function validateSlotAndCapacity(
   if (slotCount >= slotLimit) {
     const err = new Error(`Time slot '${timeSlot}' is fully booked. Please choose another slot.`);
     err.statusCode = 409;
-    err.code = "SLOT_CAPACITY_EXCEEDED";
+    err.code = "FULLY_BOOKED";
     throw err;
   }
 
@@ -309,7 +305,7 @@ export function validatePriestConflict(priestSchedules, parishEvents, requestedD
           if (match && match[1].trim().toUpperCase() === normSlot) {
             const err = new Error("The assigned priest has a conflicting appointment at this time.");
             err.statusCode = 409;
-            err.code = "PRIEST_SCHEDULE_CONFLICT";
+            err.code = "SCHEDULE_CONFLICT";
             throw err;
           }
         }

@@ -147,11 +147,13 @@ export interface ScheduleRequest {
   initials: string;
   avatarColor?: string;
   eventType: EventType;
+  rawEventType?: string;
   appointmentTitle?: string;
   preferredDate: string;
   preferredTime: string;
   status: ScheduleStatus;
   assignedPriest?: string;
+  assignedPriestId?: string;
   parish?: string;
   parishId?: string;
   contactInfo?: string;
@@ -257,6 +259,9 @@ export interface CalendarEvent {
   status?: string;
   description?: string;
   location?: string;
+  sourceType?: string;
+  visibility?: 'PUBLIC' | 'PARISH_PRIVATE';
+  version?: number | null;
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
@@ -372,6 +377,7 @@ export interface Parish {
   paymentQrUpdatedBy?: number | null;
   availableDocuments?: string[] | null;
   venueCapacity?: number | null;
+  schedulingConfigVersion?: number;
 }
 
 // ─── User Management ──────────────────────────────────────────────────────────

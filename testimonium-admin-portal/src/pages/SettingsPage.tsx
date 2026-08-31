@@ -23,12 +23,17 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { Tooltip } from '@/components/ui/Tooltip';
+import {
+  SchedulingAvailabilityEditor,
+  type SchedulingAvailabilityEditorHandle,
+} from '@/components/settings/SchedulingAvailabilityEditor';
 
 import {
   CANONICAL_DOCUMENT_TYPES,
   DEFAULT_OFFERED_DOCUMENTS,
 } from '@/config/documents';
 import { cn } from '@/utils/cn';
+import { CANONICAL_SCHEDULING_SERVICES } from '@/utils/schedulingAvailabilityHelpers';
 import type { Parish } from '@/types';
 
 // Event types and possible requirements
@@ -38,6 +43,7 @@ const EVENT_TYPES = [
   { id: 'WAKE_MASS', label: 'Wake Mass', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
   { id: 'FUNERAL', label: 'Funeral', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
   { id: 'PRIVATE_MASS', label: 'Private Mass', possibleReqs: [] },
+  { id: 'MASS_INTENTION', label: 'Mass Intention', possibleReqs: [] },
   { id: 'ANOINTING_OF_THE_SICK', label: 'Anointing of the Sick', possibleReqs: [] },
   { id: 'FIESTA', label: 'Fiesta', possibleReqs: [] },
   { id: 'BLESSING', label: 'Blessing', possibleReqs: [] },
@@ -107,6 +113,7 @@ interface ParishConfigSnapshot {
 
 export function SettingsPage() {
   const { role, applicationUser } = useAuth();
+  const canEditScheduling = role === 'SECRETARY' || role === 'DIOCESE_COORDINATOR';
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [selectedParishId, setSelectedParishId] = useState<string>('');
   
@@ -124,6 +131,16 @@ export function SettingsPage() {
   const [availableDocuments, setAvailableDocuments] = useState<string[]>([...DEFAULT_OFFERED_DOCUMENTS]);
   const [venueCapacity, setVenueCapacity] = useState<number | null>(null);
   const [uploadingQr, setUploadingQr] = useState(false);
+  const [schedulingRulesDirty, setSchedulingRulesDirty] = useState(false);
+  const schedulingEditorRef = useRef<SchedulingAvailabilityEditorHandle>(null);
+
+  const handleSchedulingDirtyChange = useCallback((dirty: boolean) => {
+    setSchedulingRulesDirty(dirty);
+  }, []);
+
+  const handleSchedulingToastMessage = useCallback((message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+  }, []);
 
   // Original snapshot for change detection
   const [originalSnapshot, setOriginalSnapshot] = useState<ParishConfigSnapshot | null>(null);
@@ -131,35 +148,21 @@ export function SettingsPage() {
   const [showSwitchConfirmModal, setShowSwitchConfirmModal] = useState(false);
   const loadedParishIdRef = useRef<string | null>(null);
 
-  // Initialize office hours default settings
-  const initDefaultOfficeHours = useCallback(() => {
-    const hours: any = {};
-    DAYS_OF_WEEK.forEach(day => {
-      hours[day] = {
-        openTime: '08:00 AM',
-        closeTime: '05:00 PM',
-        isClosed: day === 'Sunday'
-      };
-    });
-    return hours;
-  }, []);
-
   const parseOfficeHours = useCallback((rawHours: any) => {
-    const defaultHours = initDefaultOfficeHours();
-    if (!rawHours) return defaultHours;
+    if (!rawHours) return {};
     let obj: any = rawHours;
     if (typeof rawHours === 'string') {
       try {
         obj = JSON.parse(rawHours);
       } catch {
-        return defaultHours;
+        return {};
       }
     }
     if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-      return { ...defaultHours, ...obj };
+      return obj;
     }
-    return defaultHours;
-  }, [initDefaultOfficeHours]);
+    return {};
+  }, []);
 
   // Initialize document settings default configurations
   const initDefaultDocSettings = useCallback(() => {
@@ -177,25 +180,6 @@ export function SettingsPage() {
       };
     });
     return docs;
-  }, []);
-
-  // Initialize event settings default configurations
-  const initDefaultEventSettings = useCallback(() => {
-    const evts: any = {
-      availableEvents: EVENT_TYPES.map(e => e.id),
-      capacitySettings: { slotCapacity: 1, dailyLimit: 10 },
-      timeSlots: ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"]
-    };
-    EVENT_TYPES.forEach(evt => {
-      const reqs: any = {};
-      evt.possibleReqs.forEach(r => {
-        reqs[r.id] = true;
-      });
-      evts[evt.id] = {
-        requirements: reqs
-      };
-    });
-    return evts;
   }, []);
 
   // Fetch parishes
@@ -234,16 +218,9 @@ export function SettingsPage() {
       if (!docSettingsMerged.paymentMethods) {
         docSettingsMerged.paymentMethods = { gcash: true, maya: false };
       }
-      const evSettingsMerged = parish.eventSettings || initDefaultEventSettings();
-      if (!Array.isArray(evSettingsMerged.availableEvents)) {
-        evSettingsMerged.availableEvents = EVENT_TYPES.map(e => e.id);
-      }
-      if (!evSettingsMerged.capacitySettings) {
-        evSettingsMerged.capacitySettings = { slotCapacity: 1, dailyLimit: 10 };
-      }
-      if (!Array.isArray(evSettingsMerged.timeSlots)) {
-        evSettingsMerged.timeSlots = ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"];
-      }
+      const evSettingsMerged = parish.eventSettings && typeof parish.eventSettings === 'object'
+        ? parish.eventSettings
+        : {};
       const parsedHours = parseOfficeHours(parish.officeHours);
       const parsedDocs = parish.availableDocuments && Array.isArray(parish.availableDocuments)
         ? parish.availableDocuments
@@ -272,7 +249,7 @@ export function SettingsPage() {
       });
       (window as any).hasUnsavedSettingsChanges = false;
     }
-  }, [selectedParishId, parishes, initDefaultDocSettings, initDefaultEventSettings, parseOfficeHours]);
+  }, [selectedParishId, parishes, initDefaultDocSettings, parseOfficeHours]);
 
   // Determine dirty state using deep comparison
   const isDirty = useMemo(() => {
@@ -286,8 +263,8 @@ export function SettingsPage() {
       paymentQrImage,
       venueCapacity,
     };
-    return JSON.stringify(currentSnapshot) !== JSON.stringify(originalSnapshot);
-  }, [originalSnapshot, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled, paymentQrImage, venueCapacity]);
+    return JSON.stringify(currentSnapshot) !== JSON.stringify(originalSnapshot) || schedulingRulesDirty;
+  }, [originalSnapshot, documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled, paymentQrImage, venueCapacity, schedulingRulesDirty]);
 
   // Browser refresh/close guard & sync window flag
   useUnsavedChanges({ isDirty });
@@ -309,6 +286,7 @@ export function SettingsPage() {
     setPaymentQrEnabled(originalSnapshot.paymentQrEnabled);
     setPaymentQrImage(originalSnapshot.paymentQrImage);
     setVenueCapacity(originalSnapshot.venueCapacity ?? null);
+    schedulingEditorRef.current?.reset();
     (window as any).hasUnsavedSettingsChanges = false;
     setToast({ message: 'Unsaved changes discarded.', type: 'success' });
   };
@@ -439,8 +417,7 @@ export function SettingsPage() {
     setEventSettings((prev: any) => ({
       ...prev,
       capacitySettings: {
-        slotCapacity: prev?.capacitySettings?.slotCapacity || 1,
-        dailyLimit: prev?.capacitySettings?.dailyLimit || 10,
+        ...prev?.capacitySettings,
         [field]: Math.max(1, value || 1),
       }
     }));
@@ -452,7 +429,7 @@ export function SettingsPage() {
     const clean = to12Hour(to24Hour(newSlotInput));
     if (!clean) return;
     setEventSettings((prev: any) => {
-      const currentSlots: string[] = Array.isArray(prev?.timeSlots) ? prev.timeSlots : ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
+      const currentSlots: string[] = Array.isArray(prev?.timeSlots) ? prev.timeSlots : [];
       if (currentSlots.includes(clean)) return prev;
       return {
         ...prev,
@@ -464,7 +441,7 @@ export function SettingsPage() {
 
   const handleTimeSlotRemove = (slotToRemove: string) => {
     setEventSettings((prev: any) => {
-      const currentSlots: string[] = Array.isArray(prev?.timeSlots) ? prev.timeSlots : ["09:00 AM", "10:30 AM", "01:30 PM", "03:00 PM"];
+      const currentSlots: string[] = Array.isArray(prev?.timeSlots) ? prev.timeSlots : [];
       return {
         ...prev,
         timeSlots: currentSlots.filter(s => s !== slotToRemove),
@@ -475,7 +452,7 @@ export function SettingsPage() {
   const handleOfficeHoursChange = (day: string, field: 'openTime' | 'closeTime' | 'isClosed', value: any) => {
     setOfficeHours((prev: any) => {
       const baseObj = (prev && typeof prev === 'object' && !Array.isArray(prev)) ? prev : parseOfficeHours(prev);
-      const dayConf = baseObj[day] || { openTime: '08:00 AM', closeTime: '05:00 PM', isClosed: false };
+      const dayConf = baseObj[day] || { openTime: '', closeTime: '', isClosed: true };
       return {
         ...baseObj,
         [day]: {
@@ -506,6 +483,19 @@ export function SettingsPage() {
 
   const handleSaveSettings = async () => {
     if (!selectedParishId) return;
+    if (canEditScheduling && !schedulingEditorRef.current) {
+      setToast({ message: 'Scheduling availability is still loading. Wait for it to finish before saving.', type: 'error' });
+      return;
+    }
+
+    if (canEditScheduling && schedulingEditorRef.current?.hasUnsavedDateException()) {
+      setToast({
+        message: 'You have an unsaved Date Exception draft. Please Save Exception or Cancel it before saving parish configurations.',
+        type: 'error',
+      });
+      schedulingEditorRef.current.focusDateExceptionForm?.();
+      return;
+    }
 
     // Validate Office Hours
     const hoursError = validateOfficeHours();
@@ -518,13 +508,14 @@ export function SettingsPage() {
     try {
       const updatedParish = await ParishManagementService.editParishSettings(selectedParishId, {
         documentSettings,
-        eventSettings,
-        officeHours,
         availableDocuments,
         paymentQrEnabled,
         paymentQrImage,
         venueCapacity,
       });
+      if (canEditScheduling) {
+        await schedulingEditorRef.current!.save(eventSettings, officeHours);
+      }
 
       const updatedDocs = updatedParish?.availableDocuments && Array.isArray(updatedParish.availableDocuments)
         ? updatedParish.availableDocuments
@@ -557,6 +548,15 @@ export function SettingsPage() {
       setToast({ message: 'Parish configuration saved successfully.', type: 'success' });
     } catch (err: any) {
       console.error('Failed to save settings:', err);
+      if (err?.status === 409 && err?.code === 'SCHEDULING_CONFIG_STALE') {
+        try {
+          const latestParishes = await ParishManagementService.getParishes();
+          loadedParishIdRef.current = null;
+          setParishes(latestParishes);
+        } catch {
+          // Keep the original conflict as the actionable error.
+        }
+      }
       setToast({ message: err?.message || 'Failed to update parish configurations.', type: 'error' });
     } finally {
       setSaving(false);
@@ -829,7 +829,7 @@ export function SettingsPage() {
 
           {/* Tab 2: Sacramental Scheduling */}
           {activeTab === 'events' && (
-            <div className="space-y-8">
+            <div className={cn('space-y-8', !canEditScheduling && 'pointer-events-none opacity-70')}>
               {/* 1. Offered Sacraments & Scheduling Availability */}
               <div className="space-y-4">
                 <div>
@@ -841,7 +841,7 @@ export function SettingsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {EVENT_TYPES.map((evt) => {
-                    const availableList: string[] = Array.isArray(eventSettings?.availableEvents) ? eventSettings.availableEvents : EVENT_TYPES.map(e => e.id);
+                    const availableList: string[] = Array.isArray(eventSettings?.availableEvents) ? eventSettings.availableEvents : [];
                     const isOffered = availableList.includes(evt.id);
 
                     return (
@@ -900,7 +900,7 @@ export function SettingsPage() {
                         type="number"
                         min="1"
                         max="20"
-                        value={eventSettings?.capacitySettings?.slotCapacity ?? 1}
+                        value={eventSettings?.capacitySettings?.slotCapacity ?? ''}
                         onChange={(e) => handleCapacityChange('slotCapacity', parseInt(e.target.value, 10))}
                         className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 outline-none focus:border-crimson-700"
                       />
@@ -920,7 +920,7 @@ export function SettingsPage() {
                         type="number"
                         min="1"
                         max="100"
-                        value={eventSettings?.capacitySettings?.dailyLimit ?? 10}
+                        value={eventSettings?.capacitySettings?.dailyLimit ?? ''}
                         onChange={(e) => handleCapacityChange('dailyLimit', parseInt(e.target.value, 10))}
                         className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 outline-none focus:border-crimson-700"
                       />
@@ -977,7 +977,7 @@ export function SettingsPage() {
 
                 <div className="p-4 bg-white border border-gray-200 rounded-xl space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    {(Array.isArray(eventSettings?.timeSlots) ? eventSettings.timeSlots : ["08:00 AM", "09:30 AM", "01:30 PM", "03:30 PM"]).map((slot: string) => (
+                    {(Array.isArray(eventSettings?.timeSlots) ? eventSettings.timeSlots : []).map((slot: string) => (
                       <span
                         key={slot}
                         className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-50 text-crimson-700 border border-crimson-700/20 rounded-lg text-xs font-bold"
@@ -1042,7 +1042,7 @@ export function SettingsPage() {
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {evt.possibleReqs.map((req) => {
-                                const isReq = conf.requirements?.[req.id] ?? true;
+                                const isReq = conf.requirements?.[req.id] ?? false;
                                 return (
                                   <button
                                     key={req.id}
@@ -1073,9 +1073,20 @@ export function SettingsPage() {
             </div>
           )}
 
+          <div className={activeTab === 'events' ? '' : 'hidden'}>
+            <SchedulingAvailabilityEditor
+              ref={schedulingEditorRef}
+              parishId={selectedParishId}
+              services={CANONICAL_SCHEDULING_SERVICES}
+              readOnly={!canEditScheduling}
+              onDirtyChange={handleSchedulingDirtyChange}
+              onMessage={handleSchedulingToastMessage}
+            />
+          </div>
+
           {/* Tab 3: Office Operating Hours (Time Picker with Validation) */}
           {activeTab === 'hours' && (
-            <div className="space-y-6">
+            <div className={cn('space-y-6', !canEditScheduling && 'pointer-events-none opacity-70')}>
               <div>
                 <h4 className="text-base font-bold text-gray-900">Parish Office Operating Hours</h4>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -1085,11 +1096,7 @@ export function SettingsPage() {
 
               <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-200/60 shadow-sm">
                 {DAYS_OF_WEEK.map((day) => {
-                  const dayConf = officeHours[day] || {
-                    openTime: '08:00 AM',
-                    closeTime: '05:00 PM',
-                    isClosed: false,
-                  };
+                  const dayConf = officeHours[day] || { openTime: '', closeTime: '', isClosed: true };
                   return (
                     <div
                       key={day}

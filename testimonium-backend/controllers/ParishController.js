@@ -74,6 +74,16 @@ export const updateSettings = async (req, res, next) => {
   try {
     const { id } = req.params;
 
+    if (
+      req.user.role === "PRIEST" &&
+      (req.body.eventSettings !== undefined || req.body.officeHours !== undefined)
+    ) {
+      const error = new Error("Priests cannot modify authoritative scheduling configuration.");
+      error.statusCode = 403;
+      error.code = "FORBIDDEN";
+      throw error;
+    }
+
     // Strict multi-tenant guard
     await validateParishAccess(req, id, "Parish Settings");
 

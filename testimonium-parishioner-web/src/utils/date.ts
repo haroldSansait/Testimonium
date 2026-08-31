@@ -25,7 +25,7 @@ export function parseTimeString(timeStr?: string): { hours: number; minutes: num
 }
 
 /**
- * Combines date string and optional time string into a canonical Date object.
+ * Combines a Philippine parish date and optional time string into an instant.
  */
 export function parseEventDateTime(dateStr?: string, timeStr?: string, isEnd = false): Date | null {
   if (!dateStr) return null;
@@ -45,7 +45,9 @@ export function parseEventDateTime(dateStr?: string, timeStr?: string, isEnd = f
     const hours = parsedTime ? parsedTime.hours : (isEnd ? 23 : 0);
     const minutes = parsedTime ? parsedTime.minutes : (isEnd ? 59 : 0);
 
-    const d = new Date(year, month, day, hours, minutes, 0, 0);
+    // Asia/Manila is UTC+08:00 year round. Date-only parish event values must
+    // not be interpreted in the browser's local timezone.
+    const d = new Date(Date.UTC(year, month, day, hours - 8, minutes, 0, 0));
     return isNaN(d.getTime()) ? null : d;
   } catch (err) {
     console.warn('[DateUtil] Malformed event date/time:', { dateStr, timeStr, err });

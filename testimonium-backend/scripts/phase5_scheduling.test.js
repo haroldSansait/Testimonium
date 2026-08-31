@@ -30,6 +30,10 @@ import {
   validateSchedulingSettingsForSave,
 } from "../services/SchedulingConfiguration.js";
 
+const persistedWeekdayRules = [
+  "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY",
+].map((weekday) => ({ weekday, isAvailable: true }));
+
 test("Phase 5A: availability endpoints use the generated Parish.availabilities relation", async () => {
   const parishModel = Prisma.dmmf.datamodel.models.find((model) => model.name === "Parish");
   const parishRelations = parishModel.fields.filter((field) => field.kind === "object").map((field) => field.name);
@@ -43,11 +47,12 @@ test("Phase 5A: availability endpoints use the generated Parish.availabilities r
 
   prisma.parish.findUnique = async (query) => {
     seenQueries.push(query);
-    assert.deepEqual(query.include, {
-      availabilities: {
-        where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } },
-      },
+    assert.deepEqual(query.include.availabilities, {
+      where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } },
     });
+    assert.equal(query.include.weekdayRules, true);
+    assert.equal(query.include.serviceWeekdayRules, true);
+    assert.deepEqual(query.include.scheduleDateRules.include, { serviceOverrides: true });
     return {
       id: 2,
       isActive: true,
@@ -58,6 +63,9 @@ test("Phase 5A: availability endpoints use the generated Parish.availabilities r
         capacitySettings: { dailyLimit: 3, slotCapacity: 1 },
       },
       availabilities: parishAvailabilities,
+      weekdayRules: persistedWeekdayRules,
+      serviceWeekdayRules: [],
+      scheduleDateRules: [],
     };
   };
   prisma.schedule.findMany = async () => [];
@@ -352,7 +360,7 @@ test("Phase 5A: Shared BookingValidator - Event Types, Office Hours, Availabilit
   ];
   assert.throws(
     () => validateParishAvailability(blockedParishAvailability, "2026-09-03"),
-    (err) => err.code === "SERVICE_BLOCKED" && err.statusCode === 409
+    (err) => err.code === "PARISH_CLOSED" && err.statusCode === 409
   );
   assert.equal(validateParishAvailability(blockedParishAvailability, "2026-09-06"), true);
   assert.deepEqual(PARISH_BOOKING_BLOCK_TYPES, ["PARISH_CLOSED", "SECRETARY_LEAVE", "FULLY_BOOKED"]);
@@ -361,7 +369,7 @@ test("Phase 5A: Shared BookingValidator - Event Types, Office Hours, Availabilit
   const configuredSlots = ["08:00 AM", "09:30 AM"];
   assert.throws(
     () => validateSlotAndCapacity(configuredSlots, [], "01:15 PM", 10, 1),
-    (err) => err.code === "INVALID_TIME_SLOT" && err.statusCode === 400
+    (err) => err.code === "SLOT_NOT_CONFIGURED" && err.statusCode === 400
   );
 
   // Slot capacity
@@ -370,7 +378,7 @@ test("Phase 5A: Shared BookingValidator - Event Types, Office Hours, Availabilit
   ];
   assert.throws(
     () => validateSlotAndCapacity(configuredSlots, existingBookings, "08:00 AM", 10, 1),
-    (err) => err.code === "SLOT_CAPACITY_EXCEEDED" && err.statusCode === 409
+    (err) => err.code === "FULLY_BOOKED" && err.statusCode === 409
   );
 
   // Different slot has capacity
@@ -385,7 +393,7 @@ test("Phase 5A: Shared BookingValidator - Event Types, Office Hours, Availabilit
   ];
   assert.throws(
     () => validatePriestConflict(priestSchedules, [], "2026-09-01", "08:00 AM"),
-    (err) => err.code === "PRIEST_SCHEDULE_CONFLICT" && err.statusCode === 409
+    (err) => err.code === "SCHEDULE_CONFLICT" && err.statusCode === 409
   );
 });
 
@@ -456,9 +464,16 @@ test("Phase 5B: schedule idempotency uses the generated Int contract and rolls b
     state.nextScheduleId = snapshot.nextScheduleId;
   };
   const makeTransactionClient = () => ({
+    $queryRaw: async () => [{ id: parish.id }],
     parish: {
       findUnique: async () => parish,
     },
+    parishWeekdayRule: { findMany: async () => persistedWeekdayRules },
+    parishServiceWeekdayRule: { findMany: async () => [] },
+    parishScheduleDateRule: { findUnique: async () => null },
+    user: { findMany: async () => [] },
+    notification: { createMany: async () => ({ count: 1 }) },
+    emailOutbox: { upsert: async ({ create }) => create },
     schedule: {
       findMany: async () => state.schedules,
       findUnique: async ({ where }) => state.schedules.find((schedule) => schedule.id === where.id) || null,

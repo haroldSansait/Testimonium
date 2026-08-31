@@ -137,6 +137,49 @@ export const validateSchedulingSettingsForSave = (eventSettings) => {
   };
 };
 
+/**
+ * Reuse the existing parish office-hours contract for every scheduling write.
+ * Active days must contain valid clock values and may not cross midnight.
+ */
+export const validateOfficeHoursForSave = (officeHours) => {
+  if (officeHours === null || officeHours === undefined) return officeHours;
+  const hours = asObject(officeHours);
+  if (!hours) throw configurationError("Office hours must be a valid object.");
+
+  const parseToMinutes = (value) => {
+    if (typeof value !== "string") return null;
+    const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (!match) return null;
+    let hour = Number(match[1]);
+    const minute = Number(match[2]);
+    const meridiem = match[3]?.toUpperCase();
+    if (minute > 59 || hour > (meridiem ? 12 : 23) || hour < (meridiem ? 1 : 0)) return null;
+    if (meridiem === "PM" && hour < 12) hour += 12;
+    if (meridiem === "AM" && hour === 12) hour = 0;
+    return hour * 60 + minute;
+  };
+
+  for (const day of ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]) {
+    const config = hours[day] ?? hours[day.toLowerCase()];
+    if (config === undefined) continue;
+    if (!config || typeof config !== "object" || Array.isArray(config) || typeof config.isClosed !== "boolean") {
+      throw configurationError(`${day} office hours must include an isClosed boolean.`);
+    }
+    if (!config.isClosed) {
+      const openMinutes = parseToMinutes(config.openTime);
+      const closeMinutes = parseToMinutes(config.closeTime);
+      if (openMinutes === null || closeMinutes === null) {
+        throw configurationError(`${day} office hours contain an invalid time.`);
+      }
+      if (openMinutes >= closeMinutes) {
+        throw configurationError(`${day} opening time must be earlier than closing time.`);
+      }
+    }
+  }
+
+  return hours;
+};
+
 export const requireSchedulingConfiguration = (parish) => {
   const config = getParishSchedulingConfiguration(parish);
   if (!config.isConfigured) throw configurationError();

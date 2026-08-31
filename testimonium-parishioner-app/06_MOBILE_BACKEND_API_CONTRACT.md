@@ -95,3 +95,8 @@ The mobile client maps error codes to actionable UI states:
 - `409 / CONFLICT / FULLY_BOOKED`: Slot was booked concurrently; prompts user to pick another slot.
 - `413 / FILE_TOO_LARGE`: Alerts user to the 5 MB limit.
 - `429 / RATE_LIMITED`: Displays retry cooldown message.
+## Scheduling availability consistency update
+
+Mobile continues to use the canonical Parish → Service → Date → Time Slot → Confirmation flow. It reads services and capacity from GET /schedule-requests/configuration, dates from /availability-dates, and slots from /available-slots. No client fallback may invent services, dates, slots, or capacities.
+
+On PARISH_CLOSED, FULLY_BOOKED, SLOT_NOT_CONFIGURED, SCHEDULE_CONFLICT, DATE_UNAVAILABLE, SERVICE_UNAVAILABLE_ON_DAY, or the earlier canonical availability errors, the wizard invalidates/refetches configuration, date, and slot queries and returns the user to the affected step. Help remains a stack route under Profile/Settings; it is not a sixth tab.

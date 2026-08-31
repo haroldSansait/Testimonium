@@ -1,0 +1,658 @@
+# TESTIMONIUM — Planned Additions & Improvements: Implementation Plan
+
+This plan covers the 8 planned features from `TESTIMONIUM_PLANNED_ADDITIONS_AND_IMPROVEMENTS.md`, grounded in the current schema, services, and architecture. Phases are ordered to minimize blocking dependencies.
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> The following decisions must be resolved before or during their respective phases. They affect schema design, business logic, and UI copy.
+
+| # | Question | Affects |
+|---|---|---|
+| Q1 | Are `WEDDING`, `MARRIAGE_SPECIAL`, and `FUNERAL` **absolutely** forbidden on Sundays (non-overridable), or may a parish create a specific-date Sunday override? | Phase A DB schema, `BookingValidator.js` |
+| Q2 | Are weekday availability rules **parish-wide**, **service-specific**, or **both**? | Phase A DB schema |
+| Q3 | Which roles can edit scheduling availability? (Secretary only, or Priest too?) | Phase A API auth middleware |
+| Q4 | What visibility should **existing** `parish_events` receive after the migration? (`PUBLIC` is safest default) | Phase B migration script |
+| Q5 | Can Priests change event visibility? | Phase B API middleware |
+| Q6 | Can Priests create `DailyReport` records? | Phase C schema/API |
+| Q7 | Should reports be **deletable** (hard delete) or **archivable** (soft delete)? | Phase C schema |
+| Q8 | Should reports support photo/file attachments? | Phase C schema |
+| Q9 | Can a Diocese Coordinator create a report without selecting a specific parish? | Phase C API validation |
+| Q10 | Which email provider will be used? (Resend, SendGrid, Nodemailer+SMTP, etc.) | Phase F `EmailService.js` |
+| Q11 | Should parishioners be able to opt out of non-essential emails? | Phase F schema/Notification model |
+| Q12 | Should Help content be static (in-source) initially, or CMS-driven from day one? | Phase G |
+
+---
+
+## Architecture Guardrails (All Phases)
+
+- The backend remains the **sole authority** for all business rules. Clients display backend data; they never invent availability, visibility, or permissions.
+- All Prisma schema changes require explicit migrations (`prisma migrate dev`). **Never** use `prisma db push` in non-local environments.
+- Update routes, validators, controllers, services, frontend providers/API modules, and documentation **in lockstep**.
+- Email delivery failures must **never** roll back workflow state.
+- Role-scoped tenancy is derived from the authenticated server identity, not client-supplied parameters.
+
+---
+
+## Phase A — Scheduling Availability Settings
+
+**Goal:** Parish staff configure available weekdays and date exceptions per service. Backend enforces these rules in `BookingValidator.js`.
+
+### User Review Required
+
+> [!WARNING]
+> The weekday availability model (Q1, Q2) must be decided before the DB migration is written. If Sunday restrictions are **absolute**, they should be hard-coded constants in `BookingValidator.js` rather than configurable data, and the Admin UI should display them as read-only labels. If they are **configurable**, the data model must allow per-service per-weekday flags.
+
+---
+
+### Phase A — Backend
+
+#### [MODIFY] [`schema.prisma`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/prisma/schema.prisma)
+
+Add three new constructs:
+
+**New enum `WeekdayAvailabilityMode`** (only needed if Q2 = service-specific):
+```prisma
+enum WeekdayAvailabilityMode {
+  AVAILABLE
+  UNAVAILABLE
+}
+```
+
+**New model `ParishServiceWeekdayRule`** — stores per-service per-weekday availability for a parish:
+```prisma
+model ParishServiceWeekdayRule {
+  id          Int               @id @default(autoincrement()) @map("rule_id")
+  parishId    Int               @map("parish_id")
+  eventType   ScheduleEventType @map("event_type")  // WEDDING, FUNERAL, etc.
+  weekday     Int               // 0=Sunday … 6=Saturday (ISO: Sunday=0)
+  isAvailable Boolean           @default(true) @map("is_available")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  parish      Parish            @relation(fields: [parishId], references: [id], onDelete: Cascade)
+
+  @@unique([parishId, eventType, weekday])
+  @@index([parishId])
+  @@map("parish_service_weekday_rules")
+}
+```
+
+**New model `ParishScheduleDateException`** — stores specific-date overrides:
+```prisma
+enum DateExceptionType {
+  UNAVAILABLE
+  AVAILABLE_OVERRIDE
+}
+
+model ParishScheduleDateException {
+  id                  Int               @id @default(autoincrement()) @map("exception_id")
+  parishId            Int               @map("parish_id")
+  exceptionDate       DateTime          @map("exception_date") @db.Date
+  exceptionType       DateExceptionType @map("exception_type")
+  reason              String?           @db.VarChar(255)
+  appliesToAllServices Boolean          @default(true) @map("applies_to_all_services")
+  createdById         Int?              @map("created_by")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  parish              Parish            @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  createdBy           User?             @relation("ScheduleDateExceptionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  serviceOverrides    ParishScheduleDateExceptionService[]
+
+  @@index([parishId])
+  @@index([exceptionDate])
+  @@index([parishId, exceptionDate])
+  @@map("parish_schedule_date_exceptions")
+}
+
+model ParishScheduleDateExceptionService {
+  id          Int                        @id @default(autoincrement()) @map("exception_service_id")
+  exceptionId Int                        @map("exception_id")
+  eventType   ScheduleEventType          @map("event_type")
+  exception   ParishScheduleDateException @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+
+  @@unique([exceptionId, eventType])
+  @@map("parish_schedule_date_exception_services")
+}
+```
+
+Add back-relations to `Parish` and `User` models.
+
+#### [MODIFY] [`BookingValidator.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/BookingValidator.js)
+
+Add a new validation step **after** the existing horizon check and **before** slot/capacity checks:
+
+1. **`ABSOLUTE_SUNDAY_BLOCKED_SERVICES`** constant — `["WEDDING", "MARRIAGE_SPECIAL", "FUNERAL"]`. If Q1 = absolute, these are always blocked on Sunday (weekday 0) regardless of any DB rule.
+2. **`validateWeekdayAvailability(parishId, eventType, requestedDate)`** — queries `ParishServiceWeekdayRule`; applies Sunday absolute block if configured.
+3. **`validateDateException(parishId, eventType, requestedDate)`** — queries `ParishScheduleDateException` with `serviceOverrides`. Returns `{ blocked: boolean, reason: string | null }`.
+4. **Rule priority enforcement** per section 3.6 of the spec (in order: parish enabled → service offered → date exception → weekday rule → slot → capacity → conflict).
+
+#### [NEW] [`ScheduleDateExceptionService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ScheduleDateExceptionService.js)
+
+CRUD operations for `ParishScheduleDateException`. Enforces parish tenancy.
+
+#### [NEW] [`ParishWeekdayRuleService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ParishWeekdayRuleService.js)
+
+CRUD operations for `ParishServiceWeekdayRule`. Provides batch upsert for the Admin settings UI.
+
+#### [NEW] [`scheduleAvailabilityRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/scheduleAvailabilityRoutes.js)
+
+New API module mounted at `/api/v1/schedule-availability`:
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/parishes/:parishId/weekday-rules` | Staff + Parishioner | Fetch all weekday rules |
+| `PUT` | `/parishes/:parishId/weekday-rules` | Secretary / Coordinator | Batch upsert weekday rules |
+| `GET` | `/parishes/:parishId/date-exceptions` | Staff + Parishioner | List date exceptions (with optional `?from=&to=` filter) |
+| `POST` | `/parishes/:parishId/date-exceptions` | Secretary / Coordinator | Create date exception |
+| `PATCH` | `/parishes/:parishId/date-exceptions/:id` | Secretary / Coordinator | Update date exception |
+| `DELETE` | `/parishes/:parishId/date-exceptions/:id` | Secretary / Coordinator | Remove date exception |
+
+#### [MODIFY] [`ScheduleService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ScheduleService.js)
+
+Integrate the new weekday + date exception validators into the submission and revalidation paths.
+
+#### [MODIFY] [`AuditLogService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/AuditLogService.js)
+
+Add log entries for: `SCHEDULE_WEEKDAY_RULE_UPDATED`, `SCHEDULE_DATE_EXCEPTION_CREATED`, `SCHEDULE_DATE_EXCEPTION_UPDATED`, `SCHEDULE_DATE_EXCEPTION_REMOVED`.
+
+---
+
+### Phase A — Admin Portal
+
+#### [MODIFY] [`SettingsPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/SettingsPage.tsx)
+
+Under **Parish Settings → Scheduling**, add two new sub-sections after existing "Services Offered / Time Slots / Capacity":
+
+- **Availability Days** — A matrix of toggles (rows = enabled services, columns = Mon–Sun). Sunday cells for `WEDDING`, `MARRIAGE_SPECIAL`, and `FUNERAL` are either read-only locked (if Q1 = absolute) or editable toggles.
+- **Date Exceptions** — A list + form for creating/editing/removing specific date exceptions. Fields: date picker, exception type (`Unavailable` / `Available Override`), reason text, "Applies to all services" checkbox, service multi-select.
+
+#### [NEW] `src/api/scheduleAvailabilityApi.ts` (Admin Portal)
+
+API client methods for the new availability endpoints.
+
+---
+
+### Phase A — Parishioner Web
+
+#### [MODIFY] Scheduling wizard / date-picker component
+
+- Fetch available dates from backend (using the existing or extended schedule availability endpoint).
+- Disable calendar cells returned as unavailable.
+- Refresh availability when the wizard is opened; re-validate on stale-state errors.
+
+---
+
+### Phase A — Parishioner Mobile
+
+#### [MODIFY] Scheduling wizard screens
+
+Same behavior as Web: authoritative date eligibility from backend, no client-side rule calculation, refresh on `STALE_AVAILABILITY` error codes.
+
+---
+
+## Phase B — Event Visibility (PUBLIC / PARISH_PRIVATE)
+
+**Goal:** Parish events are classified at creation/edit. Parishioner-facing API endpoints return only `PUBLIC` events.
+
+### Phase B — Backend
+
+#### [MODIFY] [`schema.prisma`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/prisma/schema.prisma)
+
+Add to `ParishEvent` model:
+
+```prisma
+enum EventVisibility {
+  PUBLIC
+  PARISH_PRIVATE
+}
+```
+
+```prisma
+// In ParishEvent model:
+visibility EventVisibility @default(PUBLIC)
+```
+
+Add a Prisma migration that sets `visibility = 'PUBLIC'` for all existing rows (addresses Q4 — safest default, consistent with current parishioner-facing behavior).
+
+#### [MODIFY] [`ParishEventService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ParishEventService.js)
+
+- Accept and persist `visibility` in create/update operations.
+- Validate that only `PUBLIC` or `PARISH_PRIVATE` are accepted.
+- Enforce tenancy: parish-scoped staff cannot modify another parish's events.
+
+#### [MODIFY] [`parishEventRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/parishEventRoutes.js)
+
+- Parishioner-facing event list endpoint: add `WHERE visibility = 'PUBLIC'` filter.
+- Staff-facing event list endpoint: returns all events for their parish scope.
+
+#### [MODIFY] `AuditLogService.js`
+
+Add: `PARISH_EVENT_VISIBILITY_CHANGED`.
+
+---
+
+### Phase B — Admin Portal
+
+#### [MODIFY] Event create/edit form in [`CalendarPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/CalendarPage.tsx) or `ParishManagementPage.tsx`
+
+Add a **visibility radio group** (Public / Parish Private) with descriptive helper text. Default = Public.
+
+---
+
+### Phase B — Parishioner Web & Mobile
+
+No code changes required if backend already filters. Verify existing event feed components pass through backend-supplied data without client-side re-filtering.
+
+---
+
+## Phase C — Reports Feature
+
+**Goal:** Secretaries and Diocese Coordinators can create date-based operational reports. Reports are isolated from automatic activity logs.
+
+### Phase C — Backend
+
+#### [MODIFY] [`schema.prisma`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/prisma/schema.prisma)
+
+New enum and model:
+
+```prisma
+enum ReportCategory {
+  MEETING
+  ACTIVITY
+  IMPORTANT_EVENT
+  OTHER
+}
+
+model DailyReport {
+  id            Int            @id @default(autoincrement()) @map("report_id")
+  reportDate    DateTime       @map("report_date") @db.Date
+  title         String         @db.VarChar(255)
+  category      ReportCategory
+  description   String         @db.Text
+  parishId      Int?           @map("parish_id")        // nullable if Q9 allows diocese-wide
+  createdById   Int?           @map("created_by")
+  isArchived    Boolean        @default(false) @map("is_archived")  // soft-delete if Q7 = archive
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  parish        Parish?        @relation(fields: [parishId], references: [id], onDelete: SetNull)
+  createdBy     User?          @relation("DailyReportCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([parishId])
+  @@index([reportDate])
+  @@index([createdById])
+  @@map("daily_reports")
+}
+```
+
+> [!NOTE]
+> `parishId` is nullable pending Q9. If Q7 = hard delete, remove `isArchived`. If Q8 = attachments, add a `DailyReportAttachment` child model with an R2 key.
+
+#### [NEW] [`ReportService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ReportService.js)
+
+CRUD with:
+- Secretary: scoped to own parish only.
+- Diocese Coordinator: cross-parish query with optional `parishId` filter.
+- Filters: `reportDate` range, `parishId`, `category`, `createdById`, keyword (title/description `ILIKE`).
+
+#### [NEW] [`reportRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/reportRoutes.js)
+
+Mounted at `/api/v1/reports`:
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/` | Secretary / Coordinator | List reports (with filters) |
+| `POST` | `/` | Secretary / Coordinator | Create report |
+| `GET` | `/:id` | Secretary / Coordinator | Get single report |
+| `PATCH` | `/:id` | Secretary / Coordinator | Update report |
+| `DELETE` | `/:id` | Secretary / Coordinator | Archive or hard delete (per Q7) |
+
+#### [MODIFY] `AuditLogService.js`
+
+Add: `REPORT_CREATED`, `REPORT_UPDATED`, `REPORT_ARCHIVED` / `REPORT_DELETED`.
+
+---
+
+### Phase C — Admin Portal
+
+#### [NEW] `src/pages/ReportsPage.tsx`
+
+Full page featuring:
+- Filters bar: date range, parish (Coordinator only), category, author, keyword search.
+- Paginated/scrollable report list with date, title, category badge, parish, author.
+- "New Report" button → slide-over or modal form (date, category, title, description, parish).
+- Detail view / edit mode inline or in a modal.
+- Archive / delete action (per Q7).
+
+#### [MODIFY] `src/routes/AppRouter.tsx`
+
+Add `/reports` route, visible to Secretary and Diocese Coordinator roles.
+
+#### [MODIFY] Sidebar / navigation component
+
+Add **Reports** nav item between Events and Analytics.
+
+#### [OPTIONAL] Calendar integration
+
+If desired, add a lightweight indicator on `CalendarPage.tsx` for days that have report entries.
+
+---
+
+## Phase D — Responsive Admin Portal
+
+**Goal:** Core workflows remain usable at 320 px–tablet-width in a mobile browser. Desktop layout is unchanged.
+
+> [!NOTE]
+> This phase is a cross-cutting CSS/layout audit. No new backend work is required.
+
+### Phase D — Admin Portal
+
+#### [MODIFY] `src/layouts/` — Shell / Sidebar
+
+- **Desktop (≥1024 px):** Persistent sidebar, current behavior.
+- **Tablet (768–1023 px):** Sidebar collapses to icon-only rail or overlay.
+- **Mobile (<768 px):** Sidebar hidden behind hamburger button → full-width overlay drawer.
+- Role-based nav items remain intact across all breakpoints.
+
+#### [MODIFY] All pages listed in section 6.2 of spec
+
+Audit and fix each in priority order:
+
+| Priority | Component | Technique |
+|---|---|---|
+| High | Sidebar + top nav | Hamburger drawer, z-index layering |
+| High | Data tables | Horizontal scroll wrapper; hide non-critical columns below 768 px; optional card layout on mobile |
+| High | Forms | Single-column stacking below 640 px; full-width inputs; scrollable modals |
+| Medium | Calendars | Reduce date-cell padding; hide secondary event labels on narrow widths |
+| Medium | Charts/Analytics | Responsive chart container; vertical stack on mobile |
+| Medium | Modals | `max-height: 90vh; overflow-y: auto`; sticky footer for action buttons |
+| Low | Map configuration | Map iframe/component minimum height; touch-friendly controls |
+
+#### Breakpoints to target
+
+```
+≥1024px  — Desktop (current)
+768–1023px — Tablet
+640–767px  — Large mobile
+<640px    — Mobile (320–639px)
+```
+
+---
+
+## Phase E — Enhanced Descriptive Analytics
+
+**Goal:** Expand the analytics surface with per-domain metrics, filters, and charts.
+
+### Phase E — Backend
+
+#### [MODIFY] [`AnalyticsService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/AnalyticsService.js)
+
+Add new aggregation methods grouped by domain. All aggregations run server-side (Prisma `groupBy`, `count`, `sum`, raw SQL where needed). Role scope is enforced: Secretary → own parish, Coordinator → all parishes.
+
+**Document Request Analytics:**
+- Total requests, by document type, by status, by parish, completed/cancelled/rejected counts, average processing time (hours), monthly trend.
+
+**Payment Analytics:**
+- Receipts submitted, verified, payment corrections, rejections, total verified amount, monthly payment trend, volume by parish.
+
+**Scheduling Analytics:**
+- Requests submitted, confirmed, cancelled/rejected, reschedule proposals, by event type, busiest weekdays, busiest months, volume by parish.
+
+**Event Analytics:**
+- Public vs private events created, by parish, by event type, monthly volume.
+
+**User Analytics (Coordinator scope):**
+- Registered parishioners, active staff, role distribution, growth over time.
+
+**Report Analytics:**
+- Reports by category, by parish, monthly volume.
+
+#### [MODIFY] [`analyticsRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/analyticsRoutes.js)
+
+Add new endpoints (or query parameters) for each domain. Suggested filter params: `?from=`, `?to=`, `?parishId=`, `?documentType=`, `?eventType=`, `?status=`.
+
+---
+
+### Phase E — Admin Portal
+
+#### [MODIFY] [`AnalyticsPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/AnalyticsPage.tsx)
+
+Refactor into **tab or section-based layout** (Documents, Payments, Scheduling, Events, Users, Reports). For each section:
+
+- Summary cards (totals, averages, top category).
+- One or more charts:
+  - Line chart → monthly trends.
+  - Bar chart → requests by document type or service.
+  - Horizontal bar → parish comparisons (Coordinator only).
+  - Donut/Pie → status distributions.
+- Filter bar: date range, parish (Coordinator), relevant dimension filter.
+
+All charts must handle empty-data states gracefully.
+
+---
+
+## Phase F — Email Notifications
+
+**Goal:** Send transactional emails on key workflow transitions. Email failures must never corrupt workflow state.
+
+### Phase F — Backend
+
+#### Decision required: Q10 (email provider)
+
+Recommended architecture regardless of provider: a thin `EmailService.js` wrapper isolates provider SDK calls so the provider can be swapped without touching business logic.
+
+#### [MODIFY] [`schema.prisma`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/prisma/schema.prisma)
+
+New model for delivery logging:
+
+```prisma
+enum EmailNotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model EmailNotificationLog {
+  id               Int                     @id @default(autoincrement()) @map("email_log_id")
+  recipientEmail   String                  @map("recipient_email") @db.VarChar(150)
+  emailType        String                  @map("email_type") @db.VarChar(100)  // e.g. "DOCUMENT_READY_FOR_PICKUP"
+  referenceType    String?                 @map("reference_type") @db.VarChar(50)
+  referenceId      Int?                    @map("reference_id")
+  status           EmailNotificationStatus @default(QUEUED)
+  failureReason    String?                 @map("failure_reason") @db.Text
+  retryCount       Int                     @default(0) @map("retry_count")
+  queuedAt         DateTime                @default(now()) @map("queued_at")
+  sentAt           DateTime?               @map("sent_at")
+
+  @@index([referenceType, referenceId])
+  @@index([status])
+  @@map("email_notification_logs")
+}
+```
+
+> [!NOTE]
+> If the existing `notifications` table is extended to track email delivery directly, a separate log model may not be necessary. Evaluate against Q10 provider capabilities.
+
+#### [NEW] [`EmailService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/EmailService.js)
+
+Provider-agnostic wrapper:
+- `sendEmail({ to, subject, html, textFallback })` — calls provider SDK.
+- Returns `{ success: boolean, messageId?: string, error?: string }`.
+- Logs to `EmailNotificationLog`.
+- **Never throws**; errors are caught and logged.
+
+#### [NEW] `email-templates/` directory
+
+HTML + text templates for each notification type. Template engine: either simple string interpolation or `@mjml/core` for responsive email layouts.
+
+| Template | Trigger |
+|---|---|
+| `document-ready-for-pickup.html` | `DocumentRequestStatus → READY_FOR_PICKUP` |
+| `schedule-submitted.html` | Parishioner submits schedule request |
+| `schedule-proposed-reschedule.html` | Secretary proposes new date/time |
+| `schedule-confirmed.html` | Schedule status → `CONFIRMED` |
+
+#### [MODIFY] [`NotificationDispatcher.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/NotificationDispatcher.js)
+
+After each in-app notification is created and the DB commit succeeds, call `EmailService.js` for applicable transitions. Wrap email call in `try/catch`; log failure without re-throwing.
+
+**Deduplication:** Before sending, query `EmailNotificationLog` for an existing row with the same `emailType + referenceType + referenceId`. If found and status is `SENT`, skip and log `SKIPPED`.
+
+#### [MODIFY] [`DocumentRequestService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/DocumentRequestService.js) and [`ScheduleService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ScheduleService.js)
+
+Ensure that the `NotificationDispatcher` (and therefore email) is always invoked **after** the database transaction commits successfully.
+
+---
+
+## Phase G — System Help Feature
+
+**Goal:** Clear usage guidance for parishioners in Web and Mobile. Static content initially (Q12 default); Admin-editable version deferred.
+
+### Phase G — Parishioner Web
+
+#### [NEW] `src/pages/HelpPage.tsx` (Parishioner Web)
+
+Accordion or tab-based layout with sections from spec section 12.3:
+- Getting Started
+- Document Requests
+- Scheduling
+- Parish Directory
+- Events
+- Notifications
+- Account
+
+Each section: step-by-step plain language instructions, no developer terminology.
+
+#### [MODIFY] Main navigation or profile menu
+
+Add "Help & Guide" link pointing to `/help`.
+
+---
+
+### Phase G — Parishioner Mobile
+
+#### [NEW] `app/(tabs)/help/index.tsx` (or equivalent Expo Router path)
+
+Same content structure as Web. Rendered as a scrollable screen list → detail pattern. Accessible from the Profile tab.
+
+#### [OPTIONAL] Contextual help
+
+Small `?` icon in complex wizard steps (e.g., scheduling date picker, document upload) that deep-links to the relevant Help section.
+
+---
+
+## Proposed Changes Summary
+
+### Backend — New Files
+
+| File | Purpose |
+|---|---|
+| [`services/ScheduleDateExceptionService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ScheduleDateExceptionService.js) | CRUD for date exceptions |
+| [`services/ParishWeekdayRuleService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ParishWeekdayRuleService.js) | CRUD for weekday rules |
+| [`services/ReportService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ReportService.js) | CRUD for DailyReport |
+| [`services/EmailService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/EmailService.js) | Provider-agnostic email delivery |
+| [`routes/scheduleAvailabilityRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/scheduleAvailabilityRoutes.js) | Weekday rules + date exceptions API |
+| [`routes/reportRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/reportRoutes.js) | Reports API |
+
+### Backend — Modified Files
+
+| File | Change |
+|---|---|
+| [`prisma/schema.prisma`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/prisma/schema.prisma) | 5 new models / 2 new fields / 4 new enums |
+| [`services/BookingValidator.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/BookingValidator.js) | Weekday + date exception validation steps |
+| [`services/ScheduleService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ScheduleService.js) | Integrate new validators |
+| [`services/ParishEventService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/ParishEventService.js) | Accept and filter by `visibility` |
+| [`services/AnalyticsService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/AnalyticsService.js) | New aggregation methods per domain |
+| [`services/NotificationDispatcher.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/NotificationDispatcher.js) | Email call after in-app notification |
+| [`routes/parishEventRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/parishEventRoutes.js) | Public filter on parishioner endpoint |
+| [`routes/analyticsRoutes.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/routes/analyticsRoutes.js) | New domain endpoints |
+| [`services/AuditLogService.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/services/AuditLogService.js) | New audit action constants |
+| [`server.js`](file:///c:/Users/me/Documents/testimonium/testimonium-backend/server.js) | Mount new route modules |
+
+### Admin Portal — New Files
+
+| File | Purpose |
+|---|---|
+| [`src/pages/ReportsPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/ReportsPage.tsx) | Reports list + create/edit UI |
+| `src/api/scheduleAvailabilityApi.ts` | API client for availability endpoints |
+| `src/api/reportsApi.ts` | API client for reports endpoints |
+
+### Admin Portal — Modified Files
+
+| File | Change |
+|---|---|
+| [`src/pages/SettingsPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/SettingsPage.tsx) | Availability Days + Date Exceptions sub-sections |
+| [`src/pages/CalendarPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/CalendarPage.tsx) | Event visibility selector in create/edit form |
+| [`src/pages/AnalyticsPage.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/pages/AnalyticsPage.tsx) | Multi-domain tabs, new charts, filters |
+| [`src/routes/AppRouter.tsx`](file:///c:/Users/me/Documents/testimonium/testimonium-admin-portal/src/routes/AppRouter.tsx) | Add `/reports` route |
+| Sidebar/nav component | Add Reports nav item |
+| All layout/page components | Responsive breakpoint CSS (Phase D) |
+
+### Parishioner Web — New Files
+
+| File | Purpose |
+|---|---|
+| `src/pages/HelpPage.tsx` | Help & Guide page |
+
+### Parishioner Web — Modified Files
+
+- Scheduling wizard date-picker: fetch from backend, disable unavailable dates.
+- Events feed: no client change needed if backend filters correctly.
+- Navigation: add Help link.
+
+### Parishioner Mobile — New Files
+
+| File | Purpose |
+|---|---|
+| `app/.../help/index.tsx` | Help & Guide screen |
+
+### Parishioner Mobile — Modified Files
+
+- Scheduling date picker screen: consume authoritative availability from backend.
+- Profile tab / drawer: add Help navigation entry.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+```bash
+# Backend unit/integration tests
+npm test                         # in testimonium-backend
+
+# Build validation
+npm run build:all                # root package.json
+```
+
+### Per-Phase Manual Verification
+
+**Phase A:** Submit schedule for WEDDING on a Sunday → backend rejects. Add `UNAVAILABLE` date exception for Dec 25 → that date disabled in Web/Mobile calendar. Add `AVAILABLE_OVERRIDE` for same date for BAPTISM → Baptism date available, WEDDING still rejected.
+
+**Phase B:** Create event as `PARISH_PRIVATE` → not visible in parishioner Web/Mobile event feed. Create as `PUBLIC` → visible. Flip visibility → immediate effect on next API call.
+
+**Phase C:** Secretary creates report → only visible within own parish. Coordinator views cross-parish reports. Filters (date range, category, keyword) return correct subsets.
+
+**Phase D:** Open Admin Portal at 375 px width → sidebar drawer opens. Tables scroll horizontally. Forms stack single-column. Modal action buttons are reachable. Repeat at 768 px tablet width.
+
+**Phase E:** Analytics figures match counts from direct DB queries. Empty-data states show graceful empty UI. Role scope (Secretary vs Coordinator) returns correct parish boundaries.
+
+**Phase F:** Trigger `READY_FOR_PICKUP` status change → email delivered to parishioner. Trigger same transition again immediately → second email is `SKIPPED` (deduplication). Simulate provider failure → workflow status unchanged, failure logged.
+
+**Phase G:** Open Help page on Web and Mobile. All sections render. No developer terminology visible. Instructions match current live workflow steps.
+
+---
+
+## Recommended Implementation Order
+
+```
+Phase A — Scheduling Availability    (prerequisite: resolve Q1, Q2, Q3)
+Phase B — Event Visibility           (can run in parallel with Phase A)
+Phase C — Reports                    (prerequisite: resolve Q6, Q7, Q8, Q9)
+Phase D — Responsive Admin Portal    (independent, can run in parallel)
+Phase E — Enhanced Analytics         (depends on Phase B + C being complete for full data)
+Phase F — Email Notifications        (prerequisite: resolve Q10; depends on Phase A+B)
+Phase G — System Help                (independent, lowest risk, can run last)
+```

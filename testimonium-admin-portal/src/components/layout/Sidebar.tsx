@@ -83,6 +83,12 @@ const ALL_NAV_ITEMS: NavItem[] = [
     permission: PERMISSIONS.MANAGE_MY_AVAILABILITY,
   },
   {
+    to: '/reports',
+    label: 'Daily Reports',
+    icon: <ClipboardList className="w-4 h-4" />,
+    permission: PERMISSIONS.MANAGE_REPORTS,
+  },
+  {
     to: '/settings',
     label: 'Parish Settings',
     icon: <Settings className="w-4 h-4" />,
@@ -128,7 +134,7 @@ const CATEGORIES = [
   },
   {
     title: 'Requests',
-    itemKeys: ['/document-requests', '/schedule-requests', '/mass-schedule'],
+    itemKeys: ['/document-requests', '/schedule-requests', '/mass-schedule', '/reports'],
   },
   {
     title: 'Configuration',

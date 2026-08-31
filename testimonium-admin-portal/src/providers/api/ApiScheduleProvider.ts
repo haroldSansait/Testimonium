@@ -152,6 +152,12 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     proposedTimeStr = `${hourStr}:${minStr} ${period}`;
   }
 
+  const assignedPriestId = dbItem.assignedPriest?.id
+    ? String(dbItem.assignedPriest.id)
+    : (dbItem as any).assignedPriestId
+    ? String((dbItem as any).assignedPriestId)
+    : undefined;
+
   return {
     id: String(dbItem.id),
     referenceNo: `REQ-${new Date(dbItem.createdAt).getFullYear()}-${String(dbItem.id).padStart(4, '0')}`,
@@ -159,11 +165,13 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     initials,
     avatarColor,
     eventType: mapEventType(dbItem.eventType),
+    rawEventType: dbItem.eventType,
     appointmentTitle,
     preferredDate,
     preferredTime,
     status: mapScheduleStatus(dbItem.status),
     assignedPriest,
+    assignedPriestId,
     parish: dbItem.parish?.parishName || 'Main Church',
     parishId: String(dbItem.parishId),
     contactInfo: dbItem.user?.email || 'Anonymous',
@@ -199,11 +207,13 @@ const mapParishEventToFrontend = (e: any): ScheduleRequest => {
     initials: 'ST',
     avatarColor: 'bg-teal-500',
     eventType: 'Other',
+    rawEventType: e.eventType,
     appointmentTitle: e.title,
     preferredDate,
     preferredTime,
     status: 'Confirmed',
     assignedPriest: e.assignedPriest?.fullName || 'TBD',
+    assignedPriestId: e.assignedPriest?.id ? String(e.assignedPriest.id) : e.assignedPriestId ? String(e.assignedPriestId) : undefined,
     parish: e.parish?.parishName || 'Main Church',
     parishId: String(e.parishId),
     contactInfo: e.createdBy?.email || 'staff@diocese.org',
@@ -243,6 +253,7 @@ const mapMassTemplateToFrontend = (t: any): ScheduleRequest => {
     preferredTime: t.timeSlot,
     status: 'Confirmed',
     assignedPriest: t.assignedPriest?.fullName || 'TBD',
+    assignedPriestId: t.assignedPriest?.id ? String(t.assignedPriest.id) : t.assignedPriestId ? String(t.assignedPriestId) : undefined,
     parish: t.parish?.parishName || 'Main Church',
     parishId: String(t.parishId),
     contactInfo: 'staff@diocese.org',
@@ -395,6 +406,18 @@ export const ApiScheduleProvider: ScheduleProvider = {
     }
     const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/priest-respond`, { status, reason });
     return mapToFrontend(response.data.data);
-  }
+  },
+
+  async getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]> {
+    const response = await api.get<any>('/schedule-requests/available-slots', {
+      params: { parishId, date, eventType },
+    });
+    const data = response.data;
+    // Backend returns array directly or wrapped in .data / .items
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.items)) return data.items;
+    return [];
+  },
 };
 

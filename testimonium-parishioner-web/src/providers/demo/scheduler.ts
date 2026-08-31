@@ -141,4 +141,10 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     if (!match) throw new Error(`Appointment ${id} not found`);
     return match;
   }
+
+  async getAppointmentById(id: string): Promise<Appointment> {
+    const match = this.appointments.find(a => a.id === id);
+    if (!match) throw new Error(`Appointment ${id} not found`);
+    return match;
+  }
 }

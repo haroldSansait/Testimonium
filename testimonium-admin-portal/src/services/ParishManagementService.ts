@@ -21,7 +21,7 @@ export const ParishManagementService = {
     return providerFactory.getParishProvider().editParish(id, data);
   },
 
-  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish> {
+  async editParishSettings(id: string, data: { documentSettings?: any; eventSettings?: any; officeHours?: any; expectedSchedulingConfigVersion?: number; availableDocuments?: string[]; paymentQrEnabled?: boolean; paymentQrImage?: string | null; venueCapacity?: number | null }): Promise<Parish> {
     return providerFactory.getParishProvider().editParishSettings(id, data);
   },
 

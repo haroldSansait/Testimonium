@@ -1,17 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Filter, X, Check, Calendar, Clock, User, FileText, AlertCircle } from 'lucide-react';
+import { Filter, X, Check, Calendar, Clock, User, FileText, AlertCircle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
-import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest } from '@/services/scheduleRequestService';
+import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, getAvailableSlots } from '@/services/scheduleRequestService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import { cn } from '@/utils/cn';
+import { resolveEventType } from '@/shared/EventTypeCatalog';
 import type { ScheduleFilter } from '@/services/scheduleRequestService';
 
 const FILTER_TABS: { label: string; value: ScheduleFilter }[] = [
@@ -35,6 +36,7 @@ interface DetailsModalProps {
 function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
@@ -42,6 +44,12 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   const [selectedPriestId, setSelectedPriestId] = useState('');
   const [loadingPriests, setLoadingPriests] = useState(false);
   const [priestValidationError, setPriestValidationError] = useState(false);
+  // Dynamic slot state — replaces hardcoded 4-option list
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotLoadError, setSlotLoadError] = useState(false);
+  // Request generation counter to discard stale slot responses (race protection)
+  const slotRequestGen = useRef(0);
 
   const minDate = getManilaTodayDateString();
 
@@ -54,9 +62,10 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
           parishId: request.parishId || undefined
         });
         setPriests(list);
-        const match = list.find((u: any) => u.name === request.assignedPriest);
-        if (match) {
-          setSelectedPriestId(match.id);
+        if (request.assignedPriestId) {
+          setSelectedPriestId(String(request.assignedPriestId));
+        } else {
+          setSelectedPriestId('');
         }
       } catch (err) {
         console.error(err);
@@ -65,7 +74,42 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       }
     };
     void fetchPriests();
-  }, [request.parishId, request.assignedPriest]);
+  }, [request.parishId, request.assignedPriestId]);
+
+  // Fetch available slots from the canonical endpoint whenever proposedDate changes.
+  // Race protection: increment a generation counter so an older request cannot
+  // overwrite state set by a newer one.
+  useEffect(() => {
+    if (!proposedDate || isBeforeManilaToday(proposedDate)) {
+      setAvailableSlots([]);
+      setSlotLoadError(false);
+      setProposedTime('');
+      return;
+    }
+    const gen = ++slotRequestGen.current;
+    setLoadingSlots(true);
+    setSlotLoadError(false);
+    setAvailableSlots([]);
+    setProposedTime('');
+
+    // Use the parish's backend eventType string for slot resolution.
+    const rawEventType =
+      request.rawEventType ||
+      resolveEventType(request.appointmentTitle || request.eventType || '') ||
+      'BAPTISM';
+
+    getAvailableSlots(String(request.parishId), proposedDate, rawEventType)
+      .then((slots) => {
+        if (gen !== slotRequestGen.current) return; // stale response discarded
+        setAvailableSlots(slots);
+        setLoadingSlots(false);
+      })
+      .catch(() => {
+        if (gen !== slotRequestGen.current) return;
+        setSlotLoadError(true);
+        setLoadingSlots(false);
+      });
+  }, [proposedDate, request.parishId, request.eventType, request.appointmentTitle, request.rawEventType]);
 
   const handleAction = async (status: ScheduleStatus) => {
     setIsUpdating(true);
@@ -77,16 +121,38 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
     }
   };
 
+  const handlePriestSelectChange = (newPriestId: string) => {
+    if (!newPriestId) {
+      setSelectedPriestId('');
+      return;
+    }
+    const priest = priests.find((p: any) => String(p.id) === String(newPriestId));
+    const priestName = priest?.name || 'Selected Priest';
+    setPriestValidationError(false);
+    setConfirmPriestModal({ priestId: newPriestId, priestName });
+  };
+
+  const handleConfirmPriestAssignment = async () => {
+    if (!confirmPriestModal) return;
+    setIsUpdating(true);
+    try {
+      await onAssignPriest(confirmPriestModal.priestId, confirmPriestModal.priestName);
+      setSelectedPriestId(confirmPriestModal.priestId);
+      setConfirmPriestModal(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleApprove = async () => {
-    if (!selectedPriestId) {
+    if (!request.assignedPriest || request.assignedPriest === 'TBD') {
       setPriestValidationError(true);
       return;
     }
-    const priestName = priests.find(p => p.id === selectedPriestId)?.name || 'Priest';
-    setPriestValidationError(false);
     setIsUpdating(true);
     try {
-      await onAssignPriest(selectedPriestId, priestName);
       await onStatusChange('Confirmed');
       onClose();
     } catch (err) {
@@ -97,19 +163,27 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleProposeReschedule = async () => {
-    if (!proposedDate || isBeforeManilaToday(proposedDate) || !proposedTime) {
+    if (!proposedDate || isBeforeManilaToday(proposedDate) || !proposedTime || loadingSlots) {
       return;
     }
     setIsUpdating(true);
     try {
-      let timeOffset = '09:00:00';
-      if (proposedTime === '10:30 AM') timeOffset = '10:30:00';
-      else if (proposedTime === '01:30 PM') timeOffset = '13:30:00';
-      else if (proposedTime === '03:00 PM') timeOffset = '15:00:00';
+      // Derive proposedStartDatetime from the canonical time slot string ("HH:MM AM/PM")
+      // instead of a hardcoded lookup table.
+      let proposedStartDatetime = `${proposedDate}T09:00:00`;
+      const slotMatch = proposedTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (slotMatch) {
+        let h = parseInt(slotMatch[1], 10);
+        const m = slotMatch[2];
+        const period = slotMatch[3].toUpperCase();
+        if (period === 'PM' && h < 12) h += 12;
+        if (period === 'AM' && h === 12) h = 0;
+        proposedStartDatetime = `${proposedDate}T${String(h).padStart(2, '0')}:${m}:00`;
+      }
 
       const payload = {
         proposedDate,
-        proposedStartDatetime: `${proposedDate}T${timeOffset}`,
+        proposedStartDatetime,
         reason: rescheduleReason
       };
       await onProposeReschedule(payload);
@@ -126,10 +200,10 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150 relative">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150 relative">
         {/* Reschedule Proposal Sub-Modal */}
         {showRescheduleModal && (
-          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between animate-in fade-in duration-150">
+          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                 <h3 className="text-base font-bold text-gray-900">Propose Alternative Date</h3>
@@ -153,24 +227,39 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                         return;
                       }
                       setProposedDate(val);
+                      setProposedTime('');
                     }}
                     className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Proposed Time</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Proposed Time</label>
+                {loadingSlots ? (
+                  <div className="w-full p-2.5 border border-gray-200 rounded-lg text-xs text-gray-400 bg-gray-50">
+                    Loading available slots…
+                  </div>
+                ) : slotLoadError ? (
+                  <div className="w-full p-2.5 border border-red-200 rounded-lg text-xs text-red-600 bg-red-50">
+                    Could not load slots. Select another date.
+                  </div>
+                ) : availableSlots.length === 0 && proposedDate ? (
+                  <div className="w-full p-2.5 border border-amber-200 rounded-lg text-xs text-amber-700 bg-amber-50">
+                    No slots available for this date.
+                  </div>
+                ) : (
                   <select
                     value={proposedTime}
                     onChange={e => setProposedTime(e.target.value)}
-                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A] bg-white"
+                    disabled={!proposedDate || loadingSlots || availableSlots.length === 0}
+                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A] bg-white disabled:bg-gray-50 disabled:text-gray-400"
                   >
-                    <option value="">Select Time Slot...</option>
-                    <option value="09:00 AM">09:00 AM</option>
-                    <option value="10:30 AM">10:30 AM</option>
-                    <option value="01:30 PM">01:30 PM</option>
-                    <option value="03:00 PM">03:00 PM</option>
+                    <option value="">{proposedDate ? 'Select Time Slot…' : 'Select a date first'}</option>
+                    {availableSlots.map(slot => (
+                      <option key={slot} value={slot}>{slot}</option>
+                    ))}
                   </select>
-                </div>
+                )}
+              </div>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Reason for Reschedule</label>
@@ -192,10 +281,83 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
               </button>
               <button
                 onClick={() => void handleProposeReschedule()}
-                disabled={isUpdating || !proposedDate || !proposedTime || isBeforeManilaToday(proposedDate)}
+                disabled={isUpdating || !proposedDate || !proposedTime || loadingSlots || isBeforeManilaToday(proposedDate)}
                 className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-40"
               >
                 Send Proposal to Parishioner
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Priest Assignment Confirmation Sub-Modal */}
+        {confirmPriestModal && (
+          <div className="absolute inset-0 bg-white z-30 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-crimson-700" />
+                  <h3 className="text-base font-bold text-gray-900">Confirm Priest Assignment</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmPriestModal(null)}
+                  disabled={isUpdating}
+                  className="p-1 hover:bg-gray-100 rounded text-gray-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5 text-xs">
+                <p className="text-gray-700">
+                  Assign <strong className="text-gray-900">{confirmPriestModal.priestName}</strong> to this schedule request?
+                </p>
+                <div className="pt-2 border-t border-gray-200 grid grid-cols-2 gap-2 text-gray-600">
+                  <div>
+                    <span className="font-semibold text-gray-500 block text-[10px] uppercase">Reference No</span>
+                    <span className="font-medium text-gray-800">{request.referenceNo}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-500 block text-[10px] uppercase">Service</span>
+                    <span className="font-medium text-gray-800">{request.appointmentTitle || request.eventType}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-500 block text-[10px] uppercase">Date &amp; Time</span>
+                    <span className="font-medium text-gray-800">{request.preferredDate} ({request.preferredTime})</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-500 block text-[10px] uppercase">Requestor</span>
+                    <span className="font-medium text-gray-800">{request.parishionerName}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start gap-2">
+                <Clock className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                <p>
+                  A notification will be dispatched to the priest&apos;s account. Confirmation will remain awaiting priest acceptance until the priest reviews and accepts the schedule.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setConfirmPriestModal(null)}
+                disabled={isUpdating}
+                className="px-4 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmPriestAssignment()}
+                disabled={isUpdating}
+                className="px-4 py-2 text-xs font-semibold bg-crimson-700 hover:bg-crimson-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isUpdating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isUpdating ? 'Assigning...' : 'Confirm Assignment'}
               </button>
             </div>
           </div>
@@ -263,9 +425,9 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Priest Assignment</span>
             <select
               value={selectedPriestId}
-              onChange={e => setSelectedPriestId(e.target.value)}
-              disabled={loadingPriests}
-              className="w-full p-2 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none bg-white"
+              onChange={e => handlePriestSelectChange(e.target.value)}
+              disabled={loadingPriests || isUpdating}
+              className="w-full p-2 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none bg-white focus:border-[#7B1C2A]"
             >
               <option value="">{loadingPriests ? 'Loading Priests...' : 'Select Priest (Primary / Assistant)...'}</option>
               {priests.map((p: any) => (
@@ -313,39 +475,89 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
               A priest must be assigned before this request can be approved. Please select one from the dropdown above.
             </div>
           )}
-          <div className="flex items-center gap-2">
-            {allowsActions && (
-              <>
-                <button
-                  onClick={() => void handleApprove()}
-                  disabled={isUpdating}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-                >
-                  <Check className="w-3.5 h-3.5" /> Approve &amp; Assign
-                </button>
-                <button
-                  onClick={() => setShowRescheduleModal(true)}
-                  disabled={isUpdating}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-                >
-                  <AlertCircle className="w-3.5 h-3.5" /> Propose Reschedule
-                </button>
-                <button
-                  onClick={() => void handleAction('Cancelled')}
-                  disabled={isUpdating}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" /> Reject
-                </button>
-              </>
-            )}
+
+          {/* Priest confirmation readiness indicator */}
+          {allowsActions && (() => {
+            const hasPriest = !!request.assignedPriest && request.assignedPriest !== 'TBD';
+            const priestStatus = request.priestResponseStatus;
+            if (!hasPriest) {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-600" />
+                  Assign a priest before confirming this schedule.
+                </div>
+              );
+            }
+            if (priestStatus === 'REJECTED') {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                  The assigned priest has declined. Assign a different priest before confirming.
+                </div>
+              );
+            }
+            if (!priestStatus || priestStatus === 'PENDING') {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 font-medium">
+                  <Clock className="w-3.5 h-3.5 flex-shrink-0 text-blue-500" />
+                  Awaiting priest acceptance — confirmation will be available once they accept.
+                </div>
+              );
+            }
+            return null;
+          })()}
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {allowsActions && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleApprove()}
+                    disabled={
+                      isUpdating ||
+                      !request.assignedPriest ||
+                      request.assignedPriest === 'TBD' ||
+                      request.priestResponseStatus !== 'ACCEPTED'
+                    }
+                    title={
+                      !request.assignedPriest || request.assignedPriest === 'TBD'
+                        ? 'Assign a priest first'
+                        : request.priestResponseStatus !== 'ACCEPTED'
+                        ? 'Waiting for priest to accept this assignment'
+                        : 'Approve & Confirm Schedule'
+                    }
+                    className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-colors shadow-xs"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Approve &amp; Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRescheduleModal(true)}
+                    disabled={isUpdating}
+                    className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 whitespace-nowrap transition-colors shadow-xs"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" /> Propose Reschedule
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleAction('Cancelled')}
+                    disabled={isUpdating}
+                    className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 whitespace-nowrap transition-colors shadow-xs"
+                  >
+                    <X className="w-3.5 h-3.5" /> Reject
+                  </button>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-9 px-4 inline-flex items-center justify-center bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors shadow-xs"
+            >
+              Close
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border bg-white"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>,
@@ -512,11 +724,22 @@ export function ScheduleRequestsPage() {
     const originalRequests = [...requests];
 
     // Optimistic UI update
-    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { ...r, assignedPriest: priestName } : r));
-    setSelectedRequest(prev => prev ? { ...prev, assignedPriest: priestName } : null);
+    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? {
+      ...r,
+      assignedPriest: priestName,
+      assignedPriestId: priestId,
+      priestResponseStatus: 'PENDING'
+    } : r));
+    setSelectedRequest(prev => prev ? {
+      ...prev,
+      assignedPriest: priestName,
+      assignedPriestId: priestId,
+      priestResponseStatus: 'PENDING'
+    } : null);
 
     try {
       await assignPriest(selectedRequest.id, priestId);
+      setToastMessage(`Priest ${priestName} assigned successfully. Notification dispatched.`);
     } catch (err: any) {
       console.error('Failed to assign priest:', err);
       setRequests(originalRequests);

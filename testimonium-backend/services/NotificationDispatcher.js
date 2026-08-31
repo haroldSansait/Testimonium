@@ -1,6 +1,7 @@
 import { prisma } from "../config/db.js";
 import { RecipientResolver } from "./RecipientResolver.js";
 import { logger } from "../config/logger.js";
+import { EmailOutboxService } from "./EmailOutboxService.js";
 
 // ---------------------------------------------------------------------------
 // Message Template Factories
@@ -328,6 +329,7 @@ export class NotificationDispatcher {
     }
 
     await NotificationDispatcher._persist(payloads, client);
+    await EmailOutboxService.enqueueDocumentReady(requestId, oldStatus, newStatus, client);
   }
 
   // -------------------------------------------------------------------------
@@ -445,7 +447,18 @@ export class NotificationDispatcher {
    * @param {object|null} tx               - Prisma transaction client
    */
   static async notifyScheduleChange(
-    { parishionerId, parishId, scheduleId, displayTitle, newStatus, notifyAdmins = false },
+    {
+      parishionerId,
+      parishId,
+      scheduleId,
+      displayTitle,
+      oldStatus = null,
+      newStatus,
+      proposalVersion = 0,
+      transitionVersion = "initial",
+      notifyAdmins = false,
+      schedule = null,
+    },
     tx = null
   ) {
     const client = tx || prisma;
@@ -481,6 +494,12 @@ export class NotificationDispatcher {
     }
 
     await NotificationDispatcher._persist(payloads, client);
+    await EmailOutboxService.enqueueScheduleTransition(
+      schedule || { id: scheduleId, status: newStatus, proposalVersion },
+      oldStatus,
+      transitionVersion,
+      client
+    );
   }
 
   static async notifyPriestAssigned(

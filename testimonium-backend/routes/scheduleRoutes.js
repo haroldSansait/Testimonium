@@ -31,10 +31,10 @@ router.post("/", validateBody(createScheduleSchema), create);
 
 // Item routes
 router.get("/:id", getById);
-router.patch("/:id/status", updateStatus);
-router.post("/:id/propose-reschedule", proposeReschedule);
-router.post("/:id/respond-reschedule", respondReschedule);
-router.post("/:id/assign-priest", assignPriest);
+router.patch("/:id/status", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), updateStatus);
+router.post("/:id/propose-reschedule", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), proposeReschedule);
+router.post("/:id/respond-reschedule", checkRole(["PARISHIONER"]), respondReschedule);
+router.post("/:id/assign-priest", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), assignPriest);
 router.post("/:id/priest-respond", checkRole(["PRIEST"]), respondPriestAssignment);
 
 export default router;

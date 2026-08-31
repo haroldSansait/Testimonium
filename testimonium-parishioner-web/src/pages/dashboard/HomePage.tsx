@@ -29,7 +29,7 @@ import {
   useFeaturedEvents
 } from '../../hooks/useService';
 import type { Event } from '../../types';
-import { getEventCountdownLabel, isEventUpcoming } from '../../utils/date';
+import { getEventCountdownLabel, isEventUpcoming, parseEventDateTime } from '../../utils/date';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -140,21 +140,49 @@ export const HomePage: React.FC = () => {
   const profile = profileQuery.data;
   const events = eventsQuery.data || [];
 
-  // Filter featured events according to user selections & robust canonical timezone check
-  const filteredFeaturedEvents = useMemo(() => {
+  // Deduplicated candidate events retrieved for current Manila month
+  const rawFeaturedCandidates = useMemo(() => {
     const featuredList = featuredEventsQuery.data || [];
-    const allList = eventsQuery.data || [];
-
-    // Merge featured events with full event catalog, deduplicated by ID
     const candidateDict: Record<string, Event> = {};
     featuredList.forEach(e => { candidateDict[e.id] = e; });
-    if (filterParishId !== 'all') {
-      allList.forEach(e => { candidateDict[e.id] = e; });
-    }
-    const combinedCandidates: Event[] = Object.values(candidateDict);
-    if (combinedCandidates.length === 0) return [];
+    return Object.values(candidateDict);
+  }, [featuredEventsQuery.data]);
 
-    const validUpcoming = combinedCandidates.filter(e => {
+  // Count strictly upcoming candidate events before user filters
+  const upcomingCandidatesCount = useMemo(() => {
+    return rawFeaturedCandidates.filter(e => isEventUpcoming(e)).length;
+  }, [rawFeaturedCandidates]);
+
+  // Contextual empty-state copy classification
+  const featuredEmptyStateConfig = useMemo(() => {
+    // Situation 2: No events scheduled this month at all
+    if (rawFeaturedCandidates.length === 0) {
+      return {
+        title: 'No upcoming events are scheduled for this month.',
+        description: 'There are currently no events or scheduled Masses posted for this month.',
+      };
+    }
+
+    // Situation 1: Current-month events existed, but all have concluded
+    if (upcomingCandidatesCount === 0) {
+      return {
+        title: 'All events for this month have concluded.',
+        description: 'Check back next month for upcoming parish events and Mass schedules.',
+      };
+    }
+
+    // Situation 3: Upcoming events exist, but active filter eliminates them
+    return {
+      title: 'No events match your current filters.',
+      description: 'Try selecting a different parish or event category to see available schedules.',
+    };
+  }, [rawFeaturedCandidates.length, upcomingCandidatesCount]);
+
+  // Filter featured events according to user selections & robust canonical timezone check
+  const filteredFeaturedEvents = useMemo(() => {
+    if (rawFeaturedCandidates.length === 0) return [];
+
+    const validUpcoming = rawFeaturedCandidates.filter(e => {
       if (!isEventUpcoming(e)) return false;
       if (filterParishId !== 'all' && String(e.parishId).trim() !== String(filterParishId).trim()) return false;
       if (filterCategory !== 'all' && e.category.toLowerCase() !== filterCategory.toLowerCase()) return false;
@@ -190,9 +218,11 @@ export const HomePage: React.FC = () => {
     });
 
     return [...nonMassEvents, ...consolidatedMasses].sort((a, b) => {
-      return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+      const startDifference = (parseEventDateTime(a.startDate, a.startTime)?.getTime() || 0)
+        - (parseEventDateTime(b.startDate, b.startTime)?.getTime() || 0);
+      return startDifference || a.id.localeCompare(b.id);
     });
-  }, [featuredEventsQuery.data, eventsQuery.data, filterParishId, filterCategory]);
+  }, [rawFeaturedCandidates, filterParishId, filterCategory]);
 
   // Filter next event assigned to user's local parish (strictly upcoming events)
   const nextParishEvent = profile?.parishId
@@ -401,8 +431,8 @@ export const HomePage: React.FC = () => {
 
         {filteredFeaturedEvents.length === 0 ? (
           <EmptyState
-            title="No events match your criteria"
-            description="Adjust your filters or browse the vicariate directory to find upcoming seminars or Masses."
+            title={featuredEmptyStateConfig.title}
+            description={featuredEmptyStateConfig.description}
             icon={<CalendarDays size={36} className="text-text-muted/40" />}
           />
         ) : (
@@ -586,24 +616,39 @@ export const HomePage: React.FC = () => {
                 appointments.slice(0, 3).map(appt => (
                   <div
                     key={appt.id}
-                    className="p-3 bg-app-page rounded-button border border-border/70 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2"
+                    onClick={() => navigate(`/dashboard/schedule/${appt.id}`)}
+                    className="p-3 bg-app-page hover:bg-border/30 rounded-button border border-border/70 transition-colors flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 cursor-pointer focus-ring group"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/dashboard/schedule/${appt.id}`);
+                      }
+                    }}
                   >
                     <div className="space-y-1 min-w-0">
-                      <h4 className="text-xs font-bold text-text-primary">
+                      <h4 className="text-xs font-bold text-text-primary group-hover:text-crimson transition-colors">
                         {appt.serviceName}
                       </h4>
                       <p className="text-xs text-text-muted">
                         {getParishName(appt.parishId)} • {appt.date} at {appt.timeSlot}
                       </p>
-                      <div className="flex flex-wrap gap-2 pt-1">
+                      <div className="flex flex-wrap gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => exportToGoogleCalendar(appt, getParishName(appt.parishId))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportToGoogleCalendar(appt, getParishName(appt.parishId));
+                          }}
                           className="px-2 py-0.5 text-[11px] font-semibold text-crimson bg-red-50 hover:bg-red-100 rounded border border-crimson/20 flex items-center gap-1 focus-ring"
                         >
                           <CalendarPlus size={11} /> Google Cal
                         </button>
                         <button
-                          onClick={() => exportToICS(appt, getParishName(appt.parishId))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportToICS(appt, getParishName(appt.parishId));
+                          }}
                           className="px-2 py-0.5 text-[11px] font-semibold text-crimson bg-red-50 hover:bg-red-100 rounded border border-crimson/20 flex items-center gap-1 focus-ring"
                         >
                           <CalendarPlus size={11} /> iCal / .ics

@@ -49,3 +49,12 @@ export const getParishes = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const getDescriptive = async (req, res, next) => {
+  try {
+    const data = await analyticsService.getDescriptiveAnalytics(req.query, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    return next(err);
+  }
+};

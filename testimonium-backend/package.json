@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "nodemon server.js",
         "start": "node server.js",
-        "test": "node --test scripts/phase3_phase4_backend.test.js scripts/phase3_phase4_concurrency.test.js scripts/supporting_upload_middleware.test.js scripts/phase5_scheduling.test.js"
+        "test": "node --test scripts/phase3_phase4_backend.test.js scripts/phase3_phase4_concurrency.test.js scripts/supporting_upload_middleware.test.js scripts/phase5_scheduling.test.js scripts/planned_additions.test.js scripts/qa_pass1.test.js"
     },
     "keywords": [],
     "author": "",
@@ -27,6 +27,7 @@
         "helmet": "^8.2.0",
         "morgan": "^1.11.0",
         "multer": "^2.2.0",
+        "nodemailer": "^7.0.13",
         "pg": "^8.22.0",
         "pino": "^10.3.1",
         "pino-http": "^11.0.0",

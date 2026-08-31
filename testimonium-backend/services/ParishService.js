@@ -12,7 +12,15 @@ import {
   normalizeAvailableDocumentsForSave,
   getEffectiveOfferedDocuments,
 } from "../config/documents.js";
-import { validateSchedulingSettingsForSave } from "./SchedulingConfiguration.js";
+import {
+  validateOfficeHoursForSave,
+  validateSchedulingSettingsForSave,
+} from "./SchedulingConfiguration.js";
+import {
+  DEFAULT_SUNDAY_RESTRICTED_SERVICES,
+  WEEKDAYS,
+  lockParishSchedulingConfiguration,
+} from "./SchedulingAvailability.js";
 
 const generateSlug = (name) => {
   return name
@@ -295,6 +303,18 @@ export class ParishService {
           },
         });
 
+        await tx.parishWeekdayRule.createMany({
+          data: WEEKDAYS.map((weekday) => ({ parishId: parish.id, weekday, isAvailable: true })),
+        });
+        await tx.parishServiceWeekdayRule.createMany({
+          data: DEFAULT_SUNDAY_RESTRICTED_SERVICES.map((eventType) => ({
+            parishId: parish.id,
+            eventType,
+            weekday: "SUNDAY",
+            isAvailable: false,
+          })),
+        });
+
         // Seed default mass schedule templates
         for (const t of DEFAULT_MASS_SCHEDULE_TEMPLATES) {
           await tx.massScheduleTemplate.create({
@@ -433,6 +453,18 @@ export class ParishService {
       throw err;
     }
 
+    const schedulingMutation = data.eventSettings !== undefined || data.officeHours !== undefined;
+    let expectedSchedulingConfigVersion = null;
+    if (schedulingMutation) {
+      expectedSchedulingConfigVersion = Number(data.expectedSchedulingConfigVersion);
+      if (!Number.isInteger(expectedSchedulingConfigVersion) || expectedSchedulingConfigVersion < 1) {
+        const err = new Error("expectedSchedulingConfigVersion is required for scheduling settings updates.");
+        err.statusCode = 400;
+        err.code = "INVALID_EXPECTED_VERSION";
+        throw err;
+      }
+    }
+
     const updatePayload = {};
     if (data.name) updatePayload.parishName = data.name;
     if (data.type) {
@@ -469,8 +501,8 @@ export class ParishService {
       updatePayload.eventSettings = JSON.stringify(normalizedSettings);
     }
     if (data.officeHours !== undefined) {
-      this.validateOfficeHours(data.officeHours);
-      updatePayload.officeHours = data.officeHours && typeof data.officeHours === "object" ? JSON.stringify(data.officeHours) : data.officeHours;
+      const normalizedOfficeHours = validateOfficeHoursForSave(data.officeHours);
+      updatePayload.officeHours = normalizedOfficeHours && typeof normalizedOfficeHours === "object" ? JSON.stringify(normalizedOfficeHours) : normalizedOfficeHours;
     }
     if (data.paymentQrEnabled !== undefined) {
       updatePayload.paymentQrEnabled = Boolean(data.paymentQrEnabled);
@@ -491,6 +523,9 @@ export class ParishService {
 
 
     const parish = await prisma.$transaction(async (tx) => {
+      if (schedulingMutation) {
+        await lockParishSchedulingConfiguration(tx, numericId);
+      }
       // 1. Fetch current parish state to verify it exists and get audit logs
       const currentParish = await tx.parish.findUnique({
         where: { id: numericId },
@@ -503,6 +538,15 @@ export class ParishService {
       if (!currentParish) {
         const err = new Error("Parish not found.");
         err.statusCode = 404;
+        throw err;
+      }
+      if (
+        schedulingMutation &&
+        currentParish.schedulingConfigVersion !== expectedSchedulingConfigVersion
+      ) {
+        const err = new Error("Scheduling settings changed elsewhere. Reload the latest configuration and try again.");
+        err.statusCode = 409;
+        err.code = "SCHEDULING_CONFIG_STALE";
         throw err;
       }
 
@@ -620,6 +664,9 @@ export class ParishService {
       }
 
       // 4. Update the parish details
+      if (schedulingMutation) {
+        updatePayload.schedulingConfigVersion = { increment: 1 };
+      }
       const updatedParish = await tx.parish.update({
         where: { id: numericId },
         data: updatePayload,
@@ -630,8 +677,26 @@ export class ParishService {
         },
       });
 
+      if (schedulingMutation) {
+        await AuditLogService.log(actorId, "SCHEDULING_CONFIGURATION_UPDATED", tx, false, {
+          affectedTable: "Parish",
+          affectedRecordId: numericId,
+          parishId: numericId,
+          previousValues: {
+            eventSettings: currentParish.eventSettings,
+            officeHours: currentParish.officeHours,
+            schedulingConfigVersion: currentParish.schedulingConfigVersion,
+          },
+          newValues: {
+            eventSettings: updatedParish.eventSettings,
+            officeHours: updatedParish.officeHours,
+            schedulingConfigVersion: updatedParish.schedulingConfigVersion,
+          },
+        });
+      }
+
       return updatedParish;
-    });
+    }, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 });
 
     await AuditLogService.log(actorId, `Parish Updated: "${parish.parishName}"`);
     return this.mapToDto(parish);
@@ -716,6 +781,7 @@ export class ParishService {
       locationUpdatedBy: p.locationUpdatedBy,
       gallery: p.gallery || [],
       venueCapacity: p.venueCapacity ?? null,
+      schedulingConfigVersion: p.schedulingConfigVersion,
       documentSettings: p.documentSettings
         ? (() => { try { return typeof p.documentSettings === 'string' ? JSON.parse(p.documentSettings) : p.documentSettings; } catch (e) { return p.documentSettings; } })()
         : null,
@@ -1082,50 +1148,4 @@ export class ParishService {
     return this.mapToDto(parish);
   }
 
-  /**
-   * Validates office hours format and ensures openTime < closeTime for active days.
-   */
-  validateOfficeHours(officeHours) {
-    if (!officeHours) return;
-    let obj = officeHours;
-    if (typeof obj === "string") {
-      try {
-        obj = JSON.parse(obj);
-      } catch (e) {
-        return; // Legacy text format fallback
-      }
-    }
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
-
-    const parseToMinutes = (timeStr) => {
-      if (!timeStr || typeof timeStr !== "string") return null;
-      const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-      if (!match) return null;
-      let h = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      const ampm = match[3] ? match[3].toUpperCase() : null;
-      if (ampm === "PM" && h < 12) h += 12;
-      if (ampm === "AM" && h === 12) h = 0;
-      return h * 60 + m;
-    };
-
-    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    for (const day of DAYS) {
-      const conf = obj[day];
-      if (conf && !conf.isClosed) {
-        const openMin = parseToMinutes(conf.openTime);
-        const closeMin = parseToMinutes(conf.closeTime);
-        if (openMin === null || closeMin === null) {
-          const err = new Error(`Invalid time format for ${day}. Expected format: 'HH:MM AM/PM' or 'HH:MM'.`);
-          err.statusCode = 400;
-          throw err;
-        }
-        if (openMin >= closeMin) {
-          const err = new Error(`${day}: Opening time must be earlier than closing time.`);
-          err.statusCode = 400;
-          throw err;
-        }
-      }
-    }
-  }
 }
