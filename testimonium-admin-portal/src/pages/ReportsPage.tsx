@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Archive, Calendar, FilePlus2, Filter, Loader2, Pencil, RefreshCw, Search, User, X } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { reportsApi, type DailyReport, type ReportCategory, type ReportPayload, type ReportScope } from '@/api/reportsApi';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { useAuth } from '@/hooks/useAuth';
@@ -342,22 +343,18 @@ export function ReportsPage() {
               className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm text-gray-900 outline-none focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
             />
           </div>
-          <select
-            aria-label="Filter by category"
-            value={category}
-            onChange={(event) => {
-              setCategory(event.target.value);
-              setPage(1);
-            }}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-          >
-            <option value="">All categories</option>
-            {categories.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <div className="w-full">
+            <CustomSelect
+              aria-label="Filter by category"
+              value={category}
+              onChange={(val) => {
+                setCategory(val);
+                setPage(1);
+              }}
+              placeholder="All categories"
+              options={[{ value: '', label: 'All categories' }, ...categories]}
+            />
+          </div>
           <div className="flex items-center">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 select-none">
               <input
@@ -592,21 +589,15 @@ export function ReportsPage() {
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-600">
                     Category <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <CustomSelect
                     aria-label="Category"
                     disabled={isSaving}
                     value={form.category}
-                    onChange={(event) =>
-                      setForm({ ...form, category: event.target.value as ReportCategory })
+                    onChange={(val) =>
+                      setForm({ ...form, category: val as ReportCategory })
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700 disabled:bg-gray-100"
-                  >
-                    {categories.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={categories}
+                  />
                 </div>
 
                 {coordinator && (
@@ -614,22 +605,22 @@ export function ReportsPage() {
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-600">
                       Scope <span className="text-red-500">*</span>
                     </label>
-                    <select
+                    <CustomSelect
                       aria-label="Scope"
                       disabled={isSaving}
                       value={form.scope}
-                      onChange={(event) =>
+                      onChange={(val) =>
                         setForm({
                           ...form,
-                          scope: event.target.value as ReportScope,
-                          parishId: event.target.value === 'DIOCESE' ? null : form.parishId,
+                          scope: val as ReportScope,
+                          parishId: val === 'DIOCESE' ? null : form.parishId,
                         })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700 disabled:bg-gray-100"
-                    >
-                      <option value="PARISH">Parish</option>
-                      <option value="DIOCESE">Diocese</option>
-                    </select>
+                      options={[
+                        { value: 'PARISH', label: 'Parish' },
+                        { value: 'DIOCESE', label: 'Diocese' },
+                      ]}
+                    />
                   </div>
                 )}
 
@@ -638,23 +629,21 @@ export function ReportsPage() {
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-600">
                       Parish <span className="text-red-500">*</span>
                     </label>
-                    <select
+                    <CustomSelect
                       aria-label="Parish"
                       required
                       disabled={isSaving}
-                      value={form.parishId || ''}
-                      onChange={(event) =>
-                        setForm({ ...form, parishId: Number(event.target.value) || null })
+                      value={form.parishId ? String(form.parishId) : ''}
+                      onChange={(val) =>
+                        setForm({ ...form, parishId: Number(val) || null })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700 disabled:bg-gray-100"
-                    >
-                      <option value="">Select parish</option>
-                      {parishes.map((parish) => (
-                        <option key={parish.id} value={parish.id}>
-                          {parish.name}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Select parish"
+                      options={parishes.map((parish) => ({
+                        value: String(parish.id),
+                        label: parish.name,
+                      }))}
+                      searchable
+                    />
                   </div>
                 )}
 

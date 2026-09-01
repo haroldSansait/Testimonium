@@ -191,10 +191,23 @@ export class ParishionerRequestService {
           },
         });
 
-        await AuditLogService.log(userId, `Created request draft tracking number ${trackingNumber}`, tx);
+        await AuditLogService.log(
+          userId,
+          "Document Request Draft Created",
+          tx,
+          false,
+          {
+            affectedTable: "document_requests",
+            affectedRecordId: updatedDraft.id,
+            parishId: updatedDraft.parishId,
+            metadata: {
+              trackingNumber,
+            },
+          }
+        );
 
         return updatedDraft;
-      });
+      }, { maxWait: 10000, timeout: 20000 });
     };
 
     try {
@@ -336,10 +349,31 @@ export class ParishionerRequestService {
         submitHistory.id
       );
 
-      await AuditLogService.log(userId, `Submitted request ${submittedRequest.trackingNumber}`, tx);
+      await AuditLogService.log(
+        userId,
+        "Document Request Submitted",
+        tx,
+        false,
+        {
+          affectedTable: "document_requests",
+          affectedRecordId: submittedRequest.id,
+          parishId: submittedRequest.parishId,
+          previousValues: {
+            isDraft: true,
+            status: "PENDING",
+          },
+          newValues: {
+            isDraft: false,
+            status: "PENDING",
+          },
+          metadata: {
+            trackingNumber: submittedRequest.trackingNumber,
+          },
+        }
+      );
 
       return submittedRequest;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -397,10 +431,29 @@ export class ParishionerRequestService {
         cancelHistory.id
       );
 
-      await AuditLogService.log(userId, `Cancelled request ${request.trackingNumber}`, tx);
+      await AuditLogService.log(
+        userId,
+        "Document Request Cancelled",
+        tx,
+        false,
+        {
+          affectedTable: "document_requests",
+          affectedRecordId: updatedRequest.id,
+          parishId: updatedRequest.parishId,
+          previousValues: {
+            status: currentStatus,
+          },
+          newValues: {
+            status: targetStatus,
+          },
+          metadata: {
+            trackingNumber: request.trackingNumber,
+          },
+        }
+      );
 
       return updatedRequest;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -505,8 +558,23 @@ export class ParishionerRequestService {
       // 6. Log to audit trail
       await AuditLogService.log(
         userId,
-        `Resubmitted corrected documents for request ${request.trackingNumber}`,
-        tx
+        "Document Request Corrections Submitted",
+        tx,
+        false,
+        {
+          affectedTable: "document_requests",
+          affectedRecordId: updatedRequest.id,
+          parishId: updatedRequest.parishId,
+          previousValues: {
+            status: "NEEDS_CORRECTION",
+          },
+          newValues: {
+            status: "UNDER_REVIEW",
+          },
+          metadata: {
+            trackingNumber: request.trackingNumber,
+          },
+        }
       );
 
       // 7. Notify Parishioner
@@ -536,6 +604,6 @@ export class ParishionerRequestService {
       }
 
       return updatedRequest;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 }

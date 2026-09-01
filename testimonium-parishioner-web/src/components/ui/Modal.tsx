@@ -6,10 +6,18 @@ export interface ModalProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+  className?: string;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+export const Modal: React.FC<ModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  title, 
+  children, 
+  size = 'md',
+  className = ''
+}) => {
   const triggerElementRef = useRef<HTMLElement | null>(null);
   const modalContainerRef = useRef<HTMLDivElement>(null);
 
@@ -83,7 +91,10 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
     sm: 'max-w-sm',
     md: 'max-w-md',
     lg: 'max-w-lg',
-    xl: 'max-w-2xl',
+    xl: 'max-w-xl',
+    '2xl': 'max-w-2xl',
+    '3xl': 'max-w-3xl',
+    '4xl': 'max-w-4xl',
   };
 
   return (
@@ -104,7 +115,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       <div
         ref={modalContainerRef}
         tabIndex={-1}
-        className={`relative w-full bg-white rounded-card shadow-card p-6 border border-border z-10 focus:outline-none ${sizes[size]}`}
+        className={`relative w-full bg-white rounded-card shadow-card p-6 border border-border z-10 focus:outline-none ${sizes[size]} ${className}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">

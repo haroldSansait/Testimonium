@@ -1,6 +1,34 @@
 import { prisma } from "../config/db.js";
+import { CANONICAL_ACTION_TYPES, LEGACY_ACTION_PATTERNS } from "../config/canonicalActions.js";
 
 export class ActivityLogRepository {
+  /**
+   * Builds an action filter that matches canonical actions as well as known legacy historical patterns.
+   */
+  _buildActionCondition(action) {
+    if (!action || action === "All Actions") {
+      return null;
+    }
+
+    const legacyPatterns = LEGACY_ACTION_PATTERNS[action];
+    if (!legacyPatterns || legacyPatterns.length === 0) {
+      return { action };
+    }
+
+    const orConditions = [{ action }];
+    for (const pattern of legacyPatterns) {
+      if (pattern.type === "startsWith") {
+        orConditions.push({ action: { startsWith: pattern.value } });
+      } else if (pattern.type === "exact") {
+        orConditions.push({ action: pattern.value });
+      } else if (pattern.type === "contains") {
+        orConditions.push({ action: { contains: pattern.value } });
+      }
+    }
+
+    return { OR: orConditions };
+  }
+
   /**
    * Paginated list of activity logs with optional filters.
    */
@@ -40,49 +68,10 @@ export class ActivityLogRepository {
       andConditions.push({ user: userCondition });
     }
 
-    if (action) {
-      if (action === "Staff Assignment") {
-        andConditions.push({
-          OR: [
-            { action: { contains: "Priest", mode: "insensitive" } },
-            { action: { contains: "Secretary", mode: "insensitive" } },
-          ],
-        });
-      } else if (action === "Authentication") {
-        andConditions.push({
-          OR: [
-            { action: { contains: "Login", mode: "insensitive" } },
-            { action: { contains: "Logout", mode: "insensitive" } },
-          ],
-        });
-      } else if (action === "Activity Logs") {
-        andConditions.push({
-          OR: [
-            { action: { contains: "archived", mode: "insensitive" } },
-            { action: { contains: "restored", mode: "insensitive" } },
-            { action: { contains: "purged", mode: "insensitive" } },
-          ],
-        });
-      } else if (action === "Document Management") {
-        andConditions.push({
-          OR: [
-            { action: { contains: "document", mode: "insensitive" } },
-            { action: { contains: "schedule", mode: "insensitive" } },
-          ],
-        });
-      } else if (action === "User Management") {
-        andConditions.push({
-          OR: [
-            { action: { contains: "User", mode: "insensitive" } },
-            { action: { contains: "Reset", mode: "insensitive" } },
-          ],
-        });
-      } else if (action === "Parish Management") {
-        andConditions.push({
-          action: { contains: "Parish", mode: "insensitive" },
-        });
-      } else {
-        andConditions.push({ action: { contains: action, mode: "insensitive" } });
+    if (action && action !== "All Actions") {
+      const actionCondition = this._buildActionCondition(action);
+      if (actionCondition) {
+        andConditions.push(actionCondition);
       }
     }
 
@@ -137,16 +126,11 @@ export class ActivityLogRepository {
   }
 
   async archiveMany(ids, actorId) {
-    const numericIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
     return prisma.activityLog.updateMany({
       where: {
-        id: { in: numericIds },
+        id: { in: ids.map((id) => parseInt(id, 10)) },
         isSystem: false,
-        NOT: [
-          { action: { contains: "Initial database migration", mode: "insensitive" } },
-          { action: { contains: "System initialization", mode: "insensitive" } },
-          { action: { contains: "First Diocese Coordinator", mode: "insensitive" } },
-        ],
+        archivedAt: null,
       },
       data: {
         archivedAt: new Date(),
@@ -158,13 +142,8 @@ export class ActivityLogRepository {
   async archiveAll(actorId) {
     return prisma.activityLog.updateMany({
       where: {
-        archivedAt: null,
         isSystem: false,
-        NOT: [
-          { action: { contains: "Initial database migration", mode: "insensitive" } },
-          { action: { contains: "System initialization", mode: "insensitive" } },
-          { action: { contains: "First Diocese Coordinator", mode: "insensitive" } },
-        ],
+        archivedAt: null,
       },
       data: {
         archivedAt: new Date(),
@@ -174,10 +153,11 @@ export class ActivityLogRepository {
   }
 
   async restoreMany(ids) {
-    const numericIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
     return prisma.activityLog.updateMany({
       where: {
-        id: { in: numericIds },
+        id: { in: ids.map((id) => parseInt(id, 10)) },
+        isSystem: false,
+        archivedAt: { not: null },
       },
       data: {
         archivedAt: null,
@@ -189,6 +169,7 @@ export class ActivityLogRepository {
   async restoreAll() {
     return prisma.activityLog.updateMany({
       where: {
+        isSystem: false,
         archivedAt: { not: null },
       },
       data: {
@@ -225,44 +206,6 @@ export class ActivityLogRepository {
   }
 
   async getActionTypes() {
-    const records = await prisma.activityLog.findMany({
-      select: { action: true },
-      distinct: ['action'],
-      where: {
-        action: { not: '' },
-      },
-    });
-
-    const canonicalActions = [
-      'User Login',
-      'User Logout',
-      'Email Verified',
-      'Profile Completed',
-      'Profile Updated',
-      'Google Existing User',
-      'Admin Email Verification Bypassed',
-      'Admin Verification Bypassed',
-      'Password Reset',
-      'User Created',
-      'User Updated',
-      'User Disabled',
-      'User Enabled',
-      'Role Updated',
-      'Parish Created',
-      'Parish Updated',
-      'Parish Archived',
-      'Parish Restored',
-      'Payment QR uploaded',
-      'Payment QR deleted',
-      'Available Documents Updated',
-      'Terms Accepted',
-      'Privacy Accepted',
-    ];
-
-    const dbActions = records.map((r) => r.action).filter(Boolean);
-    const combined = Array.from(new Set([...canonicalActions, ...dbActions])).sort((a, b) =>
-      a.localeCompare(b)
-    );
-    return combined;
+    return [...CANONICAL_ACTION_TYPES];
   }
 }

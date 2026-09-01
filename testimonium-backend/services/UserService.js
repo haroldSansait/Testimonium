@@ -101,7 +101,15 @@ export class UserService {
         isAssistant,
       });
 
-      await AuditLogService.log(actorId, `User Created: ${data.email}`);
+      await AuditLogService.log(actorId, "User Created", null, false, {
+        affectedTable: "users",
+        affectedRecordId: created.id,
+        newValues: {
+          role: role.roleName,
+          parishId,
+          isAssistant,
+        },
+      });
 
       // Immediately generate a Firebase password setup link
       let setupLink = null;
@@ -166,8 +174,8 @@ export class UserService {
         address: data.address !== undefined ? data.address : user.address,
       });
 
-      await AuditLogService.log(actorId, `User Updated: ${user.email} (Parishioner Profile)`, null, false, {
-        affectedTable: "User",
+      await AuditLogService.log(actorId, "User Updated", null, false, {
+        affectedTable: "users",
         affectedRecordId: updated.id,
         newValues: {
           name: updated.fullName,
@@ -246,10 +254,15 @@ export class UserService {
       address: data.address !== undefined ? data.address : undefined,
     });
 
-    await AuditLogService.log(actorId, `User Updated: ${updated.email} (Role: ${data.role || 'unchanged'})`, null, false, {
-      affectedTable: "User",
+    await AuditLogService.log(actorId, "User Updated", null, false, {
+      affectedTable: "users",
       affectedRecordId: updated.id,
-      newValues: { role: data.role, email: data.email }
+      newValues: {
+        fullName: updated.fullName,
+        role: data.role || undefined,
+        parishId,
+        isAssistant,
+      },
     });
     return this.mapToDto(updated);
   }
@@ -284,7 +297,11 @@ export class UserService {
     }
 
     await this.userRepository.updateStatus(numericId, "INACTIVE");
-    await AuditLogService.log(actorId, `User Disabled: ${user.email}`);
+    await AuditLogService.log(actorId, "User Disabled", null, false, {
+      affectedTable: "users",
+      affectedRecordId: user.id,
+      newValues: { status: "INACTIVE" },
+    });
   }
 
   /**
@@ -313,7 +330,11 @@ export class UserService {
     }
 
     await this.userRepository.updateStatus(numericId, "ACTIVE");
-    await AuditLogService.log(actorId, `User Enabled: ${user.email}`);
+    await AuditLogService.log(actorId, "User Enabled", null, false, {
+      affectedTable: "users",
+      affectedRecordId: user.id,
+      newValues: { status: "ACTIVE" },
+    });
   }
 
   /**
@@ -339,7 +360,10 @@ export class UserService {
 
     const resetLink = await this.firebaseAdminService.generatePasswordResetLink(user.email);
     logger.info({ email: user.email }, "[TESTIMONIUM] Generated password reset link.");
-    await AuditLogService.log(actorId, `Password Reset: ${user.email}`);
+    await AuditLogService.log(actorId, "Password Reset", null, false, {
+      affectedTable: "users",
+      affectedRecordId: user.id,
+    });
     return resetLink;
   }
 
@@ -380,10 +404,11 @@ export class UserService {
       color: color || null
     });
 
-    await AuditLogService.log(actorId, `Updated priest color for ${updated.email} to ${color || 'default'}`, null, false, {
-      affectedTable: "User",
+    await AuditLogService.log(actorId, "User Updated", null, false, {
+      affectedTable: "users",
       affectedRecordId: updated.id,
-      newValues: { color }
+      metadata: { field: "color" },
+      newValues: { color },
     });
 
     return this.mapToDto(updated);

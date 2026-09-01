@@ -24,6 +24,7 @@ import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { CalendarLegend } from '@/components/calendar/CalendarLegend';
 import { CalendarWeekView } from '@/components/calendar/CalendarWeekView';
 import { CalendarDayView } from '@/components/calendar/CalendarDayView';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { CalendarService } from '@/services/CalendarService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
@@ -261,10 +262,14 @@ function EventDetailsModal({ event, onClose, onSuccess, role }: EventDetailsModa
             <div className="space-y-4 text-xs font-semibold text-gray-500">
               <div className="space-y-1.5">
                 <label className="block uppercase tracking-wider">Visibility</label>
-                <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value as 'PUBLIC' | 'PARISH_PRIVATE')} className="w-full p-2.5 border border-gray-200 rounded-lg bg-white text-gray-800 font-medium">
-                  <option value="PUBLIC">Public</option>
-                  <option value="PARISH_PRIVATE">Parish private</option>
-                </select>
+                <CustomSelect
+                  value={editVisibility}
+                  onChange={(val) => setEditVisibility(val as 'PUBLIC' | 'PARISH_PRIVATE')}
+                  options={[
+                    { value: 'PUBLIC', label: 'Public' },
+                    { value: 'PARISH_PRIVATE', label: 'Parish private' },
+                  ]}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="block uppercase tracking-wider">Location Settings</label>
@@ -508,10 +513,14 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
         <form onSubmit={e => void handleSubmit(e)} className="p-6 overflow-y-auto space-y-4 text-xs font-semibold text-gray-500">
           <div className="space-y-1.5">
             <label className="block uppercase tracking-wider">Visibility</label>
-            <select value={visibility} onChange={e => setVisibility(e.target.value as 'PUBLIC' | 'PARISH_PRIVATE')} className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium">
-              <option value="PUBLIC">Public</option>
-              <option value="PARISH_PRIVATE">Parish private</option>
-            </select>
+            <CustomSelect
+              value={visibility}
+              onChange={(val) => setVisibility(val as 'PUBLIC' | 'PARISH_PRIVATE')}
+              options={[
+                { value: 'PUBLIC', label: 'Public' },
+                { value: 'PARISH_PRIVATE', label: 'Parish private' },
+              ]}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="block uppercase tracking-wider">Event Title</label>
@@ -528,20 +537,23 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="block uppercase tracking-wider">Event Type</label>
-              <select
+              <CustomSelect
                 value={eventType}
-                onChange={e => setEventType(e.target.value)}
-                className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium focus:border-[#7B1C2A]"
-              >
-                <option value="MASS">Holy Mass</option>
-                <option value="BAPTISM">Baptism</option>
-                <option value="WEDDING">Wedding</option>
-                <option value="CONFIRMATION">Confirmation</option>
-                <option value="FUNERAL">Funeral</option>
-                <option value="FIESTA">Fiesta</option>
-                <option value="SEMINAR">Seminar</option>
-                <option value="OTHER">Other Event</option>
-              </select>
+                onChange={setEventType}
+                options={[
+                  { value: 'MASS', label: 'Holy Mass' },
+                  { value: 'BAPTISM', label: 'Baptism' },
+                  { value: 'WEDDING', label: 'Wedding' },
+                  { value: 'CONFIRMATION', label: 'Confirmation' },
+                  { value: 'FUNERAL', label: 'Funeral' },
+                  { value: 'BLESSING', label: 'Blessing' },
+                  { value: 'FIESTA', label: 'Parish Fiesta' },
+                  { value: 'MEETING', label: 'Meeting / Assembly' },
+                  { value: 'FORMATION', label: 'Formation / Seminar' },
+                  { value: 'CONFESSION', label: 'Confession' },
+                  { value: 'OTHER', label: 'Other Ministry' },
+                ]}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="block uppercase tracking-wider">Event Date</label>
@@ -597,17 +609,18 @@ function CreateParishEventModal({ onClose, onSuccess, onError, parishId }: Creat
 
           <div className="space-y-1.5">
             <label className="block uppercase tracking-wider">Assigned Priest</label>
-            <select
+            <CustomSelect
               value={assignedPriestId}
-              onChange={e => setAssignedPriestId(e.target.value)}
+              onChange={setAssignedPriestId}
               disabled={loadingPriests}
-              className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium focus:border-[#7B1C2A]"
-            >
-              <option value="">{loadingPriests ? 'Loading Priests...' : 'Select Assigned Priest...'}</option>
-              {priests.map((p: any) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest'})</option>
-              ))}
-            </select>
+              loading={loadingPriests}
+              placeholder={loadingPriests ? 'Loading Priests...' : 'Select Assigned Priest...'}
+              options={priests.map((p: any) => ({
+                value: String(p.id),
+                label: p.name,
+                secondary: p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest',
+              }))}
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -1111,22 +1124,20 @@ export function CalendarPage() {
 
         {/* Center: Coordinator Parish Filter */}
         {applicationUser?.role === 'DIOCESE_COORDINATOR' && parishes.length > 0 && (
-          <div className="flex items-center gap-2 bg-gray-50/90 border border-gray-200 px-3 py-1.5 rounded-xl shadow-xs">
+          <div className="flex items-center gap-2 bg-gray-50/90 border border-gray-200 px-3 py-1 rounded-xl shadow-xs">
             <Building2 className="w-4 h-4 text-[#7B1C2A] flex-shrink-0" />
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
               Parish:
             </span>
-            <select
-              value={selectedParishFilter}
-              onChange={(e) => handleParishChange(e.target.value)}
-              className="bg-white border border-gray-300 text-xs font-semibold text-gray-800 rounded-lg px-2.5 py-1 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7B1C2A]/20 focus:border-[#7B1C2A] transition-all shadow-xs cursor-pointer"
-            >
-              {parishes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="w-[200px]">
+              <CustomSelect
+                value={selectedParishFilter}
+                onChange={handleParishChange}
+                options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
+                searchable
+                searchPlaceholder="Search parish..."
+              />
+            </div>
           </div>
         )}
 

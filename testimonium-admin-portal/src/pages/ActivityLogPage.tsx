@@ -107,7 +107,7 @@ function ActivityDetailModal({ entry, onClose }: DetailModalProps) {
 
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Related Record Reference</span>
-            <p className="font-mono text-xs text-gray-600 mt-1 bg-gray-50 border border-gray-100 p-2.5 rounded-lg">
+            <p className="font-mono text-xs text-gray-600 mt-1 bg-gray-50 border border-gray-100 p-2.5 rounded-lg whitespace-pre-line">
               {entry.referenceId}
             </p>
           </div>

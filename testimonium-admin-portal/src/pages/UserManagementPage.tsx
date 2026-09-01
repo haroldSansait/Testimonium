@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
-  ChevronDown,
   Pencil,
   UserX,
   KeyRound,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/common/LoadingState';
@@ -248,32 +248,30 @@ function StaffUserModal({ user, onSave, onClose, isSaving }: StaffModalProps) {
           </FormField>
 
           <FormField label="Staff Role" id="um-role" required>
-            <select
+            <CustomSelect
               id="um-role"
-              className={inputCls}
               value={form.role}
-              onChange={set('role')}
-            >
-              <option value="">Select role...</option>
-              <option value="DIOCESE_COORDINATOR">Diocese Coordinator</option>
-              <option value="SECRETARY">Secretary</option>
-              <option value="PRIEST">Parish Priest</option>
-              <option value="ASSISTANT_PRIEST">Assistant Priest</option>
-            </select>
+              onChange={(val) => set('role')({ target: { value: val } } as any)}
+              placeholder="Select role..."
+              options={[
+                { value: 'DIOCESE_COORDINATOR', label: 'Diocese Coordinator' },
+                { value: 'SECRETARY', label: 'Secretary' },
+                { value: 'PRIEST', label: 'Parish Priest' },
+                { value: 'ASSISTANT_PRIEST', label: 'Assistant Priest' },
+              ]}
+            />
           </FormField>
 
           <FormField label="Assigned Parish" id="um-parish" required>
-            <select
+            <CustomSelect
               id="um-parish"
-              className={inputCls}
               value={form.parish}
-              onChange={set('parish')}
-            >
-              <option value="">Select parish...</option>
-              {parishes.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+              onChange={(val) => set('parish')({ target: { value: val } } as any)}
+              placeholder="Select parish..."
+              options={parishes.map((name) => ({ value: name, label: name }))}
+              searchable
+              searchPlaceholder="Search parish..."
+            />
           </FormField>
         </div>
 
@@ -1173,40 +1171,28 @@ export function UserManagementPage() {
           <div className="flex gap-3 flex-wrap">
             {/* Role filter (Staff tab only) */}
             {activeTab === 'staff' && (
-              <div className="relative">
-                <select
+              <div className="w-[185px]">
+                <CustomSelect
                   value={staffRole}
-                  onChange={(e) => setStaffRole(e.target.value)}
-                  className="pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[175px]"
+                  onChange={setStaffRole}
+                  options={STAFF_ROLE_OPTIONS}
+                  placeholder="All Roles"
                   id="filter-staff-role"
                   aria-label="Filter by staff role"
-                >
-                  {STAFF_ROLE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                />
               </div>
             )}
 
             {/* Status filter */}
-            <div className="relative">
-              <select
+            <div className="w-[160px]">
+              <CustomSelect
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[140px]"
+                onChange={setStatus}
+                options={STATUS_OPTIONS}
+                placeholder="All Statuses"
                 id="filter-user-status"
                 aria-label="Filter by status"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              />
             </div>
           </div>
         </div>

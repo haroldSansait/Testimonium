@@ -60,12 +60,22 @@ export class MassScheduleService {
         }
       });
 
-      await AuditLogService.log(actorId, `Updated Mass schedule template #${id} for parish ID ${parishId}`, null, false, {
-        affectedTable: "MassScheduleTemplate",
+      await AuditLogService.log(actorId, "Mass Schedule Template Updated", null, false, {
+        affectedTable: "mass_schedule_templates",
         affectedRecordId: parsedId,
         parishId: parsedParishId,
-        previousValues: original,
-        newValues: { dayType, timeSlot, label, assignedPriestId: parsedPriestId }
+        previousValues: {
+          dayType: original.dayType,
+          timeSlot: original.timeSlot,
+          label: original.label,
+          assignedPriestId: original.assignedPriestId,
+        },
+        newValues: {
+          dayType,
+          timeSlot,
+          label,
+          assignedPriestId: parsedPriestId,
+        },
       });
     } else {
       template = await prisma.massScheduleTemplate.create({
@@ -83,11 +93,16 @@ export class MassScheduleService {
         }
       });
 
-      await AuditLogService.log(actorId, `Created new Mass schedule template for parish ID ${parishId}: ${timeSlot} (${dayType})`, null, false, {
-        affectedTable: "MassScheduleTemplate",
+      await AuditLogService.log(actorId, "Mass Schedule Template Created", null, false, {
+        affectedTable: "mass_schedule_templates",
         affectedRecordId: template.id,
         parishId: parsedParishId,
-        newValues: { dayType, timeSlot, label, assignedPriestId: parsedPriestId }
+        newValues: {
+          dayType,
+          timeSlot,
+          label,
+          assignedPriestId: parsedPriestId,
+        },
       });
     }
 
@@ -130,12 +145,12 @@ export class MassScheduleService {
       data: { isActive: false }
     });
 
-    await AuditLogService.log(actorId, `Deleted Mass schedule template #${id} for parish ID ${template.parishId}`, null, false, {
-      affectedTable: "MassScheduleTemplate",
+    await AuditLogService.log(actorId, "Mass Schedule Template Deleted", null, false, {
+      affectedTable: "mass_schedule_templates",
       affectedRecordId: parsedId,
       parishId: template.parishId,
       previousValues: { isActive: true },
-      newValues: { isActive: false }
+      newValues: { isActive: false },
     });
   }
 
@@ -152,9 +167,9 @@ export class MassScheduleService {
 
     await this.seedDefaults(parsedId);
 
-    await AuditLogService.log(actorId, `Restored default Mass schedules for parish ID ${parishId}`, null, false, {
-      affectedTable: "MassScheduleTemplate",
-      parishId: parsedId
+    await AuditLogService.log(actorId, "Mass Schedule Defaults Restored", null, false, {
+      affectedTable: "mass_schedule_templates",
+      parishId: parsedId,
     });
   }
 

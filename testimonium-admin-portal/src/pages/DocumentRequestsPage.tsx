@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { ChevronDown, X, Check, AlertCircle, FileText, User } from 'lucide-react';
+import { X, Check, AlertCircle, FileText, User } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Pagination } from '@/components/ui/Pagination';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { DocumentRequestTable } from '@/components/document-requests/DocumentRequestTable';
 import { getDocumentRequests, updateDocumentStatus } from '@/services/documentRequestService';
 import { LoadingState } from '@/components/common/LoadingState';
@@ -926,35 +927,27 @@ export function DocumentRequestsPage() {
           />
           <div className="flex gap-3">
             {/* Document Type filter */}
-            <div className="relative">
-              <select
+            <div className="w-[195px]">
+              <CustomSelect
                 value={documentType}
-                onChange={(e) => handleType(e.target.value)}
-                className="pl-3 pr-8 py-2.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[180px]"
+                onChange={handleType}
+                options={DOCUMENT_TYPE_OPTIONS}
+                placeholder="All Document Types"
                 id="filter-document-type"
                 aria-label="Filter by document type"
-              >
-                {DOCUMENT_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              />
             </div>
 
             {/* Status filter */}
-            <div className="relative">
-              <select
+            <div className="w-[160px]">
+              <CustomSelect
                 value={status}
-                onChange={(e) => handleStatus(e.target.value)}
-                className="pl-3 pr-8 py-2.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[140px]"
+                onChange={handleStatus}
+                options={STATUS_OPTIONS}
+                placeholder="All Statuses"
                 id="filter-status"
                 aria-label="Filter by status"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              />
             </div>
           </div>
         </div>

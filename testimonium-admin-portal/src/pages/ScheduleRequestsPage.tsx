@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { Filter, X, Check, Calendar, Clock, User, FileText, AlertCircle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
 import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, getAvailableSlots } from '@/services/scheduleRequestService';
 import { UserManagementService } from '@/services/UserManagementService';
@@ -247,17 +248,13 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                     No slots available for this date.
                   </div>
                 ) : (
-                  <select
+                  <CustomSelect
                     value={proposedTime}
-                    onChange={e => setProposedTime(e.target.value)}
+                    onChange={setProposedTime}
+                    options={availableSlots.map(slot => ({ value: slot, label: slot }))}
                     disabled={!proposedDate || loadingSlots || availableSlots.length === 0}
-                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A] bg-white disabled:bg-gray-50 disabled:text-gray-400"
-                  >
-                    <option value="">{proposedDate ? 'Select Time Slot…' : 'Select a date first'}</option>
-                    {availableSlots.map(slot => (
-                      <option key={slot} value={slot}>{slot}</option>
-                    ))}
-                  </select>
+                    placeholder={proposedDate ? 'Select Time Slot…' : 'Select a date first'}
+                  />
                 )}
               </div>
               </div>
@@ -423,17 +420,18 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
           {/* Priest Assignment Selector */}
           <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-2">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Priest Assignment</span>
-            <select
+            <CustomSelect
               value={selectedPriestId}
-              onChange={e => handlePriestSelectChange(e.target.value)}
+              onChange={handlePriestSelectChange}
               disabled={loadingPriests || isUpdating}
-              className="w-full p-2 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none bg-white focus:border-[#7B1C2A]"
-            >
-              <option value="">{loadingPriests ? 'Loading Priests...' : 'Select Priest (Primary / Assistant)...'}</option>
-              {priests.map((p: any) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest'})</option>
-              ))}
-            </select>
+              loading={loadingPriests}
+              placeholder={loadingPriests ? 'Loading Priests...' : 'Select Priest (Primary / Assistant)...'}
+              options={priests.map((p: any) => ({
+                value: String(p.id),
+                label: p.name,
+                secondary: p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest',
+              }))}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

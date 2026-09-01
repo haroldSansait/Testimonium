@@ -12,7 +12,7 @@ import {
   Play
 } from 'lucide-react';
 import type { Event } from '../../../types';
-import { getEventCountdownLabel } from '../../../utils/date';
+import { getEventCountdownLabel, formatEventCalendarDate } from '../../../utils/date';
 import { Button } from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
 
@@ -29,8 +29,9 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const progressIntervalRef = useRef<any>(null);
+  const remainingTimeRef = useRef<number>(AUTOPLAY_DURATION_MS);
+  const timerStartRef = useRef<number | null>(null);
+  const slideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Touch coordinates for swipe gestures
   const touchStartX = useRef<number | null>(null);
@@ -38,14 +39,48 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
 
   const totalSlides = events.length;
 
-  const nextSlide = useCallback(() => {
-    setCurrentIndex(prev => (prev === totalSlides - 1 ? 0 : prev + 1));
-    setProgress(0);
+  // Clear running slide timer
+  const clearSlideTimer = useCallback(() => {
+    if (slideTimerRef.current) {
+      clearTimeout(slideTimerRef.current);
+      slideTimerRef.current = null;
+    }
+  }, []);
+
+  // Normalize currentIndex if filtered events change and index exceeds bounds
+  useEffect(() => {
+    if (currentIndex >= totalSlides && totalSlides > 0) {
+      setCurrentIndex(0);
+      remainingTimeRef.current = AUTOPLAY_DURATION_MS;
+    }
+  }, [totalSlides, currentIndex]);
+
+  // Autoplay cyclic advance (wraps back to 0 at end)
+  const advanceAutoplay = useCallback(() => {
+    setCurrentIndex(prev => (prev >= totalSlides - 1 ? 0 : prev + 1));
+    remainingTimeRef.current = AUTOPLAY_DURATION_MS;
   }, [totalSlides]);
 
+  // Manual navigation with boundary bounds
+  const nextSlide = useCallback(() => {
+    if (currentIndex < totalSlides - 1) {
+      setCurrentIndex(prev => prev + 1);
+      remainingTimeRef.current = AUTOPLAY_DURATION_MS;
+    }
+  }, [currentIndex, totalSlides]);
+
   const prevSlide = useCallback(() => {
-    setCurrentIndex(prev => (prev === 0 ? totalSlides - 1 : prev - 1));
-    setProgress(0);
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      remainingTimeRef.current = AUTOPLAY_DURATION_MS;
+    }
+  }, [currentIndex]);
+
+  const goToSlide = useCallback((index: number) => {
+    if (index >= 0 && index < totalSlides) {
+      setCurrentIndex(index);
+      remainingTimeRef.current = AUTOPLAY_DURATION_MS;
+    }
   }, [totalSlides]);
 
   // Check prefers-reduced-motion
@@ -53,35 +88,27 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
     : false;
 
-  // Autoplay & Progress Bar Setup
+  // Single slide timer synchronized with pause/resume
   useEffect(() => {
     if (isPaused || totalSlides <= 1 || prefersReducedMotion) {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-        progressIntervalRef.current = null;
+      clearSlideTimer();
+      if (timerStartRef.current !== null) {
+        const elapsed = Date.now() - timerStartRef.current;
+        remainingTimeRef.current = Math.max(0, remainingTimeRef.current - elapsed);
+        timerStartRef.current = null;
       }
       return;
     }
 
-    const stepMs = 100;
-    const increment = (stepMs / AUTOPLAY_DURATION_MS) * 100;
-
-    progressIntervalRef.current = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          nextSlide();
-          return 0;
-        }
-        return prev + increment;
-      });
-    }, stepMs);
+    timerStartRef.current = Date.now();
+    slideTimerRef.current = setTimeout(() => {
+      advanceAutoplay();
+    }, remainingTimeRef.current);
 
     return () => {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-      }
+      clearSlideTimer();
     };
-  }, [isPaused, nextSlide, totalSlides, prefersReducedMotion]);
+  }, [isPaused, totalSlides, prefersReducedMotion, currentIndex, advanceAutoplay, clearSlideTimer]);
 
   // Tab Inactive Pause Listener
   useEffect(() => {
@@ -170,6 +197,9 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const isFirstSlide = currentIndex === 0;
+  const isLastSlide = currentIndex === totalSlides - 1;
+
   return (
     <section 
       aria-roledescription="carousel" 
@@ -182,6 +212,13 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
       onFocus={() => setIsPaused(true)}
       onBlur={() => setIsPaused(false)}
     >
+      <style>{`
+        @keyframes testimoniumCarouselProgress {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+      `}</style>
+
       {/* Slides Container */}
       <div 
         className="relative min-h-[440px] md:h-[390px] w-full rounded-2xl overflow-hidden bg-white border border-border/80 shadow-md transition-all duration-300"
@@ -255,7 +292,7 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
                     <div className="flex items-center space-x-2 min-w-0">
                       <Calendar size={15} className="text-crimson flex-shrink-0" />
                       <span className="font-medium text-text-primary truncate">
-                        {new Date(event.startDate).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                        {formatEventCalendarDate(event.startDate)}
                       </span>
                     </div>
                     <div className="flex items-center space-x-2 min-w-0">
@@ -308,12 +345,16 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
           );
         })}
 
-        {/* Autoplay Progress Bar */}
+        {/* CSS-Driven Autoplay Progress Bar */}
         {totalSlides > 1 && !prefersReducedMotion && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5 z-20 overflow-hidden">
             <div 
-              className="h-full bg-crimson transition-all duration-100 ease-linear"
-              style={{ width: `${progress}%` }}
+              key={currentIndex}
+              className="h-full bg-crimson"
+              style={{
+                animation: `testimoniumCarouselProgress ${AUTOPLAY_DURATION_MS}ms linear forwards`,
+                animationPlayState: isPaused ? 'paused' : 'running',
+              }}
             />
           </div>
         )}
@@ -349,10 +390,7 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
                 role="tab"
                 aria-selected={idx === currentIndex}
                 aria-label={`Go to event slide ${idx + 1}`}
-                onClick={() => {
-                  setCurrentIndex(idx);
-                  setProgress(0);
-                }}
+                onClick={() => goToSlide(idx)}
                 className={`h-2 rounded-full transition-all duration-300 ${
                   idx === currentIndex 
                     ? 'bg-crimson w-7' 
@@ -366,14 +404,24 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
           <div className="flex items-center gap-1.5">
             <button
               onClick={prevSlide}
-              className="p-1.5 rounded-lg bg-white border border-border text-text-muted hover:text-crimson hover:bg-gray-50 hover:scale-105 shadow-xs transition-all focus-ring"
+              disabled={isFirstSlide}
+              className={`p-1.5 rounded-lg bg-white border border-border transition-all focus-ring shadow-xs ${
+                isFirstSlide
+                  ? 'opacity-40 text-text-muted/50 cursor-not-allowed'
+                  : 'text-text-muted hover:text-crimson hover:bg-gray-50 hover:scale-105'
+              }`}
               aria-label="Previous event slide"
             >
               <ChevronLeft size={15} />
             </button>
             <button
               onClick={nextSlide}
-              className="p-1.5 rounded-lg bg-white border border-border text-text-muted hover:text-crimson hover:bg-gray-50 hover:scale-105 shadow-xs transition-all focus-ring"
+              disabled={isLastSlide}
+              className={`p-1.5 rounded-lg bg-white border border-border transition-all focus-ring shadow-xs ${
+                isLastSlide
+                  ? 'opacity-40 text-text-muted/50 cursor-not-allowed'
+                  : 'text-text-muted hover:text-crimson hover:bg-gray-50 hover:scale-105'
+              }`}
               aria-label="Next event slide"
             >
               <ChevronRight size={15} />

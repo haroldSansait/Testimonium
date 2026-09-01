@@ -1,7 +1,22 @@
 import React, { useState, useCallback } from 'react';
-import { Calendar, Clock, MapPin, Building, User, Phone, Share2, Clipboard, Globe, Check, AlertCircle, Download } from 'lucide-react';
+import { 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  Building, 
+  User, 
+  Phone, 
+  Share2, 
+  Globe, 
+  Check, 
+  AlertCircle, 
+  Download,
+  CalendarPlus,
+  Users,
+  Navigation
+} from 'lucide-react';
 import type { Event } from '../../../types';
-import { getEventCountdownLabel } from '../../../utils/date';
+import { getEventCountdownLabel, formatEventCalendarDate } from '../../../utils/date';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
@@ -56,6 +71,21 @@ function downloadEventIcs(event: Event) {
   URL.revokeObjectURL(url);
 }
 
+// ─── Category Color Helper ──────────────────────────────────────────────────
+
+const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
+  switch (category) {
+    case 'Holy Mass': return 'ready';
+    case 'Baptism': return 'pending';
+    case 'Wedding': return 'neutral';
+    case 'Confirmation': return 'under-review';
+    case 'Funeral': return 'rejected';
+    case 'Fiesta': return 'under-review';
+    case 'Seminar': return 'neutral';
+    default: return 'neutral';
+  }
+};
+
 // ─── Inline action feedback states ──────────────────────────────────────────
 
 type FeedbackState = 'idle' | 'success' | 'error';
@@ -99,163 +129,260 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
         },
         () => {
           setShareFeedback('error');
-          setShareError('Unable to copy. Please copy the URL manually.');
+          setShareError('Failed to copy to clipboard');
           resetFeedback(setShareFeedback);
         }
       );
     } else {
       setShareFeedback('error');
-      setShareError('Clipboard not supported in this browser.');
+      setShareError('Clipboard not available');
       resetFeedback(setShareFeedback);
     }
   }, [event]);
 
   if (!event) return null;
 
-  const countdown = getEventCountdownLabel(event.startDate);
-
-  const getCategoryColor = (category: Event['category']): "ready" | "pending" | "under-review" | "rejected" | "neutral" | "crimson" | undefined => {
-    switch (category) {
-      case 'Holy Mass': return 'ready';
-      case 'Baptism': return 'pending';
-      case 'Wedding': return 'neutral';
-      case 'Confirmation': return 'under-review';
-      case 'Funeral': return 'rejected';
-      case 'Fiesta': return 'under-review';
-      case 'Seminar': return 'neutral';
-      default: return 'neutral';
-    }
-  };
-
   const handleDirections = () => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location + ', ' + event.parishName)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const handleExportGoogleCalendar = () => {
+    const title = encodeURIComponent(event.title);
+    const details = encodeURIComponent(`${event.description || ''}\n\nParish: ${event.parishName}\nLocation: ${event.location}`);
+    const location = encodeURIComponent(`${event.location}, ${event.parishName}`);
+    
+    const dateStr = event.startDate.replace(/-/g, '');
+    const startTimeStr = event.startTime ? event.startTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00' : '080000';
+    const endTimeStr = event.endTime ? event.endTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '100000' : '100000';
+    
+    const dates = `${dateStr}T${startTimeStr}/${dateStr}T${endTimeStr}`;
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const countdown = getEventCountdownLabel(event.startDate, event.startTime);
+  const participantPercentage = event.maxParticipants && event.currentParticipants !== undefined
+    ? Math.min(100, Math.round((event.currentParticipants / event.maxParticipants) * 100))
+    : 0;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={event.title} size="xl">
-      <div className="space-y-6 text-sm text-text-primary">
-        {/* Banner Section */}
-        <div className="relative h-60 w-full rounded-card overflow-hidden bg-border">
-          <img 
-            src={event.coverImage} 
-            alt={event.coverImageAlt}
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Event Details"
+      size="3xl"
+    >
+      <div className="space-y-5 pt-1">
+        {/* Header Media / Cover Banner Hero */}
+        <div className="relative h-48 sm:h-56 w-full rounded-2xl overflow-hidden bg-neutral-900 shadow-md">
+          <img
+            src={event.coverImage}
+            alt={event.coverImageAlt || event.title}
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-          <div className="absolute bottom-4 left-4 z-10 flex space-x-2 items-center">
-            <Badge variant={getCategoryColor(event.category)} className="capitalize py-1 px-3">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+
+          {/* Top Overlays */}
+          <div className="absolute top-3.5 left-4 flex items-center gap-2 z-10">
+            <Badge variant={getCategoryColor(event.category)} className="py-1 px-3 font-bold text-xs shadow-sm backdrop-blur-md">
               {event.category}
             </Badge>
-            <div className="bg-crimson text-white text-[10px] font-bold uppercase tracking-wider py-1 px-2.5 rounded-full shadow">
+          </div>
+
+          <div className="absolute top-3.5 right-4 z-10">
+            <div className="bg-crimson text-white text-[11px] font-bold uppercase tracking-wider py-1 px-3 rounded-full shadow-md backdrop-blur-sm border border-white/20">
               {countdown}
             </div>
           </div>
+
+          {/* Bottom Title & Parish Overlay */}
+          <div className="absolute bottom-4 left-4 right-4 text-white z-10">
+            <h3 className="font-serif font-bold text-lg sm:text-2xl leading-tight drop-shadow-md text-white">
+              {event.title}
+            </h3>
+            <p className="text-xs sm:text-sm text-white/90 flex items-center gap-1.5 mt-1 drop-shadow font-medium">
+              <Building size={14} className="text-red-300 flex-shrink-0" />
+              <span>{event.parishName}</span>
+            </p>
+          </div>
         </div>
 
-        {/* Layout Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left Columns: Main Details (Col-span 2) */}
-          <div className="md:col-span-2 space-y-4">
-            <div>
-              <h3 className="text-xs font-bold text-text-primary uppercase tracking-widest mb-1.5">Description</h3>
-              <p className="text-text-muted leading-relaxed whitespace-pre-line text-xs sm:text-sm">
-                {event.description}
+        {/* Action Feedback Alerts */}
+        {calendarFeedback === 'success' && (
+          <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
+            <Check size={15} className="text-emerald-600 flex-shrink-0" />
+            <span>Event calendar file (.ics) downloaded. Open it to sync with your device calendar.</span>
+          </div>
+        )}
+        {calendarFeedback === 'error' && (
+          <div role="alert" className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
+            <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
+            <span>Could not download calendar file. Please try again.</span>
+          </div>
+        )}
+        {shareFeedback === 'success' && (
+          <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
+            <Check size={15} className="text-emerald-600 flex-shrink-0" />
+            <span>Event link copied to clipboard!</span>
+          </div>
+        )}
+        {shareFeedback === 'error' && (
+          <div role="alert" className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
+            <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
+            <span>{shareError || 'Could not copy link.'}</span>
+          </div>
+        )}
+
+        {/* Proportional 2-Column Content Details Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-left items-start">
+          {/* Left Column: Event Overview & Context (Col-span 7) */}
+          <div className="md:col-span-7 space-y-4">
+            {/* About Section */}
+            <div className="bg-app-page/50 p-4 sm:p-5 rounded-xl border border-border/60 space-y-2.5">
+              <div className="flex items-center gap-2 pb-1.5 border-b border-border/40">
+                <div className="w-1.5 h-3.5 bg-crimson rounded-full" />
+                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">About This Event</h4>
+              </div>
+              <p className="text-xs sm:text-sm text-text-muted leading-relaxed whitespace-pre-line">
+                {event.description || 'Join our parish community for holy sacrifice and prayers.'}
               </p>
             </div>
 
-            {/* Gallery placeholder if exists */}
-            {event.gallery && event.gallery.length > 0 && (
-              <div>
-                <h3 className="text-xs font-bold text-text-primary uppercase tracking-widest mb-2">Event Photos</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {event.gallery.map((img, i) => (
-                    <div key={i} className="h-16 rounded overflow-hidden bg-border">
-                      <img src={img} alt={`Gallery ${i}`} className="w-full h-full object-cover" />
-                    </div>
-                  ))}
+            {/* Registration & Capacity status (if active) */}
+            {event.registrationRequired && (
+              <div className="bg-app-page/50 p-4 rounded-xl border border-border/60 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 font-bold text-text-primary">
+                    <Users size={14} className="text-crimson" />
+                    <span>Registration & Slots</span>
+                  </div>
+                  <span className="text-xs font-bold text-crimson uppercase tracking-wider bg-red-50 py-0.5 px-2.5 rounded-full border border-crimson/20">
+                    Required
+                  </span>
                 </div>
+                {event.maxParticipants && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex justify-between text-[11px] text-text-muted font-medium">
+                      <span>{event.currentParticipants || 0} slots reserved</span>
+                      <span>{event.maxParticipants} max capacity</span>
+                    </div>
+                    <div className="w-full h-2 bg-border/80 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-crimson rounded-full transition-all duration-500" 
+                        style={{ width: `${participantPercentage}%` }} 
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Practical Parish Registration Guidelines */}
-            <div className="p-4 bg-app-base border border-border/60 rounded-card space-y-2">
-              <h4 className="font-serif font-bold text-text-primary text-xs flex items-center space-x-1.5">
-                <Clipboard size={14} className="text-crimson" />
-                <span>Attendance & Registration Guidelines</span>
-              </h4>
-              <p className="text-text-muted text-[11px] leading-relaxed">
-                {event.registrationRequired 
-                  ? "Pre-registration is required for this parish service to ensure materials and seats are properly allocated. Please complete booking slots early." 
-                  : "This is an open event. All parishioners, guests, and neighboring vicariate congregations are welcome to attend without prior registration."}
-              </p>
-              {event.registrationRequired && event.currentParticipants !== undefined && event.maxParticipants !== undefined && (
-                <div className="flex items-center justify-between text-[11px] pt-1 text-text-primary font-semibold">
-                  <span>Available Seats / Capacity:</span>
-                  <span className="text-crimson">
-                    {event.maxParticipants - event.currentParticipants} slots left
-                  </span>
-                </div>
-              )}
+            {/* Parish Community Note */}
+            <div className="flex items-center gap-3 p-3.5 rounded-xl bg-crimson/5 border border-crimson/15 text-xs text-text-primary">
+              <div className="p-2 bg-crimson/10 rounded-lg text-crimson flex-shrink-0">
+                <Building size={16} />
+              </div>
+              <div>
+                <span className="font-bold text-[12px] block text-text-primary">{event.parishName}</span>
+                <span className="text-[11px] text-text-muted">Diocese of San Carlos • Vicariate Community</span>
+              </div>
             </div>
           </div>
 
-          {/* Right Column: Schedule & Coordinates (Col-span 1) */}
-          <div className="space-y-5 bg-app-page/40 p-4 rounded-card border border-border/50 h-fit">
-            <div>
-              <h4 className="text-[10px] font-bold text-text-primary uppercase tracking-wider mb-2.5">Event Coordinates</h4>
-              <div className="space-y-3.5 text-xs text-text-muted">
-                <div className="flex items-start space-x-2">
-                  <Building size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-text-primary block text-[11px]">Parish Office</span>
-                    <span className="text-[11px]">{event.parishName}</span>
+          {/* Right Column: Schedule, Coordinates & Contacts (Col-span 5) */}
+          <div className="md:col-span-5 space-y-4">
+            {/* Schedule & Location Card */}
+            <div className="bg-app-page/50 p-4 rounded-xl border border-border/60 space-y-3.5">
+              <div className="flex items-center gap-2 pb-1.5 border-b border-border/40">
+                <Calendar size={14} className="text-crimson" />
+                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Schedule & Venue</h4>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {/* Date */}
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 bg-crimson/10 rounded-lg text-crimson mt-0.5 flex-shrink-0">
+                    <Calendar size={13} />
                   </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <Calendar size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <span className="font-bold text-text-primary block text-[11px]">Date</span>
-                    <span className="text-[11px]">{new Date(event.startDate).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                    <span className="text-text-muted text-[11px] block leading-snug">
+                      {formatEventCalendarDate(event.startDate, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
                     {event.endDate !== event.startDate && (
-                      <span className="block text-[10px] text-text-muted">Until {new Date(event.endDate).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                      <span className="block text-[10px] text-text-muted font-medium mt-0.5">
+                        Until {formatEventCalendarDate(event.endDate, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
                     )}
                   </div>
                 </div>
-                <div className="flex items-start space-x-2">
-                  <Clock size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
-                  <div>
+
+                {/* Time */}
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 bg-crimson/10 rounded-lg text-crimson mt-0.5 flex-shrink-0">
+                    <Clock size={13} />
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <span className="font-bold text-text-primary block text-[11px]">Time Schedule</span>
-                    <span className="text-[11px]">{event.startTime} - {event.endTime}</span>
+                    <span className="text-text-muted text-[11px] block font-medium">
+                      {event.startTime}{event.endTime ? ` - ${event.endTime}` : ''}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-start space-x-2">
-                  <MapPin size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
-                  <div>
+
+                {/* Venue */}
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 bg-crimson/10 rounded-lg text-crimson mt-0.5 flex-shrink-0">
+                    <MapPin size={13} />
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <span className="font-bold text-text-primary block text-[11px]">Venue Location</span>
-                    <span className="text-[11px] leading-relaxed">{event.location}</span>
+                    <span className="text-text-muted text-[11px] leading-relaxed block">
+                      {event.location}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-border pt-4">
-              <h4 className="text-[10px] font-bold text-text-primary uppercase tracking-wider mb-2.5">Organizers & Contacts</h4>
-              <div className="space-y-3.5 text-xs text-text-muted">
-                <div className="flex items-start space-x-2">
-                  <User size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
-                  <div>
+            {/* Organizers & Contacts Card */}
+            <div className="bg-app-page/50 p-4 rounded-xl border border-border/60 space-y-3">
+              <div className="flex items-center gap-2 pb-1.5 border-b border-border/40">
+                <User size={14} className="text-crimson" />
+                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">Organizers & Contacts</h4>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {/* Organizer */}
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 bg-crimson/10 rounded-lg text-crimson mt-0.5 flex-shrink-0">
+                    <Building size={13} />
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <span className="font-bold text-text-primary block text-[11px]">Organizer</span>
-                    <span className="text-[11px]">{event.organizer}</span>
+                    <span className="text-text-muted text-[11px] block">{event.organizer || 'Parish Office'}</span>
                   </div>
                 </div>
+
+                {/* Contact Secretary */}
                 {event.contactPerson && (
-                  <div className="flex items-start space-x-2">
-                    <Phone size={16} className="text-crimson/70 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-text-primary block text-[11px]">Contact Secretary</span>
-                      <span className="text-[11px]">{event.contactPerson}</span>
-                      <span className="block text-[10px] font-mono text-text-muted mt-0.5">{event.contactNumber}</span>
+                  <div className="flex items-start gap-2.5">
+                    <div className="p-1.5 bg-crimson/10 rounded-lg text-crimson mt-0.5 flex-shrink-0">
+                      <Phone size={13} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold text-text-primary block text-[11px]">Contact Person</span>
+                      <span className="text-text-muted text-[11px] block">{event.contactPerson}</span>
+                      {event.contactNumber && (
+                        <a 
+                          href={`tel:${event.contactNumber.replace(/[^0-9+]/g, '')}`}
+                          className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-crimson hover:underline mt-0.5"
+                          title="Call contact number"
+                        >
+                          {event.contactNumber}
+                        </a>
+                      )}
                     </div>
                   </div>
                 )}
@@ -264,73 +391,92 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
           </div>
         </div>
 
-        {/* Share error feedback (inline, below actions) */}
-        {shareFeedback === 'error' && shareError && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700 font-medium">
-            <AlertCircle size={13} className="flex-shrink-0" />
-            {shareError}
-          </div>
-        )}
-
         {/* Action Buttons Row */}
-        <div className="flex flex-wrap gap-2.5 pt-4 border-t border-border/80 justify-end">
-          {/* Share button with inline feedback */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleShare}
-            className={`flex items-center space-x-1 transition-colors ${
-              shareFeedback === 'success'
-                ? 'border-green-500 text-green-700 bg-green-50'
-                : shareFeedback === 'error'
-                ? 'border-red-400 text-red-600'
-                : ''
-            }`}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-border/80">
+          {/* Google Calendar Link */}
+          <button
+            type="button"
+            onClick={handleExportGoogleCalendar}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-crimson transition-colors py-1.5 px-2 rounded-lg hover:bg-red-50/50"
+            title="Open in Google Calendar"
           >
-            {shareFeedback === 'success' ? (
-              <><Check size={14} /><span>Copied!</span></>
-            ) : shareFeedback === 'error' ? (
-              <><AlertCircle size={14} /><span>Failed</span></>
-            ) : (
-              <><Share2 size={14} /><span>Share</span></>
-            )}
-          </Button>
+            <CalendarPlus size={14} className="text-crimson" />
+            <span>Google Calendar</span>
+          </button>
 
-          {/* Add to Calendar button with inline feedback */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAddToCalendar}
-            className={`flex items-center space-x-1 transition-colors ${
-              calendarFeedback === 'success'
-                ? 'border-green-500 text-green-700 bg-green-50'
-                : calendarFeedback === 'error'
-                ? 'border-red-400 text-red-600'
-                : ''
-            }`}
-          >
-            {calendarFeedback === 'success' ? (
-              <><Check size={14} /><span>Downloaded!</span></>
-            ) : calendarFeedback === 'error' ? (
-              <><AlertCircle size={14} /><span>Failed</span></>
-            ) : (
-              <><Download size={14} /><span>Add to Calendar</span></>
-            )}
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleDirections} className="flex items-center space-x-1">
-            <MapPin size={14} />
-            <span>Get Directions</span>
-          </Button>
-          {onViewParish && (
-            <Button size="sm" onClick={() => onViewParish(event.parishId)} className="flex items-center space-x-1">
-              <Globe size={14} />
-              <span>View Parish</span>
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            {/* Share button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleShare}
+              className={`flex items-center space-x-1.5 transition-colors text-xs font-semibold ${
+                shareFeedback === 'success'
+                  ? 'border-green-500 text-green-700 bg-green-50'
+                  : shareFeedback === 'error'
+                  ? 'border-red-400 text-red-600'
+                  : ''
+              }`}
+            >
+              {shareFeedback === 'success' ? (
+                <><Check size={13} /><span>Copied!</span></>
+              ) : shareFeedback === 'error' ? (
+                <><AlertCircle size={13} /><span>Failed</span></>
+              ) : (
+                <><Share2 size={13} /><span>Share</span></>
+              )}
             </Button>
-          )}
+
+            {/* Add to Calendar (.ics) button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAddToCalendar}
+              className={`flex items-center space-x-1.5 transition-colors text-xs font-semibold ${
+                calendarFeedback === 'success'
+                  ? 'border-green-500 text-green-700 bg-green-50'
+                  : calendarFeedback === 'error'
+                  ? 'border-red-400 text-red-600'
+                  : ''
+              }`}
+            >
+              {calendarFeedback === 'success' ? (
+                <><Check size={13} /><span>Downloaded!</span></>
+              ) : calendarFeedback === 'error' ? (
+                <><AlertCircle size={13} /><span>Failed</span></>
+              ) : (
+                <><Download size={13} /><span>.ICS File</span></>
+              )}
+            </Button>
+
+            {/* Directions button */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleDirections} 
+              className="flex items-center space-x-1.5 text-xs font-semibold"
+            >
+              <Navigation size={13} />
+              <span>Directions</span>
+            </Button>
+
+            {/* View Parish button */}
+            {onViewParish && (
+              <Button 
+                size="sm" 
+                onClick={() => onViewParish(event.parishId)} 
+                className="bg-crimson hover:bg-crimson-dark text-white flex items-center space-x-1.5 text-xs font-semibold shadow-xs"
+              >
+                <Globe size={13} />
+                <span>View Parish</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
   );
 };
+
 export default EventDetailsModal;

@@ -410,18 +410,42 @@ export class ParishService {
       // Delete created parish
       await prisma.parish.delete({ where: { id: createdParish.id } }).catch(() => {});
 
-      await AuditLogService.log(actorId, `Parish Creation Failed: "${name}" (${provisionErr.message})`);
+      await AuditLogService.log(actorId, "Parish Creation Failed", null, false, {
+        metadata: {
+          parishName: name,
+          errorCategory: "PROVISIONING_ERROR",
+        },
+      });
       throw provisionErr;
     }
 
     // 9. Audit Logging
-    await AuditLogService.log(actorId, `Parish Created: "${createdParish.parishName}"`);
+    await AuditLogService.log(actorId, "Parish Created", null, false, {
+      affectedTable: "parishes",
+      affectedRecordId: createdParish.id,
+      newValues: {
+        parishName: createdParish.parishName,
+        type: createdParish.type,
+        vicariate: createdParish.vicariate,
+        cityMunicipality: createdParish.cityMunicipality,
+      },
+    });
 
     if (priestMode === "existing" && existingPriestUser) {
-      await AuditLogService.log(actorId, `Assigned Priest "${existingPriestUser.fullName}" to parish "${createdParish.parishName}"`);
+      await AuditLogService.log(actorId, "Priest Assigned", null, false, {
+        affectedTable: "parishes",
+        affectedRecordId: createdParish.id,
+        parishId: createdParish.id,
+        newValues: { priestId: existingPriestUser.id },
+      });
     }
     if (secretaryMode === "existing" && existingSecretaryUser) {
-      await AuditLogService.log(actorId, `Assigned Secretary "${existingSecretaryUser.fullName}" to parish "${createdParish.parishName}"`);
+      await AuditLogService.log(actorId, "Secretary Assigned", null, false, {
+        affectedTable: "parishes",
+        affectedRecordId: createdParish.id,
+        parishId: createdParish.id,
+        newValues: { secretaryId: existingSecretaryUser.id },
+      });
     }
 
     // 10. Fetch complete parish with all active users and return DTO
@@ -566,7 +590,13 @@ export class ParishService {
               data: { parishId: null },
             });
             await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(currentPriestId, currentParish.id, tx);
-            await AuditLogService.log(actorId, `Removed Priest from parish "${currentParish.parishName}"`, tx);
+            await AuditLogService.log(actorId, "Priest Removed", tx, false, {
+              affectedTable: "parishes",
+              affectedRecordId: currentParish.id,
+              parishId: currentParish.id,
+              previousValues: { priestId: currentPriestId },
+              newValues: { priestId: null },
+            });
           }
 
           // Assign new priest
@@ -603,9 +633,20 @@ export class ParishService {
             });
 
             if (currentPriestId) {
-              await AuditLogService.log(actorId, `Changed Priest for parish "${currentParish.parishName}" to "${newPriestUser.fullName}"`, tx);
+              await AuditLogService.log(actorId, "Priest Changed", tx, false, {
+                affectedTable: "parishes",
+                affectedRecordId: currentParish.id,
+                parishId: currentParish.id,
+                previousValues: { priestId: currentPriestId },
+                newValues: { priestId: newPriestId },
+              });
             } else {
-              await AuditLogService.log(actorId, `Assigned Priest "${newPriestUser.fullName}" to parish "${currentParish.parishName}"`, tx);
+              await AuditLogService.log(actorId, "Priest Assigned", tx, false, {
+                affectedTable: "parishes",
+                affectedRecordId: currentParish.id,
+                parishId: currentParish.id,
+                newValues: { priestId: newPriestId },
+              });
             }
           }
         }
@@ -623,7 +664,13 @@ export class ParishService {
               where: { id: currentSecretaryId },
               data: { parishId: null },
             });
-            await AuditLogService.log(actorId, `Removed Secretary from parish "${currentParish.parishName}"`, tx);
+            await AuditLogService.log(actorId, "Secretary Removed", tx, false, {
+              affectedTable: "parishes",
+              affectedRecordId: currentParish.id,
+              parishId: currentParish.id,
+              previousValues: { secretaryId: currentSecretaryId },
+              newValues: { secretaryId: null },
+            });
           }
 
           // Assign new secretary
@@ -655,9 +702,20 @@ export class ParishService {
             });
 
             if (currentSecretaryId) {
-              await AuditLogService.log(actorId, `Changed Secretary for parish "${currentParish.parishName}" to "${newSecretaryUser.fullName}"`, tx);
+              await AuditLogService.log(actorId, "Secretary Changed", tx, false, {
+                affectedTable: "parishes",
+                affectedRecordId: currentParish.id,
+                parishId: currentParish.id,
+                previousValues: { secretaryId: currentSecretaryId },
+                newValues: { secretaryId: newSecretaryId },
+              });
             } else {
-              await AuditLogService.log(actorId, `Assigned Secretary "${newSecretaryUser.fullName}" to parish "${currentParish.parishName}"`, tx);
+              await AuditLogService.log(actorId, "Secretary Assigned", tx, false, {
+                affectedTable: "parishes",
+                affectedRecordId: currentParish.id,
+                parishId: currentParish.id,
+                newValues: { secretaryId: newSecretaryId },
+              });
             }
           }
         }
@@ -698,7 +756,11 @@ export class ParishService {
       return updatedParish;
     }, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 });
 
-    await AuditLogService.log(actorId, `Parish Updated: "${parish.parishName}"`);
+    await AuditLogService.log(actorId, "Parish Updated", null, false, {
+      affectedTable: "parishes",
+      affectedRecordId: parish.id,
+      parishId: parish.id,
+    });
     return this.mapToDto(parish);
   }
 
@@ -717,7 +779,12 @@ export class ParishService {
     }
 
     const parish = await this.parishRepository.archive(numericId);
-    await AuditLogService.log(actorId, `Parish Archived: "${parish.parishName}"`);
+    await AuditLogService.log(actorId, "Parish Archived", null, false, {
+      affectedTable: "parishes",
+      affectedRecordId: parish.id,
+      parishId: parish.id,
+      newValues: { isActive: false },
+    });
   }
 
   /**
@@ -735,7 +802,12 @@ export class ParishService {
     }
 
     const parish = await this.parishRepository.restore(numericId);
-    await AuditLogService.log(actorId, `Parish Restored: "${parish.parishName}"`);
+    await AuditLogService.log(actorId, "Parish Restored", null, false, {
+      affectedTable: "parishes",
+      affectedRecordId: parish.id,
+      parishId: parish.id,
+      newValues: { isActive: true },
+    });
     return this.mapToDto(parish);
   }
 
@@ -928,7 +1000,7 @@ export class ParishService {
         const newCoords = `(${update.latitude}, ${update.longitude})`;
         await AuditLogService.log(
           actorId,
-          `Parish Coordinates Configured: "${parish.parishName}" from ${oldCoords} to ${newCoords}`,
+          "Parish Coordinates Updated",
           tx,
           false,
           {
@@ -1004,7 +1076,7 @@ export class ParishService {
 
     await AuditLogService.log(
       actorId,
-      `Parish Directory Settings Updated: "${parish.parishName}"`,
+      "Parish Directory Settings Updated",
       null,
       false,
       {
@@ -1106,7 +1178,11 @@ export class ParishService {
         },
       });
 
-      await AuditLogService.log(actorId, `Payment QR uploaded for parish "${parish.parishName}"`);
+      await AuditLogService.log(actorId, "Payment QR Uploaded", null, false, {
+        affectedTable: "parishes",
+        affectedRecordId: parish.id,
+        parishId: parish.id,
+      });
       return this.mapToDto(parish);
     } catch (dbErr) {
       // Rollback: delete uploaded file from Cloudflare R2
@@ -1144,7 +1220,11 @@ export class ParishService {
       },
     });
 
-    await AuditLogService.log(actorId, `Payment QR deleted for parish "${parish.parishName}"`);
+    await AuditLogService.log(actorId, "Payment QR Deleted", null, false, {
+      affectedTable: "parishes",
+      affectedRecordId: parish.id,
+      parishId: parish.id,
+    });
     return this.mapToDto(parish);
   }
 

@@ -16,12 +16,17 @@ interface BackendActivityLogDTO {
     id: number;
     fullName: string;
     email: string;
-    role?: string;
+    role?: string | { roleName?: string };
   } | null;
   archivedAt?: string | null;
   archivedBy?: number | null;
   archivedByName?: string | null;
   isSystem?: boolean;
+  role?: string | null;
+  parishId?: number | null;
+  previousValues?: string | object | null;
+  newValues?: string | object | null;
+  metadata?: string | object | null;
 }
 
 const formatActionDescription = (action: string): string => {
@@ -34,6 +39,77 @@ const formatActionDescription = (action: string): string => {
       return action.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   }
 };
+
+function formatDetails(dbItem: BackendActivityLogDTO): string {
+  let meta: any = null;
+  if (dbItem.metadata) {
+    if (typeof dbItem.metadata === 'string') {
+      try {
+        meta = JSON.parse(dbItem.metadata);
+      } catch {
+        meta = null;
+      }
+    } else if (typeof dbItem.metadata === 'object') {
+      meta = dbItem.metadata;
+    }
+  }
+
+  let prev: any = null;
+  if (dbItem.previousValues) {
+    if (typeof dbItem.previousValues === 'string') {
+      try {
+        prev = JSON.parse(dbItem.previousValues);
+      } catch {
+        prev = null;
+      }
+    } else if (typeof dbItem.previousValues === 'object') {
+      prev = dbItem.previousValues;
+    }
+  }
+
+  let next: any = null;
+  if (dbItem.newValues) {
+    if (typeof dbItem.newValues === 'string') {
+      try {
+        next = JSON.parse(dbItem.newValues);
+      } catch {
+        next = null;
+      }
+    } else if (typeof dbItem.newValues === 'object') {
+      next = dbItem.newValues;
+    }
+  }
+
+  const trackingNumber = meta?.trackingNumber;
+  const statusTransition =
+    prev?.status && next?.status && prev.status !== next.status
+      ? `${prev.status} → ${next.status}`
+      : null;
+
+  if (trackingNumber && statusTransition) {
+    return `${trackingNumber}\n${statusTransition}`;
+  }
+  if (trackingNumber) {
+    return trackingNumber;
+  }
+  if (statusTransition) {
+    return statusTransition;
+  }
+
+  if (dbItem.affectedRecordId) {
+    const table = (dbItem.affectedTable || '').toLowerCase();
+    const prefix = table.includes('schedule')
+      ? 'SCH'
+      : table.includes('parish')
+      ? 'PRSH'
+      : table.includes('user')
+      ? 'USR'
+      : 'DOC';
+    return `${prefix}-${dbItem.affectedRecordId}`;
+  }
+
+  return 'N/A';
+}
 
 export const ApiActivityLogProvider: ActivityLogProvider = {
   async getActivityLog(
@@ -80,8 +156,6 @@ export const ApiActivityLogProvider: ActivityLogProvider = {
       else if (actionLower.includes('review')) statusUpdate = 'Under Review';
       else if (actionLower.includes('validate') || actionLower.includes('create')) statusUpdate = 'Validated';
 
-      const prefix = dbItem.affectedTable === 'schedules' ? 'SCH' : 'DOC';
-
       let roleDisplay = 'Unknown';
       if (dbItem.user) {
         const roleObj = dbItem.user.role;
@@ -112,7 +186,7 @@ export const ApiActivityLogProvider: ActivityLogProvider = {
         role: roleDisplay,
         avatar: { initials, bgColor: avatarBg },
         actionDescription: formatActionDescription(dbItem.action || ''),
-        referenceId: dbItem.affectedRecordId ? `${prefix}-${dbItem.affectedRecordId}` : 'N/A',
+        referenceId: formatDetails(dbItem),
         statusUpdate,
         archivedAt: dbItem.archivedAt,
         archivedBy: dbItem.archivedBy,

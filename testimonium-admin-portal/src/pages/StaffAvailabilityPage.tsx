@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { StaffAvailabilityService } from '@/services/StaffAvailabilityService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
@@ -178,35 +179,32 @@ export function StaffAvailabilityPage() {
               {userRole === 'SECRETARY' && (
                 <div className="space-y-1.5">
                   <label className="block uppercase tracking-wider">Unavailability Type</label>
-                  <select
+                  <CustomSelect
                     value={type}
-                    onChange={e => setType(e.target.value as any)}
-                    className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium"
-                  >
-                    <option value="PARISH_CLOSED">Parish Office Closed</option>
-                    <option value="SECRETARY_LEAVE">Parish Secretary Leave</option>
-                    <option value="PRIEST_LEAVE">Priest Leave / Vacation</option>
-                    <option value="FULLY_BOOKED">Fully Booked / Blocked Date</option>
-                  </select>
+                    onChange={(val) => setType(val as any)}
+                    options={[
+                      { value: 'PARISH_CLOSED', label: 'Parish Office Closed' },
+                      { value: 'SECRETARY_LEAVE', label: 'Parish Secretary Leave' },
+                      { value: 'PRIEST_LEAVE', label: 'Priest Leave / Vacation' },
+                      { value: 'FULLY_BOOKED', label: 'Fully Booked / Blocked Date' },
+                    ]}
+                  />
                 </div>
               )}
 
               {userRole === 'SECRETARY' && type === 'PRIEST_LEAVE' && (
                 <div className="space-y-1.5 animate-in fade-in duration-150">
                   <label className="block uppercase tracking-wider">Select Priest</label>
-                  <select
+                  <CustomSelect
                     value={targetPriestId}
-                    onChange={e => setTargetPriestId(e.target.value)}
-                    className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium"
+                    onChange={setTargetPriestId}
+                    placeholder="Choose Priest..."
                     required
-                  >
-                    <option value="">Choose Priest...</option>
-                    {priests.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} {p.isAssistant ? '(Assistant)' : '(Primary)'}
-                      </option>
-                    ))}
-                  </select>
+                    options={priests.map((p) => ({
+                      value: String(p.id),
+                      label: `${p.name} ${p.isAssistant ? '(Assistant)' : '(Primary)'}`,
+                    }))}
+                  />
                 </div>
               )}
 

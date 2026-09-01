@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import api from '@/api/api';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { AnalyticsSelect, type SelectOptionGroup } from '@/components/ui/AnalyticsSelect';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -237,6 +238,143 @@ function AnalyticsSkeleton() {
   );
 }
 
+const documentTypeGroups: SelectOptionGroup[] = [
+  {
+    groupName: 'Sacramental Certificates',
+    options: [
+      { value: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
+      { value: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
+      { value: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
+      { value: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
+    ],
+  },
+  {
+    groupName: 'Canonical Permissions & Banns',
+    options: [
+      { value: 'MARRIAGE_BANNS', label: 'Marriage Banns' },
+      { value: 'PERMIT_TO_MARRY', label: 'Permit to Marry' },
+      { value: 'STATUS_OF_LIBERTY', label: 'Status of Liberty' },
+    ],
+  },
+];
+
+const documentStatusGroups: SelectOptionGroup[] = [
+  {
+    groupName: 'Review & Correction',
+    options: [
+      { value: 'PENDING', label: 'Pending Review' },
+      { value: 'UNDER_REVIEW', label: 'Under Review' },
+      { value: 'NEEDS_CORRECTION', label: 'Needs Correction' },
+    ],
+  },
+  {
+    groupName: 'Payment Stages',
+    options: [
+      { value: 'PAYMENT_PENDING', label: 'Payment Pending' },
+      { value: 'PAYMENT_UNDER_REVIEW', label: 'Payment Under Review' },
+      { value: 'PAYMENT_NEEDS_CORRECTION', label: 'Payment Needs Correction' },
+      { value: 'PAYMENT_VERIFIED', label: 'Payment Verified' },
+    ],
+  },
+  {
+    groupName: 'Processing & Fulfillment',
+    options: [
+      { value: 'PROCESSING', label: 'Processing' },
+      { value: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
+    ],
+  },
+  {
+    groupName: 'Final / Resolved',
+    options: [
+      { value: 'COMPLETED', label: 'Completed' },
+      { value: 'REJECTED', label: 'Rejected' },
+      { value: 'CANCELLED', label: 'Cancelled' },
+    ],
+  },
+];
+
+const eventTypeGroups: SelectOptionGroup[] = [
+  {
+    groupName: 'Sacraments & Rites',
+    options: [
+      { value: 'BAPTISM', label: 'Baptism' },
+      { value: 'CONFIRMATION', label: 'Confirmation' },
+      { value: 'FIRST_COMMUNION', label: 'First Communion' },
+      { value: 'WEDDING', label: 'Marriage Canonical Interview' },
+      { value: 'MARRIAGE_SPECIAL', label: 'Marriage Special' },
+      { value: 'CONFESSION', label: 'Confession' },
+      { value: 'ANOINTING_OF_THE_SICK', label: 'Anointing of the Sick' },
+    ],
+  },
+  {
+    groupName: 'Masses & Intentions',
+    options: [
+      { value: 'MASS_INTENTION', label: 'Mass Intention' },
+      { value: 'FUNERAL', label: 'Funeral Mass' },
+      { value: 'WAKE_MASS', label: 'Wake Mass' },
+      { value: 'PRIVATE_MASS', label: 'Private Mass' },
+      { value: 'MASS_OF_HOLY_SPIRIT', label: 'Mass of the Holy Spirit' },
+    ],
+  },
+  {
+    groupName: 'Blessings & Pastoral Ministry',
+    options: [
+      { value: 'BLESSING', label: 'Blessing' },
+      { value: 'DELIVERANCE', label: 'Deliverance' },
+    ],
+  },
+  {
+    groupName: 'Community Celebrations',
+    options: [
+      { value: 'FIESTA', label: 'Fiesta' },
+      { value: 'THANKSGIVING', label: 'Thanksgiving' },
+    ],
+  },
+];
+
+const scheduleStatusGroups: SelectOptionGroup[] = [
+  {
+    groupName: 'Initial & In Review',
+    options: [
+      { value: 'PENDING', label: 'Pending' },
+      { value: 'REQUESTED', label: 'Requested' },
+      { value: 'WAITING_PARISHIONER_RESPONSE', label: 'Waiting Parishioner Response' },
+    ],
+  },
+  {
+    groupName: 'Rescheduling',
+    options: [
+      { value: 'PROPOSED_RESCHEDULE', label: 'Proposed Reschedule' },
+    ],
+  },
+  {
+    groupName: 'Confirmed',
+    options: [
+      { value: 'CONFIRMED', label: 'Confirmed' },
+    ],
+  },
+  {
+    groupName: 'Final / Resolved',
+    options: [
+      { value: 'COMPLETED', label: 'Completed' },
+      { value: 'REJECTED', label: 'Rejected' },
+      { value: 'CANCELLED', label: 'Cancelled' },
+    ],
+  },
+];
+
+const reportCategoryGroups: SelectOptionGroup[] = [
+  {
+    groupName: 'Parish Operations',
+    options: [
+      { value: 'MEETING', label: 'Meeting' },
+      { value: 'ACTIVITY', label: 'Activity' },
+      { value: 'IMPORTANT_EVENT', label: 'Important Event' },
+      { value: 'OTHER', label: 'Other' },
+    ],
+  },
+];
+
 export function AnalyticsPage() {
   const { role } = useAuth();
   const coordinator = role === 'DIOCESE_COORDINATOR';
@@ -273,6 +411,19 @@ export function AnalyticsPage() {
       void ParishManagementService.getParishes().then(setParishes).catch(() => {});
     }
   }, [coordinator]);
+
+  const parishGroups = useMemo<SelectOptionGroup[]>(() => {
+    return [
+      {
+        groupName: 'Parishes in Diocese',
+        options: parishes.map((parish) => ({
+          value: String(parish.id),
+          label: parish.name,
+          secondary: parish.address || undefined,
+        })),
+      },
+    ];
+  }, [parishes]);
 
   // Race-protected analytics fetch
   const load = useCallback(async () => {
@@ -433,7 +584,7 @@ export function AnalyticsPage() {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-crimson-700' : ''}`} />
             Refresh
@@ -443,180 +594,107 @@ export function AnalyticsPage() {
 
       {/* Filter Toolbar */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-            From Date
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {/* From Date */}
+          <div className="space-y-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600">
+              From Date
+            </label>
             <input
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-900 shadow-xs outline-none transition-all hover:border-gray-400 focus:border-crimson-700 focus:ring-2 focus:ring-crimson-700/20"
             />
-          </label>
+          </div>
 
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-            To Date
+          {/* To Date */}
+          <div className="space-y-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600">
+              To Date
+            </label>
             <input
               type="date"
               value={to}
               onChange={(event) => setTo(event.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-900 shadow-xs outline-none transition-all hover:border-gray-400 focus:border-crimson-700 focus:ring-2 focus:ring-crimson-700/20"
             />
-          </label>
+          </div>
 
+          {/* Parish Filter (Coordinator only) */}
           {coordinator && (
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-              Parish
-              <select
-                value={parishId}
-                onChange={(event) => setParishId(event.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-              >
-                <option value="">All parishes (Diocese-wide)</option>
-                {parishes.map((parish) => (
-                  <option key={parish.id} value={parish.id}>
-                    {parish.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <AnalyticsSelect
+              label="Parish"
+              value={parishId}
+              onChange={(nextParishId) => {
+                setParishId(nextParishId);
+                if (nextParishId && tab === 'users') {
+                  setTab('documents');
+                }
+              }}
+              allOptionLabel="All parishes (Diocese-wide)"
+              groups={parishGroups}
+              searchPlaceholder="Search parish..."
+            />
           )}
 
+          {/* Document Tab Filters */}
           {tab === 'documents' && (
             <>
-              <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-                Document Type
-                <select
-                  value={documentType}
-                  onChange={(event) => setDocumentType(event.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-                >
-                  <option value="">All types</option>
-                  {[
-                    'BAPTISMAL_CERTIFICATE',
-                    'CONFIRMATION_CERTIFICATE',
-                    'MARRIAGE_CERTIFICATE',
-                    'FIRST_COMMUNION_CERTIFICATE',
-                    'MARRIAGE_BANNS',
-                    'PERMIT_TO_MARRY',
-                    'STATUS_OF_LIBERTY',
-                  ].map((value) => (
-                    <option key={value} value={value}>
-                      {value.replaceAll('_', ' ')}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <AnalyticsSelect
+                label="Document Type"
+                value={documentType}
+                onChange={setDocumentType}
+                allOptionLabel="All document types"
+                groups={documentTypeGroups}
+                searchPlaceholder="Search document type..."
+              />
 
-              <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-                Request Status
-                <select
-                  value={documentStatus}
-                  onChange={(event) => setDocumentStatus(event.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-                >
-                  <option value="">All statuses</option>
-                  {[
-                    'PENDING',
-                    'UNDER_REVIEW',
-                    'NEEDS_CORRECTION',
-                    'PAYMENT_PENDING',
-                    'PAYMENT_UNDER_REVIEW',
-                    'PAYMENT_NEEDS_CORRECTION',
-                    'PAYMENT_VERIFIED',
-                    'PROCESSING',
-                    'READY_FOR_PICKUP',
-                    'COMPLETED',
-                    'REJECTED',
-                    'CANCELLED',
-                  ].map((value) => (
-                    <option key={value} value={value}>
-                      {value.replaceAll('_', ' ')}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <AnalyticsSelect
+                label="Request Status"
+                value={documentStatus}
+                onChange={setDocumentStatus}
+                allOptionLabel="All request statuses"
+                groups={documentStatusGroups}
+                searchPlaceholder="Search status..."
+              />
             </>
           )}
 
+          {/* Scheduling and Events Tab Filters */}
           {(tab === 'scheduling' || tab === 'events') && (
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-              Service / Event Type
-              <select
-                value={eventType}
-                onChange={(event) => setEventType(event.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-              >
-                <option value="">All service types</option>
-                {[
-                  'WEDDING',
-                  'BAPTISM',
-                  'CONFIRMATION',
-                  'PRIVATE_MASS',
-                  'MASS_INTENTION',
-                  'MARRIAGE_SPECIAL',
-                  'WAKE_MASS',
-                  'FUNERAL',
-                  'ANOINTING_OF_THE_SICK',
-                  'FIESTA',
-                  'BLESSING',
-                  'DELIVERANCE',
-                  'THANKSGIVING',
-                  'FIRST_COMMUNION',
-                  'MASS_OF_HOLY_SPIRIT',
-                  'CONFESSION',
-                ].map((value) => (
-                  <option key={value} value={value}>
-                    {value.replaceAll('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <AnalyticsSelect
+              label="Service / Event Type"
+              value={eventType}
+              onChange={setEventType}
+              allOptionLabel="All service types"
+              groups={eventTypeGroups}
+              searchPlaceholder="Search service or event..."
+            />
           )}
 
+          {/* Schedule Status Filter */}
           {tab === 'scheduling' && (
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-              Schedule Status
-              <select
-                value={scheduleStatus}
-                onChange={(event) => setScheduleStatus(event.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-              >
-                <option value="">All statuses</option>
-                {[
-                  'PENDING',
-                  'REQUESTED',
-                  'PROPOSED_RESCHEDULE',
-                  'WAITING_PARISHIONER_RESPONSE',
-                  'CONFIRMED',
-                  'COMPLETED',
-                  'REJECTED',
-                  'CANCELLED',
-                ].map((value) => (
-                  <option key={value} value={value}>
-                    {value.replaceAll('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <AnalyticsSelect
+              label="Schedule Status"
+              value={scheduleStatus}
+              onChange={setScheduleStatus}
+              allOptionLabel="All schedule statuses"
+              groups={scheduleStatusGroups}
+              searchPlaceholder="Search status..."
+            />
           )}
 
+          {/* Daily Reports Tab Filter */}
           {tab === 'reports' && (
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
-              Report Category
-              <select
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none bg-white focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-              >
-                <option value="">All categories</option>
-                {['MEETING', 'ACTIVITY', 'IMPORTANT_EVENT', 'OTHER'].map((value) => (
-                  <option key={value} value={value}>
-                    {value.replaceAll('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <AnalyticsSelect
+              label="Report Category"
+              value={category}
+              onChange={setCategory}
+              allOptionLabel="All categories"
+              groups={reportCategoryGroups}
+              searchPlaceholder="Search category..."
+            />
           )}
         </div>
 
@@ -636,7 +714,7 @@ export function AnalyticsPage() {
           <button
             type="button"
             onClick={resetFilters}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-crimson-700 hover:text-crimson-800 hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-crimson-700 hover:text-crimson-800 hover:underline cursor-pointer"
           >
             <RotateCcw className="h-3 w-3" />
             Reset filters
@@ -652,14 +730,28 @@ export function AnalyticsPage() {
             const meta = tabMeta[item];
             const Icon = meta.icon;
             const isActive = tab === item;
+            const isUsersDisabled = item === 'users' && Boolean(parishId);
 
             return (
               <button
                 key={item}
                 type="button"
-                onClick={() => setTab(item)}
+                disabled={isUsersDisabled}
+                aria-disabled={isUsersDisabled}
+                onClick={() => {
+                  if (!isUsersDisabled) {
+                    setTab(item);
+                  }
+                }}
+                title={
+                  isUsersDisabled
+                    ? 'User analytics are diocese-wide. Select All Parishes to view this section.'
+                    : undefined
+                }
                 className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                  isActive
+                  isUsersDisabled
+                    ? 'cursor-not-allowed border border-gray-200 bg-gray-100/70 text-gray-400 opacity-60'
+                    : isActive
                     ? 'bg-crimson-700 text-white shadow-sm'
                     : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
@@ -686,7 +778,7 @@ export function AnalyticsPage() {
       {loading && !data && <AnalyticsSkeleton />}
 
       {/* Analytics Content Area */}
-      {content && (
+      {content ? (
         <div className="space-y-6">
           {/* KPI Cards Grid */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -747,6 +839,22 @@ export function AnalyticsPage() {
             </div>
           )}
         </div>
+      ) : (
+        !loading && (
+          <div className="flex h-56 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center shadow-sm">
+            <Users className="h-8 w-8 text-gray-400" />
+            <h4 className="mt-3 text-sm font-bold text-gray-900">
+              {tab === 'users' && parishId
+                ? 'User Analytics are Diocese-Wide'
+                : 'Analytics Data Unavailable'}
+            </h4>
+            <p className="mt-1 max-w-md text-xs text-gray-500">
+              {tab === 'users' && parishId
+                ? 'User registration metrics and role distributions are diocese-wide. Select "All parishes" in the parish filter to view this section.'
+                : activeTabMeta.noDataMessage}
+            </p>
+          </div>
+        )
       )}
     </div>
   );

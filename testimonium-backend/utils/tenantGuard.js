@@ -57,19 +57,19 @@ export async function validateParishAccess(req, targetParishId, resourceDescript
     try {
       await AuditLogService.log(
         actor.id,
-        `SECURITY_ALERT: Unauthorized cross-parish access attempt on ${resourceDescription} (Parish ID: ${parsedTargetId || targetParishId})`,
+        "Unauthorized Cross-Parish Access Attempt",
         null,
         false,
         {
-          affectedTable: "SecurityAlert",
-          affectedRecordId: parsedTargetId || 0,
+          affectedTable: null,
+          affectedRecordId: null,
           parishId: actorParishId || null,
-          metadata: JSON.stringify({
-            targetParishId: parsedTargetId || targetParishId,
+          metadata: {
+            targetParishId: parsedTargetId || targetParishId || null,
             resource: resourceDescription,
             endpoint: req.originalUrl || req.url,
             method: req.method,
-          }),
+          },
         }
       );
     } catch (logErr) {

@@ -187,8 +187,24 @@ export class ReceiptVerificationService {
 
       await AuditLogService.log(
         userId,
-        `Receipt uploaded for request ${request.trackingNumber}, transitioned to PAYMENT_UNDER_REVIEW`,
-        tx
+        "Receipt Uploaded",
+        tx,
+        false,
+        {
+          affectedTable: "document_requests",
+          affectedRecordId: request.id,
+          parishId: request.parishId,
+          previousValues: {
+            status: request.status,
+          },
+          newValues: {
+            status: "PAYMENT_UNDER_REVIEW",
+          },
+          metadata: {
+            trackingNumber: request.trackingNumber,
+            receiptId: receipt.id,
+          },
+        }
       );
 
       return {

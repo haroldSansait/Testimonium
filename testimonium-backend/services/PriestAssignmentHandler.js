@@ -144,14 +144,21 @@ export class PriestAssignmentHandler {
     // 10. Write Audit Log
     await AuditLogService.log(
       parsedPriestId,
-      `Priest ${priestName} ${status.toLowerCase()} assignment for ${entityType.toLowerCase()} #${id}. Note: ${reason || "None"}`,
+      "Priest Assignment Response Updated",
       null,
       false,
       {
-        affectedTable: config.tableName,
+        affectedTable: entityType === "MASS" ? "mass_schedule_templates" : entityType === "EVENT" ? "parish_events" : "schedules",
         affectedRecordId: parsedId,
         parishId: updated.parishId,
-        newValues: { priestResponseStatus: status, priestResponseReason: reason },
+        newValues: {
+          priestResponseStatus: status,
+          priestResponseReason: reason || null,
+        },
+        metadata: {
+          entityType,
+          entityId: parsedId,
+        },
       }
     );
 

@@ -24,6 +24,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import {
   scheduleAvailabilityApi,
   type DateRuleMode,
@@ -386,6 +387,7 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
     // Filter and display controls
     const [searchQuery, setSearchQuery] = useState('');
     const [filterOverridesOnly, setFilterOverridesOnly] = useState(false);
+    const [overrideCategoryFilter, setOverrideCategoryFilter] = useState<'ALL' | 'Sacrament' | 'Mass' | 'Other'>('ALL');
     const [expandedServiceIds, setExpandedServiceIds] = useState<Set<string>>(new Set());
 
     // Inline service override selector in Date Exception form
@@ -820,9 +822,39 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
 
     const totalActiveOverridesCount = draftServiceRules.length;
 
+    const categoryCounts = useMemo(() => {
+      const sacraments = services.filter((s) => s.category === 'Sacrament');
+      const masses = services.filter((s) => s.category === 'Mass');
+      const others = services.filter((s) => s.category === 'Other');
+
+      const sacramentOverrides = draftServiceRules.filter((r) =>
+        sacraments.some((s) => s.id === r.eventType)
+      ).length;
+      const massOverrides = draftServiceRules.filter((r) =>
+        masses.some((s) => s.id === r.eventType)
+      ).length;
+      const otherOverrides = draftServiceRules.filter((r) =>
+        others.some((s) => s.id === r.eventType)
+      ).length;
+
+      return {
+        all: services.length,
+        sacraments: sacraments.length,
+        sacramentOverrides,
+        masses: masses.length,
+        massOverrides,
+        others: others.length,
+        otherOverrides,
+      };
+    }, [draftServiceRules, services]);
+
     const filteredServices = useMemo(() => {
       const query = searchQuery.trim().toLowerCase();
       return services.filter((svc) => {
+        const matchesCategory =
+          overrideCategoryFilter === 'ALL' || svc.category === overrideCategoryFilter;
+        if (!matchesCategory) return false;
+
         const matchesQuery =
           !query ||
           svc.label.toLowerCase().includes(query) ||
@@ -837,7 +869,15 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
 
         return true;
       });
-    }, [draftServiceRules, filterOverridesOnly, searchQuery, services]);
+    }, [draftServiceRules, filterOverridesOnly, overrideCategoryFilter, searchQuery, services]);
+
+    const handleExpandAll = () => {
+      setExpandedServiceIds(new Set(filteredServices.map((s) => s.id)));
+    };
+
+    const handleCollapseAll = () => {
+      setExpandedServiceIds(new Set());
+    };
 
     // ------------------------------------------------------------------
     // 10. Render Loading & Error States
@@ -971,20 +1011,136 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
                 Override general parish availability for individual sacraments or services that follow customized schedules.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs font-semibold">
+            <div className="flex items-center gap-2 flex-wrap">
               <span
                 className={cn(
-                  'px-2.5 py-1 rounded-full border',
+                  'px-2.5 py-1 rounded-full border text-xs font-semibold',
                   totalActiveOverridesCount > 0
                     ? 'bg-amber-50 text-amber-800 border-amber-200'
                     : 'bg-gray-50 text-gray-600 border-gray-200'
                 )}
               >
                 {totalActiveOverridesCount === 0
-                  ? 'All services inheriting parish defaults'
+                  ? 'All services inheriting defaults'
                   : `${totalActiveOverridesCount} active override${totalActiveOverridesCount === 1 ? '' : 's'}`}
               </span>
+
+              {filteredServices.length > 0 && (
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50">
+                  <button
+                    type="button"
+                    onClick={handleExpandAll}
+                    className="px-2 py-1 text-[11px] font-semibold text-gray-600 hover:text-gray-900 hover:bg-white rounded transition-all cursor-pointer"
+                  >
+                    Expand All
+                  </button>
+                  <span className="text-gray-300 text-xs">|</span>
+                  <button
+                    type="button"
+                    onClick={handleCollapseAll}
+                    className="px-2 py-1 text-[11px] font-semibold text-gray-600 hover:text-gray-900 hover:bg-white rounded transition-all cursor-pointer"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Category Filter Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setOverrideCategoryFilter('ALL')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                overrideCategoryFilter === 'ALL'
+                  ? 'bg-crimson-700 text-white border-crimson-700 shadow-xs'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+              )}
+            >
+              <span>All Services</span>
+              <span
+                className={cn(
+                  'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                  overrideCategoryFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                )}
+              >
+                {categoryCounts.all}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOverrideCategoryFilter('Sacrament')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                overrideCategoryFilter === 'Sacrament'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50/50 hover:text-blue-700'
+              )}
+            >
+              <span>Sacraments</span>
+              <span
+                className={cn(
+                  'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                  overrideCategoryFilter === 'Sacrament' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
+                )}
+              >
+                {categoryCounts.sacraments}
+              </span>
+              {categoryCounts.sacramentOverrides > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400" title={`${categoryCounts.sacramentOverrides} overrides`} />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOverrideCategoryFilter('Mass')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                overrideCategoryFilter === 'Mass'
+                  ? 'bg-crimson-800 text-white border-crimson-800 shadow-xs'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-red-50/50 hover:text-crimson-800'
+              )}
+            >
+              <span>Masses & Liturgies</span>
+              <span
+                className={cn(
+                  'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                  overrideCategoryFilter === 'Mass' ? 'bg-white/20 text-white' : 'bg-red-50 text-crimson-800'
+                )}
+              >
+                {categoryCounts.masses}
+              </span>
+              {categoryCounts.massOverrides > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400" title={`${categoryCounts.massOverrides} overrides`} />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOverrideCategoryFilter('Other')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                overrideCategoryFilter === 'Other'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-amber-50/50 hover:text-amber-800'
+              )}
+            >
+              <span>Devotions & Blessings</span>
+              <span
+                className={cn(
+                  'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                  overrideCategoryFilter === 'Other' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-800'
+                )}
+              >
+                {categoryCounts.others}
+              </span>
+              {categoryCounts.otherOverrides > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400" title={`${categoryCounts.otherOverrides} overrides`} />
+              )}
+            </button>
           </div>
 
           {/* Search & Filter Bar */}
@@ -1023,12 +1179,23 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
 
           {/* Service Cards List */}
           {filteredServices.length === 0 ? (
-            <div className="p-6 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-center">
+            <div className="p-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-center space-y-3">
               <p className="text-xs text-gray-500">
                 {filterOverridesOnly
-                  ? 'No services currently have custom overrides configured.'
+                  ? 'No services currently have custom overrides configured in this category.'
                   : `No services matching "${searchQuery}".`}
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setFilterOverridesOnly(false);
+                  setOverrideCategoryFilter('ALL');
+                }}
+                className="px-3 py-1.5 text-xs font-semibold text-crimson-700 bg-red-50 hover:bg-red-100 border border-crimson-700/20 rounded-lg transition-colors cursor-pointer"
+              >
+                Reset Search & Filters
+              </button>
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -1036,6 +1203,13 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
                 const isExpanded = expandedServiceIds.has(service.id);
                 const svcOverrides = draftServiceRules.filter((r) => r.eventType === service.id);
                 const hasOverrides = svcOverrides.length > 0;
+
+                const categoryBadgeClass =
+                  service.category === 'Sacrament'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : service.category === 'Mass'
+                    ? 'bg-red-50 text-crimson-800 border-red-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200';
 
                 return (
                   <div
@@ -1056,8 +1230,13 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-bold text-gray-900">{service.label}</span>
-                            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200">
-                              {service.category}
+                            <span
+                              className={cn(
+                                'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border',
+                                categoryBadgeClass
+                              )}
+                            >
+                              {service.category === 'Other' ? 'Devotion' : service.category}
                             </span>
                           </div>
 
@@ -1308,20 +1487,20 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
                   <label htmlFor="date-base-mode" className="text-xs font-bold text-gray-800 block">
                     General Date Behavior
                   </label>
-                  <select
+                  <CustomSelect
                     id="date-base-mode"
                     value={draftDateException.baseMode}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       setDraftDateException((prev) =>
-                        prev ? { ...prev, baseMode: e.target.value as DateRuleMode } : null
+                        prev ? { ...prev, baseMode: val as DateRuleMode } : null
                       )
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 font-medium"
-                  >
-                    <option value="UNAVAILABLE">Block / Closed (Parish Unavailable)</option>
-                    <option value="AVAILABLE">Allow / Open (Parish Available)</option>
-                    <option value="INHERIT">Inherit Weekly Default</option>
-                  </select>
+                    options={[
+                      { value: 'UNAVAILABLE', label: 'Block / Closed (Parish Unavailable)' },
+                      { value: 'AVAILABLE', label: 'Allow / Open (Parish Available)' },
+                      { value: 'INHERIT', label: 'Inherit Weekly Default' },
+                    ]}
+                  />
                 </div>
 
                 {/* 3. Reason */}
@@ -1381,25 +1560,27 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
                           </div>
 
                           <div className="flex items-center gap-2">
-                            <select
-                              value={mode}
-                              onChange={(e) => {
-                                const newMode = e.target.value as 'AVAILABLE' | 'UNAVAILABLE';
-                                setDraftDateException((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        serviceOverrides: { ...prev.serviceOverrides, [eventType]: newMode },
-                                      }
-                                    : null
-                                );
-                              }}
-                              className="px-2 py-1 border border-gray-200 rounded-lg text-xs font-medium bg-gray-50 focus:bg-white"
-                              aria-label={`Change mode for ${svc?.label || eventType}`}
-                            >
-                              <option value="AVAILABLE">Allow</option>
-                              <option value="UNAVAILABLE">Block</option>
-                            </select>
+                            <div className="w-[110px]">
+                              <CustomSelect
+                                value={mode}
+                                onChange={(val) => {
+                                  const newMode = val as 'AVAILABLE' | 'UNAVAILABLE';
+                                  setDraftDateException((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          serviceOverrides: { ...prev.serviceOverrides, [eventType]: newMode },
+                                        }
+                                      : null
+                                  );
+                                }}
+                                aria-label={`Change mode for ${svc?.label || eventType}`}
+                                options={[
+                                  { value: 'AVAILABLE', label: 'Allow' },
+                                  { value: 'UNAVAILABLE', label: 'Block' },
+                                ]}
+                              />
+                            </div>
 
                             <button
                               type="button"
@@ -1426,16 +1607,18 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
                     disabled={isSavingDateRule}
                   />
 
-                  <select
-                    value={newOverrideMode}
-                    onChange={(e) => setNewOverrideMode(e.target.value as 'AVAILABLE' | 'UNAVAILABLE')}
-                    disabled={!newOverrideServiceId}
-                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 font-medium disabled:opacity-50"
-                    aria-label="Override mode"
-                  >
-                    <option value="UNAVAILABLE">Block Service</option>
-                    <option value="AVAILABLE">Allow Service</option>
-                  </select>
+                  <div className="w-[160px]">
+                    <CustomSelect
+                      value={newOverrideMode}
+                      onChange={(val) => setNewOverrideMode(val as 'AVAILABLE' | 'UNAVAILABLE')}
+                      disabled={!newOverrideServiceId}
+                      aria-label="Override mode"
+                      options={[
+                        { value: 'UNAVAILABLE', label: 'Block Service' },
+                        { value: 'AVAILABLE', label: 'Allow Service' },
+                      ]}
+                    />
+                  </div>
 
                   <button
                     type="button"

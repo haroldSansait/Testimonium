@@ -97,20 +97,6 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             >
               <Menu size={22} />
             </button>
-
-            <div className="flex items-center space-x-2">
-              <Link
-                to="/dashboard/home"
-                className="font-serif font-black tracking-wider text-crimson text-lg md:text-xl hover:opacity-85 focus-ring rounded px-1 transition-opacity lg:hidden"
-                aria-label="TESTIMONIUM Home"
-              >
-                TESTIMONIUM
-              </Link>
-              <span className="hidden lg:inline-block font-serif font-bold text-crimson text-base tracking-wide">
-                TESTIMONIUM
-              </span>
-            </div>
-
           </div>
 
           <div className="flex items-center space-x-3 sm:space-x-4">

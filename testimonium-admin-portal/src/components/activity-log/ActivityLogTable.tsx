@@ -125,7 +125,7 @@ export function ActivityLogTable({
                     )}
                   </div>
                 </td>
-                <td className="text-gray-500 font-mono text-xs">{entry.referenceId}</td>
+                <td className="text-gray-500 font-mono text-xs whitespace-pre-line leading-relaxed">{entry.referenceId}</td>
               </tr>
             );
           })}

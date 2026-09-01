@@ -12,6 +12,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { CustomSelect } from '../../components/ui/CustomSelect';
 import { Textarea } from '../../components/ui/Textarea';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -238,17 +239,18 @@ export const SacramentalRequestPage: React.FC = () => {
                 </label>
                 <p className="text-xs text-text-muted">Select the parish containing the original canonical record registry.</p>
               </div>
-              <select
+              <CustomSelect
                 value={selectedParishId}
-                onChange={e => setSelectedParishId(e.target.value)}
-                className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors"
-              >
-                {parishes.map(parish => (
-                  <option key={parish.id} value={parish.id}>
-                    {parish.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedParishId}
+                placeholder="Select parish..."
+                options={parishes.map(parish => ({
+                  value: parish.id,
+                  label: parish.name,
+                  secondary: parish.city ? `${parish.city}, ${parish.province || ''}` : undefined,
+                }))}
+                searchable
+                searchPlaceholder="Search parish by name or city..."
+              />
               <div className="flex justify-end pt-4">
                 <Button onClick={handleNext}>Next Step</Button>
               </div>
@@ -299,22 +301,20 @@ export const SacramentalRequestPage: React.FC = () => {
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="w-full mb-4">
-                  <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider mb-1.5">
-                    Relationship to Registrant
-                  </label>
-                  <select
+                  <CustomSelect
+                    label="Relationship to Registrant"
                     value={relationship}
-                    onChange={e => setRelationship(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary transition-colors outline-none"
-                  >
-                    <option value="Self">Self</option>
-                    <option value="Parent">Parent</option>
-                    <option value="Child">Child</option>
-                    <option value="Spouse">Spouse</option>
-                    <option value="Sibling">Sibling</option>
-                    <option value="Other Relative">Other Relative</option>
-                    <option value="Authorized Representative">Authorized Representative</option>
-                  </select>
+                    onChange={setRelationship}
+                    options={[
+                      'Self',
+                      'Parent',
+                      'Child',
+                      'Spouse',
+                      'Sibling',
+                      'Other Relative',
+                      'Authorized Representative',
+                    ]}
+                  />
                 </div>
                 <Input
                   label="Registry Year (Approximate, Optional)"

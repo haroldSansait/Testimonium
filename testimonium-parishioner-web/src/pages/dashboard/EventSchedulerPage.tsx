@@ -8,6 +8,7 @@ import type { Appointment } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { CustomSelect } from '../../components/ui/CustomSelect';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -307,9 +308,18 @@ export const EventSchedulerPage: React.FC = () => {
         <Stepper steps={steps} currentStep={currentStep} />
         {currentStep === 0 && <div className='space-y-4 max-w-xl mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Target Parish Office</label>
-          <select value={selectedParishId} onChange={(event) => setSelectedParishId(event.target.value)} className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary'>
-            {parishes.map((parish) => <option key={parish.id} value={parish.id}>{parish.name} {'\u2014'} {parish.city}</option>)}
-          </select>
+          <CustomSelect
+            value={selectedParishId}
+            onChange={setSelectedParishId}
+            placeholder="Select parish..."
+            options={parishes.map((parish) => ({
+              value: parish.id,
+              label: parish.name,
+              secondary: parish.city ? `${parish.city}, ${parish.province || ''}` : undefined,
+            }))}
+            searchable
+            searchPlaceholder="Search parish by name or city..."
+          />
           {configuration?.venueCapacity ? <div className='flex items-center gap-2.5 p-3.5 bg-red-50/60 border border-crimson/15 rounded-xl text-xs text-text-primary'><Users className='w-4 h-4 text-crimson' /><span>Parish venue capacity: <strong>{configuration.venueCapacity} people</strong> (informational only)</span></div> : null}
           <div className='flex justify-end pt-4'><Button onClick={handleNext}>Next Step</Button></div>
         </div>}

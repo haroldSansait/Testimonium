@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { useAuth } from '@/hooks/useAuth';
@@ -274,19 +275,19 @@ export function MassSchedulePage() {
             <form onSubmit={e => void handleSubmit(e)} className="p-6 space-y-4 text-xs font-semibold text-gray-500">
               <div className="space-y-1.5">
                 <label className="block uppercase tracking-wider">Day Category</label>
-                <select
+                <CustomSelect
                   value={dayType}
-                  onChange={e => setDayType(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium"
-                >
-                  <option value="SUNDAY">Sunday</option>
-                  <option value="WEDNESDAY">Wednesday</option>
-                  <option value="FRIDAY">Friday</option>
-                  <option value="MONDAY">Monday</option>
-                  <option value="TUESDAY">Tuesday</option>
-                  <option value="THURSDAY">Thursday</option>
-                  <option value="SATURDAY">Saturday</option>
-                </select>
+                  onChange={setDayType}
+                  options={[
+                    { value: 'SUNDAY', label: 'Sunday' },
+                    { value: 'WEDNESDAY', label: 'Wednesday' },
+                    { value: 'FRIDAY', label: 'Friday' },
+                    { value: 'MONDAY', label: 'Monday' },
+                    { value: 'TUESDAY', label: 'Tuesday' },
+                    { value: 'THURSDAY', label: 'Thursday' },
+                    { value: 'SATURDAY', label: 'Saturday' },
+                  ]}
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -315,18 +316,19 @@ export function MassSchedulePage() {
 
               <div className="space-y-1.5">
                 <label className="block uppercase tracking-wider">Assigned Priest (Optional)</label>
-                <select
+                <CustomSelect
                   value={assignedPriestId}
-                  onChange={e => setAssignedPriestId(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-800 font-medium"
-                >
-                  <option value="">Unassigned / TBD</option>
-                  {priests.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.isAssistant ? '(Assistant)' : '(Primary)'}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAssignedPriestId}
+                  placeholder="Unassigned / TBD"
+                  allowClear
+                  options={[
+                    { value: '', label: 'Unassigned / TBD' },
+                    ...priests.map((p) => ({
+                      value: String(p.id),
+                      label: `${p.name} ${p.isAssistant ? '(Assistant)' : '(Primary)'}`,
+                    })),
+                  ]}
+                />
               </div>
 
               <div className="flex justify-end gap-2.5 pt-4 border-t border-gray-100 bg-gray-50 -mx-6 -mb-6 px-6 py-4">

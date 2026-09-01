@@ -16,9 +16,10 @@ import {
   CalendarDays,
   User as UserIcon,
   CalendarPlus,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { CustomSelect } from '../../components/ui/CustomSelect';
 import {
   useParishes,
   useRequests,
@@ -29,7 +30,15 @@ import {
   useFeaturedEvents
 } from '../../hooks/useService';
 import type { Event } from '../../types';
-import { getEventCountdownLabel, isEventUpcoming, parseEventDateTime } from '../../utils/date';
+import {
+  getEventCountdownLabel,
+  isEventUpcoming,
+  isEventInRolling7Days,
+  getManilaCalendarDate,
+  isWindowCrossMonth,
+  formatEventCalendarDate,
+  parseEventDateTime,
+} from '../../utils/date';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -148,42 +157,68 @@ export const HomePage: React.FC = () => {
     return Object.values(candidateDict);
   }, [featuredEventsQuery.data]);
 
-  // Count strictly upcoming candidate events before user filters
+  // Count strictly upcoming candidate events in current month before user filters
   const upcomingCandidatesCount = useMemo(() => {
     return rawFeaturedCandidates.filter(e => isEventUpcoming(e)).length;
   }, [rawFeaturedCandidates]);
 
+  // Count raw upcoming candidate events within rolling 7-day window before user filters & consolidation
+  const weeklyCandidateCount = useMemo(() => {
+    return rawFeaturedCandidates.filter(e => isEventInRolling7Days(e)).length;
+  }, [rawFeaturedCandidates]);
+
   // Contextual empty-state copy classification
   const featuredEmptyStateConfig = useMemo(() => {
-    // Situation 2: No events scheduled this month at all
+    // Situation B: No events scheduled this month at all
     if (rawFeaturedCandidates.length === 0) {
       return {
         title: 'No upcoming events are scheduled for this month.',
         description: 'There are currently no events or scheduled Masses posted for this month.',
+        showClearFilters: false,
       };
     }
 
-    // Situation 1: Current-month events existed, but all have concluded
+    // Situation C: Current-month events existed, but all have concluded
     if (upcomingCandidatesCount === 0) {
       return {
         title: 'All events for this month have concluded.',
         description: 'Check back next month for upcoming parish events and Mass schedules.',
+        showClearFilters: false,
       };
     }
 
-    // Situation 3: Upcoming events exist, but active filter eliminates them
+    // Situation D: Future events exist this month, but none fall within the rolling weekly window
+    if (weeklyCandidateCount === 0) {
+      const todayStr = getManilaCalendarDate();
+      const isCrossMonth = isWindowCrossMonth(todayStr, 7);
+      if (isCrossMonth) {
+        return {
+          title: 'No upcoming events are posted for the remaining days of this month.',
+          description: 'Check back next month or visit the Parish Directory for future schedules.',
+          showClearFilters: false,
+        };
+      }
+      return {
+        title: 'No upcoming events in the next 7 days.',
+        description: 'Check the Parish Directory for upcoming events scheduled later this month.',
+        showClearFilters: false,
+      };
+    }
+
+    // Situation E: Weekly candidates exist, but active filters eliminated them
     return {
       title: 'No events match your current filters.',
-      description: 'Try selecting a different parish or event category to see available schedules.',
+      description: 'Try selecting a different parish or event category to see available schedules in the next 7 days.',
+      showClearFilters: true,
     };
-  }, [rawFeaturedCandidates.length, upcomingCandidatesCount]);
+  }, [rawFeaturedCandidates.length, upcomingCandidatesCount, weeklyCandidateCount]);
 
-  // Filter featured events according to user selections & robust canonical timezone check
+  // Filter featured events according to rolling 7-day window & user selections
   const filteredFeaturedEvents = useMemo(() => {
     if (rawFeaturedCandidates.length === 0) return [];
 
     const validUpcoming = rawFeaturedCandidates.filter(e => {
-      if (!isEventUpcoming(e)) return false;
+      if (!isEventInRolling7Days(e)) return false;
       if (filterParishId !== 'all' && String(e.parishId).trim() !== String(filterParishId).trim()) return false;
       if (filterCategory !== 'all' && e.category.toLowerCase() !== filterCategory.toLowerCase()) return false;
       return true;
@@ -205,7 +240,7 @@ export const HomePage: React.FC = () => {
 
     const consolidatedMasses: Event[] = Object.values(massMap).map(massList => {
       if (massList.length === 1) return massList[0];
-      const sorted = [...massList].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+      const sorted = [...massList].sort((a, b) => (parseEventDateTime(a.startDate, a.startTime)?.getTime() || 0) - (parseEventDateTime(b.startDate, b.startTime)?.getTime() || 0));
       const firstUpcoming = sorted[0];
       const allTimes = sorted.map(m => m.startTime).filter(Boolean).join(' • ');
       return {
@@ -390,34 +425,52 @@ export const HomePage: React.FC = () => {
             </h2>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <select
-              value={filterParishId}
-              onChange={(e) => setFilterParishId(e.target.value)}
-              className="px-2.5 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer shadow-xs"
-              aria-label="Filter events by parish"
-            >
-              <option value="all">All Parishes</option>
-              {parishes.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <div className="w-[180px]">
+              <CustomSelect
+                value={filterParishId}
+                onChange={setFilterParishId}
+                placeholder="All Parishes"
+                aria-label="Filter events by parish"
+                options={[
+                  { value: 'all', label: 'All Parishes' },
+                  ...parishes.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+                searchable
+                searchPlaceholder="Search parish..."
+              />
+            </div>
 
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="px-2.5 py-1.5 border border-border rounded-button text-xs bg-white text-text-primary focus-ring outline-none font-medium cursor-pointer shadow-xs"
-              aria-label="Filter events by category"
-            >
-              <option value="all">All Categories</option>
-              <option value="holy mass">Holy Mass</option>
-              <option value="baptism">Baptism</option>
-              <option value="wedding">Wedding</option>
-              <option value="confirmation">Confirmation</option>
-              <option value="funeral">Funeral</option>
-              <option value="fiesta">Fiesta</option>
-              <option value="seminar">Seminar</option>
-              <option value="other">Other</option>
-            </select>
+            <div className="w-[170px]">
+              <CustomSelect
+                value={filterCategory}
+                onChange={setFilterCategory}
+                placeholder="All Categories"
+                aria-label="Filter events by category"
+                groups={[
+                  {
+                    options: [{ value: 'all', label: 'All Categories' }],
+                  },
+                  {
+                    groupName: 'Sacraments & Rites',
+                    options: [
+                      { value: 'baptism', label: 'Baptism' },
+                      { value: 'wedding', label: 'Wedding' },
+                      { value: 'confirmation', label: 'Confirmation' },
+                      { value: 'funeral', label: 'Funeral' },
+                    ],
+                  },
+                  {
+                    groupName: 'Masses & Celebrations',
+                    options: [
+                      { value: 'holy mass', label: 'Holy Mass' },
+                      { value: 'fiesta', label: 'Fiesta' },
+                      { value: 'seminar', label: 'Seminar' },
+                      { value: 'other', label: 'Other' },
+                    ],
+                  },
+                ]}
+              />
+            </div>
 
             <button
               onClick={() => navigate('/dashboard/parishes')}
@@ -434,6 +487,21 @@ export const HomePage: React.FC = () => {
             title={featuredEmptyStateConfig.title}
             description={featuredEmptyStateConfig.description}
             icon={<CalendarDays size={36} className="text-text-muted/40" />}
+            action={
+              featuredEmptyStateConfig.showClearFilters ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFilterParishId('all');
+                    setFilterCategory('all');
+                  }}
+                  className="text-xs font-semibold mt-2"
+                >
+                  Clear Filters
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           <FeaturedEventsCarousel
@@ -469,7 +537,7 @@ export const HomePage: React.FC = () => {
                   {nextParishEvent.title}
                 </h4>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
-                  <span>{new Date(nextParishEvent.startDate).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                  <span>{formatEventCalendarDate(nextParishEvent.startDate, { month: 'long', day: 'numeric', year: 'numeric' })}</span>
                   <span>•</span>
                   <span>{nextParishEvent.startTime}</span>
                 </div>

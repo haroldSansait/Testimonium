@@ -134,10 +134,12 @@ export class ConflictHelper {
 
     if (leave) {
       if (actorId) {
-        await AuditLogService.log(actorId, `Priest assignment validation failed: Priest ${parsedPriestId} is on leave on ${checkDate.toLocaleDateString()}`, null, true, {
-          priestId: parsedPriestId,
-          date: checkDate,
-          reason: "PRIEST_ON_LEAVE"
+        await AuditLogService.log(actorId, "Priest Conflict Validation Failed", null, true, {
+          metadata: {
+            priestId: parsedPriestId,
+            date: getManilaDateString(checkDate),
+            reason: "PRIEST_ON_LEAVE",
+          },
         });
       }
       const err = new Error(`Priest is on leave on this date: ${leave.title}.`);
@@ -166,11 +168,13 @@ export class ConflictHelper {
 
     if (scheduleConflict) {
       if (actorId) {
-        await AuditLogService.log(actorId, `Priest assignment validation failed: Priest ${parsedPriestId} has overlap with schedule #${scheduleConflict.id}`, null, true, {
-          priestId: parsedPriestId,
-          date: checkDate,
-          reason: "OVERLAP_SCHEDULE",
-          scheduleId: scheduleConflict.id
+        await AuditLogService.log(actorId, "Priest Conflict Validation Failed", null, true, {
+          metadata: {
+            priestId: parsedPriestId,
+            date: getManilaDateString(checkDate),
+            reason: "OVERLAP_SCHEDULE",
+            scheduleId: scheduleConflict.id,
+          },
         });
       }
       const err = new Error(`Priest conflict: Already assigned to appointment "${scheduleConflict.displayTitle || scheduleConflict.eventType}" at this time.`);
@@ -194,11 +198,13 @@ export class ConflictHelper {
         const evEnd = parseManilaDateTime(ev.eventDate, ev.endTime);
         if (evStart && evEnd && evStart < end && evEnd > start) {
           if (actorId) {
-            await AuditLogService.log(actorId, `Priest assignment validation failed: Priest ${parsedPriestId} has overlap with event #${ev.id}`, null, true, {
-              priestId: parsedPriestId,
-              date: checkDate,
-              reason: "OVERLAP_EVENT",
-              eventId: ev.id
+            await AuditLogService.log(actorId, "Priest Conflict Validation Failed", null, true, {
+              metadata: {
+                priestId: parsedPriestId,
+                date: getManilaDateString(checkDate),
+                reason: "OVERLAP_EVENT",
+                eventId: ev.id,
+              },
             });
           }
           const err = new Error(`Priest conflict: Already assigned to parish event "${ev.title}" at this time.`);
@@ -229,11 +235,13 @@ export class ConflictHelper {
           const tEnd = new Date(tStart.getTime() + 60 * 60 * 1000);
           if (tStart < end && tEnd > start) {
             if (actorId) {
-              await AuditLogService.log(actorId, `Priest assignment validation failed: Priest ${parsedPriestId} has overlap with recurring Mass template #${t.id}`, null, true, {
-                priestId: parsedPriestId,
-                date: checkDate,
-                reason: "OVERLAP_MASS_TEMPLATE",
-                templateId: t.id
+              await AuditLogService.log(actorId, "Priest Conflict Validation Failed", null, true, {
+                metadata: {
+                  priestId: parsedPriestId,
+                  date: getManilaDateString(checkDate),
+                  reason: "OVERLAP_MASS_TEMPLATE",
+                  templateId: t.id,
+                },
               });
             }
             const err = new Error(`Priest conflict: Already assigned to recurring Mass "${t.label || t.timeSlot}" at this time.`);

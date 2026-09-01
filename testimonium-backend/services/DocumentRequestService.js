@@ -154,6 +154,12 @@ export class DocumentRequestService {
       }
 
       if (targetStatus === "PAYMENT_VERIFIED") {
+        if (request.fee === null || request.fee === undefined) {
+          const error = new Error("Cannot verify payment: Authoritative request fee amount is unavailable.");
+          error.statusCode = 400;
+          throw error;
+        }
+
         const pendingTx = await tx.paymentTransaction.findFirst({
           where: { requestId, status: "PENDING" },
           include: { receipts: { include: { ocrResult: true } } },
@@ -174,17 +180,17 @@ export class DocumentRequestService {
 
             await AuditLogService.log(
               actorId,
-              `DUPLICATE_PAYMENT_OVERRIDE: Verified transaction #${pendingTx.id} with duplicate warning (Conflicting Request: #${duplicateReceipt.ocrResult.duplicateRequestId || "Unknown"})`,
+              "Duplicate Payment Warning Overridden",
               tx,
               false,
               {
-                affectedTable: "PaymentTransaction",
+                affectedTable: "payment_transactions",
                 affectedRecordId: pendingTx.id,
                 parishId: request.parishId,
-                metadata: JSON.stringify({
-                  duplicateReason: duplicateReceipt.ocrResult.duplicateReason,
-                  conflictingRequestId: duplicateReceipt.ocrResult.duplicateRequestId,
-                }),
+                metadata: {
+                  conflictingRequestId: duplicateReceipt.ocrResult.duplicateRequestId || "Unknown",
+                  duplicateReason: duplicateReceipt.ocrResult.duplicateReason || null,
+                },
               }
             );
           }
@@ -193,6 +199,7 @@ export class DocumentRequestService {
             where: { id: pendingTx.id },
             data: {
               status: "VERIFIED",
+              amount: request.fee,
               verifiedById: actorId,
               verifiedAt: new Date(),
             },
@@ -269,8 +276,23 @@ export class DocumentRequestService {
 
       await AuditLogService.log(
         actorId,
-        `Updated document request ${request.trackingNumber} status from ${currentStatus} to ${targetStatus}`,
-        tx
+        "Document Request Status Updated",
+        tx,
+        false,
+        {
+          affectedTable: "document_requests",
+          affectedRecordId: updatedRequest.id,
+          parishId: updatedRequest.parishId,
+          previousValues: {
+            status: currentStatus,
+          },
+          newValues: {
+            status: targetStatus,
+          },
+          metadata: {
+            trackingNumber: request.trackingNumber,
+          },
+        }
       );
 
       return updatedRequest;

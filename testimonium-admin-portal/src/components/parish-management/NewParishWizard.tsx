@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronRight, ChevronLeft, Check, Church, User, AlertCircle } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { SearchableDropdown, type DropdownOption } from '@/components/ui/SearchableDropdown';
 import { UserManagementService } from '@/services/UserManagementService';
 import type {
@@ -163,19 +164,23 @@ function Step1({ data, onChange }: { data: ParishInfoData; onChange: (d: ParishI
 
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Parish Type" id="parish-type" required>
-          <select id="parish-type" className={inputCls} value={data.type} onChange={set('type')}>
-            <option value="">Select type...</option>
-            <option value="Parish">Parish</option>
-            <option value="Quasi-Parish">Quasi-Parish</option>
-            <option value="Mission Station">Mission Station</option>
-          </select>
+          <CustomSelect
+            id="parish-type"
+            value={data.type}
+            onChange={(val) => set('type')({ target: { value: val } } as any)}
+            placeholder="Select type..."
+            options={['Parish', 'Quasi-Parish', 'Mission Station']}
+          />
         </FormField>
 
         <FormField label="Vicariate" id="parish-vicariate" required>
-          <select id="parish-vicariate" className={inputCls} value={data.vicariate} onChange={set('vicariate')}>
-            <option value="">Select vicariate...</option>
-            <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
-          </select>
+          <CustomSelect
+            id="parish-vicariate"
+            value={data.vicariate}
+            onChange={(val) => set('vicariate')({ target: { value: val } } as any)}
+            placeholder="Select vicariate..."
+            options={['Vicariate of Canlaon']}
+          />
         </FormField>
       </div>
 
@@ -192,33 +197,23 @@ function Step1({ data, onChange }: { data: ParishInfoData; onChange: (d: ParishI
 
         <FormField label="Feast Date" id="parish-feast-month" required>
           <div className="grid grid-cols-2 gap-2">
-            <select
+            <CustomSelect
               id="parish-feast-month"
-              className={inputCls}
               value={selectedMonth}
-              onChange={handleMonthChange}
-            >
-              <option value="">Month...</option>
-              {MONTHS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
+              onChange={(val) => handleMonthChange({ target: { value: val } } as any)}
+              placeholder="Month..."
+              options={MONTHS}
+              searchable
+            />
+            <CustomSelect
               id="parish-feast-day"
-              className={inputCls}
               value={selectedDay}
-              onChange={handleDayChange}
+              onChange={(val) => handleDayChange({ target: { value: val } } as any)}
               disabled={!selectedMonth}
-            >
-              <option value="">Day...</option>
-              {dayOptions.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
+              placeholder="Day..."
+              options={dayOptions.map(String)}
+              searchable
+            />
           </div>
         </FormField>
       </div>

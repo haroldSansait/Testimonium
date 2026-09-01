@@ -4,6 +4,63 @@
  */
 
 /**
+ * Gets the current or specified date formatted as YYYY-MM-DD in Asia/Manila timezone.
+ */
+export function getManilaCalendarDate(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+/**
+ * Adds calendar days safely to a YYYY-MM-DD string without local timezone shifting.
+ */
+export function addCalendarDays(dateStr: string, days: number): string {
+  const parts = (dateStr || '').split('T')[0].split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
+    return dateStr;
+  }
+  const [y, m, d] = parts;
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  const year = dt.getUTCFullYear();
+  const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dt.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Checks if a rolling window of windowDays starting from todayStr crosses into the next calendar month.
+ */
+export function isWindowCrossMonth(todayStr: string, windowDays: number = 7): boolean {
+  const endStr = addCalendarDays(todayStr, windowDays - 1);
+  return todayStr.slice(0, 7) !== endStr.slice(0, 7);
+}
+
+/**
+ * Safely formats a YYYY-MM-DD event date string into localized text without UTC timezone shifting.
+ */
+export function formatEventCalendarDate(
+  dateStr?: string,
+  options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
+): string {
+  if (!dateStr) return '';
+  const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const parts = clean.split('-');
+  if (parts.length < 3) return dateStr;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+  const d = new Date(year, month, day);
+  return d.toLocaleDateString([], options);
+}
+
+/**
  * Parses time string (e.g., "08:00 AM", "17:30", "5:00 PM") into { hours, minutes }
  */
 export function parseTimeString(timeStr?: string): { hours: number; minutes: number } | null {
@@ -30,7 +87,6 @@ export function parseTimeString(timeStr?: string): { hours: number; minutes: num
 export function parseEventDateTime(dateStr?: string, timeStr?: string, isEnd = false): Date | null {
   if (!dateStr) return null;
   try {
-    // If dateStr contains 'T', extract just date part or parse direct
     const baseDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
     const parts = baseDate.split('-');
     if (parts.length < 3) {
@@ -56,58 +112,87 @@ export function parseEventDateTime(dateStr?: string, timeStr?: string, isEnd = f
 }
 
 /**
- * Determines whether an event or mass is upcoming (i.e. has not ended yet).
- * Rule: endDateTime >= now
+ * Determines whether an event or mass is upcoming (calendar-day based in Manila authority).
+ * An event scheduled TODAY remains eligible even if its start time has already passed.
+ * Cancelled or completed status events are excluded.
  */
-export function isEventUpcoming(event: {
-  startDate: string;
-  endDate?: string;
-  startTime?: string;
-  endTime?: string;
-  status?: string;
-}): boolean {
+export function isEventUpcoming(
+  event: {
+    startDate: string;
+    endDate?: string;
+    startTime?: string;
+    endTime?: string;
+    status?: string;
+  },
+  referenceDate?: Date
+): boolean {
   if (!event || event.status === 'completed' || event.status === 'cancelled') {
     return false;
   }
 
-  const now = new Date();
-  const targetDateStr = event.endDate || event.startDate;
-  const targetTimeStr = event.endTime || event.startTime;
+  const todayStr = getManilaCalendarDate(referenceDate);
+  const targetDateStr = (event.endDate || event.startDate || '').split('T')[0];
+  if (!targetDateStr) return false;
 
-  const endDateTime = parseEventDateTime(targetDateStr, targetTimeStr, !event.endTime);
-  if (!endDateTime) {
-    // Exclude malformed dates safely
+  return targetDateStr >= todayStr;
+}
+
+/**
+ * Checks whether an event falls within the rolling 7-calendar-day window [today, today + 6 days]
+ * in Asia/Manila calendar authority.
+ */
+export function isEventInRolling7Days(
+  event: {
+    startDate: string;
+    endDate?: string;
+    startTime?: string;
+    endTime?: string;
+    status?: string;
+  },
+  referenceDate?: Date
+): boolean {
+  if (!isEventUpcoming(event, referenceDate)) {
     return false;
   }
 
-  // If event has no endTime specified and only start time: add a reasonable 1-hour duration window
-  if (event.startTime && !event.endTime) {
-    const startDateTime = parseEventDateTime(event.startDate, event.startTime, false);
-    if (startDateTime) {
-      const startWithGrace = new Date(startDateTime.getTime() + 60 * 60 * 1000); // 1 hour duration
-      return startWithGrace.getTime() >= now.getTime();
-    }
-  }
+  const todayStr = getManilaCalendarDate(referenceDate);
+  const maxDateStr = addCalendarDays(todayStr, 6);
 
-  return endDateTime.getTime() >= now.getTime();
+  const eventStartStr = (event.startDate || '').split('T')[0];
+  const eventEndStr = (event.endDate || event.startDate || '').split('T')[0];
+
+  if (!eventStartStr) return false;
+
+  // The event must overlap with [todayStr, maxDateStr] and start on or before maxDateStr
+  return eventEndStr >= todayStr && eventStartStr <= maxDateStr;
 }
 
 /**
  * Calculates a user-friendly countdown label relative to today for a given start date.
  * @param startDateStr The start date string of the event (YYYY-MM-DD).
  * @param startTimeStr Optional start time.
- * @returns A friendly countdown string (e.g. "Today", "Tomorrow", "Starts in 3 days").
+ * @param referenceDate Optional reference date (defaults to current Manila date).
+ * @returns A friendly countdown string (e.g. "Happening Today", "Tomorrow", "In 3 days").
  */
-export function getEventCountdownLabel(startDateStr: string, startTimeStr?: string): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+export function getEventCountdownLabel(
+  startDateStr: string,
+  _startTimeStr?: string,
+  referenceDate?: Date
+): string {
+  const todayStr = getManilaCalendarDate(referenceDate);
+  const cleanDate = (startDateStr || '').split('T')[0];
+  if (!cleanDate) return 'Upcoming';
 
-  const eventStart = parseEventDateTime(startDateStr, startTimeStr, false);
-  if (!eventStart) return 'Upcoming';
+  const [y1, m1, d1] = todayStr.split('-').map(Number);
+  const [y2, m2, d2] = cleanDate.split('-').map(Number);
 
-  const eventDay = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate());
-  const diffTime = eventDay.getTime() - today.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  if (isNaN(y1) || isNaN(m1) || isNaN(d1) || isNaN(y2) || isNaN(m2) || isNaN(d2)) {
+    return 'Upcoming';
+  }
+
+  const t1 = Date.UTC(y1, m1 - 1, d1);
+  const t2 = Date.UTC(y2, m2 - 1, d2);
+  const diffDays = Math.round((t2 - t1) / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) {
     return 'Happening Today';

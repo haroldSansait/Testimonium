@@ -1,5 +1,6 @@
 import { Search, Eye, Save, RefreshCw, Maximize2, Minimize2, MapPin } from 'lucide-react';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 
 interface SaveToolbarProps {
   searchQuery: string;
@@ -35,19 +36,21 @@ export function SaveToolbar({
   return (
     <div className="bg-white border-b border-gray-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4 select-none">
       {/* Left side: Vicariate Filter & Search */}
-      <div className="flex items-center gap-3 flex-1 min-w-[280px] max-w-md">
+      <div className="flex items-center gap-3 flex-1 min-w-[280px] max-w-lg">
         {/* Vicariate Select */}
-        <select
-          value={selectedVicariate}
-          onChange={(e) => onVicariateChange(e.target.value)}
-          className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100/80 focus:outline-none focus:ring-1 focus:ring-crimson-700 cursor-pointer"
-        >
-          <option value="ALL">All Vicariates</option>
-          <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
-          <option value="Vicariate of San Carlos Borromeo">Vicariate of San Carlos Borromeo</option>
-          <option value="Vicariate of St. Vincent Ferrer">Vicariate of St. Vincent Ferrer</option>
-          <option value="Vicariate of St. John the Baptist">Vicariate of St. John the Baptist</option>
-        </select>
+        <div className="w-[200px]">
+          <CustomSelect
+            value={selectedVicariate}
+            onChange={onVicariateChange}
+            options={[
+              { value: 'ALL', label: 'All Vicariates' },
+              { value: 'Vicariate of Canlaon', label: 'Vicariate of Canlaon' },
+              { value: 'Vicariate of San Carlos Borromeo', label: 'Vicariate of San Carlos Borromeo' },
+              { value: 'Vicariate of St. Vincent Ferrer', label: 'Vicariate of St. Vincent Ferrer' },
+              { value: 'Vicariate of St. John the Baptist', label: 'Vicariate of St. John the Baptist' },
+            ]}
+          />
+        </div>
 
         {/* Parish Search Box */}
         <div className="relative flex-1">

@@ -17,10 +17,17 @@ import {
   X,
   Sliders,
   Users,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  FileCheck,
+  Church,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { Tooltip } from '@/components/ui/Tooltip';
 import {
@@ -36,24 +43,71 @@ import { cn } from '@/utils/cn';
 import { CANONICAL_SCHEDULING_SERVICES } from '@/utils/schedulingAvailabilityHelpers';
 import type { Parish } from '@/types';
 
-// Event types and possible requirements
-const EVENT_TYPES = [
-  { id: 'WEDDING', label: 'Marriage (Canonical Interview)', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
-  { id: 'MARRIAGE_SPECIAL', label: 'Marriage (Special)', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
-  { id: 'WAKE_MASS', label: 'Wake Mass', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
-  { id: 'FUNERAL', label: 'Funeral', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
-  { id: 'PRIVATE_MASS', label: 'Private Mass', possibleReqs: [] },
-  { id: 'MASS_INTENTION', label: 'Mass Intention', possibleReqs: [] },
-  { id: 'ANOINTING_OF_THE_SICK', label: 'Anointing of the Sick', possibleReqs: [] },
-  { id: 'FIESTA', label: 'Fiesta', possibleReqs: [] },
-  { id: 'BLESSING', label: 'Blessing', possibleReqs: [] },
-  { id: 'DELIVERANCE', label: 'Deliverance', possibleReqs: [] },
-  { id: 'THANKSGIVING', label: 'Thanksgiving', possibleReqs: [] },
-  { id: 'FIRST_COMMUNION', label: 'First Communion', possibleReqs: [] },
-  { id: 'MASS_OF_HOLY_SPIRIT', label: 'Mass of the Holy Spirit', possibleReqs: [] },
-  { id: 'CONFIRMATION', label: 'Confirmation', possibleReqs: [{ id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
-  { id: 'CONFESSION', label: 'Confession', possibleReqs: [] },
-  { id: 'BAPTISM', label: 'Baptism', possibleReqs: [{ id: 'marriage_cert', label: 'Marriage Certificate' }, { id: 'birth_cert', label: 'Birth Certificate / Immunization Card' }] }
+export type EventCategory = 'Sacrament' | 'Mass' | 'Other';
+
+export interface EventTypeOption {
+  id: string;
+  label: string;
+  category: EventCategory;
+  categoryLabel: string;
+  possibleReqs: Array<{ id: string; label: string }>;
+}
+
+// Event types and possible requirements organized with category metadata
+export const EVENT_TYPES: EventTypeOption[] = [
+  // Sacraments
+  { id: 'WEDDING', label: 'Marriage (Canonical Interview)', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
+  { id: 'MARRIAGE_SPECIAL', label: 'Marriage (Special)', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [{ id: 'cenomar', label: 'CENOMAR' }, { id: 'marriage_license', label: 'Marriage License' }, { id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
+  { id: 'BAPTISM', label: 'Baptism', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [{ id: 'marriage_cert', label: 'Marriage Certificate' }, { id: 'birth_cert', label: 'Birth Certificate / Immunization Card' }] },
+  { id: 'CONFIRMATION', label: 'Confirmation', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [{ id: 'baptismal_cert', label: 'Baptismal Certificate' }] },
+  { id: 'FIRST_COMMUNION', label: 'First Communion', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [] },
+  { id: 'CONFESSION', label: 'Confession', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [] },
+  { id: 'ANOINTING_OF_THE_SICK', label: 'Anointing of the Sick', category: 'Sacrament', categoryLabel: 'Sacrament', possibleReqs: [] },
+  // Masses & Liturgies
+  { id: 'WAKE_MASS', label: 'Wake Mass', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
+  { id: 'FUNERAL', label: 'Funeral', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
+  { id: 'PRIVATE_MASS', label: 'Private Mass', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
+  { id: 'MASS_INTENTION', label: 'Mass Intention', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
+  { id: 'MASS_OF_HOLY_SPIRIT', label: 'Mass of the Holy Spirit', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
+  // Devotions & Blessings
+  { id: 'FIESTA', label: 'Fiesta', category: 'Other', categoryLabel: 'Devotion & Blessing', possibleReqs: [] },
+  { id: 'THANKSGIVING', label: 'Thanksgiving', category: 'Other', categoryLabel: 'Devotion & Blessing', possibleReqs: [] },
+  { id: 'BLESSING', label: 'Blessing', category: 'Other', categoryLabel: 'Devotion & Blessing', possibleReqs: [] },
+  { id: 'DELIVERANCE', label: 'Deliverance', category: 'Other', categoryLabel: 'Devotion & Blessing', possibleReqs: [] },
+];
+
+export const EVENT_CATEGORIES: Array<{
+  id: EventCategory;
+  title: string;
+  shortLabel: string;
+  badgeClass: string;
+  activeBadgeClass: string;
+  description: string;
+}> = [
+  {
+    id: 'Sacrament',
+    title: 'Holy Sacraments',
+    shortLabel: 'Sacraments',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+    activeBadgeClass: 'bg-blue-600 text-white',
+    description: 'Canonical sacraments and solemn church rites administered by ordained clergy.',
+  },
+  {
+    id: 'Mass',
+    title: 'Masses & Liturgical Services',
+    shortLabel: 'Masses & Liturgies',
+    badgeClass: 'bg-red-50 text-crimson-800 border-red-200',
+    activeBadgeClass: 'bg-crimson-700 text-white',
+    description: 'Eucharistic celebrations, memorial masses, and special parish liturgical celebrations.',
+  },
+  {
+    id: 'Other',
+    title: 'Devotions, Blessings & Other',
+    shortLabel: 'Devotions & Blessings',
+    badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+    activeBadgeClass: 'bg-amber-600 text-white',
+    description: 'Parish fiestas, home/vehicle blessings, thanksgiving intentions, and pastoral devotions.',
+  },
 ];
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -133,6 +187,13 @@ export function SettingsPage() {
   const [uploadingQr, setUploadingQr] = useState(false);
   const [schedulingRulesDirty, setSchedulingRulesDirty] = useState(false);
   const schedulingEditorRef = useRef<SchedulingAvailabilityEditorHandle>(null);
+
+  // Sacramental Scheduling Filtering & Organization States
+  const [eventCategoryFilter, setEventCategoryFilter] = useState<'ALL' | 'Sacrament' | 'Mass' | 'Other'>('ALL');
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
+  const [reqCategoryFilter, setReqCategoryFilter] = useState<'CONFIGURABLE' | 'ALL' | 'Sacrament' | 'Mass' | 'Other'>('CONFIGURABLE');
+  const [reqSearchQuery, setReqSearchQuery] = useState('');
+  const [showZeroReqsDrawer, setShowZeroReqsDrawer] = useState(false);
 
   const handleSchedulingDirtyChange = useCallback((dirty: boolean) => {
     setSchedulingRulesDirty(dirty);
@@ -413,6 +474,103 @@ export function SettingsPage() {
     });
   };
 
+  const handleBulkToggleEvents = useCallback((targetIds: string[], enable: boolean) => {
+    setEventSettings((prev: any) => {
+      const currentList: string[] = Array.isArray(prev?.availableEvents) ? prev.availableEvents : EVENT_TYPES.map(e => e.id);
+      let updated: string[];
+      if (enable) {
+        const set = new Set([...currentList, ...targetIds]);
+        updated = Array.from(set);
+      } else {
+        updated = currentList.filter(id => !targetIds.includes(id));
+      }
+      return {
+        ...prev,
+        availableEvents: updated,
+      };
+    });
+  }, []);
+
+  const handleToggleAllEventReqs = useCallback((evtId: string, enable: boolean) => {
+    const evt = EVENT_TYPES.find(e => e.id === evtId);
+    if (!evt || evt.possibleReqs.length === 0) return;
+    setEventSettings((prev: any) => {
+      const currentEvt = prev[evtId] || { requirements: {} };
+      const newReqs = { ...currentEvt.requirements };
+      evt.possibleReqs.forEach(req => {
+        newReqs[req.id] = enable;
+      });
+      return {
+        ...prev,
+        [evtId]: {
+          requirements: newReqs,
+        },
+      };
+    });
+  }, []);
+
+  const availableEventIds: string[] = useMemo(() => {
+    return Array.isArray(eventSettings?.availableEvents)
+      ? eventSettings.availableEvents
+      : EVENT_TYPES.map((e) => e.id);
+  }, [eventSettings?.availableEvents]);
+
+  const eventCategoryStats = useMemo(() => {
+    const sacraments = EVENT_TYPES.filter((e) => e.category === 'Sacrament');
+    const masses = EVENT_TYPES.filter((e) => e.category === 'Mass');
+    const others = EVENT_TYPES.filter((e) => e.category === 'Other');
+
+    const activeSacraments = sacraments.filter((e) => availableEventIds.includes(e.id)).length;
+    const activeMasses = masses.filter((e) => availableEventIds.includes(e.id)).length;
+    const activeOthers = others.filter((e) => availableEventIds.includes(e.id)).length;
+
+    return {
+      all: { total: EVENT_TYPES.length, active: availableEventIds.length },
+      sacraments: { total: sacraments.length, active: activeSacraments },
+      masses: { total: masses.length, active: activeMasses },
+      others: { total: others.length, active: activeOthers },
+    };
+  }, [availableEventIds]);
+
+  const filteredOfferedEvents = useMemo(() => {
+    const query = eventSearchQuery.trim().toLowerCase();
+    return EVENT_TYPES.filter((evt) => {
+      const matchesCategory =
+        eventCategoryFilter === 'ALL' || evt.category === eventCategoryFilter;
+      if (!matchesCategory) return false;
+
+      const matchesQuery =
+        !query ||
+        evt.label.toLowerCase().includes(query) ||
+        evt.categoryLabel.toLowerCase().includes(query);
+
+      return matchesQuery;
+    });
+  }, [eventCategoryFilter, eventSearchQuery]);
+
+  const filteredPrereqEvents = useMemo(() => {
+    const query = reqSearchQuery.trim().toLowerCase();
+    return EVENT_TYPES.filter((evt) => {
+      if (reqCategoryFilter === 'CONFIGURABLE') {
+        if (evt.possibleReqs.length === 0) return false;
+      } else if (reqCategoryFilter !== 'ALL') {
+        if (evt.category !== reqCategoryFilter) return false;
+      }
+
+      if (!query) return true;
+
+      const matchesLabel = evt.label.toLowerCase().includes(query);
+      const matchesCategory = evt.categoryLabel.toLowerCase().includes(query);
+      const matchesReq = evt.possibleReqs.some((r) => r.label.toLowerCase().includes(query));
+
+      return matchesLabel || matchesCategory || matchesReq;
+    });
+  }, [reqCategoryFilter, reqSearchQuery]);
+
+  const configurableEvents = useMemo(() => {
+    return EVENT_TYPES.filter((e) => e.possibleReqs.length > 0);
+  }, []);
+
   const handleCapacityChange = (field: 'slotCapacity' | 'dailyLimit', value: number) => {
     setEventSettings((prev: any) => ({
       ...prev,
@@ -644,18 +802,16 @@ export function SettingsPage() {
             <label htmlFor="parish-selector" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
               Switch Parish:
             </label>
-            <select
-              id="parish-selector"
-              value={selectedParishId}
-              onChange={(e) => handleParishSelectChange(e.target.value)}
-              className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 font-medium min-w-[240px]"
-            >
-              {parishes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="w-[260px]">
+              <CustomSelect
+                id="parish-selector"
+                value={selectedParishId}
+                onChange={handleParishSelectChange}
+                options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
+                searchable
+                searchPlaceholder="Search parish..."
+              />
+            </div>
           </div>
         </div>
       )}
@@ -832,49 +988,306 @@ export function SettingsPage() {
             <div className={cn('space-y-8', !canEditScheduling && 'pointer-events-none opacity-70')}>
               {/* 1. Offered Sacraments & Scheduling Availability */}
               <div className="space-y-4">
-                <div>
-                  <h4 className="text-base font-bold text-gray-900">Offered Sacraments & Ceremonies</h4>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Enable or disable specific sacraments offered for parishioner online appointment booking. Disabled sacraments cannot be scheduled online.
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Church className="w-4 h-4 text-crimson-700" />
+                      <h4 className="text-base font-bold text-gray-900">Offered Sacraments & Ceremonies</h4>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Enable or disable specific sacraments offered for parishioner online appointment booking. Disabled sacraments cannot be scheduled online.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={cn(
+                        'px-2.5 py-1 rounded-full border text-xs font-semibold',
+                        eventCategoryStats.all.active === eventCategoryStats.all.total
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : eventCategoryStats.all.active > 0
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                      )}
+                    >
+                      {eventCategoryStats.all.active} of {eventCategoryStats.all.total} Offered Online
+                    </span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {EVENT_TYPES.map((evt) => {
-                    const availableList: string[] = Array.isArray(eventSettings?.availableEvents) ? eventSettings.availableEvents : [];
-                    const isOffered = availableList.includes(evt.id);
+                {/* Category Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    type="button"
+                    onClick={() => setEventCategoryFilter('ALL')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      eventCategoryFilter === 'ALL'
+                        ? 'bg-crimson-700 text-white border-crimson-700 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                    )}
+                  >
+                    <span>All Services</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        eventCategoryFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                      )}
+                    >
+                      {eventCategoryStats.all.active}/{eventCategoryStats.all.total}
+                    </span>
+                  </button>
 
-                    return (
-                      <div
-                        key={evt.id}
-                        onClick={() => handleToggleAvailableEvent(evt.id)}
-                        className={cn(
-                          'p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none',
-                          isOffered
-                            ? 'bg-white border-crimson-700/30 shadow-xs'
-                            : 'bg-gray-50/70 border-gray-200 opacity-60'
-                        )}
+                  <button
+                    type="button"
+                    onClick={() => setEventCategoryFilter('Sacrament')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      eventCategoryFilter === 'Sacrament'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50/50 hover:text-blue-700'
+                    )}
+                  >
+                    <span>Sacraments</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        eventCategoryFilter === 'Sacrament' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
+                      )}
+                    >
+                      {eventCategoryStats.sacraments.active}/{eventCategoryStats.sacraments.total}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEventCategoryFilter('Mass')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      eventCategoryFilter === 'Mass'
+                        ? 'bg-crimson-800 text-white border-crimson-800 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-red-50/50 hover:text-crimson-800'
+                    )}
+                  >
+                    <span>Masses & Liturgies</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        eventCategoryFilter === 'Mass' ? 'bg-white/20 text-white' : 'bg-red-50 text-crimson-800'
+                      )}
+                    >
+                      {eventCategoryStats.masses.active}/{eventCategoryStats.masses.total}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEventCategoryFilter('Other')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      eventCategoryFilter === 'Other'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-amber-50/50 hover:text-amber-800'
+                    )}
+                  >
+                    <span>Devotions & Blessings</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        eventCategoryFilter === 'Other' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-800'
+                      )}
+                    >
+                      {eventCategoryStats.others.active}/{eventCategoryStats.others.total}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Search & Bulk Action Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-50/70 p-2.5 rounded-xl border border-gray-200">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search sacrament or service (e.g. Marriage, Funeral, Baptism)..."
+                      value={eventSearchQuery}
+                      onChange={(e) => setEventSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-8 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
+                    />
+                    {eventSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setEventSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded cursor-pointer"
+                        aria-label="Clear search"
                       >
-                        <div className="min-w-0 flex-1">
-                          <span className={cn('text-xs font-bold block truncate', isOffered ? 'text-gray-900' : 'text-gray-400')}>
-                            {evt.label}
-                          </span>
-                          <span className="text-[10px] text-gray-400 block mt-0.5 font-medium">
-                            {isOffered ? 'Offered for scheduling' : 'Disabled'}
-                          </span>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {filteredOfferedEvents.length > 0 && (
+                    <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleBulkToggleEvents(filteredOfferedEvents.map((e) => e.id), true)}
+                        className="px-2.5 py-1 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Enable All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkToggleEvents(filteredOfferedEvents.map((e) => e.id), false)}
+                        className="px-2.5 py-1 text-xs font-semibold text-gray-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-gray-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Disable All
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cards Container */}
+                {filteredOfferedEvents.length === 0 ? (
+                  <div className="p-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-center space-y-3">
+                    <p className="text-xs text-gray-500">
+                      No sacraments or services match &quot;{eventSearchQuery}&quot;.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEventSearchQuery('');
+                        setEventCategoryFilter('ALL');
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-crimson-700 bg-red-50 hover:bg-red-100 border border-crimson-700/20 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Reset Search & Filters
+                    </button>
+                  </div>
+                ) : eventCategoryFilter === 'ALL' && !eventSearchQuery.trim() ? (
+                  <div className="space-y-6">
+                    {EVENT_CATEGORIES.map((cat) => {
+                      const catEvents = EVENT_TYPES.filter((e) => e.category === cat.id);
+                      const catActiveCount = catEvents.filter((e) => availableEventIds.includes(e.id)).length;
+                      return (
+                        <div key={cat.id} className="space-y-3 bg-white p-4 rounded-xl border border-gray-200/80 shadow-2xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className={cn('text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border', cat.badgeClass)}>
+                                  {cat.shortLabel}
+                                </span>
+                                <h5 className="text-sm font-bold text-gray-900">{cat.title}</h5>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-0.5">{cat.description}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-gray-500">
+                                {catActiveCount} of {catEvents.length} enabled
+                              </span>
+                              <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50 text-[11px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleBulkToggleEvents(catEvents.map((e) => e.id), true)}
+                                  className="px-2 py-0.5 font-semibold text-gray-600 hover:text-gray-900 hover:bg-white rounded transition-colors cursor-pointer"
+                                >
+                                  Enable All
+                                </button>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleBulkToggleEvents(catEvents.map((e) => e.id), false)}
+                                  className="px-2 py-0.5 font-semibold text-gray-600 hover:text-rose-700 hover:bg-white rounded transition-colors cursor-pointer"
+                                >
+                                  Disable All
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {catEvents.map((evt) => {
+                              const isOffered = availableEventIds.includes(evt.id);
+                              return (
+                                <div
+                                  key={evt.id}
+                                  onClick={() => handleToggleAvailableEvent(evt.id)}
+                                  className={cn(
+                                    'p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none',
+                                    isOffered
+                                      ? 'bg-white border-crimson-700/30 shadow-xs hover:border-crimson-700/50'
+                                      : 'bg-gray-50/70 border-gray-200 opacity-60 hover:opacity-80'
+                                  )}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className={cn('text-xs font-bold block truncate', isOffered ? 'text-gray-900' : 'text-gray-400')}>
+                                      {evt.label}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 block mt-0.5 font-medium">
+                                      {isOffered ? 'Offered for scheduling' : 'Disabled'}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className={cn(
+                                      'w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold transition-all',
+                                      isOffered ? 'bg-crimson-700 text-white' : 'bg-gray-200 text-transparent'
+                                    )}
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {filteredOfferedEvents.map((evt) => {
+                      const isOffered = availableEventIds.includes(evt.id);
+                      const catBadgeClass =
+                        evt.category === 'Sacrament'
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : evt.category === 'Mass'
+                          ? 'bg-red-50 text-crimson-800 border-red-200'
+                          : 'bg-amber-50 text-amber-800 border-amber-200';
+
+                      return (
                         <div
+                          key={evt.id}
+                          onClick={() => handleToggleAvailableEvent(evt.id)}
                           className={cn(
-                            'w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold transition-all',
-                            isOffered ? 'bg-crimson-700 text-white' : 'bg-gray-200 text-transparent'
+                            'p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none',
+                            isOffered
+                              ? 'bg-white border-crimson-700/30 shadow-xs hover:border-crimson-700/50'
+                              : 'bg-gray-50/70 border-gray-200 opacity-60 hover:opacity-80'
                           )}
                         >
-                          ✓
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border', catBadgeClass)}>
+                                {evt.category === 'Other' ? 'Devotion' : evt.category}
+                              </span>
+                            </div>
+                            <span className={cn('text-xs font-bold block truncate', isOffered ? 'text-gray-900' : 'text-gray-400')}>
+                              {evt.label}
+                            </span>
+                            <span className="text-[10px] text-gray-400 block mt-0.5 font-medium">
+                              {isOffered ? 'Offered for scheduling' : 'Disabled'}
+                            </span>
+                          </div>
+                          <div
+                            className={cn(
+                              'w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold transition-all',
+                              isOffered ? 'bg-crimson-700 text-white' : 'bg-gray-200 text-transparent'
+                            )}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* 2. Concurrency & Capacity Controls */}
@@ -1020,55 +1433,306 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {/* 4. Prerequisite Documentation Requirements */}
+              {/* 5. Prerequisite Documentation Requirements */}
               <div className="space-y-4 pt-4 border-t border-gray-200">
-                <div>
-                  <h4 className="text-base font-bold text-gray-900">Prerequisite Documentation Requirements</h4>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Set mandatory documentation required when parishioners schedule parish sacraments and special masses.
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="w-4 h-4 text-crimson-700" />
+                      <h4 className="text-base font-bold text-gray-900">Prerequisite Documentation Requirements</h4>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Set mandatory documentation required when parishioners schedule parish sacraments and special masses.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    <span className="px-2.5 py-1 rounded-full border bg-gray-50 text-gray-700 border-gray-200">
+                      {configurableEvents.length} sacraments require documents
+                    </span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {EVENT_TYPES.map((evt) => {
-                    const conf = eventSettings[evt.id] || { requirements: {} };
-                    return (
-                      <div key={evt.id} className="p-4 bg-white border border-gray-200 rounded-xl space-y-2.5">
-                        <span className="font-bold text-gray-900 text-sm block">{evt.label}</span>
-                        {evt.possibleReqs.length > 0 ? (
-                          <div className="space-y-1.5">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
-                              Required Documents
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {evt.possibleReqs.map((req) => {
-                                const isReq = conf.requirements?.[req.id] ?? false;
-                                return (
-                                  <button
-                                    key={req.id}
-                                    type="button"
-                                    onClick={() => handleEventRequirementToggle(evt.id, req.id)}
-                                    className={cn(
-                                      'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
-                                      isReq
-                                        ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
-                                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
-                                    )}
-                                  >
-                                    {isReq ? '✓ ' : '+ '}
-                                    {req.label}
-                                  </button>
-                                );
-                              })}
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    type="button"
+                    onClick={() => setReqCategoryFilter('CONFIGURABLE')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      reqCategoryFilter === 'CONFIGURABLE'
+                        ? 'bg-crimson-700 text-white border-crimson-700 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                    )}
+                  >
+                    <span>Configurable Services</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        reqCategoryFilter === 'CONFIGURABLE' ? 'bg-white/20 text-white' : 'bg-red-50 text-crimson-800'
+                      )}
+                    >
+                      {configurableEvents.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReqCategoryFilter('ALL')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      reqCategoryFilter === 'ALL'
+                        ? 'bg-gray-800 text-white border-gray-800 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                    )}
+                  >
+                    <span>All Services</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        reqCategoryFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                      )}
+                    >
+                      {EVENT_TYPES.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReqCategoryFilter('Sacrament')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      reqCategoryFilter === 'Sacrament'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50/50 hover:text-blue-700'
+                    )}
+                  >
+                    <span>Sacraments</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        reqCategoryFilter === 'Sacrament' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
+                      )}
+                    >
+                      {EVENT_TYPES.filter((e) => e.category === 'Sacrament' && e.possibleReqs.length > 0).length}/{eventCategoryStats.sacraments.total}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReqCategoryFilter('Mass')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      reqCategoryFilter === 'Mass'
+                        ? 'bg-crimson-800 text-white border-crimson-800 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-red-50/50 hover:text-crimson-800'
+                    )}
+                  >
+                    <span>Masses & Liturgies</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        reqCategoryFilter === 'Mass' ? 'bg-white/20 text-white' : 'bg-red-50 text-crimson-800'
+                      )}
+                    >
+                      {EVENT_TYPES.filter((e) => e.category === 'Mass' && e.possibleReqs.length > 0).length}/{eventCategoryStats.masses.total}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReqCategoryFilter('Other')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border',
+                      reqCategoryFilter === 'Other'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-amber-50/50 hover:text-amber-800'
+                    )}
+                  >
+                    <span>Devotions & Blessings</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 rounded-full text-[10px] font-bold',
+                        reqCategoryFilter === 'Other' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-800'
+                      )}
+                    >
+                      {eventCategoryStats.others.total}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Search Bar */}
+                <div className="bg-gray-50/70 p-2.5 rounded-xl border border-gray-200">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search by sacrament or requirement (e.g. CENOMAR, Death Certificate, Marriage)..."
+                      value={reqSearchQuery}
+                      onChange={(e) => setReqSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-8 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
+                    />
+                    {reqSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setReqSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded cursor-pointer"
+                        aria-label="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cards List */}
+                {filteredPrereqEvents.length === 0 ? (
+                  <div className="p-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-center space-y-3">
+                    <p className="text-xs text-gray-500">
+                      No services or requirements match &quot;{reqSearchQuery}&quot;.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReqSearchQuery('');
+                        setReqCategoryFilter('CONFIGURABLE');
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-crimson-700 bg-red-50 hover:bg-red-100 border border-crimson-700/20 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Reset Search & Filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {filteredPrereqEvents.filter((evt) => evt.possibleReqs.length > 0).map((evt) => {
+                        const conf = eventSettings[evt.id] || { requirements: {} };
+                        const isOffered = availableEventIds.includes(evt.id);
+                        const activeReqsCount = evt.possibleReqs.filter((req) => conf.requirements?.[req.id] ?? false).length;
+
+                        const catBadgeClass =
+                          evt.category === 'Sacrament'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : evt.category === 'Mass'
+                            ? 'bg-red-50 text-crimson-800 border-red-200'
+                            : 'bg-amber-50 text-amber-800 border-amber-200';
+
+                        return (
+                          <div
+                            key={evt.id}
+                            className={cn(
+                              'p-4 bg-white border rounded-xl space-y-3 transition-all',
+                              isOffered ? 'border-gray-200 shadow-2xs hover:border-gray-300' : 'border-gray-200 opacity-75'
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-gray-900 text-sm">{evt.label}</span>
+                                  <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border', catBadgeClass)}>
+                                    {evt.category === 'Other' ? 'Devotion' : evt.category}
+                                  </span>
+                                </div>
+                                {!isOffered && (
+                                  <span className="inline-block mt-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                                    Disabled in online booking
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Quick Actions */}
+                              <div className="flex items-center gap-1 text-[11px] font-semibold text-gray-500">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAllEventReqs(evt.id, true)}
+                                  className="hover:text-crimson-700 transition-colors cursor-pointer"
+                                >
+                                  Select All
+                                </button>
+                                <span>/</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAllEventReqs(evt.id, false)}
+                                  className="hover:text-crimson-700 transition-colors cursor-pointer"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5 pt-1 border-t border-gray-100">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
+                                  Required Documents
+                                </span>
+                                <span className="text-[10px] font-bold text-gray-500">
+                                  {activeReqsCount} of {evt.possibleReqs.length} required
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {evt.possibleReqs.map((req) => {
+                                  const isReq = conf.requirements?.[req.id] ?? false;
+                                  return (
+                                    <button
+                                      key={req.id}
+                                      type="button"
+                                      onClick={() => handleEventRequirementToggle(evt.id, req.id)}
+                                      className={cn(
+                                        'px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1',
+                                        isReq
+                                          ? 'bg-red-50 text-crimson-700 border-crimson-700/30 shadow-2xs font-bold'
+                                          : 'bg-gray-50 text-gray-500 border-gray-200 hover:text-gray-800 hover:bg-gray-100'
+                                      )}
+                                    >
+                                      {isReq ? (
+                                        <Check className="w-3.5 h-3.5 text-crimson-700" />
+                                      ) : (
+                                        <Plus className="w-3.5 h-3.5 text-gray-400" />
+                                      )}
+                                      {req.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
                           </div>
-                        ) : (
-                          <p className="text-xs text-gray-400 italic">No prerequisite files required for this sacrament.</p>
+                        );
+                      })}
+                    </div>
+
+                    {/* Zero Requirements Services Drawer (if viewing All or Other) */}
+                    {reqCategoryFilter !== 'CONFIGURABLE' && filteredPrereqEvents.some((e) => e.possibleReqs.length === 0) && (
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Info className="w-4 h-4 text-gray-400" />
+                            <span className="text-xs font-bold text-gray-700">
+                              Services With No Required Documents ({filteredPrereqEvents.filter((e) => e.possibleReqs.length === 0).length})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowZeroReqsDrawer(!showZeroReqsDrawer)}
+                            className="text-xs font-semibold text-crimson-700 hover:text-crimson-800 flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>{showZeroReqsDrawer ? 'Hide Details' : 'Show List'}</span>
+                            {showZeroReqsDrawer ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+
+                        {showZeroReqsDrawer && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-2 border-t border-gray-200/60">
+                            {filteredPrereqEvents.filter((e) => e.possibleReqs.length === 0).map((evt) => (
+                              <div key={evt.id} className="p-2.5 bg-white border border-gray-200/80 rounded-lg flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold text-gray-800 truncate">{evt.label}</span>
+                                <span className="text-[10px] text-gray-400 italic shrink-0">None needed</span>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

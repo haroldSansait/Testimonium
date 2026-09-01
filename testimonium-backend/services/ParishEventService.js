@@ -107,11 +107,19 @@ export class ParishEventService {
       }
     });
 
-    await AuditLogService.log(actorId, `Created new parish event: ${data.title}`, null, false, {
-      affectedTable: "ParishEvent",
+    await AuditLogService.log(actorId, "Parish Event Created", null, false, {
+      affectedTable: "parish_events",
       affectedRecordId: event.id,
       parishId: parsedParishId,
-      newValues: data
+      newValues: {
+        title: event.title,
+        eventType: event.eventType,
+        eventDate: event.eventDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        visibility: event.visibility,
+        assignedPriestId: event.assignedPriestId,
+      },
     });
 
     // Notify assigned priest of their new assignment (GENERAL type — no PARISH_EVENT ref in schema).
@@ -354,16 +362,32 @@ export class ParishEventService {
       include: { assignedPriest: { select: { id: true, fullName: true } } },
     });
 
-    await AuditLogService.log(actorId, `Updated parish event #${id}: ${event.title}`, null, false, {
-      affectedTable: "ParishEvent",
+    await AuditLogService.log(actorId, "Parish Event Updated", null, false, {
+      affectedTable: "parish_events",
       affectedRecordId: parsedId,
       parishId: event.parishId,
-      previousValues: original,
-      newValues: data
+      previousValues: {
+        title: original.title,
+        eventType: original.eventType,
+        eventDate: original.eventDate,
+        startTime: original.startTime,
+        endTime: original.endTime,
+        visibility: original.visibility,
+        assignedPriestId: original.assignedPriestId,
+      },
+      newValues: {
+        title: event.title,
+        eventType: event.eventType,
+        eventDate: event.eventDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        visibility: event.visibility,
+        assignedPriestId: event.assignedPriestId,
+      },
     });
     if (original.visibility !== event.visibility) {
       await AuditLogService.log(actorId, "PARISH_EVENT_VISIBILITY_CHANGED", null, false, {
-        affectedTable: "ParishEvent",
+        affectedTable: "parish_events",
         affectedRecordId: parsedId,
         parishId: event.parishId,
         previousValues: { visibility: original.visibility },
@@ -408,12 +432,12 @@ export class ParishEventService {
       data: { isActive: false }
     });
 
-    await AuditLogService.log(actorId, `Deleted parish event #${id}: ${original.title}`, null, false, {
-      affectedTable: "ParishEvent",
+    await AuditLogService.log(actorId, "Parish Event Deleted", null, false, {
+      affectedTable: "parish_events",
       affectedRecordId: parsedId,
       parishId: original.parishId,
       previousValues: { isActive: true },
-      newValues: { isActive: false }
+      newValues: { isActive: false },
     });
   }
 

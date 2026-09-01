@@ -74,14 +74,18 @@ export class ActivityLogService {
     if (!ids || ids.length === 0) return;
     await prisma.$transaction(async (tx) => {
       const result = await this.activityLogRepository.archiveMany(ids, actorId);
-      await AuditLogService.log(actorId, `Archived ${result.count} activity logs`, tx, true);
+      await AuditLogService.log(actorId, "Activity Logs Archived", tx, true, {
+        metadata: { count: result.count },
+      });
     });
   }
 
   async archiveAll(actorId) {
     await prisma.$transaction(async (tx) => {
       const result = await this.activityLogRepository.archiveAll(actorId);
-      await AuditLogService.log(actorId, `Archived ${result.count} activity logs`, tx, true);
+      await AuditLogService.log(actorId, "Activity Logs Archived", tx, true, {
+        metadata: { count: result.count },
+      });
     });
   }
 
@@ -89,14 +93,18 @@ export class ActivityLogService {
     if (!ids || ids.length === 0) return;
     await prisma.$transaction(async (tx) => {
       const result = await this.activityLogRepository.restoreMany(ids);
-      await AuditLogService.log(actorId, `Restored ${result.count} activity logs`, tx, true);
+      await AuditLogService.log(actorId, "Activity Logs Restored", tx, true, {
+        metadata: { count: result.count },
+      });
     });
   }
 
   async restoreAll(actorId) {
     await prisma.$transaction(async (tx) => {
       const result = await this.activityLogRepository.restoreAll();
-      await AuditLogService.log(actorId, `Restored ${result.count} activity logs`, tx, true);
+      await AuditLogService.log(actorId, "Activity Logs Restored", tx, true, {
+        metadata: { count: result.count },
+      });
     });
   }
 
@@ -114,7 +122,9 @@ export class ActivityLogService {
 
     await prisma.$transaction(async (tx) => {
       const result = await this.activityLogRepository.purgeArchived(retentionDays);
-      await AuditLogService.log(actorId, `Purged ${result.count} archived activity logs older than ${retentionDays} days`, tx, true);
+      await AuditLogService.log(actorId, "Activity Logs Purged", tx, true, {
+        metadata: { count: result.count, retentionDays },
+      });
     });
   }
 

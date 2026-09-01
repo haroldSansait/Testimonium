@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { CheckCheck, ChevronDown, Info } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { NotificationGroup } from '@/components/notifications/NotificationGroup';
 import { NotificationService } from '@/services/NotificationService';
 import { LoadingState } from '@/components/common/LoadingState';
@@ -131,18 +132,17 @@ export function NotificationsPage() {
         actions={
           <div className="flex items-center gap-2">
             {/* Notifications Filter Dropdown */}
-            <div className="relative">
-              <select
+            <div className="w-[170px]">
+              <CustomSelect
                 value={filterMode}
-                onChange={(e) => setFilterMode(e.target.value as 'all' | 'unread')}
-                className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[120px]"
+                onChange={(val) => setFilterMode(val as 'all' | 'unread')}
+                options={[
+                  { value: 'all', label: 'All Notifications' },
+                  { value: 'unread', label: 'Unread Only' },
+                ]}
                 id="notifications-filter"
                 aria-label="Filter notifications"
-              >
-                <option value="all">All Notifications</option>
-                <option value="unread">Unread Only</option>
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              />
             </div>
 
             <button

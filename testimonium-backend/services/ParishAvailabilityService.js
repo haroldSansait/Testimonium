@@ -46,11 +46,18 @@ export class ParishAvailabilityService {
       },
     });
 
-    await AuditLogService.log(actorId, `Created leave/availability block: ${title} (${type})`, null, false, {
-      affectedTable: "ParishAvailability",
+    await AuditLogService.log(actorId, "Parish Availability Created", null, false, {
+      affectedTable: "parish_availabilities",
       affectedRecordId: record.id,
       parishId: record.parishId,
-      newValues: { userId, type, startDate, endDate, title, description }
+      newValues: {
+        userId: record.userId,
+        type: record.type,
+        startDate: record.startDate,
+        endDate: record.endDate,
+        title: record.title,
+        description: record.description,
+      },
     });
 
     return record;
@@ -79,11 +86,17 @@ export class ParishAvailabilityService {
       where: { id: parsedId },
     });
 
-    await AuditLogService.log(actorId, `Deleted leave/availability block #${id}: ${original.title}`, null, false, {
-      affectedTable: "ParishAvailability",
+    await AuditLogService.log(actorId, "Parish Availability Deleted", null, false, {
+      affectedTable: "parish_availabilities",
       affectedRecordId: parsedId,
       parishId: original.parishId,
-      previousValues: original
+      previousValues: {
+        userId: original.userId,
+        type: original.type,
+        startDate: original.startDate,
+        endDate: original.endDate,
+        title: original.title,
+      },
     });
   }
 }

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, ChevronDown, Pencil, Archive, X, Check, Church } from 'lucide-react';
+import { Plus, Pencil, Archive, X, Check, Church } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -325,27 +326,34 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
 
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Parish Type" id="ep-type" required>
-              <select id="ep-type" className={inputCls} value={form.type} onChange={set('type')}>
-                <option value="">Select type...</option>
-                <option value="Parish">Parish</option>
-                <option value="Quasi-Parish">Quasi-Parish</option>
-                <option value="Mission Station">Mission Station</option>
-              </select>
+              <CustomSelect
+                id="ep-type"
+                value={form.type}
+                onChange={(val) => set('type')({ target: { value: val } } as any)}
+                placeholder="Select type..."
+                options={['Parish', 'Quasi-Parish', 'Mission Station']}
+              />
             </FormField>
 
             <FormField label="Status" id="ep-status" required>
-              <select id="ep-status" className={inputCls} value={form.status} onChange={set('status')}>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Archived">Archived</option>
-              </select>
+              <CustomSelect
+                id="ep-status"
+                value={form.status}
+                onChange={(val) => set('status')({ target: { value: val } } as any)}
+                placeholder="Select status..."
+                options={['Active', 'Inactive', 'Archived']}
+              />
             </FormField>
           </div>
 
           <FormField label="Vicariate" id="ep-vicariate" required>
-            <select id="ep-vicariate" className={inputCls} value={form.vicariate} onChange={set('vicariate')}>
-              <option value="Vicariate of Canlaon">Vicariate of Canlaon</option>
-            </select>
+            <CustomSelect
+              id="ep-vicariate"
+              value={form.vicariate}
+              onChange={(val) => set('vicariate')({ target: { value: val } } as any)}
+              placeholder="Select vicariate..."
+              options={['Vicariate of Canlaon']}
+            />
           </FormField>
 
           <div className="grid grid-cols-2 gap-3">
@@ -361,33 +369,23 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
 
             <FormField label="Feast Date" id="ep-feast-month" required>
               <div className="grid grid-cols-2 gap-2">
-                <select
+                <CustomSelect
                   id="ep-feast-month"
-                  className={inputCls}
                   value={selectedMonth}
-                  onChange={handleMonthChange}
-                >
-                  <option value="">Month...</option>
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <select
+                  onChange={(val) => handleMonthChange({ target: { value: val } } as any)}
+                  placeholder="Month..."
+                  options={MONTHS}
+                  searchable
+                />
+                <CustomSelect
                   id="ep-feast-day"
-                  className={inputCls}
                   value={selectedDay}
-                  onChange={handleDayChange}
+                  onChange={(val) => handleDayChange({ target: { value: val } } as any)}
                   disabled={!selectedMonth}
-                >
-                  <option value="">Day...</option>
-                  {dayOptions.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Day..."
+                  options={dayOptions.map(String)}
+                  searchable
+                />
               </div>
             </FormField>
           </div>
@@ -603,35 +601,27 @@ export function ParishManagementPage() {
           />
           <div className="flex gap-3">
             {/* Type filter */}
-            <div className="relative">
-              <select
+            <div className="w-[170px]">
+              <CustomSelect
                 value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="pl-3 pr-8 py-2.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[160px]"
+                onChange={setType}
+                options={TYPE_OPTIONS}
+                placeholder="All Types"
                 id="filter-parish-type"
                 aria-label="Filter by parish type"
-              >
-                {TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              />
             </div>
 
             {/* Status filter */}
-            <div className="relative">
-              <select
+            <div className="w-[150px]">
+              <CustomSelect
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="pl-3 pr-8 py-2.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 bg-white appearance-none cursor-pointer min-w-[140px]"
+                onChange={setStatus}
+                options={STATUS_OPTIONS}
+                placeholder="All Statuses"
                 id="filter-parish-status"
                 aria-label="Filter by parish status"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              />
             </div>
           </div>
         </div>
