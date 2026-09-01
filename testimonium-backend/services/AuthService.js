@@ -266,6 +266,7 @@ export class AuthService {
       needsProfileCompletion,
       status: user.status,
       role: user.role.roleName,
+      emailNotificationsEnabled: typeof user.emailNotificationsEnabled === "boolean" ? user.emailNotificationsEnabled : true,
       parish: user.parish
         ? {
             id: user.parish.id,

@@ -28,6 +28,39 @@ export function renderEmail(emailType, payload) {
   const time = escapeHtml(payload.timeSlot || "Not specified");
   const location = escapeHtml(payload.location || "Please check TESTIMONIUM for details");
 
+  if (emailType === "DOCUMENT_SUBMITTED") {
+    return {
+      subject: "TESTIMONIUM — Document Request Submitted",
+      ...layout("Document request submitted", [
+        `Hello ${name},`,
+        "Your document request has been submitted successfully and is now awaiting parish review.",
+        `Tracking Number: <strong>${tracking}</strong><br>Document: ${service}<br>Parish: ${parish}`,
+        "You can sign in to TESTIMONIUM to track its progress.",
+      ]),
+    };
+  }
+  if (emailType === "DOCUMENT_NEEDS_CORRECTION") {
+    return {
+      subject: "TESTIMONIUM — Action Required on Your Document Request",
+      ...layout("Action required on your document request", [
+        `Hello ${name},`,
+        "Your document request requires corrections before processing can continue.",
+        `Tracking Number: <strong>${tracking}</strong><br>Document: ${service}<br>Parish: ${parish}`,
+        "Sign in to TESTIMONIUM to review the required corrections and submit the updated requirements.",
+      ]),
+    };
+  }
+  if (emailType === "DOCUMENT_PAYMENT_NEEDS_CORRECTION") {
+    return {
+      subject: "TESTIMONIUM — Payment Proof Needs Attention",
+      ...layout("Payment proof needs attention", [
+        `Hello ${name},`,
+        "The payment proof for your document request requires correction.",
+        `Tracking Number: <strong>${tracking}</strong><br>Document: ${service}<br>Parish: ${parish}`,
+        "Sign in to TESTIMONIUM to review the instructions and upload a corrected payment proof.",
+      ]),
+    };
+  }
   if (emailType === "DOCUMENT_READY_FOR_PICKUP") {
     return {
       subject: "TESTIMONIUM — Your Document Is Ready for Pickup",

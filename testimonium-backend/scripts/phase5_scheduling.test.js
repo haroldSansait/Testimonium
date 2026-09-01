@@ -471,7 +471,10 @@ test("Phase 5B: schedule idempotency uses the generated Int contract and rolls b
     parishWeekdayRule: { findMany: async () => persistedWeekdayRules },
     parishServiceWeekdayRule: { findMany: async () => [] },
     parishScheduleDateRule: { findUnique: async () => null },
-    user: { findMany: async () => [] },
+    user: {
+      findMany: async () => [],
+      findUnique: async () => ({ emailNotificationsEnabled: true }),
+    },
     notification: { createMany: async () => ({ count: 1 }) },
     emailOutbox: { upsert: async ({ create }) => create },
     schedule: {
@@ -483,7 +486,7 @@ test("Phase 5B: schedule idempotency uses the generated Int contract and rolls b
           ...data,
           createdAt: new Date(),
           updatedAt: new Date(),
-          user: { id: data.userId, fullName: "Test Parishioner", email: "test@example.invalid", contactNumber: null },
+          user: { id: data.userId, fullName: "Test Parishioner", email: "test@example.invalid", contactNumber: null, emailNotificationsEnabled: true },
           parish: { id: data.parishId, parishName: "Test Parish", type: "PARISH", municipalityCity: "Test City" },
         };
         state.schedules.push(created);

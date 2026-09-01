@@ -243,7 +243,7 @@ export class DocumentRequestService {
       });
 
       // Log request history
-      await tx.requestHistory.create({
+      const history = await tx.requestHistory.create({
         data: {
           requestId,
           actorId,
@@ -263,7 +263,8 @@ export class DocumentRequestService {
         currentStatus,
         targetStatus,
         tx,
-        false // notifyAdmins: staff is performing this action, no admin fan-out
+        false, // notifyAdmins: staff is performing this action, no admin fan-out
+        history.id
       );
 
       await AuditLogService.log(

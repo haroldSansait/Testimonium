@@ -40,6 +40,7 @@ export class UserRepository {
     privacyAcceptedAt = null,
     termsVersion = null,
     privacyVersion = null,
+    emailNotificationsEnabled = true,
   }) {
     return prisma.user.create({
       data: {
@@ -54,6 +55,7 @@ export class UserRepository {
         privacyAcceptedAt,
         termsVersion,
         privacyVersion,
+        emailNotificationsEnabled,
       },
       include: profileInclude,
     });
@@ -225,6 +227,7 @@ export class UserRepository {
     if (data.privacyVersion !== undefined) updateData.privacyVersion = data.privacyVersion;
     if (data.lastVerificationResentAt !== undefined) updateData.lastVerificationResentAt = data.lastVerificationResentAt;
     if (data.verificationResentCount !== undefined) updateData.verificationResentCount = data.verificationResentCount;
+    if (data.emailNotificationsEnabled !== undefined) updateData.emailNotificationsEnabled = data.emailNotificationsEnabled;
 
     return prisma.user.update({
       where: { id },

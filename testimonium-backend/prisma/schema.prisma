@@ -156,6 +156,9 @@ enum EmailType {
   SCHEDULE_SUBMITTED
   SCHEDULE_PROPOSED_RESCHEDULE
   SCHEDULE_CONFIRMED
+  DOCUMENT_SUBMITTED
+  DOCUMENT_NEEDS_CORRECTION
+  DOCUMENT_PAYMENT_NEEDS_CORRECTION
 }
 
 enum OcrStatus {
@@ -247,6 +250,7 @@ model User {
   privacyVersion            String?                  @map("privacy_version") @db.VarChar(20)
   lastVerificationResentAt  DateTime?                @map("last_verification_resent_at")
   verificationResentCount   Int                      @default(0) @map("verification_resent_count")
+  emailNotificationsEnabled Boolean                  @default(true) @map("email_notifications_enabled")
   createdAt                 DateTime                 @default(now()) @map("created_at")
   updatedAt                 DateTime                 @updatedAt @map("updated_at")
   role                      Role                     @relation(fields: [roleId], references: [id], onDelete: Restrict)

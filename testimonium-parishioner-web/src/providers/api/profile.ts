@@ -12,7 +12,7 @@ const mapProfile = (data: any): UserProfile => {
     displayName: data.fullName || "",
     phone: data.contactNumber || "",
     address: data.address || "",
-    notificationsEnabled: true,
+    notificationsEnabled: typeof data.emailNotificationsEnabled === "boolean" ? data.emailNotificationsEnabled : true,
     parishId: data.parish?.id ? String(data.parish.id) : undefined,
   };
 };
@@ -25,13 +25,18 @@ export class ApiProfileProvider implements IProfileProvider {
   }
 
   async updateProfile(_uid: string, profile: Partial<UserProfile>): Promise<void> {
-    const payload: Record<string, unknown> = {
-      fullName: profile.displayName,
-      contactNumber: profile.phone,
-    };
-    // Include address only when it was explicitly provided in the update payload
+    const payload: Record<string, unknown> = {};
+    if (profile.displayName !== undefined) {
+      payload.fullName = profile.displayName;
+    }
+    if (profile.phone !== undefined) {
+      payload.contactNumber = profile.phone;
+    }
     if (profile.address !== undefined) {
       payload.address = profile.address;
+    }
+    if (profile.notificationsEnabled !== undefined) {
+      payload.emailNotificationsEnabled = profile.notificationsEnabled;
     }
     await client.put<any>("/auth/profile", payload);
   }

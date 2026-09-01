@@ -53,6 +53,7 @@ export interface BackendUserProfile {
   needsProfileCompletion: boolean;
   status: string;
   role: string;
+  emailNotificationsEnabled?: boolean;
   parish?: any;
 }
 

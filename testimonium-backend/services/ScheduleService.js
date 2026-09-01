@@ -765,7 +765,7 @@ export class ScheduleService {
               remarks: fullRemarks,
             },
             include: {
-              user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true, emailNotificationsEnabled: true } },
               parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
             },
           });
@@ -1067,7 +1067,7 @@ export class ScheduleService {
               processedById: actorId,
             },
             include: {
-              user: { select: { id: true, fullName: true, email: true } },
+              user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
               parish: { select: { id: true, parishName: true } },
               assignedPriest: { select: { id: true, fullName: true } },
             },
@@ -1145,7 +1145,7 @@ export class ScheduleService {
           return tx.schedule.findUnique({
             where: { id: parsedId },
             include: {
-              user: { select: { id: true, fullName: true, email: true } },
+              user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
               parish: { select: { id: true, parishName: true } },
               assignedPriest: { select: { id: true, fullName: true } },
             },
@@ -1159,7 +1159,7 @@ export class ScheduleService {
           where: { id: parsedId },
           data: { status, processedById: parseInt(processedById, 10) },
           include: {
-            user: { select: { id: true, fullName: true, email: true } },
+            user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
             parish: { select: { id: true, parishName: true } },
             assignedPriest: { select: { id: true, fullName: true } },
           },
@@ -1244,7 +1244,7 @@ export class ScheduleService {
             proposalVersion: { increment: 1 },
           },
           include: {
-            user: { select: { id: true, fullName: true, email: true } },
+            user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
             parish: { select: { id: true, parishName: true } },
             assignedPriest: { select: { id: true, fullName: true } },
           },
@@ -1310,7 +1310,7 @@ export class ScheduleService {
         processedById: parseInt(actorId, 10),
       },
       include: {
-        user: { select: { id: true, fullName: true, email: true } },
+        user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
         parish: { select: { id: true, parishName: true } },
         assignedPriest: { select: { id: true, fullName: true } },
       },
@@ -1363,7 +1363,7 @@ export class ScheduleService {
         priestResponseReason: reason || null,
       },
       include: {
-        user: { select: { id: true, fullName: true, email: true } },
+        user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
         parish: { select: { id: true, parishName: true } },
         assignedPriest: { select: { id: true, fullName: true } },
       },

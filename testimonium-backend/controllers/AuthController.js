@@ -203,18 +203,41 @@ export const register = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { fullName, firstName, middleName, lastName, suffix, contactNumber, address } = req.body;
+    const { fullName, firstName, middleName, lastName, suffix, contactNumber, address, emailNotificationsEnabled } = req.body;
 
-    let finalFullName = fullName;
-    if (firstName && lastName) {
-      finalFullName = normalizeAndConstructFullName({ firstName, middleName, lastName, suffix });
+    if (emailNotificationsEnabled !== undefined && typeof emailNotificationsEnabled !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_PREFERENCE",
+        message: "emailNotificationsEnabled must be a boolean.",
+      });
     }
 
-    const updated = await userRepository.update(userId, {
-      fullName: finalFullName,
-      contactNumber,
-      address,
-    });
+    const updatePayload = {};
+
+    if (fullName !== undefined || (firstName && lastName)) {
+      let finalFullName = fullName;
+      if (firstName && lastName) {
+        finalFullName = normalizeAndConstructFullName({ firstName, middleName, lastName, suffix });
+      }
+      if (finalFullName !== undefined) {
+        updatePayload.fullName = finalFullName;
+      }
+    }
+
+    if (contactNumber !== undefined) {
+      updatePayload.contactNumber = contactNumber;
+    }
+
+    if (address !== undefined) {
+      updatePayload.address = address;
+    }
+
+    if (emailNotificationsEnabled !== undefined) {
+      updatePayload.emailNotificationsEnabled = emailNotificationsEnabled;
+    }
+
+    const updated = await userRepository.update(userId, updatePayload);
 
     const profile = authService.toApplicationProfile(updated, req.firebaseUser);
 

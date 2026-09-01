@@ -91,10 +91,11 @@ export class RequestNotificationService {
     oldStatus,
     newStatus,
     tx = null,
-    notifyAdmins = false
+    notifyAdmins = false,
+    historyId = null
   ) {
     await NotificationDispatcher.notifyDocumentStatusChange(
-      { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins },
+      { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins, historyId },
       tx
     );
   }

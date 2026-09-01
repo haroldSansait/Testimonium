@@ -283,7 +283,7 @@ export class NotificationDispatcher {
    * @param {object|null} tx               - Prisma transaction client
    */
   static async notifyDocumentStatusChange(
-    { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins = false },
+    { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins = false, historyId = null },
     tx = null
   ) {
     const client = tx || prisma;
@@ -329,7 +329,7 @@ export class NotificationDispatcher {
     }
 
     await NotificationDispatcher._persist(payloads, client);
-    await EmailOutboxService.enqueueDocumentReady(requestId, oldStatus, newStatus, client);
+    await EmailOutboxService.enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId }, client);
   }
 
   // -------------------------------------------------------------------------

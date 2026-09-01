@@ -29,7 +29,7 @@ function setupMockState() {
         proposalVersion: 1,
         updatedAt: new Date("2026-08-31T00:00:00.000Z"),
         createdAt: new Date("2026-08-31T00:00:00.000Z"),
-        user: { id: 501, fullName: "Juan Dela Cruz", email: "juan@example.test" },
+        user: { id: 501, fullName: "Juan Dela Cruz", email: "juan@example.test", emailNotificationsEnabled: true },
         parish: {
           id: 10,
           parishName: "San Pedro Parish",
@@ -65,7 +65,7 @@ function setupMockState() {
         proposalVersion: 1,
         updatedAt: new Date("2026-08-31T00:00:00.000Z"),
         createdAt: new Date("2026-08-31T00:00:00.000Z"),
-        user: { id: 502, fullName: "Maria Clara", email: "maria@example.test" },
+        user: { id: 502, fullName: "Maria Clara", email: "maria@example.test", emailNotificationsEnabled: true },
         parish: {
           id: 10,
           parishName: "San Pedro Parish",
@@ -160,6 +160,7 @@ function setupMockState() {
     },
     user: {
       findMany: async () => [],
+      findUnique: async () => ({ emailNotificationsEnabled: true }),
     },
     activityLog: {
       create: async () => ({}),

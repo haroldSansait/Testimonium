@@ -258,7 +258,7 @@ test("email transition keys deduplicate one proposal but preserve later proposal
     requestedDate: new Date("2026-09-01T00:00:00.000Z"),
     proposedDate: new Date("2026-09-02T00:00:00.000Z"),
     proposedStartDatetime: new Date("2026-09-02T01:00:00.000Z"),
-    user: { fullName: "Parishioner", email: "person@example.org" },
+    user: { fullName: "Parishioner", email: "person@example.org", emailNotificationsEnabled: true },
     parish: { parishName: "Sample Parish" },
   };
   await EmailOutboxService.enqueueScheduleTransition(schedule, "REQUESTED", "one", client);

@@ -312,7 +312,7 @@ export class ParishionerRequestService {
       });
 
       // Log to request history
-      await tx.requestHistory.create({
+      const submitHistory = await tx.requestHistory.create({
         data: {
           requestId,
           actorId: userId,
@@ -332,7 +332,8 @@ export class ParishionerRequestService {
         "DRAFT",
         "PENDING",
         tx,
-        true // notifyAdmins: new request visible to Secretary and Coordinator
+        true, // notifyAdmins: new request visible to Secretary and Coordinator
+        submitHistory.id
       );
 
       await AuditLogService.log(userId, `Submitted request ${submittedRequest.trackingNumber}`, tx);
@@ -372,7 +373,7 @@ export class ParishionerRequestService {
       });
 
       // Log request history
-      await tx.requestHistory.create({
+      const cancelHistory = await tx.requestHistory.create({
         data: {
           requestId,
           actorId: userId,
@@ -392,7 +393,8 @@ export class ParishionerRequestService {
         currentStatus,
         targetStatus,
         tx,
-        true // notifyAdmins: cancellation affects administrative workload
+        true, // notifyAdmins: cancellation affects administrative workload
+        cancelHistory.id
       );
 
       await AuditLogService.log(userId, `Cancelled request ${request.trackingNumber}`, tx);
