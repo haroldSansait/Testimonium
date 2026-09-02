@@ -26,6 +26,7 @@
 # Prisma Client Database Specific Exclusions (Fixed subfolder tracking)
 **/prisma/migrations/**/*.sql
 !testimonium-backend/prisma/migrations/20260829090000_planned_additions/migration.sql
+!testimonium-backend/prisma/migrations/20260902120000_add_parish_councils/migration.sql
 **/prisma/*.db
 **/prisma/*.db-journal
 

@@ -11,6 +11,17 @@ const parishInclude = {
   },
 };
 
+const parishDetailInclude = {
+  ...parishInclude,
+  councilConfiguration: {
+    include: {
+      members: {
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  },
+};
+
 export class ParishRepository {
   /**
    * Retrieves a list of parishes with optional search, type, and status filtering.
@@ -84,7 +95,7 @@ export class ParishRepository {
   async findById(id) {
     return prisma.parish.findUnique({
       where: { id },
-      include: parishInclude,
+      include: parishDetailInclude,
     });
   }
 
@@ -96,7 +107,7 @@ export class ParishRepository {
   async findBySlug(slug) {
     return prisma.parish.findUnique({
       where: { slug },
-      include: parishInclude,
+      include: parishDetailInclude,
     });
   }
 

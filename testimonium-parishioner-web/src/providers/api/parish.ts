@@ -56,6 +56,7 @@ const mapParish = (p: any): Parish => {
         ? (() => { try { return JSON.parse(p.eventSettings); } catch { return p.eventSettings; } })()
         : p.eventSettings
       : null,
+    councils: p.councils !== undefined ? p.councils : null,
   };
 };
 

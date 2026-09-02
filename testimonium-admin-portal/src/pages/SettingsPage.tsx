@@ -34,6 +34,7 @@ import {
   SchedulingAvailabilityEditor,
   type SchedulingAvailabilityEditorHandle,
 } from '@/components/settings/SchedulingAvailabilityEditor';
+import { ParishCouncilEditor } from '@/components/settings/ParishCouncilEditor';
 
 import {
   CANONICAL_DOCUMENT_TYPES,
@@ -171,7 +172,7 @@ export function SettingsPage() {
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [selectedParishId, setSelectedParishId] = useState<string>('');
   
-  const [activeTab, setActiveTab] = useState<'documents' | 'events' | 'hours' | 'qr'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'events' | 'hours' | 'qr' | 'councils'>('documents');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -740,19 +741,21 @@ export function SettingsPage() {
         title="Parish Settings"
         subtitle="Manage configurations for sacraments, documents, fees, and office operating hours."
         actions={
-          <button
-            onClick={() => void handleSaveSettings()}
-            disabled={saving || !selectedParishId || !isDirty}
-            className="flex items-center gap-2 px-5 py-2.5 bg-crimson-700 hover:bg-crimson-800 text-white text-sm font-semibold rounded-lg shadow disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Save Configurations'}
-          </button>
+          activeTab !== 'councils' ? (
+            <button
+              onClick={() => void handleSaveSettings()}
+              disabled={saving || !selectedParishId || !isDirty}
+              className="flex items-center gap-2 px-5 py-2.5 bg-crimson-700 hover:bg-crimson-800 text-white text-sm font-semibold rounded-lg shadow disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              {saving ? 'Saving...' : 'Save Configurations'}
+            </button>
+          ) : undefined
         }
       />
 
-      {/* Unsaved Changes Banner */}
-      {isDirty && (
+      {/* Unsaved Changes Banner (for general settings tabs) */}
+      {isDirty && activeTab !== 'councils' && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
@@ -783,8 +786,8 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* Parish Selector (Diocese Coordinator Only) */}
-      {isCoordinator && (
+      {/* Parish Selector (Diocese Coordinator Only, for general settings tabs) */}
+      {isCoordinator && activeTab !== 'councils' && (
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-1">
@@ -867,6 +870,18 @@ export function SettingsPage() {
           >
             <QrCode className="w-4 h-4" />
             Payment QR Code
+          </button>
+          <button
+            onClick={() => setActiveTab('councils')}
+            className={cn(
+              'flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer',
+              activeTab === 'councils'
+                ? 'border-crimson-700 text-crimson-700 bg-white'
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+            )}
+          >
+            <Users className="w-4 h-4" />
+            Parish Councils
           </button>
         </div>
 
@@ -1939,6 +1954,11 @@ export function SettingsPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Tab 5: Parish Councils */}
+          {activeTab === 'councils' && (
+            <ParishCouncilEditor />
           )}
         </div>
       </div>

@@ -37,6 +37,20 @@ export interface Parish {
   availableDocuments?: string[] | null;
   venueCapacity?: number | null;
   eventSettings?: any;
+  councils?: {
+    pastoral: {
+      members: Array<{
+        positionTitle: string;
+        memberName: string;
+      }>;
+    };
+    finance: {
+      members: Array<{
+        positionTitle: string;
+        memberName: string;
+      }>;
+    } | null;
+  } | null;
 }
 
 export type RequestStatus =

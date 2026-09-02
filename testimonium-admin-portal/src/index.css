@@ -22,7 +22,11 @@
     padding: 0;
   }
 
-  html {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -44,7 +48,7 @@
   .sidebar {
     background: linear-gradient(180deg, #6B0F1A 0%, #4A0A12 100%);
     width: 268px;
-    min-height: 100vh;
+    height: 100%;
     flex-shrink: 0;
   }
 

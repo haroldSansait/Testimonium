@@ -17,7 +17,10 @@ import type {
   DocumentAnalyticsStat,
   ParishAnalyticsStat,
   Parish,
-  ManagedUser
+  ManagedUser,
+  ParishCouncilConfig,
+  SaveCouncilPayload,
+  ParishSelectorItem
 } from '@/types';
 import type { PaginatedResponse } from '@/types/api';
 
@@ -222,6 +225,9 @@ export interface ParishProvider {
     email?: string | null;
   }): Promise<Parish>;
   uploadParishImage(id: string, type: 'cover' | 'logo', file: File): Promise<{ url: string; type: string }>;
+  getCouncilConfig(parishId: string): Promise<ParishCouncilConfig>;
+  saveCouncil(parishId: string, payload: SaveCouncilPayload): Promise<ParishCouncilConfig>;
+  getParishesForSelector(): Promise<ParishSelectorItem[]>;
 }
 
 export interface UserProvider {

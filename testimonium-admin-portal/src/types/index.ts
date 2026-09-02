@@ -380,6 +380,41 @@ export interface Parish {
   schedulingConfigVersion?: number;
 }
 
+// ─── Parish Councils ──────────────────────────────────────────────────────────
+
+export interface CouncilMemberDraft {
+  id?: string;
+  positionTitle: string;
+  memberName: string;
+  sortOrder?: number;
+}
+
+export interface ParishCouncilConfig {
+  parishId: string;
+  version: number;
+  financeCouncilEnabled: boolean;
+  pastoralCouncilMembers: CouncilMemberDraft[];
+  financeCouncilMembers: CouncilMemberDraft[];
+}
+
+export interface SaveCouncilPayload {
+  expectedVersion: number;
+  financeCouncilEnabled: boolean;
+  pastoralCouncilMembers: Array<{
+    positionTitle: string;
+    memberName: string;
+  }>;
+  financeCouncilMembers: Array<{
+    positionTitle: string;
+    memberName: string;
+  }>;
+}
+
+export interface ParishSelectorItem {
+  id: string;
+  name: string;
+}
+
 // ─── User Management ──────────────────────────────────────────────────────────
 
 export type ManagedUserRole = 'DIOCESE_COORDINATOR' | 'SECRETARY' | 'PRIEST' | 'ASSISTANT_PRIEST' | 'PARISHIONER';

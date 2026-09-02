@@ -106,5 +106,20 @@ export const ApiParishProvider: ParishProvider = {
       }
     );
     return response.data.data;
-  }
+  },
+
+  async getCouncilConfig(parishId: string) {
+    const response = await api.get<ApiResponseEnvelope<any>>(`/parishes/${parishId}/councils`);
+    return response.data.data;
+  },
+
+  async saveCouncil(parishId: string, payload: any) {
+    const response = await api.put<ApiResponseEnvelope<any>>(`/parishes/${parishId}/councils`, payload);
+    return response.data.data;
+  },
+
+  async getParishesForSelector() {
+    const response = await api.get<ApiResponseEnvelope<any>>('/parishes/selector');
+    return response.data.data;
+  },
 };

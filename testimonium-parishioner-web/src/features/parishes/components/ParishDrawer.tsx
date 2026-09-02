@@ -22,6 +22,8 @@ import {
 } from '../../../config/documents';
 import { ParishPersonnelList } from './ParishPersonnelList';
 import { ParishMassSchedule } from './ParishMassSchedule';
+import { ParishCouncilSection } from './ParishCouncilSection';
+import { useParish } from '../../../hooks/useService';
 
 interface ParishDrawerProps {
   parish: Parish;
@@ -54,6 +56,8 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
   onScheduleAppointment, 
   onClose 
 }) => {
+  const { data: detailParish, loading: loadingDetail } = useParish(parish.id);
+  const effectiveParish = detailParish || parish;
   
   // Calculate if the parish office is currently open based on current time
   const isOfficeOpen = () => {
@@ -259,6 +263,8 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
               </span>
               <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
             </div>
+
+            <ParishCouncilSection councils={effectiveParish.councils} loading={loadingDetail && !detailParish} />
           </div>
 
           <div className="space-y-4">

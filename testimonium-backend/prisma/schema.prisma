@@ -224,11 +224,46 @@ model Parish {
   serviceWeekdayRules     ParishServiceWeekdayRule[]
   scheduleDateRules       ParishScheduleDateRule[]
   dailyReports            DailyReport[]
+  councilConfiguration   ParishCouncilConfiguration?
 
   @@index([type])
   @@index([isActive])
   @@index([municipalityCity])
   @@map("parishes")
+}
+
+enum ParishCouncilType {
+  PASTORAL
+  FINANCE
+}
+
+model ParishCouncilConfiguration {
+  id                    Int                   @id @default(autoincrement()) @map("config_id")
+  parishId              Int                   @unique @map("parish_id")
+  financeCouncilEnabled Boolean               @default(false) @map("finance_council_enabled")
+  version               Int                   @default(1)
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  parish                Parish                @relation(fields: [parishId], references: [id], onDelete: Cascade)
+  members               ParishCouncilMember[]
+
+  @@map("parish_council_configurations")
+}
+
+model ParishCouncilMember {
+  id                     Int                        @id @default(autoincrement()) @map("member_id")
+  councilConfigurationId Int                        @map("council_configuration_id")
+  councilType            ParishCouncilType          @map("council_type")
+  positionTitle          String                     @map("position_title") @db.VarChar(200)
+  memberName             String                     @map("member_name") @db.VarChar(200)
+  sortOrder              Int                        @map("sort_order")
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+  councilConfiguration   ParishCouncilConfiguration @relation(fields: [councilConfigurationId], references: [id], onDelete: Cascade)
+
+  @@index([councilConfigurationId, councilType])
+  @@index([councilConfigurationId, sortOrder])
+  @@map("parish_council_members")
 }
 
 model User {

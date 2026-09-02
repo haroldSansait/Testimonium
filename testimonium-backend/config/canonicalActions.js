@@ -31,6 +31,7 @@ export const CANONICAL_ACTION_TYPES = [
   "Parish Availability Created",
   "Parish Availability Deleted",
   "Parish Coordinates Updated",
+  "Parish Council Information Updated",
   "Parish Created",
   "Parish Creation Failed",
   "Parish Directory Settings Updated",

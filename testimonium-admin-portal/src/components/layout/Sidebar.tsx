@@ -309,7 +309,7 @@ export function Sidebar() {
   return (
     <>
       <aside
-        className="sidebar flex flex-col transition-all duration-300 ease-in-out select-none border-r border-white/5 relative z-20"
+        className="sidebar flex flex-col transition-all duration-300 ease-in-out select-none border-r border-white/5 relative z-20 h-full"
         style={{ width: isExpanded ? '280px' : '76px' }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -340,7 +340,7 @@ export function Sidebar() {
         <div className="h-px bg-white/10 mx-4 mb-3" />
 
         {/* Navigation grouped by Categories */}
-        <nav className="flex-1 px-2 py-2 space-y-4 overflow-y-auto">
+        <nav className="flex-1 min-h-0 px-2 py-2 space-y-4 overflow-y-auto">
           {categorizedItems.map((cat) => (
             <div key={cat.title} className="space-y-1">
               {isExpanded ? (

@@ -328,6 +328,15 @@ export class ParishService {
           });
         }
 
+        // Initialize ParishCouncilConfiguration (PPC available with 0 members, PFC disabled)
+        await tx.parishCouncilConfiguration.create({
+          data: {
+            parishId: parish.id,
+            financeCouncilEnabled: false,
+            version: 1,
+          },
+        });
+
         if (priestMode === "existing" && existingPriestUser) {
           if (existingPriestUser.parishId && existingPriestUser.parishId !== parish.id) {
             await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(existingPriestUser.id, existingPriestUser.parishId, tx, name);
@@ -871,6 +880,28 @@ export class ParishService {
         p.availableDocuments !== null && p.availableDocuments !== undefined
           ? getEffectiveOfferedDocuments(p.availableDocuments)
           : [...DEFAULT_OFFERED_DOCUMENTS],
+      councils: p.councilConfiguration
+        ? {
+            pastoral: {
+              members: (p.councilConfiguration.members || [])
+                .filter((m) => m.councilType === "PASTORAL")
+                .map((m) => ({
+                  positionTitle: m.positionTitle,
+                  memberName: m.memberName,
+                })),
+            },
+            finance: p.councilConfiguration.financeCouncilEnabled
+              ? {
+                  members: (p.councilConfiguration.members || [])
+                    .filter((m) => m.councilType === "FINANCE")
+                    .map((m) => ({
+                      positionTitle: m.positionTitle,
+                      memberName: m.memberName,
+                    })),
+                }
+              : null,
+          }
+        : null,
     };
   }
 

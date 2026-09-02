@@ -424,5 +424,29 @@ export const DemoParishProvider: ParishProvider = {
     });
 
     return { url: fakeUrl, type };
-  }
+  },
+
+  async getCouncilConfig(parishId: string) {
+    return {
+      parishId,
+      version: 1,
+      financeCouncilEnabled: false,
+      pastoralCouncilMembers: [],
+      financeCouncilMembers: [],
+    };
+  },
+
+  async saveCouncil(parishId: string, payload: any) {
+    return {
+      parishId,
+      version: payload.expectedVersion + 1,
+      financeCouncilEnabled: payload.financeCouncilEnabled,
+      pastoralCouncilMembers: payload.pastoralCouncilMembers || [],
+      financeCouncilMembers: payload.financeCouncilMembers || [],
+    };
+  },
+
+  async getParishesForSelector() {
+    return store.filter((p) => p.status === "Active").map((p) => ({ id: p.id, name: p.name }));
+  },
 };

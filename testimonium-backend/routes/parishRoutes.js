@@ -16,6 +16,11 @@ import {
   updateSettings as updateDirectorySettings,
   uploadImage,
 } from "../controllers/ParishMapController.js";
+import {
+  getSelector,
+  getCouncilConfig,
+  saveCouncil,
+} from "../controllers/ParishCouncilController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
@@ -25,6 +30,7 @@ import {
   batchUpdateMapSchema,
   updateDirectorySettingsSchema,
 } from "../validators/parishSchemas.js";
+import { saveCouncilSchema } from "../validators/councilSchemas.js";
 import {
   mapSaveRateLimiter,
   parishImageUploadRateLimiter,
@@ -48,13 +54,18 @@ const memoryUpload2MB = multer({
 // Apply authentication middleware
 router.use(authenticateFirebaseToken);
 
-// Map Configuration static routes (defined before /:id parameter routes)
+// Static routes (defined before /:id parameter routes)
 router.get("/map-config", checkRole(["DIOCESE_COORDINATOR"]), getMapConfig);
 router.patch("/map-config/batch", checkRole(["DIOCESE_COORDINATOR"]), mapSaveRateLimiter, validateBody(batchUpdateMapSchema), batchUpdateMap);
+router.get("/selector", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), getSelector);
 
 // Publicly read parishes for all authenticated users
 router.get("/", list);
 router.get("/:id", getById);
+
+// Parish Council Configuration & Management (Accessible by DIOCESE_COORDINATOR, SECRETARY)
+router.get("/:id/councils", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), getCouncilConfig);
+router.put("/:id/councils", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), validateBody(saveCouncilSchema), saveCouncil);
 
 // Parish Settings & Payment QR management (Accessible by DIOCESE_COORDINATOR, SECRETARY, PRIEST)
 router.put("/:id/settings", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", "PRIEST"]), updateSettings);
