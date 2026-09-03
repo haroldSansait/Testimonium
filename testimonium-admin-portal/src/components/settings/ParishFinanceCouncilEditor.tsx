@@ -81,7 +81,7 @@ export const ParishFinanceCouncilEditor: React.FC<ParishFinanceCouncilEditorProp
         </div>
 
         {/* Native Controlled Checkbox / Toggle */}
-        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+        <label className="relative flex items-center gap-2.5 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={enabled}
