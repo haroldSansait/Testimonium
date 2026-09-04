@@ -383,10 +383,12 @@ export interface Parish {
 // ─── Parish Councils ──────────────────────────────────────────────────────────
 
 export interface CouncilMemberDraft {
-  id?: string;
+  uiKey: string;       // client-only stable React identity
+  id?: number;         // persistent DB ID only when saved
   positionTitle: string;
   memberName: string;
   sortOrder?: number;
+  photoUrl?: string | null;
 }
 
 export interface ParishCouncilConfig {
@@ -401,10 +403,12 @@ export interface SaveCouncilPayload {
   expectedVersion: number;
   financeCouncilEnabled: boolean;
   pastoralCouncilMembers: Array<{
+    id?: number;
     positionTitle: string;
     memberName: string;
   }>;
   financeCouncilMembers: Array<{
+    id?: number;
     positionTitle: string;
     memberName: string;
   }>;

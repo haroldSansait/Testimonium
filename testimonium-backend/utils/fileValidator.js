@@ -305,4 +305,67 @@ export class FileValidator {
 
     return { signature, normalizedMime };
   }
+
+  /**
+   * Validates Council Officer Photo uploads:
+   *  - JPEG, PNG, and WebP only
+   *  - Max 2 MB
+   *  - Verified by magic byte signature
+   */
+  static validateCouncilOfficerPhoto(file) {
+    const MAX_OFFICER_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB
+
+    if (!file) {
+      throw new FileValidationError("Officer photo file is required.", {
+        code: "COUNCIL_IMAGE_TYPE_INVALID",
+        statusCode: 400,
+        field: "photo",
+      });
+    }
+
+    if (file.size === 0 || !file.buffer || file.buffer.length === 0) {
+      throw new FileValidationError("Uploaded officer photo file is empty (0 bytes).", {
+        code: "COUNCIL_IMAGE_TYPE_INVALID",
+        statusCode: 400,
+        field: "photo",
+      });
+    }
+
+    if (file.size > MAX_OFFICER_PHOTO_BYTES) {
+      throw new FileValidationError("Officer photo exceeds the allowable 2MB limit.", {
+        code: "COUNCIL_IMAGE_TOO_LARGE",
+        statusCode: 413,
+        field: "photo",
+      });
+    }
+
+    const rawMime = (file.mimetype || "").toLowerCase().trim();
+    const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+
+    const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedMimes.includes(normalizedMime)) {
+      throw new FileValidationError(
+        `Invalid image format (${file.mimetype || "unknown"}). Only JPEG, PNG, and WebP are allowed.`,
+        {
+          code: "COUNCIL_IMAGE_TYPE_INVALID",
+          statusCode: 400,
+          field: "photo",
+        }
+      );
+    }
+
+    const signature = detectFileSignature(file.buffer);
+    if (!signature || !["jpeg", "png", "webp"].includes(signature)) {
+      throw new FileValidationError(
+        "Officer photo image verification failed. File content does not match genuine JPEG, PNG, or WebP format.",
+        {
+          code: "COUNCIL_IMAGE_TYPE_INVALID",
+          statusCode: 400,
+          field: "photo",
+        }
+      );
+    }
+
+    return { signature, normalizedMime };
+  }
 }

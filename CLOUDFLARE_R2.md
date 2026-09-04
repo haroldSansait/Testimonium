@@ -28,8 +28,9 @@ The backend constructs its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflare
 | `parishes/parish_<parishId>/cover/<uuid>_<name>` | Parish image service | `parishes.cover_image` |
 | `parishes/parish_<parishId>/logo/<uuid>_<name>` | Parish image service | `parishes.logo_image` |
 | `parishes/parish_<parishId>/qr/<uuid>_<name>` | Parish payment QR service | `parishes.payment_qr_image` |
+| `councils/parish_<parishId>/officers/<uuid>.<ext>` | Council officer photo service | `parish_council_members.photo_object_key` |
 
-Object filenames are sanitized to prevent directory traversal or malformed characters. Parish cover, logo, and QR writes utilize UUID prefixes to prevent cache collisions across updates. When replacing attachments, prior objects are pruned from R2 upon successful database commit. (Note: Parish Pastoral Council and Parish Finance Council personnel records are stored as structured text attributes in PostgreSQL relational tables, requiring no binary asset storage in R2).
+Object filenames are sanitized to prevent directory traversal or malformed characters. Parish cover, logo, QR, and council officer photo writes utilize UUID prefixes to prevent cache collisions across updates. When replacing attachments or photos, prior objects are pruned from R2 only after successful database commit.
 
 ## Upload controls and client handling
 
@@ -39,6 +40,7 @@ Object filenames are sanitized to prevent directory traversal or malformed chara
 | Payment receipt | JPEG, PNG | 5 MB, 1 file | `receipt` | Rate-limited. HEIC/HEIF is rejected by backend; mobile converts HEIC to JPEG locally before upload. |
 | Parish cover/logo | JPEG, PNG, WebP (magic-byte checked) | 5 MB | `image` | Admin portal coordinator actions. |
 | Parish payment QR | JPEG, PNG, WebP (magic-byte checked) | 2 MB | `qrImage` | Admin portal staff settings. |
+| Council officer photo | JPEG, PNG, WebP (magic-byte checked) | 2 MB | `photo` | Admin portal PPC/PFC member photo upload/replace. Public DTO exposes `photoUrl` only; `photoObjectKey` is strictly staff/internal. |
 
 Receipt uploads intentionally reject HEIC/HEIF at the API boundary because the backend image optimization and OCR pipeline only accept standard JPEG and PNG inputs. The parishioner mobile app detects iOS HEIC images and converts them client-side into valid JPEG buffers prior to transmission.
 

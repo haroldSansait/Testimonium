@@ -8,16 +8,20 @@ export interface ParishFinanceCouncilEditorProps {
   enabled: boolean;
   members: CouncilMemberDraft[];
   disabled?: boolean;
+  parishId?: string;
   onEnabledChange: (enabled: boolean) => void;
   onMembersChange: (members: CouncilMemberDraft[]) => void;
+  onPhotoChange?: (index: number, photoUrl: string | null) => void;
 }
 
 export const ParishFinanceCouncilEditor: React.FC<ParishFinanceCouncilEditorProps> = ({
   enabled,
   members,
   disabled = false,
+  parishId,
   onEnabledChange,
   onMembersChange,
+  onPhotoChange,
 }) => {
   const handleAddMember = () => {
     const newMember = createFinanceDraftMember();
@@ -125,15 +129,17 @@ export const ParishFinanceCouncilEditor: React.FC<ParishFinanceCouncilEditorProp
           <div className="space-y-3">
             {members.map((member, index) => (
               <FinanceCouncilMemberRow
-                key={member.id || `pfc-${index}`}
+                key={member.uiKey}
                 member={member}
                 index={index}
                 totalCount={members.length}
                 disabled={disabled}
+                parishId={parishId}
                 onUpdate={handleUpdateMember}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
                 onRemove={handleRemoveMember}
+                onPhotoChange={onPhotoChange}
               />
             ))}
           </div>

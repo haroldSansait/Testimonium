@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import type { CouncilMemberDraft } from '@/types';
+import { OfficerPhotoUploader } from './OfficerPhotoUploader';
 
 interface CouncilMemberRowProps {
   member: CouncilMemberDraft;
@@ -12,6 +13,8 @@ interface CouncilMemberRowProps {
   onMoveDown: (index: number) => void;
   onRemove: (index: number) => void;
   isDuplicate?: boolean;
+  parishId?: string;
+  onPhotoChange?: (index: number, photoUrl: string | null) => void;
 }
 
 export const CouncilMemberRow: React.FC<CouncilMemberRowProps> = ({
@@ -24,6 +27,8 @@ export const CouncilMemberRow: React.FC<CouncilMemberRowProps> = ({
   onMoveDown,
   onRemove,
   isDuplicate = false,
+  parishId,
+  onPhotoChange,
 }) => {
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
@@ -39,11 +44,20 @@ export const CouncilMemberRow: React.FC<CouncilMemberRowProps> = ({
       }`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        {/* Row Index Indicator */}
-        <div className="flex items-center gap-2">
+        {/* Row Index Indicator & Photo */}
+        <div className="flex items-center gap-2.5">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-500 font-semibold text-xs flex items-center justify-center font-mono">
             {index + 1}
           </span>
+          <OfficerPhotoUploader
+            parishId={parishId}
+            memberId={member?.id}
+            photoUrl={member?.photoUrl}
+            memberName={memberName}
+            disabled={disabled}
+            onPhotoUploaded={(url) => onPhotoChange?.(index, url)}
+            onPhotoRemoved={() => onPhotoChange?.(index, null)}
+          />
         </div>
 
         {/* Position / Role Input */}

@@ -437,16 +437,43 @@ export const DemoParishProvider: ParishProvider = {
   },
 
   async saveCouncil(parishId: string, payload: any) {
+    let mockId = 9000;
     return {
       parishId,
       version: payload.expectedVersion + 1,
       financeCouncilEnabled: payload.financeCouncilEnabled,
-      pastoralCouncilMembers: payload.pastoralCouncilMembers || [],
-      financeCouncilMembers: payload.financeCouncilMembers || [],
+      pastoralCouncilMembers: (payload.pastoralCouncilMembers || []).map((m: any, idx: number) => ({
+        id: typeof m?.id === 'number' ? m.id : ++mockId,
+        positionTitle: m?.positionTitle || '',
+        memberName: m?.memberName || '',
+        sortOrder: idx,
+        photoUrl: m?.photoUrl || null,
+      })),
+      financeCouncilMembers: (payload.financeCouncilMembers || []).map((m: any, idx: number) => ({
+        id: typeof m?.id === 'number' ? m.id : ++mockId,
+        positionTitle: m?.positionTitle || '',
+        memberName: m?.memberName || '',
+        sortOrder: idx,
+        photoUrl: m?.photoUrl || null,
+      })),
     };
   },
 
   async getParishesForSelector() {
     return store.filter((p) => p.status === "Active").map((p) => ({ id: p.id, name: p.name }));
+  },
+
+  async uploadCouncilOfficerPhoto(_parishId: string, memberId: string, _file: File): Promise<{ memberId: string; photoUrl: string }> {
+    return {
+      memberId,
+      photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400",
+    };
+  },
+
+  async removeCouncilOfficerPhoto(_parishId: string, memberId: string): Promise<{ memberId: string; photoUrl: null }> {
+    return {
+      memberId,
+      photoUrl: null,
+    };
   },
 };

@@ -31,6 +31,45 @@ import {
   ensureFinanceDraftForEnabledState,
 } from '@/utils/councilReconciliation';
 
+let ppcDraftCounter = 0;
+
+const mapMemberFromApi = (m: any, prefix: string, idx: number): CouncilMemberDraft => {
+  const numericId = typeof m?.id === 'number'
+    ? m.id
+    : (typeof m?.id === 'string' && /^\d+$/.test(m.id.trim()) ? parseInt(m.id.trim(), 10) : undefined);
+  return {
+    uiKey: numericId ? `member-${numericId}` : `${prefix}-draft-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+    id: numericId,
+    positionTitle: m?.positionTitle || '',
+    memberName: m?.memberName || '',
+    sortOrder: typeof m?.sortOrder === 'number' ? m.sortOrder : idx,
+    photoUrl: m?.photoUrl || null,
+  };
+};
+
+const reconcileMembersWithState = (
+  localList: CouncilMemberDraft[],
+  serverList: any[],
+  prefix: string
+): CouncilMemberDraft[] => {
+  if (!Array.isArray(serverList)) return [];
+  return serverList.map((sm: any, idx: number) => {
+    const numericId = typeof sm?.id === 'number'
+      ? sm.id
+      : (typeof sm?.id === 'string' && /^\d+$/.test(sm.id.trim()) ? parseInt(sm.id.trim(), 10) : undefined);
+    const localItem = localList[idx];
+    const uiKey = localItem?.uiKey || (numericId ? `member-${numericId}` : `${prefix}-${Date.now()}-${idx}`);
+    return {
+      uiKey,
+      id: numericId,
+      positionTitle: sm?.positionTitle || '',
+      memberName: sm?.memberName || '',
+      sortOrder: typeof sm?.sortOrder === 'number' ? sm.sortOrder : idx,
+      photoUrl: sm?.photoUrl !== undefined ? sm.photoUrl : (localItem?.photoUrl || null),
+    };
+  });
+};
+
 export const ParishCouncilEditor: React.FC = () => {
   const { role, applicationUser } = useAuth();
 
@@ -98,26 +137,29 @@ export const ParishCouncilEditor: React.FC = () => {
     const currentGen = ++requestGenRef.current;
     setLoadingCouncil(true);
     setStaleConflict(false);
-
     try {
       const config: ParishCouncilConfig = await ParishCouncilService.getCouncilConfig(parishId);
 
       // If a newer request was dispatched while this was in-flight, discard this response
       if (currentGen !== requestGenRef.current) return;
 
+      const loadedPpc = (Array.isArray(config.pastoralCouncilMembers) ? config.pastoralCouncilMembers : [])
+        .map((m: any, idx: number) => mapMemberFromApi(m, 'ppc', idx));
+      const loadedPfc = (Array.isArray(config.financeCouncilMembers) ? config.financeCouncilMembers : [])
+        .map((m: any, idx: number) => mapMemberFromApi(m, 'pfc', idx));
+
       const snapshot: CouncilStateSnapshot = {
         version: config.version || 1,
         financeCouncilEnabled: Boolean(config.financeCouncilEnabled),
-        pastoralCouncilMembers: Array.isArray(config.pastoralCouncilMembers) ? config.pastoralCouncilMembers : [],
-        financeCouncilMembers: Array.isArray(config.financeCouncilMembers) ? config.financeCouncilMembers : [],
+        pastoralCouncilMembers: loadedPpc,
+        financeCouncilMembers: loadedPfc,
       };
 
       setBaselineSnapshot(snapshot);
       setVersion(config.version || 1);
       setFinanceCouncilEnabled(Boolean(config.financeCouncilEnabled));
-      setPastoralMembers(Array.isArray(config.pastoralCouncilMembers) ? config.pastoralCouncilMembers : []);
-      const loadedFinance = Array.isArray(config.financeCouncilMembers) ? config.financeCouncilMembers : [];
-      setFinanceMembers(ensureFinanceDraftForEnabledState(Boolean(config.financeCouncilEnabled), loadedFinance));
+      setPastoralMembers(loadedPpc);
+      setFinanceMembers(ensureFinanceDraftForEnabledState(Boolean(config.financeCouncilEnabled), loadedPfc));
     } catch (err: any) {
       if (currentGen !== requestGenRef.current) return;
       console.error('[ParishCouncilEditor] Failed to load council config:', err);
@@ -271,7 +313,14 @@ export const ParishCouncilEditor: React.FC = () => {
 
   // PPC Member list operations
   const handleAddPastoralMember = () => {
-    setPastoralMembers((prev) => [...prev, { positionTitle: '', memberName: '' }]);
+    setPastoralMembers((prev) => [
+      ...prev,
+      {
+        uiKey: `ppc-draft-${Date.now()}-${++ppcDraftCounter}-${Math.random().toString(36).substring(2, 7)}`,
+        positionTitle: '',
+        memberName: '',
+      },
+    ]);
   };
 
   const handleUpdatePastoralMember = (index: number, field: 'positionTitle' | 'memberName', value: string) => {
@@ -308,6 +357,24 @@ export const ParishCouncilEditor: React.FC = () => {
     setPastoralMembers((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handlePastoralPhotoChange = (index: number, photoUrl: string | null) => {
+    setPastoralMembers((prev) => {
+      const next = [...prev];
+      if (next[index]) {
+        next[index] = { ...next[index], photoUrl };
+      }
+      return next;
+    });
+    setBaselineSnapshot((prev) => {
+      if (!prev) return prev;
+      const nextMembers = [...(prev.pastoralCouncilMembers || [])];
+      if (nextMembers[index]) {
+        nextMembers[index] = { ...nextMembers[index], photoUrl };
+      }
+      return { ...prev, pastoralCouncilMembers: nextMembers };
+    });
+  };
+
   // PFC Member & Enable state handlers
   const handleFinanceEnabledChange = (enabled: boolean) => {
     setFinanceCouncilEnabled(enabled);
@@ -322,6 +389,24 @@ export const ParishCouncilEditor: React.FC = () => {
     } else {
       setFinanceMembers(nextMembers);
     }
+  };
+
+  const handleFinancePhotoChange = (index: number, photoUrl: string | null) => {
+    setFinanceMembers((prev) => {
+      const next = [...prev];
+      if (next[index]) {
+        next[index] = { ...next[index], photoUrl };
+      }
+      return next;
+    });
+    setBaselineSnapshot((prev) => {
+      if (!prev) return prev;
+      const nextMembers = [...(prev.financeCouncilMembers || [])];
+      if (nextMembers[index]) {
+        nextMembers[index] = { ...nextMembers[index], photoUrl };
+      }
+      return { ...prev, financeCouncilMembers: nextMembers };
+    });
   };
 
   // Discard local changes back to baseline
@@ -355,10 +440,12 @@ export const ParishCouncilEditor: React.FC = () => {
       expectedVersion: version,
       financeCouncilEnabled,
       pastoralCouncilMembers: (pastoralMembers || []).map((m) => ({
+        id: typeof m?.id === 'number' ? m.id : undefined,
         positionTitle: (m?.positionTitle || '').trim(),
         memberName: (m?.memberName || '').trim(),
       })),
       financeCouncilMembers: (financeMembers || []).map((m) => ({
+        id: typeof m?.id === 'number' ? m.id : undefined,
         positionTitle: (m?.positionTitle || '').trim(),
         memberName: (m?.memberName || '').trim(),
       })),
@@ -367,18 +454,21 @@ export const ParishCouncilEditor: React.FC = () => {
     try {
       const result = await ParishCouncilService.saveCouncil(selectedParishId, payload);
 
+      const reconciledPpc = reconcileMembersWithState(pastoralMembers, result.pastoralCouncilMembers, 'ppc');
+      const reconciledPfc = reconcileMembersWithState(financeMembers, result.financeCouncilMembers, 'pfc');
+
       const updatedSnapshot: CouncilStateSnapshot = {
         version: result.version || 1,
         financeCouncilEnabled: Boolean(result.financeCouncilEnabled),
-        pastoralCouncilMembers: Array.isArray(result.pastoralCouncilMembers) ? result.pastoralCouncilMembers : [],
-        financeCouncilMembers: Array.isArray(result.financeCouncilMembers) ? result.financeCouncilMembers : [],
+        pastoralCouncilMembers: reconciledPpc,
+        financeCouncilMembers: reconciledPfc,
       };
 
       setBaselineSnapshot(updatedSnapshot);
       setVersion(result.version || 1);
       setFinanceCouncilEnabled(Boolean(result.financeCouncilEnabled));
-      setPastoralMembers(Array.isArray(result.pastoralCouncilMembers) ? result.pastoralCouncilMembers : []);
-      setFinanceMembers(Array.isArray(result.financeCouncilMembers) ? result.financeCouncilMembers : []);
+      setPastoralMembers(reconciledPpc);
+      setFinanceMembers(reconciledPfc);
 
       setToast({
         message: 'Parish council information saved successfully.',
@@ -399,17 +489,20 @@ export const ParishCouncilEditor: React.FC = () => {
         try {
           const fresh = await ParishCouncilService.getCouncilConfig(selectedParishId);
           if (shouldReconcileAsSaved(version, payload, baselineSnapshot, fresh)) {
+            const reconciledPpc = reconcileMembersWithState(pastoralMembers, fresh.pastoralCouncilMembers, 'ppc');
+            const reconciledPfc = reconcileMembersWithState(financeMembers, fresh.financeCouncilMembers, 'pfc');
+
             const updatedSnapshot: CouncilStateSnapshot = {
               version: fresh.version || 1,
               financeCouncilEnabled: Boolean(fresh.financeCouncilEnabled),
-              pastoralCouncilMembers: Array.isArray(fresh.pastoralCouncilMembers) ? fresh.pastoralCouncilMembers : [],
-              financeCouncilMembers: Array.isArray(fresh.financeCouncilMembers) ? fresh.financeCouncilMembers : [],
+              pastoralCouncilMembers: reconciledPpc,
+              financeCouncilMembers: reconciledPfc,
             };
             setBaselineSnapshot(updatedSnapshot);
             setVersion(fresh.version || 1);
             setFinanceCouncilEnabled(Boolean(fresh.financeCouncilEnabled));
-            setPastoralMembers(Array.isArray(fresh.pastoralCouncilMembers) ? fresh.pastoralCouncilMembers : []);
-            setFinanceMembers(Array.isArray(fresh.financeCouncilMembers) ? fresh.financeCouncilMembers : []);
+            setPastoralMembers(reconciledPpc);
+            setFinanceMembers(reconciledPfc);
             setToast({
               message: 'Changes verified and saved successfully.',
               type: 'success',
@@ -591,14 +684,16 @@ export const ParishCouncilEditor: React.FC = () => {
               <div className="space-y-3">
                 {(pastoralMembers || []).map((member, index) => (
                   <CouncilMemberRow
-                    key={member?.id || `ppc-${index}`}
+                    key={member.uiKey}
                     member={member}
                     index={index}
                     totalCount={pastoralMembers.length}
+                    parishId={selectedParishId}
                     onUpdate={handleUpdatePastoralMember}
                     onMoveUp={handleMoveUpPastoral}
                     onMoveDown={handleMoveDownPastoral}
                     onRemove={handleRemovePastoral}
+                    onPhotoChange={handlePastoralPhotoChange}
                     isDuplicate={duplicatePastoralIndices.has(index)}
                   />
                 ))}
@@ -611,8 +706,10 @@ export const ParishCouncilEditor: React.FC = () => {
             enabled={financeCouncilEnabled}
             members={financeMembers}
             disabled={saving}
+            parishId={selectedParishId}
             onEnabledChange={handleFinanceEnabledChange}
             onMembersChange={handleFinanceMembersChange}
+            onPhotoChange={handleFinancePhotoChange}
           />
 
           {/* Action Bar / Save Footer */}

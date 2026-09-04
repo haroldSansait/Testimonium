@@ -20,4 +20,19 @@ export const ParishCouncilService = {
   async getParishesForSelector(): Promise<ParishSelectorItem[]> {
     return providerFactory.getParishProvider().getParishesForSelector();
   },
+
+  async uploadCouncilOfficerPhoto(
+    parishId: string,
+    memberId: string,
+    file: File
+  ): Promise<{ memberId: string; photoUrl: string }> {
+    return providerFactory.getParishProvider().uploadCouncilOfficerPhoto(parishId, memberId, file);
+  },
+
+  async removeCouncilOfficerPhoto(
+    parishId: string,
+    memberId: string
+  ): Promise<{ memberId: string; photoUrl: null }> {
+    return providerFactory.getParishProvider().removeCouncilOfficerPhoto(parishId, memberId);
+  },
 };

@@ -20,6 +20,8 @@ import {
   getSelector,
   getCouncilConfig,
   saveCouncil,
+  uploadOfficerPhoto,
+  removeOfficerPhoto,
 } from "../controllers/ParishCouncilController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
@@ -66,6 +68,18 @@ router.get("/:id", getById);
 // Parish Council Configuration & Management (Accessible by DIOCESE_COORDINATOR, SECRETARY)
 router.get("/:id/councils", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), getCouncilConfig);
 router.put("/:id/councils", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), validateBody(saveCouncilSchema), saveCouncil);
+router.post(
+  "/:id/councils/members/:memberId/photo",
+  checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]),
+  parishImageUploadRateLimiter,
+  memoryUpload2MB.single("photo"),
+  uploadOfficerPhoto
+);
+router.delete(
+  "/:id/councils/members/:memberId/photo",
+  checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]),
+  removeOfficerPhoto
+);
 
 // Parish Settings & Payment QR management (Accessible by DIOCESE_COORDINATOR, SECRETARY, PRIEST)
 router.put("/:id/settings", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", "PRIEST"]), updateSettings);

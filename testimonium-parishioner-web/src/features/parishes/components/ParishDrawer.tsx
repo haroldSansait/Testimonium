@@ -190,24 +190,33 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
         )}
 
         <div className="absolute bottom-3 left-4 right-4 text-white z-10 flex items-end justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                 officeIsOpen ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
               }`}>
                 {officeIsOpen ? 'Open Now' : 'Closed'}
               </span>
-              <span className="text-xs text-white/80 font-medium">
-                Feast: {parish.feastDay}
-              </span>
+              {effectiveParish.type && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-white/20 text-white backdrop-blur-xs">
+                  {effectiveParish.type}
+                </span>
+              )}
+              {parish.feastDay && (
+                <span className="text-xs text-white/80 font-medium">
+                  Feast: {parish.feastDay}
+                </span>
+              )}
             </div>
-            <h2 className="text-lg sm:text-xl font-bold font-serif leading-tight drop-shadow-sm">
+            <h2 className="text-lg sm:text-xl font-bold font-serif leading-tight drop-shadow-sm truncate">
               {parish.name}
             </h2>
-            <p className="text-xs text-white/90 flex items-center gap-1 mt-0.5">
-              <Award size={13} className="text-amber-300" />
-              Patron Saint: {parish.patronSaint}
-            </p>
+            {parish.patronSaint && (
+              <p className="text-xs text-white/90 flex items-center gap-1 mt-0.5 truncate">
+                <Award size={13} className="text-amber-300 flex-shrink-0" />
+                <span>Patron Saint: {parish.patronSaint}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -218,7 +227,14 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
             <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 text-xs space-y-2.5">
               <div className="flex items-start gap-2">
                 <MapPin size={14} className="text-crimson flex-shrink-0 mt-0.5" />
-                <span className="text-text-primary font-medium">{parish.address}</span>
+                <div className="min-w-0">
+                  <span className="text-text-primary font-medium block">{parish.address}</span>
+                  {(parish.city || parish.province) && (
+                    <span className="text-[11px] text-text-muted block mt-0.5">
+                      {[parish.city, parish.province].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                </div>
               </div>
               {parish.phone && (
                 <div className="flex items-center gap-2">
@@ -239,10 +255,16 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
                     href={parish.facebookPage} 
                     target="_blank" 
                     rel="noreferrer" 
-                    className="text-crimson font-bold hover:underline"
+                    className="text-crimson font-bold hover:underline truncate"
                   >
                     Official Facebook Page
                   </a>
+                </div>
+              )}
+              {effectiveParish.venueCapacity && (
+                <div className="flex items-center gap-2 pt-1 border-t border-border/40 text-[11px] text-text-muted">
+                  <span className="font-semibold text-text-primary">Seating Capacity:</span>
+                  <span>~{effectiveParish.venueCapacity.toLocaleString()} attendees</span>
                 </div>
               )}
             </div>
@@ -256,6 +278,30 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
               </p>
             </div>
 
+            {/* Photo Gallery if images exist */}
+            {Array.isArray(effectiveParish.gallery) && effectiveParish.gallery.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                  Parish Gallery
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {effectiveParish.gallery.slice(0, 3).map((imgUrl, idx) => (
+                    <div key={idx} className="h-16 rounded-lg overflow-hidden border border-border bg-neutral-100">
+                      <img
+                        src={imgUrl}
+                        alt={`${parish.name} view ${idx + 1}`}
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-2">
               <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider pb-1 border-b border-border/50">
                 <User size={12} className="mr-1.5 text-crimson" />
@@ -264,7 +310,11 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
               <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
             </div>
 
-            <ParishCouncilSection councils={effectiveParish.councils} loading={loadingDetail && !detailParish} />
+            <ParishCouncilSection
+              parishName={effectiveParish.name}
+              councils={effectiveParish.councils}
+              loading={loadingDetail && !detailParish}
+            />
           </div>
 
           <div className="space-y-4">

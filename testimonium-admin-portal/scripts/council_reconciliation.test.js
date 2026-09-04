@@ -208,22 +208,24 @@ test('Council Reconciliation and state helpers audit', async (t) => {
   await t.test('ensureFinanceDraftForEnabledState guarantees invariant when PFC enabled', () => {
     // createFinanceDraftMember generates unique draft shape
     const draftItem = createFinanceDraftMember();
-    assert.ok(draftItem.id && typeof draftItem.id === 'string');
+    assert.ok(draftItem.uiKey && typeof draftItem.uiKey === 'string');
+    assert.equal(draftItem.id, undefined);
     assert.equal(draftItem.positionTitle, '');
     assert.equal(draftItem.memberName, '');
 
     // When enabled with 0 members -> returns 1 empty draft
     const draftWhenZero = ensureFinanceDraftForEnabledState(true, []);
     assert.equal(draftWhenZero.length, 1);
-    assert.ok(draftWhenZero[0].id && typeof draftWhenZero[0].id === 'string');
+    assert.ok(draftWhenZero[0].uiKey && typeof draftWhenZero[0].uiKey === 'string');
+    assert.equal(draftWhenZero[0].id, undefined);
     assert.equal(draftWhenZero[0].positionTitle, '');
     assert.equal(draftWhenZero[0].memberName, '');
 
     // When enabled with existing members -> preserves without extra rows
-    const existing = [{ id: 'pfc-1', positionTitle: 'Treasurer', memberName: 'Jane' }];
+    const existing = [{ id: 101, uiKey: 'pfc-1', positionTitle: 'Treasurer', memberName: 'Jane' }];
     const preserved = ensureFinanceDraftForEnabledState(true, existing);
     assert.equal(preserved.length, 1);
-    assert.equal(preserved[0].id, 'pfc-1');
+    assert.equal(preserved[0].id, 101);
 
     // When disabled -> allows 0 members
     const disabledEmpty = ensureFinanceDraftForEnabledState(false, []);
@@ -232,7 +234,7 @@ test('Council Reconciliation and state helpers audit', async (t) => {
     // When disabled with members -> preserves them
     const disabledWithMembers = ensureFinanceDraftForEnabledState(false, existing);
     assert.equal(disabledWithMembers.length, 1);
-    assert.equal(disabledWithMembers[0].id, 'pfc-1');
+    assert.equal(disabledWithMembers[0].id, 101);
   });
 });
 

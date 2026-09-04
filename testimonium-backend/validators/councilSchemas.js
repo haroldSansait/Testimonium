@@ -1,6 +1,20 @@
 import { z } from "zod";
 
 export const councilMemberSchema = z.object({
+  id: z
+    .union([
+      z
+        .number({
+          invalid_type_error: "Council member ID must be a positive integer.",
+        })
+        .int("Council member ID must be a positive integer.")
+        .positive("Council member ID must be a positive integer."),
+      z
+        .string()
+        .regex(/^[1-9]\d*$/, "Council member ID must be a positive integer.")
+        .transform((val) => Number(val)),
+    ])
+    .optional(),
   positionTitle: z
     .string({
       required_error: "Position / title is required.",
@@ -26,6 +40,7 @@ export const councilMemberSchema = z.object({
       message: "Member name must not exceed 200 characters.",
     }),
   sortOrder: z.number().int().nonnegative().optional(),
+  photoUrl: z.string().nullable().optional(),
 });
 
 const checkForDuplicates = (members, councilName, ctx) => {
@@ -67,6 +82,26 @@ export const saveCouncilSchema = z
       .default([]),
   })
   .superRefine((data, ctx) => {
+    // Check duplicate submitted persistent member IDs
+    const seenIds = new Set();
+    const allMembers = [
+      ...(data.pastoralCouncilMembers || []),
+      ...(data.financeCouncilMembers || []),
+    ];
+    for (const m of allMembers) {
+      if (m.id !== undefined) {
+        if (seenIds.has(m.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate persistent council member ID ${m.id} submitted.`,
+            path: ["pastoralCouncilMembers"],
+          });
+          break;
+        }
+        seenIds.add(m.id);
+      }
+    }
+
     // Check duplicates inside Pastoral Council
     if (data.pastoralCouncilMembers && data.pastoralCouncilMembers.length > 0) {
       checkForDuplicates(data.pastoralCouncilMembers, "Parish Pastoral Council", ctx);

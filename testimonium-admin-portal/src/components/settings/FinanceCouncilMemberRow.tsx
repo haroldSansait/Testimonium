@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import type { CouncilMemberDraft } from '@/types';
+import { OfficerPhotoUploader } from './OfficerPhotoUploader';
 
 export interface FinanceCouncilMemberRowProps {
   member: CouncilMemberDraft;
@@ -11,6 +12,8 @@ export interface FinanceCouncilMemberRowProps {
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onRemove: (index: number) => void;
+  parishId?: string;
+  onPhotoChange?: (index: number, photoUrl: string | null) => void;
 }
 
 export const FinanceCouncilMemberRow: React.FC<FinanceCouncilMemberRowProps> = ({
@@ -22,6 +25,8 @@ export const FinanceCouncilMemberRow: React.FC<FinanceCouncilMemberRowProps> = (
   onMoveUp,
   onMoveDown,
   onRemove,
+  parishId,
+  onPhotoChange,
 }) => {
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
@@ -31,11 +36,20 @@ export const FinanceCouncilMemberRow: React.FC<FinanceCouncilMemberRowProps> = (
   return (
     <div className="p-3 sm:p-4 rounded-xl border border-slate-200 hover:border-slate-300 bg-white shadow-sm transition-all">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        {/* Row Index Indicator */}
-        <div className="flex items-center gap-2">
+        {/* Row Index Indicator & Photo */}
+        <div className="flex items-center gap-2.5">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-500 font-semibold text-xs flex items-center justify-center font-mono">
             {index + 1}
           </span>
+          <OfficerPhotoUploader
+            parishId={parishId}
+            memberId={member?.id}
+            photoUrl={member?.photoUrl}
+            memberName={memberName}
+            disabled={disabled}
+            onPhotoUploaded={(url) => onPhotoChange?.(index, url)}
+            onPhotoRemoved={() => onPhotoChange?.(index, null)}
+          />
         </div>
 
         {/* Position / Role Input */}

@@ -53,14 +53,15 @@ test('A. enabled=false with financeMembers=[] -> toggle ON creates 1 complete em
 
   assert.equal(enabled, true);
   assert.equal(financeMembers.length, 1);
-  assert.ok(financeMembers[0].id && typeof financeMembers[0].id === 'string');
+  assert.ok(financeMembers[0].uiKey && typeof financeMembers[0].uiKey === 'string');
+  assert.equal(financeMembers[0].id, undefined);
   assert.equal(financeMembers[0].positionTitle, '');
   assert.equal(financeMembers[0].memberName, '');
 });
 
 test('B. enabled=false with financeMembers=[existing member] -> toggle ON preserves row without extra blank member', () => {
   let enabled = false;
-  let financeMembers = [{ id: 'pfc-101', positionTitle: 'Treasurer', memberName: 'Jane Dela Cruz' }];
+  let financeMembers = [{ id: 101, uiKey: 'pfc-101', positionTitle: 'Treasurer', memberName: 'Jane Dela Cruz' }];
 
   const next = handleFinanceEnabledChange(true, financeMembers);
   enabled = next.enabled;
@@ -68,14 +69,14 @@ test('B. enabled=false with financeMembers=[existing member] -> toggle ON preser
 
   assert.equal(enabled, true);
   assert.equal(financeMembers.length, 1);
-  assert.equal(financeMembers[0].id, 'pfc-101');
+  assert.equal(financeMembers[0].id, 101);
   assert.equal(financeMembers[0].positionTitle, 'Treasurer');
   assert.equal(financeMembers[0].memberName, 'Jane Dela Cruz');
 });
 
 test('C. enabled=true with one member -> toggle OFF preserves members -> toggle ON restores same members', () => {
   let enabled = true;
-  let financeMembers = [{ id: 'pfc-101', positionTitle: 'Coordinator', memberName: 'Robert Smith' }];
+  let financeMembers = [{ id: 101, uiKey: 'pfc-101', positionTitle: 'Coordinator', memberName: 'Robert Smith' }];
 
   // Toggle OFF
   const offNext = handleFinanceEnabledChange(false, financeMembers);
@@ -93,20 +94,21 @@ test('C. enabled=true with one member -> toggle OFF preserves members -> toggle 
 
   assert.equal(enabled, true);
   assert.equal(financeMembers.length, 1);
-  assert.equal(financeMembers[0].id, 'pfc-101');
+  assert.equal(financeMembers[0].id, 101);
   assert.equal(financeMembers[0].positionTitle, 'Coordinator');
   assert.equal(financeMembers[0].memberName, 'Robert Smith');
 });
 
 test('D. enabled=true with one member -> remove final member immediately yields one new complete blank draft', () => {
   const enabled = true;
-  const financeMembers = [{ id: 'pfc-101', positionTitle: 'Treasurer', memberName: 'Jane' }];
+  const financeMembers = [{ id: 101, uiKey: 'pfc-101', positionTitle: 'Treasurer', memberName: 'Jane' }];
 
   const afterRemove = handleRemoveMember(enabled, financeMembers, 0);
 
   assert.equal(afterRemove.length, 1);
-  assert.notEqual(afterRemove[0].id, 'pfc-101');
-  assert.ok(afterRemove[0].id && typeof afterRemove[0].id === 'string');
+  assert.notEqual(afterRemove[0].uiKey, 'pfc-101');
+  assert.ok(afterRemove[0].uiKey && typeof afterRemove[0].uiKey === 'string');
+  assert.equal(afterRemove[0].id, undefined);
   assert.equal(afterRemove[0].positionTitle, '');
   assert.equal(afterRemove[0].memberName, '');
 });

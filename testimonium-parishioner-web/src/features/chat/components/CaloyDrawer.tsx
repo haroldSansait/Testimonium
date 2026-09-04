@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Send } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import services from '../../../providers/factory';
@@ -129,7 +130,7 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose }) => 
     }
   };
 
-  return (
+  const drawerElement = (
     <div 
       className={`fixed inset-0 z-[9999] flex justify-end ${
         isOpen ? 'pointer-events-auto' : 'pointer-events-none'
@@ -204,23 +205,17 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose }) => 
           {/* Typing Indicator */}
           {isTyping && (
             <div className="flex justify-start">
-              <div className="bg-white border border-border rounded-card rounded-tl-none p-3 shadow-sm flex items-center space-x-2">
-                <span className="text-xs text-text-muted italic">Caloy is thinking</span>
-                <span className="flex space-x-1">
-                  <span className="w-1.5 h-1.5 bg-crimson rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <span className="w-1.5 h-1.5 bg-crimson rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <span className="w-1.5 h-1.5 bg-crimson rounded-full animate-bounce" />
-                </span>
+              <div className="bg-white border border-border rounded-card rounded-tl-none p-3 shadow-sm flex items-center space-x-1.5">
+                <div className="w-2 h-2 rounded-full bg-crimson/50 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 rounded-full bg-crimson/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 rounded-full bg-crimson/50 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           )}
         </div>
 
-        {/* Message Form Footer */}
-        <form 
-          onSubmit={handleSend} 
-          className="p-3 border-t border-border bg-white flex items-center space-x-2 flex-shrink-0"
-        >
+        {/* Input Bar */}
+        <form onSubmit={handleSend} className="p-3 bg-white border-t border-border flex items-center space-x-2">
           <input
             ref={inputRef}
             type="text"
@@ -244,6 +239,10 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose }) => 
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(drawerElement, document.body)
+    : drawerElement;
 };
 
 export default CaloyDrawer;

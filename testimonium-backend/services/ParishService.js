@@ -888,6 +888,7 @@ export class ParishService {
                 .map((m) => ({
                   positionTitle: m.positionTitle,
                   memberName: m.memberName,
+                  photoUrl: m.photoUrl || null,
                 })),
             },
             finance: p.councilConfiguration.financeCouncilEnabled
@@ -897,6 +898,7 @@ export class ParishService {
                     .map((m) => ({
                       positionTitle: m.positionTitle,
                       memberName: m.memberName,
+                      photoUrl: m.photoUrl || null,
                     })),
                 }
               : null,

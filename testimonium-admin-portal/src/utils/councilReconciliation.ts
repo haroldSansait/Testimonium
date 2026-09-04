@@ -11,9 +11,11 @@ export interface CouncilStateSnapshot {
   financeCouncilMembers: CouncilMemberDraft[];
 }
 
+let draftCounter = 0;
+
 export function createFinanceDraftMember(): CouncilMemberDraft {
   return {
-    id: `pfc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    uiKey: `pfc-draft-${Date.now()}-${++draftCounter}-${Math.random().toString(36).substring(2, 7)}`,
     positionTitle: '',
     memberName: '',
   };
@@ -30,25 +32,31 @@ export function ensureFinanceDraftForEnabledState(
 }
 
 export function normalizeCouncilMembers(
-  members: Array<{ positionTitle?: string; memberName?: string }> = []
-): Array<{ positionTitle: string; memberName: string }> {
+  members: Array<{ id?: number; positionTitle?: string; memberName?: string }> = []
+): Array<{ id?: number; positionTitle: string; memberName: string }> {
   if (!Array.isArray(members)) return [];
-  return members.map((m) => ({
-    positionTitle: (m?.positionTitle || '').trim(),
-    memberName: (m?.memberName || '').trim(),
-  }));
+  return members.map((m) => {
+    const item: { id?: number; positionTitle: string; memberName: string } = {
+      positionTitle: (m?.positionTitle || '').trim(),
+      memberName: (m?.memberName || '').trim(),
+    };
+    if (typeof m?.id === 'number') {
+      item.id = m.id;
+    }
+    return item;
+  });
 }
 
 export function areCouncilSnapshotsEqual(
   a: {
     financeCouncilEnabled?: boolean;
-    pastoralCouncilMembers?: Array<{ positionTitle?: string; memberName?: string }>;
-    financeCouncilMembers?: Array<{ positionTitle?: string; memberName?: string }>;
+    pastoralCouncilMembers?: Array<{ id?: number; positionTitle?: string; memberName?: string }>;
+    financeCouncilMembers?: Array<{ id?: number; positionTitle?: string; memberName?: string }>;
   } | null | undefined,
   b: {
     financeCouncilEnabled?: boolean;
-    pastoralCouncilMembers?: Array<{ positionTitle?: string; memberName?: string }>;
-    financeCouncilMembers?: Array<{ positionTitle?: string; memberName?: string }>;
+    pastoralCouncilMembers?: Array<{ id?: number; positionTitle?: string; memberName?: string }>;
+    financeCouncilMembers?: Array<{ id?: number; positionTitle?: string; memberName?: string }>;
   } | null | undefined
 ): boolean {
   if (!a || !b) return false;
@@ -64,6 +72,13 @@ export function areCouncilSnapshotsEqual(
     ) {
       return false;
     }
+    if (
+      aPastoral[i].id !== undefined &&
+      bPastoral[i].id !== undefined &&
+      aPastoral[i].id !== bPastoral[i].id
+    ) {
+      return false;
+    }
   }
 
   const aFinance = normalizeCouncilMembers(a.financeCouncilMembers);
@@ -73,6 +88,13 @@ export function areCouncilSnapshotsEqual(
     if (
       aFinance[i].positionTitle !== bFinance[i].positionTitle ||
       aFinance[i].memberName !== bFinance[i].memberName
+    ) {
+      return false;
+    }
+    if (
+      aFinance[i].id !== undefined &&
+      bFinance[i].id !== undefined &&
+      aFinance[i].id !== bFinance[i].id
     ) {
       return false;
     }

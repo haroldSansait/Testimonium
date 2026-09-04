@@ -26,6 +26,8 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260829090000_planned_additions`
 - `20260901120000_add_email_preference_and_document_email_types`
 - `20260902120000_add_parish_councils`
+- `20260904120000_receipt_attempt_versioning`
+- `20260905120000_add_parish_council_member_photos` (Phase 3: nullable photo_url, photo_object_key; Pending migration safety review; NOT yet applied to shared Supabase DB)
 
 ### Development change flow
 

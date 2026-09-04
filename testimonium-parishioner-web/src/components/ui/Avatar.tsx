@@ -1,16 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
   src?: string | null;
   name?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export const Avatar: React.FC<AvatarProps> = ({ className = '', src, name = '', size = 'md', ...props }) => {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
   const sizes = {
+    xs: 'w-6 h-6 text-[10px]',
     sm: 'w-8 h-8 text-xs',
     md: 'w-10 h-10 text-sm',
     lg: 'w-16 h-16 text-xl',
+    xl: 'w-20 h-20 text-2xl',
   };
 
   const getInitials = (fullName: string) => {
@@ -22,11 +30,17 @@ export const Avatar: React.FC<AvatarProps> = ({ className = '', src, name = '', 
 
   return (
     <div
-      className={`relative inline-flex items-center justify-center overflow-hidden rounded-full bg-crimson/10 text-crimson font-semibold border border-crimson/15 select-none ${sizes[size]} ${className}`}
+      className={`relative inline-flex items-center justify-center overflow-hidden rounded-full bg-crimson/10 text-crimson font-semibold border border-crimson/15 select-none flex-shrink-0 ${sizes[size]} ${className}`}
       {...props}
     >
-      {src ? (
-        <img src={src} alt={name} className="w-full h-full object-cover" />
+      {src && !imgError ? (
+        <img
+          src={src}
+          alt={name}
+          loading="lazy"
+          onError={() => setImgError(true)}
+          className="w-full h-full object-cover"
+        />
       ) : (
         <span>{getInitials(name)}</span>
       )}

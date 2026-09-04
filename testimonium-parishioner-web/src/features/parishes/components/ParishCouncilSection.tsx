@@ -1,16 +1,22 @@
-import React from 'react';
-import { Users, Landmark, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, Landmark, Info, Layers } from 'lucide-react';
 import type { Parish } from '../../../types';
+import { Avatar } from '../../../components/ui/Avatar';
+import { ParishCouncilTreeModal } from './ParishCouncilTreeModal';
 
 interface ParishCouncilSectionProps {
   councils?: Parish['councils'];
   loading?: boolean;
+  parishName?: string;
 }
 
 export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
   councils,
   loading = false,
+  parishName = 'Parish',
 }) => {
+  const [isTreeModalOpen, setIsTreeModalOpen] = useState(false);
+
   if (loading) {
     return (
       <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-3">
@@ -49,6 +55,7 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
   const { pastoral, finance } = councils;
   const pastoralMembers = pastoral?.members || [];
   const financeMembers = finance?.members || [];
+  const hasMembers = pastoralMembers.length > 0 || financeMembers.length > 0;
 
   return (
     <div className="space-y-4">
@@ -59,9 +66,22 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
             <Users size={12} className="mr-1.5 text-crimson" />
             Parish Pastoral Council
           </span>
-          <span className="text-[10px] text-text-muted font-medium">
-            {pastoralMembers.length > 0 ? `${pastoralMembers.length} Officers` : 'Directory'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-text-muted font-medium">
+              {pastoralMembers.length > 0 ? `${pastoralMembers.length} Officers` : 'Directory'}
+            </span>
+            {hasMembers && (
+              <button
+                type="button"
+                onClick={() => setIsTreeModalOpen(true)}
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-crimson hover:text-crimson-dark bg-red-50 hover:bg-red-100/80 px-2 py-0.5 rounded transition-colors focus-ring cursor-pointer"
+                title="View Organizational Tree"
+              >
+                <Layers size={10} />
+                <span>Tree</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {pastoralMembers.length === 0 ? (
@@ -73,14 +93,23 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
             {pastoralMembers.map((member, index) => (
               <div
                 key={`ppc-${index}-${member.positionTitle}-${member.memberName}`}
-                className="py-2 first:pt-0.5 last:pb-0.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2"
+                className="py-2 first:pt-0.5 last:pb-0.5 flex items-center justify-between gap-2"
               >
-                <span className="text-[11px] font-semibold text-text-muted">
-                  {member.positionTitle}
-                </span>
-                <span className="font-bold text-text-primary sm:text-right">
-                  {member.memberName}
-                </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar
+                    src={member.photoUrl}
+                    name={member.memberName}
+                    size="xs"
+                  />
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide block truncate">
+                      {member.positionTitle}
+                    </span>
+                    <span className="font-bold text-text-primary text-xs block truncate">
+                      {member.memberName}
+                    </span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -95,9 +124,22 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
               <Landmark size={12} className="mr-1.5 text-crimson" />
               Parish Finance Council
             </span>
-            <span className="text-[10px] text-text-muted font-medium">
-              {financeMembers.length > 0 ? `${financeMembers.length} Officers` : 'Directory'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-text-muted font-medium">
+                {financeMembers.length > 0 ? `${financeMembers.length} Officers` : 'Directory'}
+              </span>
+              {hasMembers && (
+                <button
+                  type="button"
+                  onClick={() => setIsTreeModalOpen(true)}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-crimson hover:text-crimson-dark bg-red-50 hover:bg-red-100/80 px-2 py-0.5 rounded transition-colors focus-ring cursor-pointer"
+                  title="View Organizational Tree"
+                >
+                  <Layers size={10} />
+                  <span>Tree</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {financeMembers.length === 0 ? (
@@ -109,20 +151,37 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
               {financeMembers.map((member, index) => (
                 <div
                   key={`pfc-${index}-${member.positionTitle}-${member.memberName}`}
-                  className="py-2 first:pt-0.5 last:pb-0.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2"
+                  className="py-2 first:pt-0.5 last:pb-0.5 flex items-center justify-between gap-2"
                 >
-                  <span className="text-[11px] font-semibold text-text-muted">
-                    {member.positionTitle}
-                  </span>
-                  <span className="font-bold text-text-primary sm:text-right">
-                    {member.memberName}
-                  </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Avatar
+                      src={member.photoUrl}
+                      name={member.memberName}
+                      size="xs"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide block truncate">
+                        {member.positionTitle}
+                      </span>
+                      <span className="font-bold text-text-primary text-xs block truncate">
+                        {member.memberName}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
+
+      {/* Organizational Hierarchy Modal */}
+      <ParishCouncilTreeModal
+        isOpen={isTreeModalOpen}
+        onClose={() => setIsTreeModalOpen(false)}
+        parishName={parishName}
+        councils={councils}
+      />
     </div>
   );
 };

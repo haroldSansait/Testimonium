@@ -122,4 +122,26 @@ export const ApiParishProvider: ParishProvider = {
     const response = await api.get<ApiResponseEnvelope<any>>('/parishes/selector');
     return response.data.data;
   },
+
+  async uploadCouncilOfficerPhoto(parishId: string, memberId: string, file: File): Promise<{ memberId: string; photoUrl: string }> {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const response = await api.post<ApiResponseEnvelope<{ memberId: string; photoUrl: string }>>(
+      `/parishes/${parishId}/councils/members/${memberId}/photo`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data.data;
+  },
+
+  async removeCouncilOfficerPhoto(parishId: string, memberId: string): Promise<{ memberId: string; photoUrl: null }> {
+    const response = await api.delete<ApiResponseEnvelope<{ memberId: string; photoUrl: null }>>(
+      `/parishes/${parishId}/councils/members/${memberId}/photo`
+    );
+    return response.data.data;
+  },
 };

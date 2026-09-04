@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 export interface ModalProps {
@@ -97,9 +98,9 @@ export const Modal: React.FC<ModalProps> = ({
     '4xl': 'max-w-4xl',
   };
 
-  return (
+  const modalElement = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-[10050] flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? "modal-title" : undefined}
@@ -115,12 +116,12 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={modalContainerRef}
         tabIndex={-1}
-        className={`relative w-full bg-white rounded-card shadow-card p-6 border border-border z-10 focus:outline-none ${sizes[size]} ${className}`}
+        className={`relative w-full bg-white rounded-card shadow-card p-4 sm:p-6 border border-border z-10 focus:outline-none my-auto ${sizes[size]} ${className}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
           {title ? (
-            <h2 id="modal-title" className="text-lg font-serif font-bold text-text-primary">
+            <h2 id="modal-title" className="text-base sm:text-lg font-serif font-bold text-text-primary pr-2">
               {title}
             </h2>
           ) : (
@@ -128,7 +129,7 @@ export const Modal: React.FC<ModalProps> = ({
           )}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary focus-ring"
+            className="p-1.5 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary focus-ring flex-shrink-0"
             aria-label="Close modal"
           >
             <X size={18} />
@@ -142,6 +143,10 @@ export const Modal: React.FC<ModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalElement, document.body)
+    : modalElement;
 };
 
 export default Modal;

@@ -228,6 +228,8 @@ export interface ParishProvider {
   getCouncilConfig(parishId: string): Promise<ParishCouncilConfig>;
   saveCouncil(parishId: string, payload: SaveCouncilPayload): Promise<ParishCouncilConfig>;
   getParishesForSelector(): Promise<ParishSelectorItem[]>;
+  uploadCouncilOfficerPhoto(parishId: string, memberId: string, file: File): Promise<{ memberId: string; photoUrl: string }>;
+  removeCouncilOfficerPhoto(parishId: string, memberId: string): Promise<{ memberId: string; photoUrl: null }>;
 }
 
 export interface UserProvider {

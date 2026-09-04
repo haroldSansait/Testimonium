@@ -257,6 +257,8 @@ model ParishCouncilMember {
   positionTitle          String                     @map("position_title") @db.VarChar(200)
   memberName             String                     @map("member_name") @db.VarChar(200)
   sortOrder              Int                        @map("sort_order")
+  photoUrl               String?                    @map("photo_url") @db.VarChar(500)
+  photoObjectKey         String?                    @map("photo_object_key") @db.VarChar(255)
   createdAt              DateTime                   @default(now()) @map("created_at")
   updatedAt              DateTime                   @updatedAt @map("updated_at")
   councilConfiguration   ParishCouncilConfiguration @relation(fields: [councilConfigurationId], references: [id], onDelete: Cascade)
