@@ -9,7 +9,7 @@ import type {
 
 export const authApi = {
   login: (legal?: LegalAcceptancePayload) =>
-    apiClient.request<{ user: BackendUserProfile }>({
+    apiClient.request<{ user: BackendUserProfile; isNewUser?: boolean }>({
       method: "POST",
       path: "/auth/login",
       body: legal ?? {},

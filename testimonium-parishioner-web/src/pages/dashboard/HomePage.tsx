@@ -17,8 +17,11 @@ import {
   User as UserIcon,
   CalendarPlus,
   ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { resolveFirstName } from '../../utils/nameHelpers';
+import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import { CustomSelect } from '../../components/ui/CustomSelect';
 import {
   useParishes,
@@ -121,7 +124,7 @@ const exportToICS = (appt: any, parishName: string) => {
 };
 
 export const HomePage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, appProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Core Queries (Top-level unconditional hook execution)
@@ -140,6 +143,11 @@ export const HomePage: React.FC = () => {
   // Modal State
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { isProfileIncomplete, requireCompleteProfile } = useProfileRequirement();
+
+  const isRegistrationSession =
+    typeof window !== 'undefined' && sessionStorage.getItem('testimonium_registration_session') === 'true';
+  const firstName = resolveFirstName(appProfile?.fullName, profileQuery.data?.displayName || user?.displayName);
 
   // Safe data extractions (handle loading / error / undefined states gracefully)
   const requests = requestsQuery.data || [];
@@ -396,21 +404,33 @@ export const HomePage: React.FC = () => {
             Diocese of San Carlos • Vicariate of Canlaon
           </span>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold tracking-tight text-white leading-tight">
-            {(!profile?.phone || !profile?.address)
-              ? `Welcome, ${user?.displayName || 'Parishioner'}!`
-              : `Welcome back, ${user?.displayName || 'Parishioner'}!`}
+            {authLoading ? (
+              <span className="inline-block h-8 w-48 bg-white/20 rounded animate-pulse" />
+            ) : isRegistrationSession ? (
+              firstName ? `Welcome, ${firstName}!` : 'Welcome!'
+            ) : (
+              firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'
+            )}
           </h2>
           <p className="text-xs sm:text-sm text-white/85 leading-relaxed font-normal">
             Manage document requests, schedule canonical appointments, and explore parish records across the Vicariate of Canlaon.
           </p>
-          {(!profile?.phone || !profile?.address) && (
+          {isProfileIncomplete && (
             <div className="pt-2">
-              <button
-                onClick={() => navigate('/dashboard/profile')}
-                className="px-4 py-2 bg-white text-crimson hover:bg-gray-100 font-bold rounded-button text-xs shadow-sm transition-all active:scale-[0.98] focus-ring"
-              >
-                Complete Profile Details
-              </button>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/10 backdrop-blur-sm p-3.5 rounded-lg border border-white/20">
+                <div className="flex items-center gap-2 text-white">
+                  <AlertCircle className="w-5 h-5 text-amber-300 shrink-0" />
+                  <p className="text-xs sm:text-sm font-medium text-white/95">
+                    Complete your profile to access document and schedule requests.
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate('/dashboard/profile')}
+                  className="px-4 py-2 bg-white text-crimson hover:bg-gray-100 font-bold rounded-button text-xs shadow-sm transition-all active:scale-[0.98] focus-ring shrink-0"
+                >
+                  Complete Profile
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -557,32 +577,47 @@ export const HomePage: React.FC = () => {
           description="Choose a parish service or manage your account."
         />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-5">
-          {quickActions.map(action => (
-            <Link
-              key={action.path}
-              to={action.path}
-              className={`rounded-card border p-4 sm:p-5 h-36 sm:h-40 flex flex-col justify-between transition-all hover:shadow-card hover:border-crimson/40 focus-ring group ${
-                action.type === 'service' ? 'bg-white border-border' : 'bg-app-page/60 border-border/80'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className={`p-2 sm:p-2.5 rounded-button w-fit ${
-                  action.type === 'service' ? 'bg-red-50 text-crimson' : 'bg-gray-100 text-text-muted'
-                }`}>
-                  {action.icon}
+          {quickActions.map(action => {
+            const isProtectedAction =
+              action.path === '/dashboard/request' || action.path === '/dashboard/scheduler';
+            const handleClick = (e: React.MouseEvent) => {
+              if (isProtectedAction) {
+                e.preventDefault();
+                requireCompleteProfile(
+                  () => navigate(action.path),
+                  action.path === '/dashboard/request' ? 'request certificates' : 'schedule appointments'
+                );
+              }
+            };
+
+            return (
+              <Link
+                key={action.path}
+                to={action.path}
+                onClick={handleClick}
+                className={`rounded-card border p-4 sm:p-5 h-36 sm:h-40 flex flex-col justify-between transition-all hover:shadow-card hover:border-crimson/40 focus-ring group ${
+                  action.type === 'service' ? 'bg-white border-border' : 'bg-app-page/60 border-border/80'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={`p-2 sm:p-2.5 rounded-button w-fit ${
+                    action.type === 'service' ? 'bg-red-50 text-crimson' : 'bg-gray-100 text-text-muted'
+                  }`}>
+                    {action.icon}
+                  </div>
+                  <ChevronRight size={14} className="text-text-muted/50 group-hover:text-crimson group-hover:translate-x-0.5 transition-transform" />
                 </div>
-                <ChevronRight size={14} className="text-text-muted/50 group-hover:text-crimson group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <div className="space-y-0.5">
-                <h3 className="font-serif font-bold text-text-primary text-xs sm:text-sm truncate group-hover:text-crimson transition-colors">
-                  {action.label}
-                </h3>
-                <p className="text-[11px] text-text-muted line-clamp-2 leading-tight">
-                  {action.description}
-                </p>
-              </div>
-            </Link>
-          ))}
+                <div className="space-y-0.5">
+                  <h3 className="font-serif font-bold text-text-primary text-xs sm:text-sm truncate group-hover:text-crimson transition-colors">
+                    {action.label}
+                  </h3>
+                  <p className="text-[11px] text-text-muted line-clamp-2 leading-tight">
+                    {action.description}
+                  </p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
@@ -614,7 +649,15 @@ export const HomePage: React.FC = () => {
                   description="Your submitted certificate requests will appear here once you submit a request."
                   icon={<Inbox size={32} className="text-text-muted/40" />}
                   action={
-                    <Button size="sm" onClick={() => navigate('/dashboard/request')}>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        requireCompleteProfile(
+                          () => navigate('/dashboard/request'),
+                          'request certificates'
+                        );
+                      }}
+                    >
                       Request a Document
                     </Button>
                   }
@@ -660,7 +703,12 @@ export const HomePage: React.FC = () => {
               </CardTitle>
               {appointments.length > 0 && (
                 <button
-                  onClick={() => navigate('/dashboard/scheduler')}
+                  onClick={() => {
+                    requireCompleteProfile(
+                      () => navigate('/dashboard/scheduler'),
+                      'schedule appointments'
+                    );
+                  }}
                   className="text-xs font-bold text-crimson hover:underline flex items-center gap-1 focus-ring rounded px-1"
                 >
                   <span>Book New</span>
@@ -675,7 +723,15 @@ export const HomePage: React.FC = () => {
                   description="Book a blessing, counseling session, or sacramental interview with your parish priest."
                   icon={<Calendar size={32} className="text-text-muted/40" />}
                   action={
-                    <Button size="sm" onClick={() => navigate('/dashboard/scheduler')}>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        requireCompleteProfile(
+                          () => navigate('/dashboard/scheduler'),
+                          'schedule appointments'
+                        );
+                      }}
+                    >
                       Schedule Appointment
                     </Button>
                   }
@@ -839,6 +895,8 @@ export const HomePage: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         onViewParish={handleViewParishFromEvent}
       />
+
+
     </div>
   );
 };

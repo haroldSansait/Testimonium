@@ -1,6 +1,8 @@
 import { ScheduleService } from "../services/ScheduleService.js";
 import { resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatalog.js";
 import { CANONICAL_SCHEDULE_EVENT_TYPES } from "../services/BookingValidator.js";
+import { prisma } from "../config/db.js";
+import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 
 const scheduleService = new ScheduleService();
 
@@ -82,6 +84,18 @@ export const create = async (req, res, next) => {
     const userId = req.user.id;
     const { parishId, eventType, date, timeSlot, remarks } = req.body;
     const idempotencyKey = req.headers["idempotency-key"] || null;
+
+    // Profile completion requirement for parishioners
+    if (req.user.role === "PARISHIONER") {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (isProfileIncomplete(user)) {
+        return res.status(403).json({
+          success: false,
+          code: "PROFILE_INCOMPLETE",
+          message: "Please complete your profile details (full name and contact number) before scheduling an appointment.",
+        });
+      }
+    }
 
     // Staff role isolation check: Secretary/Priest can only schedule within their assigned parish
     if (["SECRETARY", "PRIEST", "STAFF"].includes(req.user.role)) {

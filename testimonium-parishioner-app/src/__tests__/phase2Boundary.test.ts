@@ -171,7 +171,8 @@ describe("Phase 2 Boundaries, Cache Safety, and Route Guards", () => {
       const profilePendingGuards = getProtectedRouteGuards(
         "PROFILE_COMPLETION_REQUIRED"
       );
-      expect(profilePendingGuards.app).toBe(false);
+      expect(profilePendingGuards.app).toBe(true);
+      expect(profilePendingGuards.onboarding).toBe(false);
     });
   });
 

@@ -106,6 +106,7 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     date: string;
     timeSlot: string;
     location?: string;
+    remarks?: string;
   }): Promise<Appointment> {
     await new Promise(resolve => setTimeout(resolve, 400));
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);
@@ -117,7 +118,9 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
       date: appointment.date,
       timeSlot: appointment.timeSlot,
       status: 'booked',
-      confirmationNumber
+      confirmationNumber,
+      remarks: appointment.remarks || null,
+      notes: appointment.remarks || null,
     };
     this.appointments.unshift(newAppointment);
     this.save();

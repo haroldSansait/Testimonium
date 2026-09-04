@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Copy, FileText } from 'lucide-react';
+import { CheckCircle, Copy, FileText, AlertCircle } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes, usePausePolling } from '../../hooks/useService';
+import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import type { SacramentalRequest } from '../../types';
 import {
   CANONICAL_DOCUMENT_TYPES,
@@ -13,7 +14,6 @@ import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { CustomSelect } from '../../components/ui/CustomSelect';
-import { Textarea } from '../../components/ui/Textarea';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -28,13 +28,24 @@ export const SacramentalRequestPage: React.FC = () => {
   const parishes = parishesQuery.data || [];
   const { loading, error, refetch } = parishesQuery;
 
+  const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
+
   const [submitting, setSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isProfileIncomplete) {
+      openProfileModal('request certificates');
+    }
+  }, [isProfileIncomplete, openProfileModal]);
 
   // Form State
   const [selectedParishId, setSelectedParishId] = useState('');
   const [docType, setDocType] = useState<string>('BAPTISMAL_CERTIFICATE');
-  const [applicantName, setApplicantName] = useState('');
+  const [applicantFirstName, setApplicantFirstName] = useState('');
+  const [applicantMiddleName, setApplicantMiddleName] = useState('');
+  const [applicantLastName, setApplicantLastName] = useState('');
   const [relationship, setRelationship] = useState('Self');
   const [purpose, setPurpose] = useState('');
   const [registryYear, setRegistryYear] = useState('');
@@ -99,6 +110,17 @@ export const SacramentalRequestPage: React.FC = () => {
   const steps = ['Select Parish', 'Document Details', 'Applicant Info', 'Upload Requirements', 'Confirmation'];
 
   const handleNext = () => {
+    if (currentStep === 0 && !selectedParishId) return;
+    if (currentStep === 1 && !docType) return;
+    if (currentStep === 2) {
+      if (!applicantFirstName.trim() || !applicantLastName.trim()) {
+        return;
+      }
+      if (isProfileIncomplete) {
+        openProfileModal('request certificates');
+        return;
+      }
+    }
     if (currentStep < steps.length - 1) {
       setCurrentStep(prev => prev + 1);
     }
@@ -126,7 +148,12 @@ export const SacramentalRequestPage: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    if (isProfileIncomplete) {
+      openProfileModal('request certificates');
+      return;
+    }
     setSubmitting(true);
+    setSubmissionError(null);
     try {
       // 1. Create request draft
       // Append registry year to purpose to pass it along safely without schema adjustments
@@ -137,7 +164,9 @@ export const SacramentalRequestPage: React.FC = () => {
       const draft = await services.request.createRequest({
         parishId: selectedParishId,
         documentType: docType as any,
-        applicantName,
+        applicantFirstName: applicantFirstName.trim(),
+        applicantMiddleName: applicantMiddleName.trim() || undefined,
+        applicantLastName: applicantLastName.trim(),
         relationship,
         purpose: finalPurpose,
       });
@@ -153,8 +182,13 @@ export const SacramentalRequestPage: React.FC = () => {
 
       setCreatedRequest(finalized);
       setCurrentStep(4);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Request submission error:", err);
+      if (err?.code === "PROFILE_INCOMPLETE") {
+        openProfileModal('request certificates');
+      } else {
+        setSubmissionError(err?.message || "Failed to submit document request. Please review your information.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -217,6 +251,50 @@ export const SacramentalRequestPage: React.FC = () => {
 
   const allReqsUploaded = requirementsList.every(req => !req.required || !!uploadedFilesByReq[req.id]);
 
+  if (isProfileIncomplete) {
+    return (
+      <div className="space-y-6" aria-live="polite">
+        <PageHeader 
+          title="Sacramental Request Wizard" 
+          description="Submit requirements and request official certificates from canonical registries."
+          onRefresh={refetch}
+          breadcrumbs={['Home', 'Request Document']}
+        />
+
+        <Card className="bg-white border-border shadow-sm">
+          <CardContent className="py-12 px-6 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+              <AlertCircle size={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-serif font-bold text-text-primary">
+                Profile Completion Required
+              </h2>
+              <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
+                Complete your profile to access document and schedule requests. Parish offices require your official contact details (Full Name and Mobile Number) for identity verification and notification updates.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/dashboard/home')}
+              >
+                Return to Dashboard
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => navigate('/dashboard/profile')}
+              >
+                Complete Profile
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6" aria-live="polite">
       <PageHeader 
@@ -226,9 +304,18 @@ export const SacramentalRequestPage: React.FC = () => {
         breadcrumbs={['Home', 'Request Document']}
       />
 
-      <Card className="shadow-sm border border-border">
-        <CardContent className="pt-6 space-y-8">
-          <Stepper steps={steps} currentStep={currentStep} />
+      {submissionError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-card flex items-center gap-2.5 text-red-800 text-xs sm:text-sm">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+          <span>{submissionError}</span>
+        </div>
+      )}
+
+      <Card className="bg-white border-border shadow-sm">
+        <CardContent className="p-6 sm:p-8">
+          <div className="mb-8">
+            <Stepper steps={steps} currentStep={currentStep} />
+          </div>
 
           {/* Step 1: Select Parish */}
           {currentStep === 0 && (
@@ -292,13 +379,31 @@ export const SacramentalRequestPage: React.FC = () => {
           {/* Step 3: Applicant Info */}
           {currentStep === 2 && (
             <div className="space-y-4 max-w-xl mx-auto">
-              <Input
-                label="Full Name of Registrant"
-                placeholder="Name as written in registry"
-                value={applicantName}
-                onChange={e => setApplicantName(e.target.value)}
-                required
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label="First Name *"
+                  placeholder="e.g. Juan"
+                  value={applicantFirstName}
+                  onChange={e => setApplicantFirstName(e.target.value)}
+                  maxLength={50}
+                  required
+                />
+                <Input
+                  label="Middle Name (Optional)"
+                  placeholder="e.g. Santos"
+                  value={applicantMiddleName}
+                  onChange={e => setApplicantMiddleName(e.target.value)}
+                  maxLength={50}
+                />
+                <Input
+                  label="Last Name *"
+                  placeholder="e.g. Dela Cruz"
+                  value={applicantLastName}
+                  onChange={e => setApplicantLastName(e.target.value)}
+                  maxLength={50}
+                  required
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="w-full mb-4">
                   <CustomSelect
@@ -324,16 +429,17 @@ export const SacramentalRequestPage: React.FC = () => {
                   onChange={e => setRegistryYear(e.target.value)}
                 />
               </div>
-              <Textarea
+              <Input
                 label="Purpose of Request"
-                placeholder="Describe why you need this certificate (e.g. Marriage canonical requirement, Passport application)"
+                placeholder="e.g. Marriage canonical requirement, school, passport"
                 value={purpose}
                 onChange={e => setPurpose(e.target.value)}
-                required
               />
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev}>Back</Button>
-                <Button onClick={handleNext} disabled={!applicantName || !purpose}>Next Step</Button>
+                <Button onClick={handleNext} disabled={!applicantFirstName.trim() || !applicantLastName.trim()}>
+                  Next Step
+                </Button>
               </div>
             </div>
           )}
@@ -466,6 +572,8 @@ export const SacramentalRequestPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+
     </div>
   );
 };

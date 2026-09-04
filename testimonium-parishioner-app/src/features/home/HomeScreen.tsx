@@ -17,11 +17,13 @@ import { useUnreadNotificationCount } from "@/features/notifications/api";
 import { useRequestList } from "@/features/requests/api";
 import { useScheduleList } from "@/features/schedule/api";
 import { useAuth } from "@/providers/AuthProvider";
+import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export const HomeScreen: React.FC = () => {
   const router = useRouter();
-  const { profile } = useAuth();
+  const { profile, isRegistrationSession } = useAuth();
+  const { requireCompleteProfile } = useRequireCompleteProfile();
 
   const { isFetching: isEventsFetching, refetch: refetchEvents } = useCurrentMonthEvents();
   const { data: requestsData, isFetching: isRequestsFetching, refetch: refetchRequests } = useRequestList({ limit: 3 });
@@ -38,9 +40,15 @@ export const HomeScreen: React.FC = () => {
     ]);
   };
 
-  const displayName = profile?.fullName
-    ? profile.fullName.split(" ")[0]
-    : profile?.email?.split("@")[0] || "Parishioner";
+  const firstName = profile?.fullName
+    ? profile.fullName.trim().split(/\s+/)[0]
+    : "";
+  const validFirstName =
+    firstName &&
+    firstName.toLowerCase() !== "undefined" &&
+    firstName.toLowerCase() !== "null"
+      ? firstName
+      : "";
 
   const recentRequests = requestsData?.data || [];
   const upcomingAppointments = Array.isArray(scheduleData) ? scheduleData.slice(0, 2) : [];
@@ -130,7 +138,9 @@ export const HomeScreen: React.FC = () => {
           </View>
 
           <Text style={styles.greetingTitle} allowFontScaling>
-            Peace be with you, {displayName}!
+            {isRegistrationSession
+              ? validFirstName ? `Welcome, ${validFirstName}!` : "Welcome!"
+              : validFirstName ? `Welcome back, ${validFirstName}!` : "Welcome back!"}
           </Text>
           <Text style={styles.bannerCopy} allowFontScaling>
             Access sacramental records, schedule canonical appointments, and track certificate requests across the diocese.
@@ -140,17 +150,35 @@ export const HomeScreen: React.FC = () => {
             <Button
               title="Request Document"
               size="sm"
-              onPress={() => router.push("/(app)/requests/new" as any)}
+              onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
               style={styles.bannerBtn}
             />
             <Button
               title="Schedule Appointment"
               size="sm"
               variant="secondary"
-              onPress={() => router.push("/(app)/schedule/new" as any)}
+              onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
               style={styles.bannerBtn}
             />
           </View>
+
+          {profile?.needsProfileCompletion && (
+            <View style={styles.profileReminderContainer}>
+              <View style={styles.profileReminderContent}>
+                <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+                <Text style={styles.profileReminderText} allowFontScaling>
+                  Complete your profile to access document and schedule requests.
+                </Text>
+              </View>
+              <Button
+                title="Complete Profile"
+                size="sm"
+                variant="outline"
+                onPress={() => router.push("/(app)/(tabs)/profile" as any)}
+                style={styles.profileReminderBtn}
+              />
+            </View>
+          )}
         </Card>
 
         {/* Quick Access Grid (6 Services) */}
@@ -163,7 +191,7 @@ export const HomeScreen: React.FC = () => {
           <View style={styles.grid}>
             {/* 1. Request Document */}
             <Pressable
-              onPress={() => router.push("/(app)/requests/new" as any)}
+              onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
               style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
               accessibilityRole="button"
               accessibilityLabel="Request Document"
@@ -195,7 +223,7 @@ export const HomeScreen: React.FC = () => {
 
             {/* 3. Schedule Appointment */}
             <Pressable
-              onPress={() => router.push("/(app)/schedule/new" as any)}
+              onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
               style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
               accessibilityRole="button"
               accessibilityLabel="Schedule Appointment"
@@ -308,7 +336,7 @@ export const HomeScreen: React.FC = () => {
                 title="Start a Request"
                 size="sm"
                 variant="outline"
-                onPress={() => router.push("/(app)/requests/new" as any)}
+                onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
               />
             </Card>
           )}
@@ -366,7 +394,7 @@ export const HomeScreen: React.FC = () => {
                 title="Book Appointment"
                 size="sm"
                 variant="outline"
-                onPress={() => router.push("/(app)/schedule/new" as any)}
+                onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
               />
             </Card>
           )}
@@ -634,5 +662,29 @@ const styles = StyleSheet.create({
     ...fontStyles.captionMedium,
     color: colors.primary,
     marginRight: spacing.xxs,
+  },
+  profileReminderContainer: {
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    gap: spacing.xs,
+  },
+  profileReminderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  profileReminderText: {
+    ...fontStyles.bodySmall,
+    color: colors.surface,
+    flex: 1,
+    fontWeight: "500",
+  },
+  profileReminderBtn: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.surface,
   },
 });

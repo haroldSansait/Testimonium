@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 31 August 2026
+**Last reconciled:** 3 September 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -27,8 +27,8 @@ The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`. S
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | GET | `/health` | Public | API and database health status. |
-| GET | `/auth/profile` | Authenticated | Get the signed-in user profile. |
-| PUT | `/auth/profile` | Authenticated | Update the signed-in profile. |
+| GET | `/auth/profile` | Authenticated | Get the signed-in user profile (includes `emailNotificationsEnabled`). |
+| PUT | `/auth/profile` | Authenticated | Update the signed-in profile (supports name fields, contact number, address, and `emailNotificationsEnabled` boolean). |
 | POST | `/auth/login` | Authenticated (Rate-limited) | Provision or resolve the Firebase-authenticated user session (supports Google JIT legal payload). |
 | POST | `/auth/register` | Authenticated (Rate-limited) | Register/complete a user record after Firebase authentication. |
 | POST | `/auth/legal-acceptance` | Authenticated | Record accepted terms and privacy policy versions. |
@@ -38,8 +38,11 @@ The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`. S
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/parishes` | Authenticated | List active/visible parish directory records with optional search and type filtering. |
-| GET | `/parishes/:id` | Authenticated | Get parish details. |
+| GET | `/parishes` | Authenticated | List active/visible parish directory records with optional search and type filtering. (Council data omitted from list for performance). |
+| GET | `/parishes/:id` | Authenticated | Get parish details, including structured `councils` (Parish Pastoral Council and conditional Parish Finance Council). |
+| GET | `/parishes/selector` | Staff / Coordinator | Fast active parish listing for dropdown selectors (`id`, `parishName`, `municipalityCity`, `province`). |
+| GET | `/parishes/:id/councils` | Staff / Coordinator | Fetch Parish Pastoral Council and Parish Finance Council configuration and members. |
+| PUT | `/parishes/:id/councils` | Staff / Coordinator | Atomically update PPC/PFC members and toggle PFC status; requires `expectedVersion` (returns `409 COUNCIL_CONFIGURATION_STALE` on conflict). |
 | POST | `/parishes` | Coordinator | Create a parish. |
 | PUT | `/parishes/:id` | Coordinator | Update general parish data. |
 | DELETE | `/parishes/:id` | Coordinator | Archive a parish. |
@@ -141,12 +144,24 @@ Parish events accept `PUBLIC` or `PARISH_PRIVATE` visibility. Public discovery e
 | GET | `/diocese/stats`, `/diocese/activity`, `/diocese/notifications` | Coordinator | Diocese dashboard data. |
 | GET | `/analytics/descriptive` | Secretary / Coordinator | Multi-domain descriptive analytics dataset. |
 | GET | `/analytics/overview`, `/analytics/sacraments`, `/analytics/documents`, `/analytics/parishes` | Coordinator | Diocese analytics datasets. |
-| GET | `/activity-log`, `/activity-log/action-types` | Coordinator | View audit records and filters. |
+| GET | `/activity-log` | Coordinator | View audit records with role, personnel, action, and date filtering. |
+| GET | `/activity-log/action-types` | Coordinator | View centralized catalog of canonical audit action types. |
 | POST | `/activity-log/archive`, `/archive-all`, `/restore`, `/restore-all`, `/purge` | Coordinator | Administer audit-log retention. |
 
 ## Idempotency and concurrency controls
 
-Mandatory document-ready and schedule-transition email is recorded in `email_outbox` inside the same transaction as the business state change. A worker claims due rows with `FOR UPDATE SKIP LOCKED`, a unique processing token, and an expiring lease. `transitionKey` prevents duplicate delivery records for the same business transition; `proposalVersion` permits later legitimate reschedule proposals. SMTP delivery is provider-neutral, bounded by timeouts, and retries transient failures with capped backoff.
+Mandatory document-lifecycle and schedule-transition emails are recorded in `email_outbox` inside the same transaction as the business state change. Seven transactional email types are supported:
+- `DOCUMENT_SUBMITTED`
+- `DOCUMENT_NEEDS_CORRECTION`
+- `DOCUMENT_PAYMENT_NEEDS_CORRECTION`
+- `DOCUMENT_READY_FOR_PICKUP`
+- `SCHEDULE_SUBMITTED`
+- `SCHEDULE_PROPOSED_RESCHEDULE`
+- `SCHEDULE_CONFIRMED`
+
+A worker claims due rows with `FOR UPDATE SKIP LOCKED`, a unique processing token, and an expiring lease. Delivery checks the recipient user's `emailNotificationsEnabled` preference; when set to `false`, email dispatch is safely bypassed while corresponding in-app notifications persist. `transitionKey` prevents duplicate delivery records for the same business transition; `proposalVersion` permits later legitimate reschedule proposals. SMTP delivery is provider-neutral, bounded by timeouts, and retries transient failures with capped backoff.
+
+Parish council management uses optimistic concurrency control through `ParishCouncilConfiguration.version`. Every `PUT /parishes/:id/councils` mutation must supply `expectedVersion`. If the stored version differs, the API aborts the transaction with `409 COUNCIL_CONFIGURATION_STALE`. Saving requires at least one member when the Parish Finance Council is enabled, and toggling PFC disabled preserves existing finance rows as dormant snapshots rather than destroying them.
 
 The backend implements database-backed idempotency via the `idempotency_keys` table and `IdempotencyService`. For endpoints supporting idempotency (e.g. `POST /schedule-requests`), clients can provide an `Idempotency-Key` header (UUID or unique string up to 128 characters). If a duplicate request with the exact payload hash is detected, the previously created resource is returned idempotently. If the same key is submitted with a different payload, a `409 Conflict` is returned.
 

@@ -67,20 +67,15 @@ export const VerifyEmailPage: React.FC = () => {
 
         // Force fresh ID Token & refresh context profile
         await currentUser.getIdToken(true);
-        const profile = await refreshProfile();
+        await refreshProfile();
 
         updateFsmState('ROUTING');
         setMessage('Redirecting to your portal...');
 
         setTimeout(() => {
           updateFsmState('COMPLETE');
-          if (profile?.needsProfileCompletion) {
-            console.debug('[VerifyEmailPage FSM] Navigating to /dashboard/profile');
-            navigate('/dashboard/profile', { replace: true, state: { isNewUser: true } });
-          } else {
-            console.debug('[VerifyEmailPage FSM] Navigating to /dashboard/home');
-            navigate('/dashboard/home', { replace: true });
-          }
+          console.debug('[VerifyEmailPage FSM] Navigating to /dashboard/home');
+          navigate('/dashboard/home', { replace: true });
         }, 800);
       } else {
         updateFsmState('IDLE');

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, CheckCircle, Users } from 'lucide-react';
+import { Check, CheckCircle, Users, AlertCircle } from 'lucide-react';
 import services from '../../providers/factory';
+import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import type { AvailabilityDates, SchedulingConfiguration } from '../../providers/types';
 import { useParishes } from '../../hooks/useService';
 import type { Appointment } from '../../types';
@@ -47,6 +48,14 @@ const scheduleSubmissionErrorMessage = (error: unknown) =>
 export const EventSchedulerPage: React.FC = () => {
   const navigate = useNavigate();
   const parishesQuery = useParishes();
+  const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
+
+  useEffect(() => {
+    if (isProfileIncomplete) {
+      openProfileModal('schedule appointments');
+    }
+  }, [isProfileIncomplete, openProfileModal]);
+
   const parishes = parishesQuery.data || [];
   const { loading, error, refetch } = parishesQuery;
   const [currentStep, setCurrentStep] = useState(0);
@@ -55,6 +64,7 @@ export const EventSchedulerPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
+  const [additionalNotes, setAdditionalNotes] = useState('');
   const [configuration, setConfiguration] = useState<SchedulingConfiguration | null>(null);
   const [availability, setAvailability] = useState<AvailabilityDates | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -236,11 +246,21 @@ export const EventSchedulerPage: React.FC = () => {
     if (currentStep === 0 && !selectedParishId) return;
     if (currentStep === 1 && !selectedEventType) return;
     if (currentStep === 2 && !selectedDate) return;
-    if (currentStep === 3 && !selectedTimeSlot) return;
+    if (currentStep === 3) {
+      if (!selectedTimeSlot) return;
+      if (isProfileIncomplete) {
+        openProfileModal('schedule appointments');
+        return;
+      }
+    }
     setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
   };
 
   const handleBook = async () => {
+    if (isProfileIncomplete) {
+      openProfileModal('schedule appointments');
+      return;
+    }
     if (!selectedService || !selectedParishId || !selectedDate || !selectedTimeSlot) return;
     setSubmitting(true);
     setMessage(null);
@@ -252,10 +272,15 @@ export const EventSchedulerPage: React.FC = () => {
         date: selectedDate,
         timeSlot: selectedTimeSlot,
         location: venueAddress,
+        remarks: additionalNotes.trim() || undefined,
       });
       setCreatedBooking(appointment);
       setCurrentStep(4);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'PROFILE_INCOMPLETE') {
+        openProfileModal('schedule appointments');
+        return;
+      }
       if (isSchedulingAvailabilityConflict(error)) {
         setSelectedTimeSlot('');
         await reloadConfiguration();
@@ -294,9 +319,57 @@ export const EventSchedulerPage: React.FC = () => {
   if (loading) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><Card className='p-8'><Skeleton className='h-10 w-full mb-6' /><Skeleton className='h-64 w-full' /></Card></div>;
   if (error) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><ErrorState description='Failed to load parishes for scheduling.' onRetry={() => void refetch()} /></div>;
 
+  if (isProfileIncomplete) {
+    return (
+      <div className="space-y-6 pb-12" aria-live="polite">
+        <PageHeader
+          title="Schedule an Appointment"
+          description="Book canonical interviews, confessions, or blessings."
+          breadcrumbs={['Home', 'Schedule Appointment']}
+        />
+
+        <Card className="bg-white border-border shadow-sm">
+          <CardContent className="py-12 px-6 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+              <AlertCircle size={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-serif font-bold text-text-primary">
+                Profile Completion Required
+              </h2>
+              <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
+                Complete your profile to access document and schedule requests. Parish offices require your official contact details (Full Name and Mobile Number) for canonical verification.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/dashboard/home')}
+              >
+                Return to Dashboard
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => navigate('/dashboard/profile')}
+              >
+                Complete Profile
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className='space-y-6 pb-12'>
-      <PageHeader title='Event & Appointment Scheduler' description='Request a parish service using its current online availability.' breadcrumbs={['Dashboard', 'Event Scheduler']} />
+      <PageHeader
+        title="Schedule an Appointment"
+        description="Book canonical interviews, confessions, or blessings."
+        breadcrumbs={['Home', 'Schedule Appointment']}
+      />
+
       {message && <div className='p-4 bg-amber-50 border border-amber-200 text-amber-900 text-sm font-semibold rounded-xl'>{message}</div>}
       {activeProposal && <Card className='bg-amber-50/70 border-l-4 border-amber-500 p-5 space-y-3'>
         <span className='text-[10px] font-bold uppercase tracking-wider text-amber-900'>Alternative Schedule Proposal</span>
@@ -340,8 +413,30 @@ export const EventSchedulerPage: React.FC = () => {
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Available Time Slots</label>
           {loadingSlots ? <div className='grid grid-cols-2 gap-3'><Skeleton className='h-12 w-full' /><Skeleton className='h-12 w-full' /></div> : null}
           {!loadingSlots && !availableSlots.length ? <p className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800'>No time slots are available for this date. Choose another date.</p> : null}
-          <div className='grid grid-cols-2 sm:grid-cols-3 gap-3'>{availableSlots.map((slot) => <button key={slot} type='button' onClick={() => setSelectedTimeSlot(slot)} className={`p-3.5 border rounded-xl text-xs font-bold ${selectedTimeSlot === slot ? 'border-crimson bg-crimson text-white' : 'border-border text-text-primary bg-white hover:bg-red-50'}`}>{slot}</button>)}</div>
-          <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Venue or location note (optional)</label><input value={venueAddress} onChange={(event) => setVenueAddress(event.target.value)} className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary' placeholder='Add a relevant location detail' />
+          <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Venue or location note (optional)</label>
+          <input value={venueAddress} onChange={(event) => setVenueAddress(event.target.value)} className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary' placeholder='Add a relevant location detail' />
+
+          <div className="space-y-1.5 pt-2">
+            <div className="flex justify-between items-center">
+              <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>
+                Additional Notes (Optional)
+              </label>
+              <span className="text-[11px] text-text-muted">
+                {additionalNotes.length}/500
+              </span>
+            </div>
+            <textarea
+              value={additionalNotes}
+              onChange={(e) => setAdditionalNotes(e.target.value.slice(0, 500))}
+              rows={3}
+              className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary resize-none'
+              placeholder='e.g. Wheelchair accessibility, elderly attendee assistance, or priest preference'
+            />
+            <p className="text-[11px] text-text-muted italic">
+              Priest requests are subject to availability and are not guaranteed.
+            </p>
+          </div>
+
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(2)}>Back</Button><Button onClick={handleBook} loading={submitting} disabled={!selectedTimeSlot}>Confirm Booking</Button></div>
         </div>}
         {currentStep === 4 && createdBooking && <div className='text-center max-w-md mx-auto space-y-6 py-6'>
@@ -350,6 +445,8 @@ export const EventSchedulerPage: React.FC = () => {
           <Button className='w-full' onClick={() => navigate('/dashboard/home')}>Return to Dashboard</Button>
         </div>}
       </CardContent></Card>
+
+
     </div>
   );
 };

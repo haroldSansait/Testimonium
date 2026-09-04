@@ -20,5 +20,10 @@ describe('protected route guards', () => {
       onboarding: false,
       app: true,
     });
+    expect(getProtectedRouteGuards('PROFILE_COMPLETION_REQUIRED')).toEqual({
+      auth: false,
+      onboarding: false,
+      app: true,
+    });
   });
 });

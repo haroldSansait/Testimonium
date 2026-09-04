@@ -114,17 +114,25 @@ export class ApiRequestProvider implements IRequestProvider {
   async createRequest(request: {
     parishId: string;
     documentType: SacramentalRequest["documentType"];
-    applicantName: string;
+    applicantName?: string;
+    applicantFirstName?: string;
+    applicantMiddleName?: string;
+    applicantLastName?: string;
     relationship: string;
     purpose: string;
   }): Promise<SacramentalRequest> {
-    const payload = {
+    const payload: any = {
       parishId: parseInt(request.parishId, 10),
       documentType: mapFrontendToBackendDocType(request.documentType),
-      applicantName: request.applicantName,
+      applicantFirstName: request.applicantFirstName,
+      applicantMiddleName: request.applicantMiddleName,
+      applicantLastName: request.applicantLastName,
       relationship: request.relationship,
       purpose: request.purpose,
     };
+    if (request.applicantName) {
+      payload.applicantName = request.applicantName;
+    }
     const data = await client.post<any>("/requests", payload);
     return mapRequest(data);
   }

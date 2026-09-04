@@ -30,7 +30,10 @@ export interface IRequestProvider {
   createRequest(request: {
     parishId: string;
     documentType: SacramentalRequest['documentType'];
-    applicantName: string;
+    applicantName?: string;
+    applicantFirstName?: string;
+    applicantMiddleName?: string;
+    applicantLastName?: string;
     relationship: string;
     purpose: string;
   }): Promise<SacramentalRequest>;
@@ -57,6 +60,7 @@ export interface ISchedulerProvider {
     date: string;
     timeSlot: string;
     location?: string;
+    remarks?: string;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean): Promise<Appointment>;
   getAppointmentById(id: string): Promise<Appointment>;

@@ -168,6 +168,8 @@ export interface Appointment {
   assignedPriestId?: string | number | null;
   assignedPriestName?: string | null;
   priestResponseStatus?: 'ACCEPTED' | 'REJECTED' | 'PENDING' | null;
+  remarks?: string | null;
+  notes?: string | null;
 }
 
 export interface Announcement {

@@ -16,9 +16,10 @@ export const getProtectedRouteGuards = (state: AuthBootstrapState): ProtectedRou
     state === 'SESSION_ERROR',
   onboarding:
     state === 'EMAIL_VERIFICATION_REQUIRED' ||
-    state === 'LEGAL_REQUIRED' ||
+    state === 'LEGAL_REQUIRED',
+  app:
+    state === 'AUTHENTICATED_READY' ||
     state === 'PROFILE_COMPLETION_REQUIRED',
-  app: state === 'AUTHENTICATED_READY',
 });
 
 export const observerShouldBootstrap = (

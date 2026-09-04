@@ -12,6 +12,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { navigateBackOrReplace } from "@/services/navigation/back";
+import { evaluatePasswordStrength } from "@/utils/passwordStrength";
 
 export default function RegisterScreen() {
   const { signUpWithEmail, isRegistering } = useAuth();
@@ -24,6 +25,8 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const passwordStrength = evaluatePasswordStrength(password);
 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -194,6 +197,61 @@ export default function RegisterScreen() {
               leftIcon="lock-closed-outline"
               editable={!isRegistering}
             />
+
+            {/* Live Password Strength Indicator */}
+            {password.length > 0 && (
+              <View style={styles.strengthContainer} accessibilityLiveRegion="polite">
+                <View style={styles.strengthHeader}>
+                  <Text style={styles.strengthLabelText}>Password Strength:</Text>
+                  <Text
+                    style={[
+                      styles.strengthValueText,
+                      passwordStrength.level === "STRONG"
+                        ? styles.strengthStrong
+                        : passwordStrength.level === "MODERATE"
+                        ? styles.strengthModerate
+                        : styles.strengthWeak,
+                    ]}
+                  >
+                    {passwordStrength.label.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.strengthBarRow}>
+                  <View
+                    style={[
+                      styles.strengthBarSegment,
+                      passwordStrength.score >= 1
+                        ? (passwordStrength.level === "STRONG"
+                          ? styles.barStrong
+                          : passwordStrength.level === "MODERATE"
+                          ? styles.barModerate
+                          : styles.barWeak)
+                        : styles.barInactive,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.strengthBarSegment,
+                      passwordStrength.score >= 2
+                        ? (passwordStrength.level === "STRONG"
+                          ? styles.barStrong
+                          : passwordStrength.level === "MODERATE"
+                          ? styles.barModerate
+                          : styles.barWeak)
+                        : styles.barInactive,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.strengthBarSegment,
+                      passwordStrength.score >= 3 ? styles.barStrong : styles.barInactive,
+                    ]}
+                  />
+                </View>
+                <Text style={styles.strengthFeedbackText}>{passwordStrength.feedback}</Text>
+              </View>
+            )}
+
             <TextInput
               label="Confirm Password *"
               value={confirmPassword}
@@ -399,6 +457,61 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     gap: 2,
+  },
+  strengthContainer: {
+    gap: 4,
+    marginTop: -4,
+  },
+  strengthHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  strengthLabelText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  strengthValueText: {
+    ...fontStyles.captionBold,
+    letterSpacing: 0.5,
+  },
+  strengthStrong: {
+    color: colors.success,
+  },
+  strengthModerate: {
+    color: colors.warning,
+  },
+  strengthWeak: {
+    color: colors.danger,
+  },
+  strengthBarRow: {
+    flexDirection: "row",
+    gap: 4,
+    height: 4,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  strengthBarSegment: {
+    flex: 1,
+    height: "100%",
+    borderRadius: 2,
+  },
+  barStrong: {
+    backgroundColor: colors.success,
+  },
+  barModerate: {
+    backgroundColor: colors.warning,
+  },
+  barWeak: {
+    backgroundColor: colors.danger,
+  },
+  barInactive: {
+    backgroundColor: colors.borderLight,
+  },
+  strengthFeedbackText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
   },
   hintTitle: {
     ...fontStyles.captionMedium,

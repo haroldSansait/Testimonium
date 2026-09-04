@@ -144,7 +144,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Malformed backend login response: user profile missing.');
     }
 
-    console.debug('[AuthContext] Backend login successful:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion });
+    const isNewUser = Boolean(result?.data?.isNewUser ?? (profile as any)?.isNewUser);
+    if (isNewUser) {
+      sessionStorage.setItem('testimonium_registration_session', 'true');
+    } else {
+      sessionStorage.removeItem('testimonium_registration_session');
+    }
+
+    console.debug('[AuthContext] Backend login successful:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion, isNewUser });
     setAppProfile(profile);
     return profile;
   };
@@ -268,6 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
       const profile = await performBackendLogin(userCredential.user);
+      sessionStorage.removeItem('testimonium_registration_session');
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
       logSessionEvent('Session Started', { email, keepSignedIn });
 
@@ -316,6 +324,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
+      // Registration journey authoritative establish: new email/password account created
+      sessionStorage.setItem('testimonium_registration_session', 'true');
       logSessionEvent('Session Started', { email });
       setUser({ ...userCredential.user, displayName } as User);
 
@@ -349,6 +359,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async (reason = 'manual') => {
     setLoading(true);
     try {
+      sessionStorage.removeItem('testimonium_registration_session');
       await SessionService.logout(reason as any);
       setUser(null);
       setAppProfile(null);

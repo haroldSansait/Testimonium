@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
+import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import type { SacramentalRequest, RequestStatus } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
@@ -50,6 +51,7 @@ const EMPTY_REQUESTS: SacramentalRequest[] = [];
 
 export const RequestTrackingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { requireCompleteProfile } = useProfileRequirement();
 
   const requestsQuery = useRequests();
   const requests = requestsQuery.data ?? EMPTY_REQUESTS;
@@ -330,7 +332,14 @@ export const RequestTrackingPage: React.FC = () => {
           description="You have not submitted any certificate requests. Submit a document request using our wizard to start tracking."
           icon={<FileText size={48} className="text-text-muted/40" />}
           action={
-            <Button onClick={() => navigate('/dashboard/request')}>
+            <Button
+              onClick={() => {
+                requireCompleteProfile(
+                  () => navigate('/dashboard/request'),
+                  'request certificates'
+                );
+              }}
+            >
               Request a Document
             </Button>
           }
@@ -826,7 +835,16 @@ export const RequestTrackingPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex justify-end">
-                            <Button size="sm" variant="danger" onClick={() => navigate(`/dashboard/request?parishId=${selectedRequest.parishId}`)}>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => {
+                                requireCompleteProfile(
+                                  () => navigate(`/dashboard/request?parishId=${selectedRequest.parishId}`),
+                                  'request certificates'
+                                );
+                              }}
+                            >
                               Resubmit New Request
                             </Button>
                           </div>

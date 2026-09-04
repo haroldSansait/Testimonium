@@ -1,10 +1,10 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 31 August 2026
+**Last reconciled:** 3 September 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
-This reference summarizes the 24 physical models and 20 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
+This reference summarizes the 26 physical models and 21 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
 
 ## Enums
 
@@ -28,16 +28,24 @@ This reference summarizes the 24 physical models and 20 enums implemented in the
 | `ReportScope` | `PARISH`, `DIOCESE` |
 | `ReportCategory` | `MEETING`, `ACTIVITY`, `IMPORTANT_EVENT`, `OTHER` |
 | `EmailOutboxStatus` | `QUEUED`, `PROCESSING`, `SENT`, `RETRY`, `FAILED` |
-| `EmailType` | `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED` |
+| `EmailType` | `DOCUMENT_SUBMITTED`, `DOCUMENT_NEEDS_CORRECTION`, `DOCUMENT_PAYMENT_NEEDS_CORRECTION`, `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED` |
 | `OcrStatus` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `ParishCouncilType` | `PASTORAL`, `FINANCE` |
 
 ## Identity and parish directory
 
 | Table | Primary key | Important columns | Relations/indexes |
 | --- | --- | --- | --- |
 | `roles` | `role_id` | unique `role_name`, `description` | One role to many users. |
-| `parishes` | `parish_id` | unique `parish_name`, optional unique `slug`; type, contact/location/patron/email; coordinates (`latitude`, `longitude`), map zoom, pin color, show label; cover/logo/gallery; active flag; document/event/office/payment settings; available-documents JSON; venue capacity; `scheduling_config_version`; timestamps | One parish to users, requests, schedules, availabilities, templates, events, weekday/date rules, daily reports, and activity logs. Indexed by type, active status, municipality. |
-| `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; timestamps | Required role; optional parish. Indexed by role, parish, status, creation date. |
+| `parishes` | `parish_id` | unique `parish_name`, optional unique `slug`; type, contact/location/patron/email; coordinates (`latitude`, `longitude`), map zoom, pin color, show label; cover/logo/gallery; active flag; document/event/office/payment settings; available-documents JSON; venue capacity; `scheduling_config_version`; timestamps | One parish to users, requests, schedules, availabilities, templates, events, weekday/date rules, daily reports, activity logs, and one optional `councilConfiguration`. Indexed by type, active status, municipality. |
+| `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; `email_notifications_enabled` (Boolean, default `true`); timestamps | Required role; optional parish. Indexed by role, parish, status, creation date. |
+
+## Parish council governance
+
+| Table | Primary key | Important columns | Relations/indexes |
+| --- | --- | --- | --- |
+| `parish_council_configurations` | `config_id` | unique `parish_id`, `finance_council_enabled` (Boolean, default false), `version` (Int, default 1), timestamps | Cascades with parish. Unique constraint on `parish_id`. One configuration to many council members. |
+| `parish_council_members` | `member_id` | `council_configuration_id`, `council_type` (`PASTORAL`, `FINANCE`), `position_title` (VarChar(200)), `member_name` (VarChar(200)), `sort_order` (Int), timestamps | Cascades with council configuration. Composite indexes on `[council_configuration_id, council_type]` and `[council_configuration_id, sort_order]`. |
 
 ## Document-request and payment flow
 
@@ -79,6 +87,7 @@ This reference summarizes the 24 physical models and 20 enums implemented in the
 
 ```text
 Role 1 ── * User * ── 0..1 Parish
+Parish 1 ── 0..1 ParishCouncilConfiguration 1 ── * ParishCouncilMember
 User 1 ── * DocumentRequest * ── 1 Parish
 DocumentRequest 1 ── * RequestAttachment
 DocumentRequest 1 ── * PaymentTransaction 1 ── * ReceiptUpload 1 ── 0..1 OcrResult
@@ -100,4 +109,6 @@ EmailOutbox (Standalone transactional outbox ledger)
 - `DocumentRequest.correctionRequirementIds` and `Parish.gallery` are PostgreSQL string arrays; `Parish.availableDocuments` and `EmailOutbox.payload` are JSON.
 - `IdempotencyKey` enforces strict compound uniqueness on `[user_id, key, resource_type]` to prevent concurrent duplicate resource creation.
 - `Parish.schedulingConfigVersion` coordinates optimistic Admin writes with row-locked booking validation.
+- `ParishCouncilConfiguration.version` coordinates optimistic Admin writes on council members and finance toggle; lost updates return `409 COUNCIL_CONFIGURATION_STALE`.
+- Toggling `finance_council_enabled` to false preserves dormant finance member records in `parish_council_members` rather than deleting them.
 - Schema changes require explicit Prisma migrations. Consult [DATABASE.md](DATABASE.md) for the database migration protocol.

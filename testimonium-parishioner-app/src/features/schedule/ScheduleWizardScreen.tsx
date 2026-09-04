@@ -23,6 +23,7 @@ import {
   useCreateSchedule,
   useSchedulingConfiguration,
 } from "./api";
+import { useAuth } from "@/providers/AuthProvider";
 import { formatScheduleDate, makeSchedulePayloadSignature } from "./presentation";
 import type { ScheduleEventType } from "./types";
 
@@ -63,6 +64,7 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
 
 export const ScheduleWizardScreen: React.FC = () => {
   const router = useRouter();
+  const { profile } = useAuth();
   const today = useMemo(() => getManilaDateParts(), []);
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedParishId, setSelectedParishId] = useState<number | null>(null);
@@ -220,6 +222,21 @@ export const ScheduleWizardScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    if (profile?.needsProfileCompletion) {
+      Alert.alert(
+        "Profile Details Required",
+        "Please complete your profile (full name and contact number) before scheduling an appointment.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Complete Profile",
+            onPress: () => router.push("/(app)/(tabs)/profile" as any),
+          },
+        ]
+      );
+      return;
+    }
+
     if (!selectedParishId || !selectedEventType || !selectedDate || !selectedSlot || !selectedService) {
       setErrorMessage("Please complete each scheduling step before submitting.");
       return;
@@ -242,6 +259,21 @@ export const ScheduleWizardScreen: React.FC = () => {
     } catch (error: unknown) {
       const appError = isAppError(error) ? error : null;
       const code = appError?.code ?? "";
+
+      if (code === "PROFILE_INCOMPLETE") {
+        Alert.alert(
+          "Profile Details Required",
+          "Please complete your profile (full name and contact number) before scheduling an appointment.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Complete Profile",
+              onPress: () => router.push("/(app)/(tabs)/profile" as any),
+            },
+          ]
+        );
+        return;
+      }
       const configurationChanged = [
         "SCHEDULING_CONFIGURATION_INCOMPLETE", "SERVICE_NOT_OFFERED", "PARISH_INACTIVE",
       ].includes(code);
@@ -326,6 +358,32 @@ export const ScheduleWizardScreen: React.FC = () => {
     );
   };
 
+  if (profile?.needsProfileCompletion) {
+    return (
+      <Screen safeArea style={styles.screen} testID="schedule-wizard-blocked">
+        <AppHeader
+          title="New Schedule"
+          onBack={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(app)/(tabs)/(schedule)" as any);
+            }
+          }}
+        />
+        <View style={{ flex: 1, padding: spacing.lg, justifyContent: "center" }}>
+          <EmptyState
+            title="Profile Completion Required"
+            description="Complete your profile to access document and schedule requests. Parish offices require your official contact details."
+            icon="person-circle-outline"
+            actionLabel="Complete Profile"
+            onAction={() => router.push("/(app)/(tabs)/profile" as any)}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen safeArea style={styles.screen}>
       <AppHeader title="New Schedule" subtitle={`Step ${currentStep} of 5`} onBack={handleBack} />
@@ -402,7 +460,10 @@ export const ScheduleWizardScreen: React.FC = () => {
             </View>
           </Card>
           <Text style={styles.inputLabel} allowFontScaling>Notes for the parish (optional)</Text>
-          <RNTextInput value={remarks} onChangeText={setRemarks} placeholder="Add relevant details or venue specifications" placeholderTextColor={colors.textMuted} multiline style={styles.notesInput} maxLength={1000} />
+          <RNTextInput value={remarks} onChangeText={setRemarks} placeholder="Add relevant details, assistance needs, or priest preference" placeholderTextColor={colors.textMuted} multiline style={styles.notesInput} maxLength={500} />
+          <Text style={styles.disclaimerText} allowFontScaling>
+            Priest requests are subject to availability and are not guaranteed.
+          </Text>
         </View>}
       </ScrollView>
 
@@ -472,4 +533,5 @@ const styles = StyleSheet.create({
   summaryValue: { ...fontStyles.bodyMedium, color: colors.textPrimary, fontWeight: "600" },
   inputLabel: { ...fontStyles.captionMedium, color: colors.textSecondary, fontWeight: "600" },
   notesInput: { minHeight: 90, borderColor: colors.borderLight, borderWidth: 1, borderRadius: radii.md, padding: spacing.md, ...fontStyles.body, color: colors.textPrimary, textAlignVertical: "top", backgroundColor: colors.surfaceVariant },
+  disclaimerText: { ...fontStyles.caption, color: colors.textSecondary, fontStyle: "italic", marginTop: -spacing.xs },
 });

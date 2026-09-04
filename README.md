@@ -2,7 +2,7 @@
 
 TESTIMONIUM is the Roman Catholic Diocese of San Carlos portal suite for sacramental-document requests, parish scheduling, parish-directory management, and diocesan administration.
 
-**Implementation snapshot: 31 August 2026.** The backend routes and Prisma schema are the operational source of truth; this guide links to the focused reference documents in this repository.
+**Implementation snapshot: 3 September 2026.** The backend routes and Prisma schema are the operational source of truth; this guide links to the focused reference documents in this repository.
 
 ## Applications
 
@@ -17,13 +17,13 @@ The two web portals are separate Vite applications. The mobile application is bu
 
 ## What is implemented
 
-- **Identity and Security:** Firebase-authenticated role-based access for parishioners, secretaries, priests, and diocese coordinators. JIT Google authentication, single-flight email verification, profile completion gates, and isolated session lifecycles.
+- **Identity and Security:** Firebase-authenticated role-based access for parishioners, secretaries, priests, and diocese coordinators. JIT Google authentication, single-flight email verification, profile completion gates, user-configurable transactional email preferences, and isolated session lifecycles.
 - **Sacramental Document Requests:** Multi-step request wizard, draft persistence, document fee snapshots, supporting-file uploads (PDF/image), tracking numbers, request history, staff review, and structured correction resubmission.
 - **Payment and Cloudflare R2 Pipeline:** Parish payment QR code management, client receipt acquisition (with mobile HEIC conversion), R2 object storage, SHA-256 duplicate detection, asynchronous OCR enrichment, and mandatory staff verification.
 - **Parish Scheduling and Availability:** Authoritative backend parish scheduling configuration (enabled canonical services, time slots, daily and per-slot capacity limits), persisted parish/service weekday rules, date-specific overrides, availability date ranges, dynamic slot calculation, row-locked booking validation, reschedule proposals/responses, optimistic configuration versions, and database-backed idempotency.
-- **Parish Directory and Events:** Parish directory with search and municipality filtering, contact and location information, public monthly event discovery feed, interactive map configuration for coordinators, and mass schedule templates.
+- **Parish Directory and Governance:** Parish directory with search and municipality filtering, contact and location information, public monthly event discovery feed, interactive map configuration for coordinators, mass schedule templates, and Parish Pastoral Council (PPC) and Parish Finance Council (PFC) governance with member ordering, toggleable finance council with dormant state preservation, and optimistic versioning.
 - **Parishioner Mobile Experience:** Full-featured native mobile app (Auth & Onboarding, Parish Directory & Home, Document Request Wizard, Payment/Receipts, Scheduling Wizard, In-App Notifications & Events, Profile & Settings, Deep-linking, and Error Boundaries).
-- **Administration, Reports, and Notifications:** Role-scoped dashboards, parish/diocese daily reports, descriptive multi-domain analytics, public/private event visibility, in-app notifications, transactional PostgreSQL email outbox worker with generic SMTP delivery, audit logging, and user directory administration.
+- **Administration, Reports, and Notifications:** Role-scoped dashboards, parish/diocese daily reports, descriptive multi-domain analytics, public/private event visibility, in-app notifications, transactional PostgreSQL email outbox worker with generic SMTP delivery (covering 7 canonical document and scheduling events), centralized canonical audit action types catalog, and user directory administration.
 
 ## Prerequisites
 

@@ -66,6 +66,7 @@ export const login = async (req, res, next) => {
       success: true,
       data: {
         user: req.user,
+        isNewUser: Boolean(req.user?.isNewUser),
         rememberMe,
         expiresIn: expiresInSeconds,
       },
@@ -186,14 +187,21 @@ export const register = async (req, res, next) => {
       const fullName = normalizeAndConstructFullName(nameParts);
       if (fullName !== req.user.fullName) {
         const updated = await userRepository.update(req.user.id, { fullName });
-        userProfile = authService.toApplicationProfile(updated, req.firebaseUser);
+        userProfile = authService.toApplicationProfile(updated, req.firebaseUser, Boolean(req.user?.isNewUser));
         logger.debug({ userId: req.user.id, fullName }, "[AuthController] Updated user registration fullName");
       }
     }
 
+    // The /register endpoint specifically provisions a newly registered account journey.
+    // It must authoritatively return isNewUser: true regardless of prior JIT middleware checks.
+    const isNewUser = true;
+
     return res.status(200).json({
       success: true,
-      data: userProfile,
+      data: {
+        ...userProfile,
+        isNewUser: true,
+      },
     });
   } catch (err) {
     return next(err);

@@ -10,6 +10,7 @@ export interface BackendUserProfile {
   termsAccepted: boolean;
   privacyAccepted: boolean;
   needsProfileCompletion: boolean;
+  isNewUser?: boolean;
   status: string;
   role: string;
   parish?: {

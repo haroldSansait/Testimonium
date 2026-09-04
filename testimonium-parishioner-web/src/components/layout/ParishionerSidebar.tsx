@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import { Avatar } from '../ui/Avatar';
 
 interface NavItem {
@@ -47,6 +48,7 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
   const location = useLocation();
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  const { isProfileIncomplete, requireCompleteProfile } = useProfileRequirement();
 
   // Hover & Expansion State
   const [isHovered, setIsHovered] = useState(false);
@@ -222,13 +224,29 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
             ) : (
               <div className="h-1" />
             )}
-            {cat.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                id={`nav-${item.to.replace('/dashboard/', '').replace('/', '')}`}
-                onClick={handleNavClick}
-                aria-current={location.pathname === item.to ? 'page' : undefined}
+            {cat.items.map((item) => {
+              const isProtected = item.to === '/dashboard/request' || item.to === '/dashboard/scheduler';
+
+              const handleItemClick = (e: React.MouseEvent) => {
+                if (isProtected && isProfileIncomplete) {
+                  e.preventDefault();
+                  handleNavClick();
+                  requireCompleteProfile(
+                    () => navigate(item.to),
+                    item.to === '/dashboard/request' ? 'request certificates' : 'schedule appointments'
+                  );
+                } else {
+                  handleNavClick();
+                }
+              };
+
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  id={`nav-${item.to.replace('/dashboard/', '').replace('/', '')}`}
+                  onClick={handleItemClick}
+                  aria-current={location.pathname === item.to ? 'page' : undefined}
                 className={({ isActive }) => `
                   flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all duration-150 group relative
                   ${isActive
@@ -275,7 +293,8 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
                   </>
                 )}
               </NavLink>
-            ))}
+            );
+          })}
           </div>
         ))}
 
@@ -424,7 +443,9 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
   // Desktop Persistent Sidebar Rail with Smooth Shadow and Expansion
   return (
     <aside
-      className="hidden lg:block relative flex-shrink-0 select-none z-30 transition-[width] duration-300 ease-in-out"
+      className={`hidden lg:block relative flex-shrink-0 select-none transition-[width] duration-300 ease-in-out ${
+        !isPinned && isHovered ? 'z-40' : 'z-30'
+      }`}
       style={{ width: isPinned ? '280px' : '76px' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

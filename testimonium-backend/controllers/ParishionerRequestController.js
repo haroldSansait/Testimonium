@@ -26,6 +26,7 @@ export const create = async (req, res, next) => {
     if (err.statusCode) {
       return res.status(err.statusCode).json({
         success: false,
+        ...(err.code ? { code: err.code } : {}),
         message: err.message,
       });
     }

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { SubmissionProtectionProvider } from './contexts/SubmissionProtectionContext';
+import { ProfileRequirementProvider } from './contexts/ProfileRequirementContext';
 import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicLayout from './layouts/PublicLayout';
@@ -107,9 +108,11 @@ export const App: React.FC = () => {
       <ToastProvider>
         <SubmissionProtectionProvider>
           <AuthProvider>
-            <NotificationProvider>
-              <AppWithSessionModal />
-            </NotificationProvider>
+            <ProfileRequirementProvider>
+              <NotificationProvider>
+                <AppWithSessionModal />
+              </NotificationProvider>
+            </ProfileRequirementProvider>
           </AuthProvider>
         </SubmissionProtectionProvider>
       </ToastProvider>

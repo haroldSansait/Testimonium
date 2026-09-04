@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 31 August 2026
+**Last reconciled:** 3 September 2026
 
 Deploy the backend and the two Vite applications independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -88,7 +88,7 @@ Vite variables are embedded at build time. Set them in each portal’s environme
 
 ## Transactional email worker
 
-The API process starts the PostgreSQL email-outbox worker after the HTTP listener and stops it gracefully before disconnecting Prisma. Multiple API replicas are supported: workers claim rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the lease. Configure bounded SMTP timeouts and all SMTP secrets in the deployment secret manager.
+The API process starts the PostgreSQL email-outbox worker after the HTTP listener and stops it gracefully before disconnecting Prisma. Multiple API replicas are supported: workers claim rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the lease. The worker processes all seven `EmailType` notification triggers across document and scheduling workflows while honoring recipient user preferences (`email_notifications_enabled`). Configure bounded SMTP timeouts and all SMTP secrets in the deployment secret manager.
 
 ## Operational checks and rollback
 

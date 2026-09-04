@@ -1,6 +1,6 @@
 # Cloudflare R2 and OCR Pipeline
 
-**Last reconciled:** 24 August 2026
+**Last reconciled:** 3 September 2026
 **Source of truth:** `testimonium-backend/services/R2Service.js`, `ReceiptOcrService.js`, `ParishService.js`, and route controllers.
 
 TESTIMONIUM uses Cloudflare R2 through the S3-compatible AWS SDK. Browsers and mobile apps upload files directly to the Express API; the API validates the file format, magic bytes, and size, then streams or writes the file to R2. Storage credentials and access keys are never exposed to web or mobile clients.
@@ -29,7 +29,7 @@ The backend constructs its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflare
 | `parishes/parish_<parishId>/logo/<uuid>_<name>` | Parish image service | `parishes.logo_image` |
 | `parishes/parish_<parishId>/qr/<uuid>_<name>` | Parish payment QR service | `parishes.payment_qr_image` |
 
-Object filenames are sanitized to prevent directory traversal or malformed characters. Parish cover, logo, and QR writes utilize UUID prefixes to prevent cache collisions across updates. When replacing attachments, prior objects are pruned from R2 upon successful database commit.
+Object filenames are sanitized to prevent directory traversal or malformed characters. Parish cover, logo, and QR writes utilize UUID prefixes to prevent cache collisions across updates. When replacing attachments, prior objects are pruned from R2 upon successful database commit. (Note: Parish Pastoral Council and Parish Finance Council personnel records are stored as structured text attributes in PostgreSQL relational tables, requiring no binary asset storage in R2).
 
 ## Upload controls and client handling
 

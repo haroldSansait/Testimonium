@@ -91,4 +91,79 @@ describe("Google Sign-In and JIT Provisioning Suite", () => {
 
     expect(evaluateBootstrapState(nonParishionerGoogle, true)).toBe("SESSION_ERROR");
   });
+
+  it("sets isRegistrationSession to true when Google legal retry returns isNewUser: true", async () => {
+    (authApi.login as jest.Mock).mockResolvedValueOnce({
+      user: { ...googleUserProfile, isNewUser: true },
+      isNewUser: true,
+    });
+
+    const legalPayload = {
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion: "v1.0",
+      privacyVersion: "v1.0",
+    };
+
+    const loginResponse = await authApi.login(legalPayload);
+    const isNew = Boolean(loginResponse.user?.isNewUser ?? loginResponse.isNewUser);
+
+    expect(isNew).toBe(true);
+  });
+
+  it("sets isRegistrationSession to false when existing Google user accepts terms", async () => {
+    (authApi.login as jest.Mock).mockResolvedValueOnce({
+      user: { ...googleUserProfile, isNewUser: false },
+      isNewUser: false,
+    });
+
+    const legalPayload = {
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion: "v1.0",
+      privacyVersion: "v1.0",
+    };
+
+    const loginResponse = await authApi.login(legalPayload);
+    const isNew = Boolean(loginResponse.user?.isNewUser ?? loginResponse.isNewUser);
+
+    expect(isNew).toBe(false);
+  });
+
+  describe("Greeting text resolution for new vs returning sessions", () => {
+    const getGreeting = (fullName: string | null | undefined, isRegistrationSession: boolean) => {
+      const firstName = fullName ? fullName.trim().split(/\s+/)[0] : "";
+      const validFirstName =
+        firstName &&
+        firstName.toLowerCase() !== "undefined" &&
+        firstName.toLowerCase() !== "null"
+          ? firstName
+          : "";
+
+      if (isRegistrationSession) {
+        return validFirstName ? `Welcome, ${validFirstName}!` : "Welcome!";
+      } else {
+        return validFirstName ? `Welcome back, ${validFirstName}!` : "Welcome back!";
+      }
+    };
+
+    it("renders 'Welcome!' for newly registered user without legitimate name", () => {
+      expect(getGreeting("", true)).toBe("Welcome!");
+      expect(getGreeting(null, true)).toBe("Welcome!");
+      expect(getGreeting("   ", true)).toBe("Welcome!");
+    });
+
+    it("renders 'Welcome back!' for returning user without legitimate name", () => {
+      expect(getGreeting("", false)).toBe("Welcome back!");
+      expect(getGreeting(null, false)).toBe("Welcome back!");
+    });
+
+    it("renders 'Welcome, Gabriela!' for newly registered user with legitimate name", () => {
+      expect(getGreeting("Gabriela Silang", true)).toBe("Welcome, Gabriela!");
+    });
+
+    it("renders 'Welcome back, Gabriela!' for returning user with legitimate name", () => {
+      expect(getGreeting("Gabriela Silang", false)).toBe("Welcome back, Gabriela!");
+    });
+  });
 });

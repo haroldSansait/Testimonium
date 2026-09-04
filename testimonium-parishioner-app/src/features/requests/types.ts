@@ -171,7 +171,10 @@ export interface DocumentRequestListResponse {
 export interface CreateDraftRequestPayload {
   parishId: number;
   documentType: CanonicalDocumentType | string;
-  applicantName: string;
+  applicantName?: string;
+  applicantFirstName?: string;
+  applicantMiddleName?: string;
+  applicantLastName?: string;
   relationship?: string;
   purpose?: string;
   idempotencyKey?: string;

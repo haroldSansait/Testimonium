@@ -5,6 +5,7 @@ import { AuditLogService } from "./AuditLogService.js";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION, isValidLegalVersion } from "../config/legal.js";
 
 import { normalizeAndConstructFullName } from "../utils/nameUtils.js";
+import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 
 export class AuthService {
   constructor(
@@ -46,7 +47,7 @@ export class AuthService {
         existingUser = await this.recordLegalAcceptanceUser(existingUser, legalAcceptance);
       }
 
-      return this.toApplicationProfile(existingUser, decodedToken);
+      return this.toApplicationProfile(existingUser, decodedToken, false);
     }
 
     // 2. Lookup by email to check for provider conflict / pre-provisioned accounts
@@ -84,7 +85,7 @@ export class AuthService {
         }
 
         await AuditLogService.log(linkedUser.id, "Google Account Linked", null, false);
-        return this.toApplicationProfile(linkedUser, decodedToken);
+        return this.toApplicationProfile(linkedUser, decodedToken, false);
       } catch (error) {
         if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
           logger.warn({ firebaseUid, email }, "[AuthService] JIT email-linking race condition detected. Requerying user...");
@@ -92,7 +93,7 @@ export class AuthService {
                        (await this.userRepository.findByEmail(email));
           if (user) {
             await AuditLogService.log(user.id, "JIT User Reused", null, false);
-            return this.toApplicationProfile(user, decodedToken);
+            return this.toApplicationProfile(user, decodedToken, false);
           }
         }
         throw error;
@@ -156,7 +157,7 @@ export class AuthService {
         await AuditLogService.log(createdUser.id, "Verification Email Sent", null, false);
       }
 
-      return this.toApplicationProfile(createdUser, decodedToken);
+      return this.toApplicationProfile(createdUser, decodedToken, true);
     } catch (error) {
       if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
         logger.warn({ firebaseUid, email }, "[AuthService] JIT creation race condition detected across DB instances. Requerying user...");
@@ -164,7 +165,7 @@ export class AuthService {
                      (await this.userRepository.findByEmail(email));
         if (user) {
           await AuditLogService.log(user.id, "JIT User Reused", null, false);
-          return this.toApplicationProfile(user, decodedToken);
+          return this.toApplicationProfile(user, decodedToken, false);
         }
       }
       throw error;
@@ -223,17 +224,20 @@ export class AuthService {
   }
 
   resolveFullName(decodedToken) {
-    if (decodedToken.name) {
-      return decodedToken.name;
+    if (decodedToken?.name && typeof decodedToken.name === "string") {
+      const trimmed = decodedToken.name.trim();
+      if (trimmed) {
+        return trimmed;
+      }
     }
 
-    return decodedToken.email.split("@")[0];
+    return "";
   }
 
   /**
    * Evaluates server-driven onboarding status
    */
-  toApplicationProfile(user, decodedToken = null) {
+  toApplicationProfile(user, decodedToken = null, isNewUser = false) {
     // Firebase ID Token email_verified claim is the single source of truth
     const emailVerified = decodedToken?.email_verified ?? Boolean(user.isVerified);
 
@@ -245,12 +249,7 @@ export class AuthService {
     );
 
     // Backend is sole authority for profile completion state
-    const needsProfileCompletion = Boolean(
-      !user.fullName ||
-      user.fullName.trim() === "" ||
-      !user.contactNumber ||
-      user.contactNumber.trim() === ""
-    );
+    const needsProfileCompletion = isProfileIncomplete(user);
 
     return {
       id: user.id,
@@ -264,8 +263,9 @@ export class AuthService {
       termsAccepted,
       privacyAccepted,
       needsProfileCompletion,
+      isNewUser: Boolean(isNewUser),
       status: user.status,
-      role: user.role.roleName,
+      role: user.role?.roleName || user.role,
       emailNotificationsEnabled: typeof user.emailNotificationsEnabled === "boolean" ? user.emailNotificationsEnabled : true,
       parish: user.parish
         ? {

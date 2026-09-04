@@ -73,7 +73,10 @@ export class DemoRequestProvider implements IRequestProvider {
   async createRequest(request: {
     parishId: string;
     documentType: SacramentalRequest['documentType'];
-    applicantName: string;
+    applicantName?: string;
+    applicantFirstName?: string;
+    applicantMiddleName?: string;
+    applicantLastName?: string;
     relationship: string;
     purpose: string;
   }): Promise<SacramentalRequest> {
@@ -82,6 +85,9 @@ export class DemoRequestProvider implements IRequestProvider {
     const feeSnapshot = reqConfig?.baseFee !== undefined ? reqConfig.baseFee : 100;
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);
     const trackingNumber = `SR-2026-${randomSuffix}`;
+    const resolvedApplicantName =
+      request.applicantName ||
+      [request.applicantFirstName, request.applicantMiddleName, request.applicantLastName].filter(Boolean).join(' ');
     const newRequest: SacramentalRequest = {
       id: `req_${Date.now()}`,
       trackingNumber,
@@ -89,7 +95,7 @@ export class DemoRequestProvider implements IRequestProvider {
       documentType: request.documentType,
       fee: feeSnapshot,
       status: 'pending',
-      applicantName: request.applicantName,
+      applicantName: resolvedApplicantName,
       relationship: request.relationship,
       purpose: request.purpose,
       isDraft: true, // starts as draft

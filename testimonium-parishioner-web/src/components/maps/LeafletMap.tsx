@@ -42,7 +42,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
     <MapContainer 
       center={[center.lat, center.lng]} 
       zoom={zoom} 
-      className={className}
+      className={`${className} relative isolate`}
       scrollWheelZoom={true}
     >
       <TileLayer

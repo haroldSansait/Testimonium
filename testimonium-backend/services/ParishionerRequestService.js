@@ -14,6 +14,8 @@ import {
   IdempotencyService,
   computeRequestPayloadHash,
 } from "./IdempotencyService.js";
+import { isProfileIncomplete } from "../utils/profileCompleteness.js";
+import { buildApplicantName } from "../utils/nameUtils.js";
 
 export class ParishionerRequestService {
   constructor(parishionerRequestRepository = new ParishionerRequestRepository()) {
@@ -38,11 +40,48 @@ export class ParishionerRequestService {
       throw error;
     }
 
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+    const isParishioner = Boolean(
+      user && (!user.roleId || user.roleId === 1 || user.role?.roleName === "PARISHIONER")
+    );
+    if (isParishioner && isProfileIncomplete(user)) {
+      const error = new Error("Please complete your profile details (full name and contact number) before requesting documents.");
+      error.statusCode = 403;
+      error.code = "PROFILE_INCOMPLETE";
+      throw error;
+    }
+
+    let resolvedApplicantName = typeof requestData.applicantName === "string" ? requestData.applicantName.trim() : "";
+    if (requestData.applicantFirstName && requestData.applicantLastName) {
+      resolvedApplicantName = buildApplicantName({
+        firstName: requestData.applicantFirstName,
+        middleName: requestData.applicantMiddleName,
+        lastName: requestData.applicantLastName,
+      });
+    }
+
+    if (!resolvedApplicantName) {
+      const error = new Error("Applicant name is required.");
+      error.statusCode = 400;
+      error.code = "INVALID_APPLICANT_NAME";
+      throw error;
+    }
+
+    if (resolvedApplicantName.length > 150) {
+      const error = new Error("Applicant name must not exceed 150 characters.");
+      error.statusCode = 400;
+      error.code = "INVALID_APPLICANT_NAME";
+      throw error;
+    }
+
     const hasValidKey = IdempotencyService.isValidKey(idempotencyKey);
     const payloadHash = computeRequestPayloadHash({
       parishId: numericParishId,
       documentType: normalizedDocType,
-      applicantName: requestData.applicantName,
+      applicantName: resolvedApplicantName,
       relationship: requestData.relationship,
       purpose: requestData.purpose,
     });
@@ -135,7 +174,7 @@ export class ParishionerRequestService {
             userId,
             parishId: numericParishId,
             documentType: normalizedDocType,
-            applicantName: (requestData.applicantName || "").trim(),
+            applicantName: resolvedApplicantName,
             relationship: (requestData.relationship || "Self").trim(),
             purpose: (requestData.purpose || "").trim(),
             isDraft: true,
@@ -260,6 +299,20 @@ export class ParishionerRequestService {
    */
   async submitDraft(requestId, userId) {
     return prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        include: { role: true },
+      });
+      const isParishioner = Boolean(
+        user && (!user.roleId || user.roleId === 1 || user.role?.roleName === "PARISHIONER")
+      );
+      if (isParishioner && isProfileIncomplete(user)) {
+        const error = new Error("Please complete your profile details (full name and contact number) before submitting document requests.");
+        error.statusCode = 403;
+        error.code = "PROFILE_INCOMPLETE";
+        throw error;
+      }
+
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
       });

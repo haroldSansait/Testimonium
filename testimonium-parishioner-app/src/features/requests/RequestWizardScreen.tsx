@@ -64,13 +64,17 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   initialParishId,
 }) => {
   const router = useRouter();
+  const { user, profile } = useAuth();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [selectedParishOverride, setSelectedParishOverride] = useState<ParishDto | null>(null);
   const [selectedDocType, setSelectedDocType] = useState<CanonicalDocumentType | null>(null);
 
   // Form Fields
-  const [applicantName, setApplicantName] = useState("");
+  const [applicantFirstName, setApplicantFirstName] = useState("");
+  const [applicantMiddleName, setApplicantMiddleName] = useState("");
+  const [applicantLastName, setApplicantLastName] = useState("");
+  const applicantName = [applicantFirstName.trim(), applicantMiddleName.trim(), applicantLastName.trim()].filter(Boolean).join(" ");
   const [relationship, setRelationship] = useState("Self");
   const [purpose, setPurpose] = useState("");
 
@@ -149,6 +153,32 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     );
   };
 
+  if (profile?.needsProfileCompletion) {
+    return (
+      <Screen testID="request-wizard-blocked">
+        <AppHeader
+          title="Request Document"
+          onBack={() => {
+            navigateBackOrReplace(
+              () => router.canGoBack(),
+              () => router.back(),
+              () => router.replace("/(app)/(tabs)/(requests)" as any)
+            );
+          }}
+        />
+        <View style={{ flex: 1, padding: spacing.lg, justifyContent: "center" }}>
+          <EmptyState
+            title="Profile Completion Required"
+            description="Complete your profile to access document and schedule requests. Parish offices require your official contact details."
+            icon="person-circle-outline"
+            actionLabel="Complete Profile"
+            onAction={() => router.push("/(app)/(tabs)/profile" as any)}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
   // Resolve offered documents for selected parish with explicit empty array semantics
   const offeredDocTypes: CanonicalDocumentType[] = React.useMemo(() => {
     return getEffectiveOfferedDocuments(selectedParish?.availableDocuments);
@@ -175,8 +205,22 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   // Step 3 -> Step 4
   const handleValidateFormAndNext = () => {
-    if (!applicantName.trim()) {
-      Alert.alert("Applicant Name Required", "Please enter the full legal name of the applicant.");
+    if (profile?.needsProfileCompletion) {
+      Alert.alert(
+        "Profile Details Required",
+        "Please complete your profile (full name and contact number) before requesting documents.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Complete Profile",
+            onPress: () => router.push("/(app)/(tabs)/profile" as any),
+          },
+        ]
+      );
+      return;
+    }
+    if (!applicantFirstName.trim() || !applicantLastName.trim()) {
+      Alert.alert("Applicant Name Required", "Please enter both First Name and Last Name for the applicant.");
       return;
     }
     if (!purpose.trim()) {
@@ -219,7 +263,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   // Final Review -> Server Draft -> File Uploads -> Submit
   const queryClient = useQueryClient();
-  const { user } = useAuth();
   const createdDraftIdRef = useRef<number | null>(null);
 
   const handleConfirmAndSubmit = async () => {
@@ -241,7 +284,9 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
           payload: {
             parishId: Number(selectedParish.id),
             documentType: selectedDocType,
-            applicantName: applicantName.trim(),
+            applicantFirstName: applicantFirstName.trim(),
+            applicantMiddleName: applicantMiddleName.trim() || undefined,
+            applicantLastName: applicantLastName.trim(),
             relationship: relationship.trim(),
             purpose: purpose.trim(),
           },
@@ -291,6 +336,21 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       inFlightGuard.current = false;
       setIsSubmitting(false);
       setSubmissionStage("");
+
+      if (err?.code === "PROFILE_INCOMPLETE") {
+        Alert.alert(
+          "Profile Details Required",
+          "Please complete your profile (full name and contact number) before requesting documents.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Complete Profile",
+              onPress: () => router.push("/(app)/(tabs)/profile" as any),
+            },
+          ]
+        );
+        return;
+      }
 
       if (createdDraftId) {
         void queryClient.invalidateQueries({
@@ -479,16 +539,49 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
               <View style={styles.formGroup}>
                 <Text style={styles.inputLabel} allowFontScaling>
-                  Full Legal Name of Record Holder *
+                  First Name *
                 </Text>
                 <TextInput
-                  value={applicantName}
-                  onChangeText={setApplicantName}
-                  placeholder="e.g. Juan Dela Cruz"
+                  value={applicantFirstName}
+                  onChangeText={setApplicantFirstName}
+                  placeholder="e.g. Juan"
                   placeholderTextColor={colors.textMuted}
                   style={styles.textInput}
+                  maxLength={50}
                   autoCapitalize="words"
-                  accessibilityLabel="Full legal name of the person named in the certificate"
+                  accessibilityLabel="First name of the applicant"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel} allowFontScaling>
+                  Middle Name (Optional)
+                </Text>
+                <TextInput
+                  value={applicantMiddleName}
+                  onChangeText={setApplicantMiddleName}
+                  placeholder="e.g. Santos"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.textInput}
+                  maxLength={50}
+                  autoCapitalize="words"
+                  accessibilityLabel="Middle name of the applicant"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel} allowFontScaling>
+                  Last Name *
+                </Text>
+                <TextInput
+                  value={applicantLastName}
+                  onChangeText={setApplicantLastName}
+                  placeholder="e.g. Dela Cruz"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.textInput}
+                  maxLength={50}
+                  autoCapitalize="words"
+                  accessibilityLabel="Last name of the applicant"
                 />
               </View>
 

@@ -23,6 +23,7 @@ import { UpcomingEventsSection } from "@/features/events/UpcomingEventsSection";
 import { getEffectiveOfferedDocuments } from "@/features/requests/presentation";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { useParishDetail } from "./api";
 import {
   buildEmailUrl,
@@ -40,6 +41,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
   parishId,
 }) => {
   const router = useRouter();
+  const { requireCompleteProfile } = useRequireCompleteProfile();
   const [imageError, setImageError] = useState(false);
 
   const isValidId = Boolean(parishId && /^[1-9]\d*$/.test(parishId.trim()));
@@ -262,7 +264,9 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                   size="md"
                   icon="arrow-forward"
                   onPress={() => {
-                    router.push(`/(app)/requests/new?parishId=${parish.id}` as any);
+                    requireCompleteProfile(() => {
+                      router.push(`/(app)/requests/new?parishId=${parish.id}` as any);
+                    });
                   }}
                   accessibilityLabel={`Request document from ${parish.name}`}
                 />

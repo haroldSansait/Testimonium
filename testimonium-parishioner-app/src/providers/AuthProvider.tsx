@@ -60,6 +60,7 @@ interface AuthContextValue {
   updateProfile: (payload: UpdateProfilePayload) => Promise<BackendUserProfile>;
   refreshProfile: () => Promise<BackendUserProfile | null>;
   retryBootstrap: () => Promise<void>;
+  isRegistrationSession: boolean;
   logout: () => Promise<void>;
 }
 
@@ -79,6 +80,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [error, setError] = useState<string | null>(null);
   const [sessionIssue, setSessionIssue] = useState<SessionIssue | null>(null);
   const [pendingLegalAction, setPendingLegalAction] = useState<PendingLegalAction | null>(null);
+  const [isRegistrationSession, setIsRegistrationSession] = useState(false);
 
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -106,6 +108,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setError(null);
       setSessionIssue(null);
       setPendingLegalAction(null);
+      setIsRegistrationSession(false);
       setState("NO_FIREBASE_USER");
     }
   }, []);
@@ -255,6 +258,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         });
         const loginResponse = await authApi.login();
         devDiagnostic("Auth", "Backend login bootstrap succeeded");
+        setIsRegistrationSession(false);
         if (!commitProfile(loginResponse.user, firebaseUser, generationRef.current)) {
           throw new AppError({
             kind: "AUTH",
@@ -331,6 +335,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
         }
 
+        setIsRegistrationSession(true);
         commitProfile(registeredProfile, firebaseUser, generationRef.current);
 
         // Attempt initial verification email send using modular function
@@ -383,6 +388,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         });
         const loginResponse = await authApi.login();
         devDiagnostic("GoogleAuth", "Google backend login succeeded");
+        const isNew = Boolean(loginResponse.user?.isNewUser ?? (loginResponse as any).isNewUser);
+        setIsRegistrationSession(isNew);
         commitProfile(loginResponse.user, firebaseUser, generationRef.current);
       } catch (loginError) {
         if (isAppError(loginError) && loginError.code === "LEGAL_ACCEPTANCE_REQUIRED") {
@@ -528,6 +535,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             });
           }
           const loginResponse = await authApi.login(legal);
+          const isNew = Boolean(loginResponse.user?.isNewUser ?? loginResponse.isNewUser);
+          setIsRegistrationSession(isNew);
           setPendingLegalAction(null);
           commitProfile(loginResponse.user, firebaseUser, generation);
         } else {
@@ -540,6 +549,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             });
           }
           const updatedProfile = await authApi.acceptLegal(legal);
+          setIsRegistrationSession(false);
           commitProfile(updatedProfile, firebaseUser, generation);
         }
       } catch (cause) {
@@ -626,6 +636,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       error,
       sessionIssue,
       pendingLegalAction,
+      isRegistrationSession,
       isSigningIn,
       isRegistering,
       isCheckingVerification,
@@ -650,6 +661,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       error,
       sessionIssue,
       pendingLegalAction,
+      isRegistrationSession,
       isSigningIn,
       isRegistering,
       isCheckingVerification,

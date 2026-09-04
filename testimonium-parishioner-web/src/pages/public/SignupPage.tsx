@@ -8,6 +8,8 @@ import { LegalAcceptanceModal } from '../../components/modals/LegalAcceptanceMod
 import { TermsModal } from '../../components/modals/TermsModal';
 import { PrivacyModal } from '../../components/modals/PrivacyModal';
 import { mapAuthError } from '../../utils/authErrorMapper';
+import { evaluatePasswordStrength } from '../../utils/passwordStrength';
+import { cn } from '../../utils/cn';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 export const SignupPage: React.FC = () => {
@@ -25,6 +27,8 @@ export const SignupPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const passwordStrength = evaluatePasswordStrength(password);
 
   // Legal compliance checkboxes
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -291,6 +295,24 @@ export const SignupPage: React.FC = () => {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+
+            {/* Password Strength Indicator */}
+            {password.length > 0 && (
+              <div className="space-y-1.5 -mt-2" aria-live="polite">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-muted">Password Strength:</span>
+                  <span className={cn("font-bold text-xs uppercase tracking-wide", passwordStrength.colorClass)}>
+                    {passwordStrength.label}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div className={cn("h-full transition-all duration-200", passwordStrength.score >= 1 ? passwordStrength.bgClass : "bg-transparent")} />
+                  <div className={cn("h-full transition-all duration-200", passwordStrength.score >= 2 ? passwordStrength.bgClass : "bg-transparent")} />
+                  <div className={cn("h-full transition-all duration-200", passwordStrength.score >= 3 ? passwordStrength.bgClass : "bg-transparent")} />
+                </div>
+                <p className="text-[11px] text-text-muted">{passwordStrength.feedback}</p>
+              </div>
+            )}
 
             <div className="relative">
               <Input

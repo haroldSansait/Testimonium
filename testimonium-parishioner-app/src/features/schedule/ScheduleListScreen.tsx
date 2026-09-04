@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { AppHeader, Button, EmptyState, FilterChip, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { useScheduleList } from "./api";
 import {
   extractTimeSlotFromSchedule,
@@ -25,6 +26,7 @@ type ScopeTab = "upcoming" | "history";
 
 export const ScheduleListScreen: React.FC = () => {
   const router = useRouter();
+  const { requireCompleteProfile } = useRequireCompleteProfile();
   const [activeTab, setActiveTab] = useState<ScopeTab>("upcoming");
 
   const {
@@ -36,7 +38,9 @@ export const ScheduleListScreen: React.FC = () => {
   } = useScheduleList(activeTab);
 
   const handleStartBooking = () => {
-    router.push("/(app)/schedule/new" as any);
+    requireCompleteProfile(() => {
+      router.push("/(app)/schedule/new" as any);
+    });
   };
 
   const handleSchedulePress = (item: ScheduleItem) => {

@@ -1,6 +1,6 @@
 # TESTIMONIUM Project Context
 
-**Last reconciled:** 31 August 2026
+**Last reconciled:** 3 September 2026
 **Status:** Canonical system orientation and architectural map for contributors.
 
 ## System map
@@ -13,7 +13,7 @@ testimonium/
 ├── testimonium-parishioner-app/  Parishioner Expo SDK 57 / React Native mobile app
 ├── API_DOCUMENTATION.md          Registered API surface and contracts
 ├── DATABASE.md                   Database operations and migration policy
-├── Testimonium_Database_Schema.md Authoritative database schema reference (24 models)
+├── Testimonium_Database_Schema.md Authoritative database schema reference (26 models)
 ├── CLOUDFLARE_R2.md              Upload, storage, and OCR pipeline specification
 └── DEPLOYMENT.md                 Production checklist and deployment architecture
 ```
@@ -44,13 +44,14 @@ Staff tenancy is strictly derived from verified server identity, not client para
 
 ## Data model and workflows
 
-The Prisma schema defines 24 models: the original identity, parish, document, payment, scheduling, notification, FAQ, audit, Mass-template, event, and idempotency records plus normalized parish weekday rules, service weekday rules, date rules and service overrides, daily reports, and the transactional email outbox.
+The Prisma schema defines 26 models: the original identity, parish, document, payment, scheduling, notification, FAQ, audit, Mass-template, event, and idempotency records plus normalized parish weekday rules, service weekday rules, date rules and service overrides, daily reports, transactional email outbox, and parish council configurations and members.
 
 - **Document Requests:** Draft creation, fee snapshots, supporting file uploads, staff review cycles, correction requests/resubmissions, payment proof uploads, and immutable history logging.
 - **Payments:** R2 storage, SHA-256 duplicate image detection, OCR reference/amount extraction, and staff verification workflows.
 - **Scheduling:** 16 canonical event types, backend-enforced parish event settings (services, time slots, daily/per-slot capacities), persisted weekday/date rules, availability range checks, dynamic slot calculation, row-locked booking/configuration writes, reschedule negotiation, and database-backed idempotency key deduplication.
+- **Parish Governance:** Parish Pastoral Council (PPC) and optional Parish Finance Council (PFC) administration with position titles, member sorting, dormant state preservation when PFC is toggled off, optimistic concurrency versioning, and public directory visibility.
 - **Mobile Integration:** Complete parity with parishioner web capabilities, including camera/gallery receipt capture with HEIC conversion, multi-step document and scheduling wizards, and deep-link routing.
-- **Transactional Outbox:** Guaranteed document-ready and schedule status email dispatch via PostgreSQL transactional `email_outbox` claimed with `FOR UPDATE SKIP LOCKED`.
+- **Transactional Outbox:** Guaranteed document-lifecycle and schedule status email dispatch via PostgreSQL transactional `email_outbox` claimed with `FOR UPDATE SKIP LOCKED`, honoring user-configurable `emailNotificationsEnabled` preferences.
 
 ## Contributor guardrails
 

@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { AppHeader, Button, EmptyState, FilterChip, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { useRequestList, useRequestTrackingLookup } from "./api";
 import { RequestCard } from "./components/RequestCard";
 import type { DocumentRequestDetail } from "./types";
@@ -20,6 +21,7 @@ type FilterTab = "ALL" | "ACTIVE" | "COMPLETED";
 
 export const RequestListScreen: React.FC = () => {
   const router = useRouter();
+  const { requireCompleteProfile } = useRequireCompleteProfile();
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
   const [trackingNumber, setTrackingNumber] = useState("");
   const trackingLookup = useRequestTrackingLookup();
@@ -53,7 +55,9 @@ export const RequestListScreen: React.FC = () => {
   });
 
   const handleStartRequest = () => {
-    router.push("/(app)/requests/new" as any);
+    requireCompleteProfile(() => {
+      router.push("/(app)/requests/new" as any);
+    });
   };
 
   const handleRequestPress = (request: DocumentRequestDetail) => {

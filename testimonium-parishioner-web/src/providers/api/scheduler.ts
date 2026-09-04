@@ -142,14 +142,19 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     date: string;
     timeSlot: string;
     location?: string;
+    remarks?: string;
   }): Promise<Appointment> {
+    const rawRemarks = appointment.remarks?.trim() || "";
+    const venueInfo = appointment.location ? `Venue: ${appointment.location}.` : "";
+    const combinedRemarks = [rawRemarks, venueInfo].filter(Boolean).join(" ") || "Parishioner Portal Request";
+
     const payload = {
       parishId: parseInt(appointment.parishId, 10),
       eventType: appointment.eventType,
       displayTitle: appointment.displayTitle,
       date: appointment.date,
       timeSlot: appointment.timeSlot,
-      remarks: appointment.location ? `Venue: ${appointment.location}.` : "Parishioner Portal Request",
+      remarks: combinedRemarks,
     };
 
     const idempotencyKey = getOrGenerateWebIdempotencyKey(payload);

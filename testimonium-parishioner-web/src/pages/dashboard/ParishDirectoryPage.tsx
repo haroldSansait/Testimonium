@@ -11,6 +11,7 @@ import {
   Minimize2
 } from 'lucide-react';
 import { useParishes } from '../../hooks/useService';
+import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import type { Parish } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
@@ -30,6 +31,7 @@ const EMPTY_PARISHES_ARRAY: Parish[] = [];
 
 export const ParishDirectoryPage: React.FC = () => {
   const navigate = useNavigate();
+  const { requireCompleteProfile } = useProfileRequirement();
 
   const parishesQuery = useParishes();
   const parishes = parishesQuery.data || EMPTY_PARISHES_ARRAY;
@@ -110,11 +112,17 @@ export const ParishDirectoryPage: React.FC = () => {
   };
 
   const handleRequestDocument = (parishId: string) => {
-    navigate(`/dashboard/request?parishId=${parishId}`);
+    requireCompleteProfile(
+      () => navigate(`/dashboard/request?parishId=${parishId}`),
+      'request certificates'
+    );
   };
 
   const handleScheduleAppointment = (parishId: string) => {
-    navigate(`/dashboard/scheduler?parishId=${parishId}`);
+    requireCompleteProfile(
+      () => navigate(`/dashboard/scheduler?parishId=${parishId}`),
+      'schedule appointments'
+    );
   };
 
   const handleRefresh = () => {
@@ -226,8 +234,8 @@ export const ParishDirectoryPage: React.FC = () => {
       {/* Map Container Viewport */}
       <div className={
         isFullScreen 
-          ? "fixed inset-0 z-[9999] h-screen w-screen bg-white rounded-none border-none shadow-2xl" 
-          : "relative h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md"
+          ? "fixed inset-0 z-[60] h-screen w-screen bg-white rounded-none border-none shadow-2xl" 
+          : "relative z-0 isolate h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md"
       }>
         {/* Leaflet map */}
         {displayParishes.length > 0 ? (
@@ -257,7 +265,7 @@ export const ParishDirectoryPage: React.FC = () => {
         )}
 
         {/* Collapsible scrolling Parishes List sidebar overlay */}
-        <div className={`absolute left-4 top-4 bottom-4 w-72 bg-white/95 backdrop-blur-sm border border-border rounded-xl shadow-xl flex flex-col z-[1000] transition-all duration-350 pointer-events-auto ${
+        <div className={`absolute left-4 top-4 bottom-4 w-72 bg-white/95 backdrop-blur-sm border border-border rounded-xl shadow-xl flex flex-col z-10 transition-all duration-350 pointer-events-auto ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-[290px]"
         }`}>
           {/* Header */}
@@ -300,7 +308,7 @@ export const ParishDirectoryPage: React.FC = () => {
         {!isSidebarOpen && (
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className="absolute left-4 top-4 z-[1000] p-2.5 bg-white border border-border text-text-muted hover:text-[#7B1C2A] rounded-button shadow-md transition-all focus-ring flex items-center gap-1.5 text-xs font-bold pointer-events-auto"
+            className="absolute left-4 top-4 z-10 p-2.5 bg-white border border-border text-text-muted hover:text-[#7B1C2A] rounded-button shadow-md transition-all focus-ring flex items-center gap-1.5 text-xs font-bold pointer-events-auto"
             title="Show list"
           >
             <Maximize2 size={14} />
@@ -309,7 +317,7 @@ export const ParishDirectoryPage: React.FC = () => {
         )}
 
         {/* Map Floating Control Controls */}
-        <div className="absolute right-3.5 top-3.5 z-[1000] flex flex-col space-y-2">
+        <div className="absolute right-3.5 top-3.5 z-10 flex flex-col space-y-2">
           <button
             onClick={() => setIsFullScreen(!isFullScreen)}
             className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
@@ -335,7 +343,7 @@ export const ParishDirectoryPage: React.FC = () => {
 
         {/* Rich Floating Parish Info Overlay Card (Desktop: expanded split panel overlay, Mobile: bottom sheet style) */}
         {selectedParish && (
-          <div className="absolute inset-0 pointer-events-none z-[1000]">
+          <div className="absolute inset-0 pointer-events-none z-20">
             {/* Desktop layout: spacious floating overlay */}
             <div className={`hidden lg:block absolute top-4 bottom-4 w-[580px] max-w-[calc(100vw-360px)] pointer-events-auto overflow-hidden animate-in slide-in-from-left duration-300 transition-all ${
               isSidebarOpen ? "left-[304px]" : "left-4"

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --test scripts/weekly_banner_events.test.js",
+    "test": "node --experimental-strip-types --test scripts/weekly_banner_events.test.js scripts/phase1_qa_correction.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

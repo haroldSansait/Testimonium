@@ -21,5 +21,5 @@ export const createScheduleSchema = z.object({
     required_error: "Time slot is required"
   }).min(1, "Time slot cannot be empty"),
   displayTitle: z.string().optional().nullable(),
-  remarks: z.string().optional().nullable(),
+  remarks: z.string().max(1000, "Additional notes cannot exceed 1000 characters").optional().nullable(),
 });

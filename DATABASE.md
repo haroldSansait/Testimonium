@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 31 August 2026
+**Last reconciled:** 3 September 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -24,6 +24,8 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260707131952_add_patron_saint_and_email_to_parish`
 - `20260823120000_add_idempotency_keys`
 - `20260829090000_planned_additions`
+- `20260901120000_add_email_preference_and_document_email_types`
+- `20260902120000_add_parish_councils`
 
 ### Development change flow
 
@@ -71,9 +73,11 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - Scheduling settings share `Parish.schedulingConfigVersion`. Writers lock the parish row and increment the version; booking transactions take the same lock before final validation.
 - Existing `ParishEvent` rows are backfilled to `PUBLIC` before visibility becomes non-null. Event and report writes use optimistic integer versions.
 - `DailyReport` enforces `PARISH` plus non-null parish or `DIOCESE` plus null parish with a database check constraint. Reports archive in place.
-- `EmailOutbox.transitionKey` is unique. Claim queries use `FOR UPDATE SKIP LOCKED`, a processing token, and an expiring lease; status/next-attempt indexes support recovery and retries.
+- `EmailOutbox.transitionKey` is unique. Claim queries use `FOR UPDATE SKIP LOCKED`, a processing token, and an expiring lease; status/next-attempt indexes support recovery and retries. Dispatches respect `User.emailNotificationsEnabled` (default `true`); when disabled, transactional emails are omitted while in-app notifications persist.
+- `EmailType` covers seven canonical lifecycle events across documents and schedules (`DOCUMENT_SUBMITTED`, `DOCUMENT_NEEDS_CORRECTION`, `DOCUMENT_PAYMENT_NEEDS_CORRECTION`, `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED`).
+- `ParishCouncilConfiguration` has a 1-to-1 unique relationship with `Parish`. It manages `finance_council_enabled` and optimistic `version`. Associated `ParishCouncilMember` rows store `council_type` (`PASTORAL` or `FINANCE`), `position_title`, `member_name`, and integer `sort_order`. Toggling PFC off retains dormant finance member rows in the database to prevent accidental data loss.
 - Parish settings such as document/event configuration, office hours, and directory metadata are stored as structured text/JSON fields; validate them at the service boundary.
-- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; optional actor/processor assignments set null.
+- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; optional actor/processor assignments set null.
 
 ## Backup and recovery
 

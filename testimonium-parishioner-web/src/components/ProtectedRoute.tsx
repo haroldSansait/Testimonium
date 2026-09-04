@@ -30,12 +30,8 @@ export const ProtectedRoute: React.FC = () => {
     return <Navigate to="/verify-email" replace />;
   }
 
-  // 2. Check profile completion requirement
-  if (appProfile?.needsProfileCompletion && location.pathname !== '/dashboard/profile') {
-    console.debug('[ProtectedRoute] Profile completion required. Redirecting to /dashboard/profile');
-    return <Navigate to="/dashboard/profile" state={{ isNewUser: true }} replace />;
-  }
-
+  // 2. Profile completion is enforced at request action boundaries (Document/Schedule requests),
+  // allowing normal browsing of Home, Directory, Help, and Profile.
   console.debug('[ProtectedRoute] Access granted to route:', location.pathname);
   return <Outlet />;
 };
