@@ -25,8 +25,8 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
-  const maxSizeBytes = 10 * 1024 * 1024; // 10 MB
+  const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+  const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
 
   // Detect existing receipt upload
   const existingReceipt = existingTransaction?.receipts?.[0];
@@ -39,12 +39,12 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
     setErrorMessage(null);
 
     if (!allowedTypes.includes(selectedFile.type)) {
-      setErrorMessage("Unsupported file type. Please upload a PNG, JPG, JPEG, or WEBP image.");
+      setErrorMessage("Unsupported file type. Please upload a PNG, JPG, or JPEG image.");
       return;
     }
 
     if (selectedFile.size > maxSizeBytes) {
-      setErrorMessage("File is too large. Maximum size allowed is 10 MB.");
+      setErrorMessage("File is too large. Maximum size allowed is 5 MB.");
       return;
     }
 
@@ -114,15 +114,22 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         referenceNumber: result.ocrResult?.referenceNumber || undefined,
         amount: result.ocrResult?.amount || undefined,
         confidenceScore: result.ocrResult?.confidenceScore || undefined,
-        autoVerified: result.autoVerified,
+        autoVerified: false,
       });
 
       onSuccess(result.request);
     } catch (err: any) {
       setIsUploading(false);
       console.error(err);
-      const msg = err.response?.data?.message || err.message || "Failed to upload receipt. Please check your network and try again.";
-      setErrorMessage(msg);
+      const code = err.response?.data?.code || err.code;
+      if (code === 'PAYMENT_PROOF_INVALID_IMAGE' || code === 'INVALID_FILE_FORMAT') {
+        setErrorMessage("The selected file is not a valid receipt image. Please upload a clear JPEG or PNG under 5 MB.");
+      } else if (code === 'FILE_TOO_LARGE') {
+        setErrorMessage("The selected file exceeds the 5 MB limit. Please select a smaller file.");
+      } else {
+        const msg = err.response?.data?.message || err.message || "Failed to upload receipt. Please check your network and try again.";
+        setErrorMessage(msg);
+      }
     }
   };
 
@@ -178,7 +185,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
                   <div>
                     <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Verification Mode:</span>
                     <span className="font-bold text-text-primary text-[10px] bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded uppercase">
-                      {existingTransaction.status === 'VERIFIED' ? 'Auto-Verified' : 'Manual Audit Pending'}
+                      {existingTransaction.status === 'VERIFIED' ? 'Verified by Staff' : 'Manual Audit Pending'}
                     </span>
                   </div>
                   {existingTransaction.status !== 'VERIFIED' && (
@@ -212,7 +219,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
-              accept="image/png, image/jpeg, image/jpg, image/webp"
+              accept="image/png, image/jpeg, image/jpg"
               className="hidden"
               aria-label="Replace receipt file"
             />
@@ -222,47 +229,33 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         {/* OCR Result View immediately after upload */}
         {ocrResult && !isUploading && !existingReceiptUrl && (
           <div className="p-4 rounded-xl border space-y-4 animate-in fade-in duration-200 text-left bg-white shadow-xs border-border">
-            {ocrResult.autoVerified ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-green-800 text-xs font-bold">
-                  <CheckCircle2 className="w-5 h-5 text-green-700" />
-                  <span className="text-sm">Receipt Passed Automated Verification</span>
-                </div>
-                <p className="text-xs text-text-muted leading-relaxed font-normal">
-                  Our system verified the payment details on your uploaded receipt.
-                </p>
-                <div className="bg-app-page border border-border p-3.5 rounded-xl space-y-1.5 text-xs text-text-muted">
-                  {ocrResult.referenceNumber && (
-                    <div>
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Reference Number:</span>
-                      <span className="font-bold text-text-primary font-mono">{ocrResult.referenceNumber}</span>
-                    </div>
-                  )}
-                  {ocrResult.amount && (
-                    <div>
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Amount Detected:</span>
-                      <span className="font-bold text-text-primary">₱{ocrResult.amount}</span>
-                    </div>
-                  )}
-                </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-800 text-xs font-bold">
+                <CheckCircle2 className="w-5 h-5 text-green-700" />
+                <span className="text-sm">Receipt Submitted for Review</span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-blue-800 text-xs font-bold">
-                  <AlertCircle className="w-5 h-5 text-blue-600" />
-                  <span className="text-sm">Receipt Uploaded &amp; Awaiting Review</span>
-                </div>
-                <p className="text-xs text-text-muted leading-relaxed font-normal">
-                  Your receipt proof was received successfully and is queued for parish audit.
-                </p>
-                <div className="bg-app-page border border-border p-3 rounded-xl text-xs text-text-muted space-y-1">
+              <p className="text-xs text-text-muted leading-relaxed font-normal">
+                Your payment proof passed readability checks and is waiting for manual verification by parish records staff.
+              </p>
+              <div className="bg-app-page border border-border p-3.5 rounded-xl space-y-1.5 text-xs text-text-muted">
+                {ocrResult.referenceNumber && (
                   <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Status:</span>
-                    <span className="font-semibold text-text-primary">Awaiting manual approval</span>
+                    <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Reference Number:</span>
+                    <span className="font-bold text-text-primary font-mono">{ocrResult.referenceNumber}</span>
                   </div>
+                )}
+                {ocrResult.amount && (
+                  <div>
+                    <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Amount Detected:</span>
+                    <span className="font-bold text-text-primary">₱{ocrResult.amount}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider mr-1.5">Verification:</span>
+                  <span className="font-semibold text-text-primary">Manual staff review pending</span>
                 </div>
               </div>
-            )}
+            </div>
 
             <Button onClick={removeFile} variant="outline" className="w-full text-xs font-semibold">
               Upload a Different Receipt
@@ -273,11 +266,11 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         {/* Upload State: Honest Indeterminate Progress while request is genuinely active */}
         {isUploading && (
           <div className="p-6 border border-border/80 rounded-xl bg-app-page/50 text-center space-y-3" role="status">
-            <span className="text-xs font-bold text-text-primary">Uploading &amp; Verifying Receipt…</span>
+            <span className="text-xs font-bold text-text-primary">Checking payment proof quality…</span>
             <div className="w-full bg-border rounded-full h-2 overflow-hidden shadow-inner relative">
               <div className="bg-crimson h-2 rounded-full w-2/5 animate-pulse" />
             </div>
-            <p className="text-[11px] text-text-muted">Encrypting and transferring file to secure ecclesiastical storage.</p>
+            <p className="text-[11px] text-text-muted">Verifying readability and submitting to parish records office.</p>
           </div>
         )}
 
@@ -302,14 +295,14 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
               <p className="text-[11px] text-text-muted mt-0.5 font-normal">Drag &amp; drop or click to browse files</p>
             </div>
             <span className="text-[10px] text-text-muted bg-white px-3 py-1 rounded-full border border-border/80 font-medium shadow-2xs">
-              Supports PNG, JPG, JPEG, WEBP (Max 10 MB)
+              Supports PNG, JPG, JPEG (Max 5 MB)
             </span>
             <input
               id="receipt-file-input"
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
-              accept="image/png, image/jpeg, image/jpg, image/webp"
+              accept="image/png, image/jpeg, image/jpg"
               className="sr-only"
             />
           </label>
@@ -361,7 +354,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
-              accept="image/png, image/jpeg, image/jpg, image/webp"
+              accept="image/png, image/jpeg, image/jpg"
               className="hidden"
             />
           </div>

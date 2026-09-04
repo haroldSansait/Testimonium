@@ -13,7 +13,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 3,
     baseFee: 100.00,
     requiredFields: [
-      { id: "applicantName", label: "Full Name of Baptized Person", type: "text", required: true },
       { id: "purpose", label: "Purpose / Reason for Request", type: "text", required: true },
     ],
     requiredDocuments: [
@@ -28,7 +27,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 3,
     baseFee: 100.00,
     requiredFields: [
-      { id: "applicantName", label: "Full Name of Confirmed Person", type: "text", required: true },
       { id: "purpose", label: "Purpose / Reason for Request", type: "text", required: true },
     ],
     requiredDocuments: [
@@ -43,7 +41,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 5,
     baseFee: 150.00,
     requiredFields: [
-      { id: "applicantName", label: "Names of Husband & Wife", type: "text", required: true },
       { id: "purpose", label: "Purpose / Reason for Request", type: "text", required: true },
     ],
     requiredDocuments: [
@@ -58,7 +55,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 3,
     baseFee: 75.00,
     requiredFields: [
-      { id: "applicantName", label: "Full Name of Communicant", type: "text", required: true },
       { id: "purpose", label: "Purpose / Reason for Request", type: "text", required: true },
     ],
     requiredDocuments: [
@@ -73,7 +69,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 14,
     baseFee: 200.00,
     requiredFields: [
-      { id: "applicantName", label: "Full Name of Groom & Bride", type: "text", required: true },
       { id: "purpose", label: "Proposed Marriage Date & Parish", type: "text", required: true },
     ],
     requiredDocuments: [
@@ -94,7 +89,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 7,
     baseFee: 150.00,
     requiredFields: [
-      { id: "applicantName", label: "Full Name of Applicant", type: "text", required: true },
       { id: "purpose", label: "Destination Parish & Wedding Date", type: "text", required: true },
     ],
     requiredDocuments: [
@@ -116,7 +110,6 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     estimatedProcessingDays: 5,
     baseFee: 150.00,
     requiredFields: [
-      { id: "applicantName", label: "Full Name of Applicant", type: "text", required: true },
       { id: "purpose", label: "Reason for Status Liber Verification", type: "text", required: true },
     ],
     requiredDocuments: [

@@ -21,6 +21,9 @@ const listInclude = {
         include: {
           ocrResult: true,
         },
+        orderBy: {
+          attemptVersion: "desc",
+        },
       },
     },
     orderBy: {

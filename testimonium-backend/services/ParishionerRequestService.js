@@ -18,6 +18,27 @@ import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { buildApplicantName } from "../utils/nameUtils.js";
 
 export class ParishionerRequestService {
+  /**
+   * Validates whether an authorization letter is required and present.
+   * Throws AUTHORIZATION_LETTER_REQUIRED (400) if relationship is Authorized Representative and no letter exists.
+   */
+  static validateAuthorizationLetterRequirement(relationship, attachments = []) {
+    if (relationship === "Authorized Representative") {
+      const hasAuthLetter = Array.isArray(attachments) && attachments.some(
+        (a) => a && a.category === "authorization_letter"
+      );
+      if (!hasAuthLetter) {
+        const error = new Error(
+          "An authorization letter is required when requesting documents as an Authorized Representative."
+        );
+        error.code = "AUTHORIZATION_LETTER_REQUIRED";
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+    return true;
+  }
+
   constructor(parishionerRequestRepository = new ParishionerRequestRepository()) {
     this.parishionerRequestRepository = parishionerRequestRepository;
   }
@@ -76,6 +97,9 @@ export class ParishionerRequestService {
       error.code = "INVALID_APPLICANT_NAME";
       throw error;
     }
+
+    // Canonical applicant name populated on requestData
+    requestData.applicantName = resolvedApplicantName;
 
     const hasValidKey = IdempotencyService.isValidKey(idempotencyKey);
     const payloadHash = computeRequestPayloadHash({
@@ -157,6 +181,14 @@ export class ParishionerRequestService {
         // 4. Validate dynamic required fields
         if (reqConfig?.requiredFields) {
           for (const field of reqConfig.requiredFields) {
+            // Obsolete/duplicate personal name requirement is already canonically validated above
+            if (
+              field.id === "applicantName" ||
+              field.id === "applicant_name" ||
+              (typeof field.label === "string" && field.label.toLowerCase().includes("baptized person"))
+            ) {
+              continue;
+            }
             if (field.required) {
               const val = requestData[field.id];
               if (!val || (typeof val === "string" && val.trim() === "")) {
@@ -335,6 +367,14 @@ export class ParishionerRequestService {
       // 1. Verify required form fields
       if (reqConfig?.requiredFields) {
         for (const field of reqConfig.requiredFields) {
+          // Obsolete/duplicate personal name requirement is already canonically stored on request
+          if (
+            field.id === "applicantName" ||
+            field.id === "applicant_name" ||
+            (typeof field.label === "string" && field.label.toLowerCase().includes("baptized person"))
+          ) {
+            continue;
+          }
           if (field.required) {
             const val = request[field.id];
             if (!val || (typeof val === "string" && val.trim() === "")) {
@@ -366,6 +406,18 @@ export class ParishionerRequestService {
           error.statusCode = 400;
           throw error;
         }
+      }
+
+      // 3. Enforce Authorization Letter requirement for Authorized Representatives
+      if (request.relationship === "Authorized Representative") {
+        const authLetter = await tx.requestAttachment.findFirst({
+          where: { requestId, category: "authorization_letter" },
+        });
+
+        ParishionerRequestService.validateAuthorizationLetterRequirement(
+          request.relationship,
+          authLetter ? [authLetter] : []
+        );
       }
 
       // Finalize and flip isDraft to false

@@ -160,6 +160,13 @@ const ReceiptTemplates = {
       message: `${parishionerName} submitted a corrected payment proof for request (Tracking #: ${trackingNumber}).`,
     };
   },
+
+  parishionerLowConfidence(trackingNumber) {
+    return {
+      title: "Payment Proof Unclear",
+      message: `The payment proof image for request (Tracking #: ${trackingNumber}) is unclear or blurry. Please upload a clearer image.`,
+    };
+  },
 };
 
 /**
@@ -421,6 +428,28 @@ export class NotificationDispatcher {
         referenceId: requestId,
       });
     }
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
+  /**
+   * Dispatches a notification when payment proof quality score is below threshold (< 75%).
+   * Notifies the parishioner that a clearer re-upload is required.
+   */
+  static async notifyReceiptQualityFailed(
+    { parishionerId, parishId, requestId, trackingNumber },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const template = ReceiptTemplates.parishionerLowConfidence(trackingNumber);
+    const payloads = [{
+      userId: parishionerId,
+      title: template.title,
+      message: template.message,
+      type: "IN_APP",
+      referenceType: "DOCUMENT_REQUEST",
+      referenceId: requestId,
+    }];
 
     await NotificationDispatcher._persist(payloads, client);
   }

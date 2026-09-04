@@ -101,6 +101,20 @@ export const normalizeSupportingFile = (
   };
 };
 
+export const normalizeAuthorizationLetterFile = (
+  file: LocalSelectedFile
+): NormalizedSupportingFile => {
+  const normalized = normalizeSupportingFile(file);
+  if (normalized.mimeType === "image/webp" || normalized.name.toLowerCase().endsWith(".webp")) {
+    throw new AppError({
+      kind: "VALIDATION",
+      code: "AUTHORIZATION_LETTER_INVALID",
+      message: "Authorization letter must be a PDF, JPEG, or PNG file under 5 MB. WebP is not supported.",
+    });
+  }
+  return normalized;
+};
+
 export const buildSupportingFileFormData = (
   file: LocalSelectedFile,
   category: string

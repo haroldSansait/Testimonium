@@ -96,7 +96,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
       inFlightGuard.current = false;
       setIsUploading(false);
 
-      // On ambiguous or network failure, refetch to check if server already registered the receipt
+      // On ambiguous or network failure, refetch to check if server registered the receipt
       const detailResult = await refetchRequest();
       if (detailResult.data?.status === "PAYMENT_UNDER_REVIEW") {
         setSelectedReceipt(null);
@@ -111,6 +111,33 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
               },
             },
           ]
+        );
+        return;
+      }
+
+      if (detailResult.data?.status === "PAYMENT_NEEDS_CORRECTION") {
+        setSelectedReceipt(null);
+        Alert.alert(
+          "Clearer Receipt Needed",
+          detailResult.data.paymentCorrectionNote ||
+            "The payment proof image is unclear or blurry. Please upload a clearer image."
+        );
+        return;
+      }
+
+      // Synchronous upload errors: invalid file type, magic byte mismatch, size limit, ownership, invalid state
+      if (err?.code === "PAYMENT_PROOF_INVALID_IMAGE" || err?.code === "INVALID_FILE_FORMAT") {
+        Alert.alert(
+          "Invalid Receipt Image",
+          "The selected file is not a valid receipt image. Please upload a clear JPEG or PNG under 5 MB."
+        );
+        return;
+      }
+
+      if (err?.code === "FILE_TOO_LARGE") {
+        Alert.alert(
+          "File Too Large",
+          "The selected receipt exceeds the 5 MB file size limit. Please choose a smaller image."
         );
         return;
       }

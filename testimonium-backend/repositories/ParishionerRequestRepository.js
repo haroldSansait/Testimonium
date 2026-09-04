@@ -28,6 +28,9 @@ const detailInclude = {
         include: {
           ocrResult: true,
         },
+        orderBy: {
+          attemptVersion: "desc",
+        },
       },
     },
     orderBy: {

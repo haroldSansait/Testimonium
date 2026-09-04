@@ -1,5 +1,6 @@
 import multer from "multer";
 import path from "path";
+import { FileValidator, FileValidationError } from "../utils/fileValidator.js";
 
 // Allowed MIME types for general document attachments (requirements, IDs, etc.)
 const ALLOWED_MIME_TYPES = [
@@ -90,14 +91,29 @@ export const uploadRequestFiles = (req, res, next) => {
       });
     }
 
-    // Additional check: Check for zero-byte empty files
+    // Synchronously validate file signatures, MIME, and bounds
     if (req.files && Array.isArray(req.files)) {
+      const category = (req.body?.category || "").trim();
       for (const file of req.files) {
         if (file.size === 0) {
           return res.status(400).json({
             success: false,
             message: `File ${file.originalname} is empty (0 bytes).`,
             errors: [],
+          });
+        }
+        try {
+          if (category === "authorization_letter") {
+            FileValidator.validateAuthorizationLetter(file);
+          } else {
+            FileValidator.validateSupportingDocument(file);
+          }
+        } catch (validationErr) {
+          return res.status(validationErr.statusCode || 400).json({
+            success: false,
+            code: validationErr.code || "INVALID_FILE",
+            message: validationErr.message,
+            errors: validationErr.field ? [{ field: validationErr.field, message: validationErr.message }] : [],
           });
         }
       }
@@ -193,8 +209,21 @@ export const uploadReceiptFile = (req, res, next) => {
     if (req.file.size === 0) {
       return res.status(400).json({
         success: false,
+        code: "PAYMENT_PROOF_INVALID_IMAGE",
         message: "Uploaded receipt file is empty (0 bytes).",
         errors: [],
+      });
+    }
+
+    // Synchronously validate binary signature (magic bytes), MIME, and bounds
+    try {
+      FileValidator.validateReceipt(req.file);
+    } catch (validationErr) {
+      return res.status(validationErr.statusCode || 400).json({
+        success: false,
+        code: validationErr.code || "PAYMENT_PROOF_INVALID_IMAGE",
+        message: validationErr.message,
+        errors: validationErr.field ? [{ field: validationErr.field, message: validationErr.message }] : [],
       });
     }
 

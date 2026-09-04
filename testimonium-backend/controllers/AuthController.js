@@ -192,15 +192,13 @@ export const register = async (req, res, next) => {
       }
     }
 
-    // The /register endpoint specifically provisions a newly registered account journey.
-    // It must authoritatively return isNewUser: true regardless of prior JIT middleware checks.
-    const isNewUser = true;
+    const isNewUser = typeof req.user?.isNewUser === "boolean" ? req.user.isNewUser : true;
 
     return res.status(200).json({
       success: true,
       data: {
         ...userProfile,
-        isNewUser: true,
+        isNewUser,
       },
     });
   } catch (err) {

@@ -1,8 +1,9 @@
 import { ParishionerRequestService } from "../services/ParishionerRequestService.js";
 import { FileUploadService } from "../services/FileUploadService.js";
 import { ReceiptVerificationService } from "../services/ReceiptVerificationService.js";
-
 import { DocumentRequirementService } from "../services/DocumentRequirementService.js";
+import { prisma } from "../config/db.js";
+import { R2Service } from "../services/R2Service.js";
 
 const requestService = new ParishionerRequestService();
 
@@ -181,21 +182,32 @@ export const uploadFiles = async (req, res, next) => {
 
     const category = req.body.category.trim();
 
-    // Validate category against authoritative requirements for this document type & parish
-    const reqConfig = await DocumentRequirementService.getRequirements(
-      request.documentType,
-      request.parishId
-    );
-    const validRequirementIds = new Set(
-      (reqConfig?.requiredDocuments || []).map((d) => d.id)
-    );
+    if (category === "authorization_letter") {
+      if (request.relationship !== "Authorized Representative") {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_ATTACHMENT_CATEGORY",
+          message: "Authorization letter is only applicable when relationship is Authorized Representative.",
+          errors: [],
+        });
+      }
+    } else {
+      // Validate category against authoritative requirements for this document type & parish
+      const reqConfig = await DocumentRequirementService.getRequirements(
+        request.documentType,
+        request.parishId
+      );
+      const validRequirementIds = new Set(
+        (reqConfig?.requiredDocuments || []).map((d) => d.id)
+      );
 
-    if (!validRequirementIds.has(category)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid attachment category "${category}" for document type "${request.documentType}". Must match a valid requirement ID.`,
-        errors: [],
-      });
+      if (!validRequirementIds.has(category)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid attachment category "${category}" for document type "${request.documentType}". Must match a valid requirement ID.`,
+          errors: [],
+        });
+      }
     }
 
     // Upload files to R2 and create DB records
@@ -244,16 +256,27 @@ export const uploadReceipt = async (req, res, next) => {
     return res.status(202).json({
       success: true,
       receiptId: verificationResult.receiptId,
+      attemptVersion: verificationResult.attemptVersion,
       ocrStatus: "PENDING",
-      message: "Payment proof uploaded. OCR processing is in progress.",
+      message: "Payment proof uploaded. Checking payment proof quality...",
       data: {
         autoVerified: false,
         ocrPending: true,
         receiptId: verificationResult.receiptId,
+        attemptVersion: verificationResult.attemptVersion,
         ocrStatus: "PENDING",
+        request: verificationResult.request,
       },
     });
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        ...(err.code ? { code: err.code } : {}),
+        message: err.message,
+        errors: err.field ? [{ field: err.field, message: err.message }] : [],
+      });
+    }
     return next(err);
   }
 };
@@ -285,6 +308,58 @@ export const resubmitCorrections = async (req, res, next) => {
         message: err.message,
       });
     }
+    return next(err);
+  }
+};
+
+export const downloadAttachment = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const requestId = parseInt(req.params.id, 10);
+    const attachmentId = parseInt(req.params.attachmentId, 10);
+
+    if (isNaN(requestId) || isNaN(attachmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request ID or attachment ID.",
+      });
+    }
+
+    // Ownership check: must belong to the requesting parishioner
+    const request = await requestService.getRequestById(requestId, userId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Request not found or access denied.",
+      });
+    }
+
+    const attachment = await prisma.requestAttachment.findFirst({
+      where: { id: attachmentId, requestId },
+    });
+
+    if (!attachment) {
+      return res.status(404).json({
+        success: false,
+        message: "Attachment not found.",
+      });
+    }
+
+    const r2Service = new R2Service();
+    const downloadStream = await r2Service.download(attachment.r2ObjectKey);
+
+    res.setHeader("Content-Type", attachment.fileType || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(attachment.fileName)}"`
+    );
+
+    if (downloadStream.ContentLength) {
+      res.setHeader("Content-Length", downloadStream.ContentLength);
+    }
+
+    downloadStream.Body.pipe(res);
+  } catch (err) {
     return next(err);
   }
 };

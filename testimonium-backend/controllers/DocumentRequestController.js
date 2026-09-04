@@ -74,3 +74,77 @@ export const updateStatus = async (req, res, next) => {
   }
 };
 
+export const downloadAttachment = async (req, res, next) => {
+  try {
+    const requestId = parseInt(req.params.id, 10);
+    const attachmentId = parseInt(req.params.attachmentId, 10);
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
+
+    if (isNaN(requestId) || isNaN(attachmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request ID or attachment ID.",
+      });
+    }
+
+    const { prisma } = await import("../config/db.js");
+    const { R2Service } = await import("../services/R2Service.js");
+
+    const request = await prisma.documentRequest.findUnique({
+      where: { id: requestId },
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Document request not found.",
+      });
+    }
+
+    // Role and Tenant authorization check:
+    // SECRETARY and PRIEST can only access requests for their own parish.
+    // DIOCESE_COORDINATOR can access cross-parish requests.
+    if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
+      if (request.parishId !== actorParishId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized: Request belongs to a different parish.",
+        });
+      }
+    } else if (actorRole !== "DIOCESE_COORDINATOR") {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized role.",
+      });
+    }
+
+    const attachment = await prisma.requestAttachment.findFirst({
+      where: { id: attachmentId, requestId },
+    });
+
+    if (!attachment) {
+      return res.status(404).json({
+        success: false,
+        message: "Attachment not found.",
+      });
+    }
+
+    const r2Service = new R2Service();
+    const downloadStream = await r2Service.download(attachment.r2ObjectKey);
+
+    res.setHeader("Content-Type", attachment.fileType || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(attachment.fileName)}"`
+    );
+
+    if (downloadStream.ContentLength) {
+      res.setHeader("Content-Length", downloadStream.ContentLength);
+    }
+
+    downloadStream.Body.pipe(res);
+  } catch (err) {
+    return next(err);
+  }
+};

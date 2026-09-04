@@ -369,7 +369,13 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
                     <div key={file.id} className="flex flex-col border border-gray-100 rounded-xl p-3 bg-gray-50/50">
                       <span className="font-semibold text-xs text-gray-800 truncate" title={file.fileName}>{file.fileName}</span>
                       <span className="text-[10px] text-gray-400 mt-1">Uploaded: {new Date(file.uploadedAt).toLocaleDateString()}</span>
-                      <span className="text-[10px] text-gray-400 capitalize">Category: {file.category}</span>
+                      {file.category === 'authorization_letter' ? (
+                        <span className="text-[10px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full w-max mt-1 uppercase tracking-wider">
+                          Authorization Letter (Representative)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-gray-400 capitalize">Category: {file.category}</span>
+                      )}
                       <div className="flex gap-2 mt-3">
                         <a
                           href={fileUrl}
@@ -438,7 +444,19 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
                     <div key={tx.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
                       {/* Transaction header */}
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-700 uppercase">Transaction</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-700 uppercase">Transaction</span>
+                          {(receipt as any)?.attemptVersion != null && (
+                            <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-mono font-bold">
+                              Attempt #{(receipt as any).attemptVersion}
+                            </span>
+                          )}
+                          {(receipt as any)?.isSuperseded && (
+                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold">
+                              (Superseded)
+                            </span>
+                          )}
+                        </div>
                         <span className={cn(
                           "px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize",
                           tx.status === 'VERIFIED' && "bg-green-50 text-green-700 border-green-200",

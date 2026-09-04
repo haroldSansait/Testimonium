@@ -4,6 +4,7 @@ import { canTransition } from "./RequestStateMachine.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { DocumentRequirementService } from "./DocumentRequirementService.js";
+import { env } from "../config/env.js";
 
 export class DocumentRequestService {
   constructor(documentRequestRepository = new DocumentRequestRepository()) {
@@ -147,6 +148,41 @@ export class DocumentRequestService {
         updatePayload.paymentStatus = "UNPAID";
       }
 
+      if (targetStatus === "PAYMENT_UNDER_REVIEW" && currentStatus === "PAYMENT_NEEDS_CORRECTION") {
+        // Staff cannot arbitrarily transition back to PAYMENT_UNDER_REVIEW from PAYMENT_NEEDS_CORRECTION
+        // without an authoritative receipt meeting the quality gate.
+        const activeReceipt = await tx.receiptUpload.findFirst({
+          where: {
+            transaction: { requestId },
+            isSuperseded: false,
+          },
+          include: { ocrResult: true },
+          orderBy: { attemptVersion: "desc" },
+        });
+
+        if (!activeReceipt) {
+          const error = new Error("Cannot transition to PAYMENT_UNDER_REVIEW: No active receipt found. Parishioner must upload a valid receipt.");
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (request.paymentProofObjectKey && activeReceipt.r2ObjectKey !== request.paymentProofObjectKey) {
+          const error = new Error("Cannot transition to PAYMENT_UNDER_REVIEW: Canonical payment proof pointer mismatch.");
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const minConfidence = env.ocr?.minConfidence ?? 0.75;
+        if (
+          activeReceipt.ocrResult?.status === "COMPLETED" &&
+          (activeReceipt.ocrResult.confidenceScore ?? 0) < minConfidence
+        ) {
+          const error = new Error("Cannot bypass payment quality gate: The current receipt failed readability check (< 75%). A newer acceptable receipt re-upload is required.");
+          error.statusCode = 400;
+          throw error;
+        }
+      }
+
       if (targetStatus === "PROCESSING" && currentStatus === "UNDER_REVIEW") {
         // Direct transition for Zero-Fee or Waived Document Requests
         updatePayload.paymentStatus = "CONFIRMED";
@@ -167,6 +203,34 @@ export class DocumentRequestService {
         });
 
         if (pendingTx) {
+          // Quality Gate Validation for Payment Verification:
+          // Authoritative receipt must exist, not be superseded, match canonical pointer,
+          // and must not have failed the quality gate (< 75%).
+          const activeReceipt = pendingTx.receipts?.find((r) => !r.isSuperseded);
+          if (activeReceipt) {
+            if (request.paymentProofObjectKey && activeReceipt.r2ObjectKey !== request.paymentProofObjectKey) {
+              const error = new Error("Cannot verify payment: Canonical payment proof pointer mismatch.");
+              error.statusCode = 400;
+              throw error;
+            }
+
+            const minConfidence = env.ocr?.minConfidence ?? 0.75;
+            if (
+              activeReceipt.ocrResult?.status === "COMPLETED" &&
+              (activeReceipt.ocrResult.confidenceScore ?? 0) < minConfidence
+            ) {
+              const error = new Error("Cannot verify payment: Current receipt failed quality threshold (< 75%). Re-upload required.");
+              error.statusCode = 400;
+              throw error;
+            }
+
+            if (activeReceipt.ocrResult?.status === "PENDING") {
+              const error = new Error("Cannot verify payment: Receipt quality readability check is still in progress.");
+              error.statusCode = 400;
+              throw error;
+            }
+          }
+
           // Check for duplicate receipt/reference warning
           const duplicateReceipt = pendingTx.receipts?.find(r => r.ocrResult?.isDuplicate);
           if (duplicateReceipt) {

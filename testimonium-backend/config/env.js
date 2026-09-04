@@ -37,6 +37,25 @@ const parseBoolean = (value, defaultValue, name) => {
   return defaultValue;
 };
 
+export const parseConfidence = (value, defaultValue = 0.75, name = "PAYMENT_PROOF_MIN_CONFIDENCE") => {
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+  let parsed = Number(value);
+  if (isNaN(parsed)) {
+    console.warn(`[Config] Invalid ${name} value "${value}". Falling back to default (${defaultValue}).`);
+    return defaultValue;
+  }
+  if (parsed > 1 && parsed <= 100) {
+    parsed = parsed / 100;
+  }
+  if (parsed < 0 || parsed > 1) {
+    console.warn(`[Config] Out-of-bounds ${name} value "${value}". Must be between 0.0 and 1.0 (or 0-100). Falling back to default (${defaultValue}).`);
+    return defaultValue;
+  }
+  return parsed;
+};
+
 const getDatabaseUrl = () =>
   process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL;
 
@@ -105,6 +124,10 @@ export const env = {
     retryBaseDelayMs: Number(process.env.OCR_RETRY_BASE_DELAY_MS ?? 1000),
     cacheTtlMs: Number(process.env.OCR_CACHE_TTL_MS ?? 1800000),
     cacheMaxEntries: Number(process.env.OCR_CACHE_MAX_ENTRIES ?? 200),
+    minConfidence: parseConfidence(process.env.PAYMENT_PROOF_MIN_CONFIDENCE, 0.75),
+  },
+  payment: {
+    minConfidence: parseConfidence(process.env.PAYMENT_PROOF_MIN_CONFIDENCE, 0.75),
   },
   smtp: {
     enabled: Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM_EMAIL),

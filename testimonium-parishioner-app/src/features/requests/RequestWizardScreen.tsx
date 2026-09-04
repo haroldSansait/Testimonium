@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/providers/AuthProvider";
 import { requestKeys } from "./queryKeys";
 import { SupportingFilePicker } from "./components/SupportingFilePicker";
+import { normalizeAuthorizationLetterFile } from "./supportingUpload";
 import {
   formatDocumentType,
   formatFee,
@@ -250,6 +251,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       );
       return;
     }
+
+    if (relationship === "Authorized Representative" && !selectedFiles["authorization_letter"]) {
+      Alert.alert(
+        "Authorization Letter Required",
+        "An authorization letter is required when requesting documents as an Authorized Representative."
+      );
+      return;
+    }
+
     setStep(5);
   };
 
@@ -269,6 +279,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     if (!selectedParish || !selectedDocType || inFlightGuard.current) return;
     if (!hasValidRequirementsFee) {
       Alert.alert("Fee Configuration Unavailable", "A valid parish fee is required before this request can be submitted.");
+      return;
+    }
+
+    if (relationship === "Authorized Representative" && !selectedFiles["authorization_letter"]) {
+      Alert.alert("Authorization Letter Required", "An authorization letter is required when requesting documents as an Authorized Representative.");
       return;
     }
 
@@ -348,6 +363,14 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               onPress: () => router.push("/(app)/(tabs)/profile" as any),
             },
           ]
+        );
+        return;
+      }
+
+      if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
+        Alert.alert(
+          "Authorization Letter Required",
+          "An authorization letter is required when requesting documents as an Authorized Representative."
         );
         return;
       }
@@ -593,7 +616,17 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   {RELATIONSHIP_OPTIONS.map((opt) => (
                     <TouchableOpacity
                       key={opt}
-                      onPress={() => setRelationship(opt)}
+                      onPress={() => {
+                        setRelationship(opt);
+                        if (opt !== "Authorized Representative") {
+                          setSelectedFiles((prev) => {
+                            if (!prev["authorization_letter"]) return prev;
+                            const copy = { ...prev };
+                            delete copy["authorization_letter"];
+                            return copy;
+                          });
+                        }
+                      }}
                       style={[
                         styles.chip,
                         relationship === opt && styles.chipActive,
@@ -681,6 +714,36 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 </Text>
               </Card>
             )}
+
+            {/* Conditional Authorization Letter for Authorized Representative */}
+            {relationship === "Authorized Representative" ? (
+              <SupportingFilePicker
+                key="authorization_letter"
+                requirement={{
+                  id: "authorization_letter",
+                  category: "authorization_letter",
+                  label: "Authorization Letter *",
+                  description: "Upload the signed authorization letter from the person you are representing. Accepted: PDF, JPEG, PNG (Max 5 MB).",
+                  required: true,
+                }}
+                selectedFile={selectedFiles["authorization_letter"]}
+                onFileSelected={(file) => {
+                  try {
+                    const normalized = normalizeAuthorizationLetterFile(file);
+                    setSelectedFiles((prev) => ({ ...prev, authorization_letter: normalized }));
+                  } catch (err: any) {
+                    Alert.alert("Invalid File", err.message);
+                  }
+                }}
+                onFileRemoved={() => {
+                  setSelectedFiles((prev) => {
+                    const updated = { ...prev };
+                    delete updated["authorization_letter"];
+                    return updated;
+                  });
+                }}
+              />
+            ) : null}
           </View>
         ) : null}
 
@@ -746,6 +809,23 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   {Object.keys(selectedFiles).length} file(s) attached
                 </Text>
               </View>
+
+              {relationship === "Authorized Representative" ? (
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel} allowFontScaling>
+                    Authorization Letter:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.reviewValue,
+                      { color: selectedFiles["authorization_letter"] ? colors.success : colors.danger },
+                    ]}
+                    allowFontScaling
+                  >
+                    {selectedFiles["authorization_letter"] ? "Attached (Ready to upload)" : "Missing"}
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={[styles.reviewRow, styles.reviewFeeRow]}>
                 <Text style={styles.reviewLabel} allowFontScaling>

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { list, updateStatus } from "../controllers/DocumentRequestController.js";
+import { list, updateStatus, downloadAttachment } from "../controllers/DocumentRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
@@ -14,6 +14,6 @@ router.use(checkRole(staffRoles));
 
 router.get("/", list);
 router.patch("/:id/status", validateBody(updateRequestStatusSchema), updateStatus);
+router.get("/:id/attachments/:attachmentId/download", downloadAttachment);
 
 export default router;
-

@@ -9,6 +9,7 @@ import {
   uploadFiles,
   uploadReceipt,
   resubmitCorrections,
+  downloadAttachment,
 } from "../controllers/ParishionerRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
@@ -33,6 +34,9 @@ router.get("/:id", getById);
 
 // File attachment uploads (limit 10)
 router.post("/:id/files", uploadRequestFiles, uploadFiles);
+
+// Authenticated private attachment download
+router.get("/:id/attachments/:attachmentId/download", downloadAttachment);
 
 // Payment proof receipt upload (single file)
 router.post("/:id/receipt", receiptUploadRateLimiter, uploadReceiptFile, uploadReceipt);

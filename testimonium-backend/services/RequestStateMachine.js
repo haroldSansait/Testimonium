@@ -35,6 +35,7 @@ const TRANSITIONS = {
   ],
   [DocumentRequestStatus.PAYMENT_PENDING]: [
     DocumentRequestStatus.PAYMENT_UNDER_REVIEW,
+    DocumentRequestStatus.PAYMENT_NEEDS_CORRECTION,
     DocumentRequestStatus.CANCELLED,
   ],
   [DocumentRequestStatus.PAYMENT_UNDER_REVIEW]: [

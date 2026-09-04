@@ -29,6 +29,19 @@ export class ReceiptVerificationService {
   static async processReceipt(requestId, userId, file) {
     // Phase A: Prisma Transaction
     const result = await prisma.$transaction(async (tx) => {
+      // ── Step 0: Pessimistic Row Lock on DocumentRequest ─────────────────────
+      // Serializes concurrent receipt uploads for the same request to guarantee
+      // that concurrent uploads cannot create duplicate PaymentTransactions
+      // or interleave attempt allocation.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`
+          SELECT "request_id"
+          FROM "document_requests"
+          WHERE "request_id" = ${Number(requestId)}
+          FOR UPDATE
+        `;
+      }
+
       // ── Step 1: Validate request ownership and status ───────────────────────
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
@@ -64,12 +77,43 @@ export class ReceiptVerificationService {
         });
       }
 
+      // ── Step 2.1: Pessimistic Row Lock on PaymentTransaction ────────────────
+      // Explicitly locks the PaymentTransaction row inside the transaction to
+      // serialize attemptVersion allocation and avoid race conditions.
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`
+          SELECT "payment_id"
+          FROM "payment_transactions"
+          WHERE "payment_id" = ${Number(transaction.id)}
+          FOR UPDATE
+        `;
+      }
+
+      // ── Step 2.5: Atomically allocate attemptVersion & mark superseded ────
+      const latestReceipt = await tx.receiptUpload.findFirst({
+        where: { paymentTransactionId: transaction.id },
+        orderBy: { attemptVersion: "desc" },
+      });
+      const nextAttemptVersion = (latestReceipt?.attemptVersion || 0) + 1;
+
+      // Mark all existing receipts for this transaction as superseded
+      await tx.receiptUpload.updateMany({
+        where: {
+          paymentTransactionId: transaction.id,
+          isSuperseded: false,
+        },
+        data: {
+          isSuperseded: true,
+        },
+      });
+
       // ── Step 3: Upload ORIGINAL to Cloudflare R2 ────────────────────────────
       // The original buffer is uploaded exactly as-is. It is NEVER compressed.
       const receipt = await FileUploadService.uploadReceipt(
         requestId,
         transaction.id,
         file,
+        nextAttemptVersion,
         tx
       );
 
@@ -113,38 +157,23 @@ export class ReceiptVerificationService {
       });
 
       // ── Step 5: Update payment proof reference on the request ───────────────
-      await tx.documentRequest.update({
-        where: { id: requestId },
-        data: {
-          paymentProofObjectKey: receipt.r2ObjectKey,
-        },
-      });
-
-      // ── Step 6: Always route to manual secretary review ─────────────────────
-      logger.info(
-        { requestId },
-        "[ReceiptVerificationService] Routing request to manual review (PAYMENT_UNDER_REVIEW)"
-      );
-
       const oldStatus = request.status;
-      const targetStatus = "PAYMENT_UNDER_REVIEW";
-
       const updatedRequest = await tx.documentRequest.update({
         where: { id: requestId },
         data: {
+          paymentProofObjectKey: receipt.r2ObjectKey,
           paymentStatus: "PROOF_SUBMITTED",
-          status: targetStatus,
         },
       });
 
-      // ── Step 7: Create audit history entry ──────────────────────────────────
+      // ── Step 6: Create audit history entry for upload attempt ───────────────
       const isResubmission = oldStatus === "PAYMENT_NEEDS_CORRECTION";
       const actionLabel = isResubmission
-        ? "CORRECTED_PAYMENT_SUBMITTED"
+        ? "CORRECTED_RECEIPT_UPLOADED"
         : "RECEIPT_UPLOADED";
       const remarksText = isResubmission
-        ? "Corrected payment proof uploaded, pending manual verification by coordinator"
-        : "Receipt uploaded, pending manual verification by coordinator";
+        ? `Corrected payment proof uploaded (Attempt #${nextAttemptVersion}), quality readability analysis in progress`
+        : `Receipt uploaded (Attempt #${nextAttemptVersion}), quality readability analysis in progress`;
 
       await tx.requestHistory.create({
         data: {
@@ -152,38 +181,10 @@ export class ReceiptVerificationService {
           actorId: userId,
           action: actionLabel,
           oldStatus,
-          newStatus: targetStatus,
+          newStatus: oldStatus,
           remarks: remarksText,
         },
       });
-
-      // ── Step 8: Fetch parishioner name for notifications ────────────────────
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      const parishionerName = user?.fullName ?? "Parishioner";
-
-      // ── Step 9: Dispatch notifications ─────────────────────────────────────
-      if (isResubmission) {
-        await NotificationDispatcher.notifyReceiptResubmitted(
-          {
-            parishionerId: userId,
-            parishionerName,
-            parishId: request.parishId,
-            requestId: request.id,
-            trackingNumber: request.trackingNumber,
-          },
-          tx
-        );
-      } else {
-        await NotificationDispatcher.notifyReceiptUploaded(
-          {
-            parishionerId: userId,
-            parishId: request.parishId,
-            requestId: request.id,
-            trackingNumber: request.trackingNumber,
-          },
-          tx
-        );
-      }
 
       await AuditLogService.log(
         userId,
@@ -198,17 +199,19 @@ export class ReceiptVerificationService {
             status: request.status,
           },
           newValues: {
-            status: "PAYMENT_UNDER_REVIEW",
+            status: request.status,
           },
           metadata: {
             trackingNumber: request.trackingNumber,
             receiptId: receipt.id,
+            attemptVersion: nextAttemptVersion,
           },
         }
       );
 
       return {
         receiptId: receipt.id,
+        attemptVersion: nextAttemptVersion,
         ocrResult: ocrRecord,
         request: updatedRequest,
       };
@@ -231,6 +234,7 @@ export class ReceiptVerificationService {
       autoVerified: false,
       ocrPending: true,
       receiptId: result.receiptId,
+      attemptVersion: result.attemptVersion,
       ocrStatus: "PENDING",
       request: result.request,
     };

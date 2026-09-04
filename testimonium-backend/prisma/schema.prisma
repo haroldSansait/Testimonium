@@ -404,12 +404,15 @@ model ReceiptUpload {
   mimeType             String?  @map("mime_type") @db.VarChar(100)
   fileSize             Int?     @map("file_size")
   imageHash            String?  @map("image_hash") @db.VarChar(64)
+  attemptVersion       Int      @default(1) @map("attempt_version")
+  isSuperseded         Boolean  @default(false) @map("is_superseded")
   uploadedAt           DateTime @default(now()) @map("uploaded_at")
 
   transaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
   ocrResult   OcrResult?
 
   @@index([paymentTransactionId])
+  @@unique([paymentTransactionId, attemptVersion])
   @@index([imageHash])
   @@index([uploadedAt])
   @@map("receipt_uploads")

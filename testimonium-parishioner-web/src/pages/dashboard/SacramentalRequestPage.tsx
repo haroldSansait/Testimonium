@@ -55,6 +55,10 @@ export const SacramentalRequestPage: React.FC = () => {
   const [loadingReqs, setLoadingReqs] = useState(false);
   const [uploadedFilesByReq, setUploadedFilesByReq] = useState<Record<string, File>>({});
 
+  // Authorization Letter for Authorized Representatives
+  const [authLetterFile, setAuthLetterFile] = useState<File | null>(null);
+  const [authLetterError, setAuthLetterError] = useState<string | null>(null);
+
   // Success State
   const [createdRequest, setCreatedRequest] = useState<SacramentalRequest | null>(null);
 
@@ -132,6 +136,33 @@ export const SacramentalRequestPage: React.FC = () => {
     }
   };
 
+  const handleRelationshipChange = (newRel: string) => {
+    setRelationship(newRel);
+    if (newRel !== 'Authorized Representative') {
+      setAuthLetterFile(null);
+      setAuthLetterError(null);
+    }
+  };
+
+  const handleAuthLetterUpload = (file: File) => {
+    setAuthLetterError(null);
+    const allowedExts = ['.pdf', '.jpg', '.jpeg', '.png'];
+    const name = file.name.toLowerCase();
+    const hasValidExt = allowedExts.some(ext => name.endsWith(ext));
+    const validMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    const hasValidMime = !file.type || validMimes.includes(file.type.toLowerCase());
+
+    if (!hasValidExt || !hasValidMime) {
+      setAuthLetterError("Unsupported file type. Please upload a PDF, JPEG, or PNG file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAuthLetterError("File is too large. Maximum size allowed is 5 MB.");
+      return;
+    }
+    setAuthLetterFile(file);
+  };
+
   const handleUploadForReq = (reqId: string, file: File) => {
     setUploadedFilesByReq(prev => ({
       ...prev,
@@ -177,6 +208,16 @@ export const SacramentalRequestPage: React.FC = () => {
         await services.request.uploadFiles(draft.id, [file], reqId);
       }
 
+      // 2b. Upload authorization letter if Authorized Representative
+      if (relationship === 'Authorized Representative') {
+        if (!authLetterFile) {
+          setSubmissionError("An authorization letter is required when requesting documents as an Authorized Representative.");
+          setSubmitting(false);
+          return;
+        }
+        await services.request.uploadFiles(draft.id, [authLetterFile], 'authorization_letter');
+      }
+
       // 3. Finalize and submit the request
       const finalized = await services.request.submitDraft(draft.id);
 
@@ -186,6 +227,8 @@ export const SacramentalRequestPage: React.FC = () => {
       console.error("Request submission error:", err);
       if (err?.code === "PROFILE_INCOMPLETE") {
         openProfileModal('request certificates');
+      } else if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
+        setSubmissionError("An authorization letter is required when requesting documents as an Authorized Representative.");
       } else {
         setSubmissionError(err?.message || "Failed to submit document request. Please review your information.");
       }
@@ -249,7 +292,9 @@ export const SacramentalRequestPage: React.FC = () => {
     );
   }
 
-  const allReqsUploaded = requirementsList.every(req => !req.required || !!uploadedFilesByReq[req.id]);
+  const isAuthLetterRequired = relationship === 'Authorized Representative';
+  const allReqsUploaded = requirementsList.every(req => !req.required || !!uploadedFilesByReq[req.id]) &&
+    (!isAuthLetterRequired || !!authLetterFile);
 
   if (isProfileIncomplete) {
     return (
@@ -409,7 +454,7 @@ export const SacramentalRequestPage: React.FC = () => {
                   <CustomSelect
                     label="Relationship to Registrant"
                     value={relationship}
-                    onChange={setRelationship}
+                    onChange={handleRelationshipChange}
                     options={[
                       'Self',
                       'Parent',
@@ -518,6 +563,65 @@ export const SacramentalRequestPage: React.FC = () => {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Authorization Letter Upload when Authorized Representative */}
+              {isAuthLetterRequired && (
+                <div className="p-4 border border-crimson/30 rounded-button bg-red-50/20 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-xs font-bold text-text-primary block">
+                        Authorization Letter <span className="text-crimson">*</span>
+                      </span>
+                      <p className="text-[11px] text-text-muted mt-0.5">
+                        Upload the signed authorization letter from the person you are representing.
+                      </p>
+                      <span className="text-[10px] text-text-muted mt-1 block">
+                        Accepted formats: PDF, JPEG, PNG (Max 5 MB)
+                      </span>
+                    </div>
+                    <span className="text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      Required
+                    </span>
+                  </div>
+
+                  {authLetterError && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">
+                      {authLetterError}
+                    </div>
+                  )}
+
+                  {authLetterFile ? (
+                    <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
+                      <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
+                        {authLetterFile.name} ({(authLetterFile.size / 1024).toFixed(1)} KB)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthLetterFile(null);
+                          setAuthLetterError(null);
+                        }}
+                        className="text-crimson hover:underline font-bold text-xs cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white">
+                      <input
+                        type="file"
+                        onChange={(e) => {
+                          const selected = e.target.files?.[0];
+                          if (selected) handleAuthLetterUpload(selected);
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        accept=".png,.jpg,.jpeg,.pdf"
+                      />
+                      <span className="text-xs text-text-muted">Click or drag signed authorization letter to upload</span>
+                    </div>
+                  )}
                 </div>
               )}
 
