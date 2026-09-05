@@ -15,6 +15,8 @@ export interface ButtonProps extends PressableProps {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
   icon?: keyof typeof Ionicons.glyphMap;
+  leftComponent?: React.ReactNode;
+  fullWidth?: boolean;
   loading?: boolean;
 }
 
@@ -23,6 +25,8 @@ export const Button: React.FC<ButtonProps> = ({
   variant = "primary",
   size = "md",
   icon,
+  leftComponent,
+  fullWidth = false,
   loading = false,
   disabled,
   style,
@@ -47,6 +51,7 @@ export const Button: React.FC<ButtonProps> = ({
       hitSlop={props.hitSlop ?? defaultHitSlop}
       style={(state) => [
         styles.base,
+        fullWidth && styles.fullWidth,
         size === "sm" && styles.sizeSm,
         size === "md" && styles.sizeMd,
         size === "lg" && styles.sizeLg,
@@ -72,7 +77,9 @@ export const Button: React.FC<ButtonProps> = ({
         />
       ) : (
         <View style={styles.contentRow}>
-          {icon ? (
+          {leftComponent ? (
+            leftComponent
+          ) : icon ? (
             <Ionicons
               name={icon}
               size={size === "sm" ? 16 : 18}
@@ -152,8 +159,13 @@ const styles = StyleSheet.create({
   danger: {
     backgroundColor: colors.danger,
   },
+  fullWidth: {
+    width: "100%",
+    alignSelf: "stretch",
+  },
   pressed: {
-    opacity: 0.75,
+    opacity: 0.88,
+    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.5,

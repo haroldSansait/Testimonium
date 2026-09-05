@@ -67,7 +67,7 @@ export const EVENT_TYPES: EventTypeOption[] = [
   // Masses & Liturgies
   { id: 'WAKE_MASS', label: 'Wake Mass', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
   { id: 'FUNERAL', label: 'Funeral', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [{ id: 'death_cert', label: 'Death Certificate' }] },
-  { id: 'PRIVATE_MASS', label: 'Private Mass', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
+  { id: 'PRIVATE_MASS', label: 'Mass', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
   { id: 'MASS_INTENTION', label: 'Mass Intention', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
   { id: 'MASS_OF_HOLY_SPIRIT', label: 'Mass of the Holy Spirit', category: 'Mass', categoryLabel: 'Mass & Liturgy', possibleReqs: [] },
   // Devotions & Blessings

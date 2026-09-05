@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { LoadingState } from '@/components/Screen';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
+import { FeedbackProvider } from '@/providers/FeedbackProvider';
 import { getProtectedRouteGuards } from '@/services/auth/guards';
 import { queryClient } from '@/services/queryClient';
 
@@ -24,5 +25,13 @@ const Router = () => {
 };
 
 export default function RootLayout() {
-  return <QueryClientProvider client={queryClient}><AuthProvider><Router /></AuthProvider></QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <FeedbackProvider>
+          <Router />
+        </FeedbackProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
 }

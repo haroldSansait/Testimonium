@@ -52,11 +52,11 @@ export const EventTypeCatalog = [
   },
   {
     enum: "PRIVATE_MASS",
-    title: "Private Mass",
+    title: "Mass",
     badgeColor: "bg-teal-50 text-teal-700 border-teal-100",
     icon: "Home",
     category: "Mass",
-    aliases: ["private mass", "private mass scheduling"]
+    aliases: ["private mass", "private mass scheduling", "mass"]
   },
   {
     enum: "MASS_INTENTION",

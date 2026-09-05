@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { TextInput } from "@/components/ui/TextInput";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
@@ -90,7 +91,10 @@ export default function LoginScreen() {
             <TextInput
               label="Email Address"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(val) => {
+                setEmail(val);
+                if (error) setError(null);
+              }}
               autoCapitalize="none"
               keyboardType="email-address"
               autoComplete="email"
@@ -102,7 +106,10 @@ export default function LoginScreen() {
             <TextInput
               label="Password"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(val) => {
+                setPassword(val);
+                if (error) setError(null);
+              }}
               isPassword
               autoComplete="current-password"
               placeholder="Enter your password"
@@ -138,16 +145,27 @@ export default function LoginScreen() {
         {/* Alternative Actions */}
         <View style={styles.actions}>
           {showGoogleButton && (
-            <Button
-              title="Continue with Google"
-              size="lg"
-              variant="secondary"
-              loading={isSigningIn}
-              disabled={isSigningIn}
-              onPress={() => {
-                void handleGoogleSubmit();
-              }}
-            />
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText} allowFontScaling>
+                  OR
+                </Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Button
+                title="Continue with Google"
+                size="lg"
+                variant="secondary"
+                leftComponent={<GoogleLogo size={20} />}
+                loading={isSigningIn}
+                disabled={isSigningIn}
+                onPress={() => {
+                  void handleGoogleSubmit();
+                }}
+              />
+            </>
           )}
 
           <Button
@@ -219,7 +237,7 @@ const styles = StyleSheet.create({
   formCard: {
     backgroundColor: colors.surface,
     padding: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -257,6 +275,23 @@ const styles = StyleSheet.create({
     color: colors.danger,
     lineHeight: 18,
     flex: 1,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.borderLight,
+  },
+  dividerText: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
   actions: {
     gap: spacing.sm,

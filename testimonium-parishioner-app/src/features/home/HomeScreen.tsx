@@ -181,7 +181,7 @@ export const HomeScreen: React.FC = () => {
           )}
         </Card>
 
-        {/* Quick Access Grid (6 Services) */}
+        {/* Quick Access Grid (6 Services in 2-Column Responsive Flex Rows) */}
         <View style={styles.sectionContainer}>
           <SectionHeader
             title="Quick Access Services"
@@ -189,101 +189,110 @@ export const HomeScreen: React.FC = () => {
           />
 
           <View style={styles.grid}>
-            {/* 1. Request Document */}
-            <Pressable
-              onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
-              style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Request Document"
-            >
-              <View style={[styles.gridIconCircle, { backgroundColor: colors.primarySoft }]}>
-                <Ionicons name="document-text-outline" size={22} color={colors.primary} />
-              </View>
-              <Text style={styles.gridTitle} allowFontScaling>Request Document</Text>
-              <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                Certificates & records
-              </Text>
-            </Pressable>
+            {/* Row 1 */}
+            <View style={styles.gridRow}>
+              {/* 1. Request Document */}
+              <Pressable
+                onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
+                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Request Document"
+              >
+                <View style={[styles.gridIconCircle, { backgroundColor: colors.primarySoft }]}>
+                  <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+                </View>
+                <Text style={styles.gridTitle} allowFontScaling>Request Document</Text>
+                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
+                  Certificates & records
+                </Text>
+              </Pressable>
 
-            {/* 2. Track Request */}
-            <Pressable
-              onPress={() => router.push("/(app)/(tabs)/(requests)" as any)}
-              style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Track Request"
-            >
-              <View style={[styles.gridIconCircle, { backgroundColor: colors.infoSoft }]}>
-                <Ionicons name="search-outline" size={22} color={colors.info} />
-              </View>
-              <Text style={styles.gridTitle} allowFontScaling>Track Request</Text>
-              <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                Real-time status updates
-              </Text>
-            </Pressable>
+              {/* 2. Track Request */}
+              <Pressable
+                onPress={() => router.push("/(app)/(tabs)/(requests)" as any)}
+                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Track Request"
+              >
+                <View style={[styles.gridIconCircle, { backgroundColor: colors.infoSoft }]}>
+                  <Ionicons name="search-outline" size={22} color={colors.info} />
+                </View>
+                <Text style={styles.gridTitle} allowFontScaling>Track Request</Text>
+                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
+                  Real-time status updates
+                </Text>
+              </Pressable>
+            </View>
 
-            {/* 3. Schedule Appointment */}
-            <Pressable
-              onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
-              style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Schedule Appointment"
-            >
-              <View style={[styles.gridIconCircle, { backgroundColor: colors.successSoft }]}>
-                <Ionicons name="calendar-outline" size={22} color={colors.success} />
-              </View>
-              <Text style={styles.gridTitle} allowFontScaling>Schedule Appointment</Text>
-              <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                Masses, blessings & interviews
-              </Text>
-            </Pressable>
+            {/* Row 2 */}
+            <View style={styles.gridRow}>
+              {/* 3. Schedule Appointment */}
+              <Pressable
+                onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
+                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Schedule Appointment"
+              >
+                <View style={[styles.gridIconCircle, { backgroundColor: colors.successSoft }]}>
+                  <Ionicons name="calendar-outline" size={22} color={colors.success} />
+                </View>
+                <Text style={styles.gridTitle} allowFontScaling>Schedule Appointment</Text>
+                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
+                  Masses, blessings & interviews
+                </Text>
+              </Pressable>
 
-            {/* 4. Parish Directory */}
-            <Pressable
-              onPress={() => router.push("/(app)/(tabs)/(parishes)" as any)}
-              style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Parish Directory"
-            >
-              <View style={[styles.gridIconCircle, { backgroundColor: colors.warningSoft }]}>
-                <Ionicons name="business-outline" size={22} color={colors.warning} />
-              </View>
-              <Text style={styles.gridTitle} allowFontScaling>Parish Directory</Text>
-              <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                Offices, hours & contact info
-              </Text>
-            </Pressable>
+              {/* 4. Parish Directory */}
+              <Pressable
+                onPress={() => router.push("/(app)/(tabs)/(parishes)" as any)}
+                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Parish Directory"
+              >
+                <View style={[styles.gridIconCircle, { backgroundColor: colors.warningSoft }]}>
+                  <Ionicons name="business-outline" size={22} color={colors.warning} />
+                </View>
+                <Text style={styles.gridTitle} allowFontScaling>Parish Directory</Text>
+                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
+                  Offices, hours & contact info
+                </Text>
+              </Pressable>
+            </View>
 
-            {/* 5. Notifications */}
-            <Pressable
-              onPress={() => router.push("/notifications" as any)}
-              style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Notifications"
-            >
-              <View style={[styles.gridIconCircle, { backgroundColor: colors.primarySoft }]}>
-                <Ionicons name="notifications-outline" size={22} color={colors.primary} />
-              </View>
-              <Text style={styles.gridTitle} allowFontScaling>Notifications</Text>
-              <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                Alerts & official notices
-              </Text>
-            </Pressable>
+            {/* Row 3 */}
+            <View style={styles.gridRow}>
+              {/* 5. Notifications */}
+              <Pressable
+                onPress={() => router.push("/notifications" as any)}
+                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Notifications"
+              >
+                <View style={[styles.gridIconCircle, { backgroundColor: colors.primarySoft }]}>
+                  <Ionicons name="notifications-outline" size={22} color={colors.primary} />
+                </View>
+                <Text style={styles.gridTitle} allowFontScaling>Notifications</Text>
+                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
+                  Alerts & official notices
+                </Text>
+              </Pressable>
 
-            {/* 6. My Profile */}
-            <Pressable
-              onPress={() => router.push("/(app)/(tabs)/(profile)" as any)}
-              style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="My Profile"
-            >
-              <View style={[styles.gridIconCircle, { backgroundColor: colors.surfaceVariant }]}>
-                <Ionicons name="person-outline" size={22} color={colors.textPrimary} />
-              </View>
-              <Text style={styles.gridTitle} allowFontScaling>My Profile</Text>
-              <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                Contact & account details
-              </Text>
-            </Pressable>
+              {/* 6. My Profile */}
+              <Pressable
+                onPress={() => router.push("/(app)/(tabs)/(profile)" as any)}
+                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="My Profile"
+              >
+                <View style={[styles.gridIconCircle, { backgroundColor: colors.surfaceVariant }]}>
+                  <Ionicons name="person-outline" size={22} color={colors.textPrimary} />
+                </View>
+                <Text style={styles.gridTitle} allowFontScaling>My Profile</Text>
+                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
+                  Contact & account details
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
 
@@ -409,13 +418,12 @@ export const HomeScreen: React.FC = () => {
         />
 
         {/* Parish Directory Discovery Card */}
-        <Card
+        <Pressable
           onPress={() => router.push("/(app)/(tabs)/(parishes)" as any)}
-          variant="highlight"
           accessibilityRole="button"
           accessibilityLabel="Explore Parish Directory. Browse parishes across the Diocese of San Carlos"
           accessibilityHint="Navigates to the Parish Directory tab"
-          style={styles.heroCard}
+          style={({ pressed }) => [styles.heroCard, pressed && styles.heroCardPressed]}
         >
           <View style={styles.heroContent}>
             <View style={styles.heroIconCircle}>
@@ -440,7 +448,7 @@ export const HomeScreen: React.FC = () => {
             </Text>
             <Ionicons name="arrow-forward" size={16} color={colors.primary} />
           </View>
-        </Card>
+        </Pressable>
       </ScrollView>
     </Screen>
   );
@@ -476,7 +484,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xxl + 80,
     gap: spacing.lg,
   },
   bannerCard: {
@@ -527,13 +535,15 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
+  gridRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
   gridCard: {
-    width: "48%",
+    flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -547,7 +557,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   gridCardPressed: {
-    opacity: 0.8,
+    opacity: 0.88,
     transform: [{ scale: 0.98 }],
   },
   gridIconCircle: {
@@ -579,7 +589,8 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
   },
   itemCardPressed: {
-    opacity: 0.8,
+    opacity: 0.88,
+    transform: [{ scale: 0.98 }],
   },
   itemHeader: {
     flexDirection: "row",
@@ -620,8 +631,13 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: colors.surface,
     borderColor: colors.cardBorder,
+    borderWidth: 1,
     padding: spacing.md,
     borderRadius: radii.lg,
+  },
+  heroCardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }],
   },
   heroContent: {
     flexDirection: "row",

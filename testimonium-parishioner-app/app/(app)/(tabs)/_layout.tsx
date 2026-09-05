@@ -1,13 +1,27 @@
 import React from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles } from "@/theme/tokens";
 
+const TabBarButton = (props: any) => {
+  return (
+    <Pressable
+      {...props}
+      style={(state) => [
+        props.style,
+        state.pressed && styles.tabButtonPressed,
+      ]}
+    />
+  );
+};
+
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
-  const bottomInset = insets.bottom > 0 ? insets.bottom : 8;
-  const tabHeight = 54 + bottomInset;
+  // Safe computation: guarantee at least 12px bottom padding on Android 3-button nav, plus bottom inset
+  const bottomInset = Math.max(insets.bottom, 12);
+  const tabHeight = 60 + bottomInset;
 
   return (
     <Tabs
@@ -15,18 +29,19 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
+        tabBarButton: TabBarButton,
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.cardBorder,
           borderTopWidth: 1,
           height: tabHeight,
-          paddingBottom: bottomInset,
+          paddingBottom: bottomInset + 2,
           paddingTop: 6,
-          elevation: 8,
+          elevation: 12,
           shadowColor: "#000",
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.04,
-          shadowRadius: 4,
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
         },
         tabBarLabelStyle: {
           ...fontStyles.meta,
@@ -46,11 +61,13 @@ export default function TabsLayout() {
           title: "Home",
           tabBarAccessibilityLabel: "Home tab",
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={22}
-              color={color}
-            />
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <Ionicons
+                name={focused ? "home" : "home-outline"}
+                size={21}
+                color={color}
+              />
+            </View>
           ),
         }}
       />
@@ -60,11 +77,13 @@ export default function TabsLayout() {
           title: "Requests",
           tabBarAccessibilityLabel: "Requests tab",
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "document-text" : "document-text-outline"}
-              size={22}
-              color={color}
-            />
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <Ionicons
+                name={focused ? "document-text" : "document-text-outline"}
+                size={21}
+                color={color}
+              />
+            </View>
           ),
         }}
       />
@@ -74,11 +93,13 @@ export default function TabsLayout() {
           title: "Schedule",
           tabBarAccessibilityLabel: "Schedule tab",
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "calendar" : "calendar-outline"}
-              size={22}
-              color={color}
-            />
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <Ionicons
+                name={focused ? "calendar" : "calendar-outline"}
+                size={21}
+                color={color}
+              />
+            </View>
           ),
         }}
       />
@@ -88,11 +109,13 @@ export default function TabsLayout() {
           title: "Parishes",
           tabBarAccessibilityLabel: "Parishes tab",
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "business" : "business-outline"}
-              size={22}
-              color={color}
-            />
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <Ionicons
+                name={focused ? "business" : "business-outline"}
+                size={21}
+                color={color}
+              />
+            </View>
           ),
         }}
       />
@@ -102,14 +125,32 @@ export default function TabsLayout() {
           title: "Profile",
           tabBarAccessibilityLabel: "Profile tab",
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "person" : "person-outline"}
-              size={22}
-              color={color}
-            />
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <Ionicons
+                name={focused ? "person" : "person-outline"}
+                size={21}
+                color={color}
+              />
+            </View>
           ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabButtonPressed: {
+    transform: [{ scale: 0.97 }],
+  },
+  iconWrap: {
+    width: 44,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconWrapActive: {
+    backgroundColor: colors.primarySoft,
+  },
+});

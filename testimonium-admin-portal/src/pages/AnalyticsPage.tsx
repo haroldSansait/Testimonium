@@ -312,7 +312,7 @@ const eventTypeGroups: SelectOptionGroup[] = [
       { value: 'MASS_INTENTION', label: 'Mass Intention' },
       { value: 'FUNERAL', label: 'Funeral Mass' },
       { value: 'WAKE_MASS', label: 'Wake Mass' },
-      { value: 'PRIVATE_MASS', label: 'Private Mass' },
+      { value: 'PRIVATE_MASS', label: 'Mass' },
       { value: 'MASS_OF_HOLY_SPIRIT', label: 'Mass of the Holy Spirit' },
     ],
   },

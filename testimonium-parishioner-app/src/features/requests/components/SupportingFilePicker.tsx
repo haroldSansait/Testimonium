@@ -1,8 +1,9 @@
 import React from "react";
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { Badge } from "@/components/ui/Badge";
+import { useFeedback } from "@/providers/FeedbackProvider";
 import { isAppError } from "@/services/api/errors";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { normalizeSupportingFile } from "../supportingUpload";
@@ -23,6 +24,8 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
   onFileRemoved,
   disabled = false,
 }) => {
+  const feedback = useFeedback();
+
   const handlePickDocument = async () => {
     if (disabled) return;
 
@@ -49,10 +52,10 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
       );
     } catch (error) {
       if (isAppError(error)) {
-        Alert.alert("Invalid File", error.message);
+        feedback.showError("Invalid File", error.message);
         return;
       }
-      Alert.alert(
+      feedback.showError(
         "File Selection Error",
         "Could not access the document picker. Please try again."
       );
@@ -93,42 +96,51 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
       </View>
 
       {selectedFile ? (
-        <View style={styles.selectedFileCard}>
-          <View style={styles.fileIconBox}>
+        <View style={styles.selectedCard}>
+          <View style={styles.fileIconBadge}>
             <Ionicons
               name={getFileIcon(selectedFile.mimeType || selectedFile.name)}
-              size={24}
+              size={22}
               color={colors.primary}
             />
           </View>
 
-          <View style={styles.fileDetails}>
+          <View style={styles.fileInfo}>
             <Text style={styles.fileName} numberOfLines={1} allowFontScaling>
               {selectedFile.name}
             </Text>
-            <Text style={styles.fileMeta} allowFontScaling>
-              {formatBytes(selectedFile.size)} • Ready to attach
-            </Text>
+            <View style={styles.fileMetaRow}>
+              {Boolean(selectedFile.size) && (
+                <Text style={styles.fileMeta} allowFontScaling>
+                  {formatBytes(selectedFile.size)} •{" "}
+                </Text>
+              )}
+              <Text style={styles.readyBadge} allowFontScaling>
+                Ready to attach
+              </Text>
+            </View>
           </View>
 
           {!disabled ? (
-            <View style={styles.fileActions}>
+            <View style={styles.actions}>
               <TouchableOpacity
                 onPress={handlePickDocument}
-                style={styles.replaceBtn}
+                style={styles.actionBtn}
                 accessibilityRole="button"
                 accessibilityLabel={`Replace ${requirement.label} document`}
+                hitSlop={8}
               >
-                <Ionicons name="swap-horizontal" size={18} color={colors.textSecondary} />
+                <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => onFileRemoved(requirement.id)}
-                style={styles.removeBtn}
+                style={[styles.actionBtn, styles.removeBtn]}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${selectedFile.name} for ${requirement.label}`}
+                hitSlop={8}
               >
-                <Ionicons name="close-circle" size={20} color={colors.danger} />
+                <Ionicons name="trash-outline" size={18} color={colors.danger} />
               </TouchableOpacity>
             </View>
           ) : null}
@@ -137,22 +149,34 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
         <TouchableOpacity
           onPress={handlePickDocument}
           disabled={disabled}
-          style={[styles.pickerButton, disabled && styles.pickerDisabled]}
+          style={[styles.uploadCard, disabled && styles.uploadCardDisabled]}
           accessibilityRole="button"
           accessibilityLabel={`Attach document for ${requirement.label}. Accepts PDF, PNG, JPEG, WebP up to 5 megabytes.`}
+          activeOpacity={0.7}
         >
+          <View style={[styles.uploadIconBadge, disabled && styles.uploadIconBadgeDisabled]}>
+            <Ionicons
+              name="cloud-upload-outline"
+              size={22}
+              color={disabled ? colors.textMuted : colors.primary}
+            />
+          </View>
+          <View style={styles.uploadTextGroup}>
+            <Text
+              style={[styles.uploadTitle, disabled && styles.uploadTitleDisabled]}
+              allowFontScaling
+            >
+              Choose Document
+            </Text>
+            <Text style={styles.uploadHint} allowFontScaling>
+              PDF, PNG, JPG, or WebP (max 5MB)
+            </Text>
+          </View>
           <Ionicons
-            name="cloud-upload-outline"
-            size={20}
-            color={disabled ? colors.textMuted : colors.primary}
-            style={styles.uploadIcon}
+            name="chevron-forward"
+            size={18}
+            color={disabled ? colors.borderLight : colors.textSecondary}
           />
-          <Text
-            style={[styles.pickerText, disabled && styles.pickerTextDisabled]}
-            allowFontScaling
-          >
-            Choose Document (PDF, PNG, JPG, max 5MB)
-          </Text>
         </TouchableOpacity>
       )}
     </View>
@@ -187,83 +211,111 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.textSecondary,
     marginTop: 2,
+    lineHeight: 18,
   },
-  pickerButton: {
+  uploadCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
     borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.primary,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    minHeight: 44,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceVariant,
+    minHeight: 58,
+    gap: spacing.sm,
   },
-  pickerDisabled: {
+  uploadCardDisabled: {
     borderColor: colors.borderLight,
     backgroundColor: colors.surfaceVariant,
+    opacity: 0.6,
   },
-  uploadIcon: {
-    marginRight: spacing.xs,
+  uploadIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  pickerText: {
-    ...fontStyles.button,
+  uploadIconBadgeDisabled: {
+    backgroundColor: colors.borderLight,
+  },
+  uploadTextGroup: {
+    flex: 1,
+  },
+  uploadTitle: {
+    ...fontStyles.bodyMedium,
     color: colors.primary,
+    fontWeight: "600",
   },
-  pickerTextDisabled: {
+  uploadTitleDisabled: {
     color: colors.textMuted,
   },
-  selectedFileCard: {
+  uploadHint: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  selectedCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.surfaceVariant,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
-    minHeight: 44,
+    minHeight: 56,
+    gap: spacing.sm,
   },
-  fileIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 6,
-    backgroundColor: colors.surface,
+  fileIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.sm,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: spacing.sm,
   },
-  fileDetails: {
+  fileInfo: {
     flex: 1,
   },
   fileName: {
     ...fontStyles.bodySmall,
     color: colors.textPrimary,
-    fontWeight: "500",
+    fontWeight: "600",
+  },
+  fileMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2,
   },
   fileMeta: {
     ...fontStyles.caption,
     color: colors.textSecondary,
-    marginTop: 2,
   },
-  fileActions: {
+  readyBadge: {
+    ...fontStyles.captionMedium,
+    color: colors.success,
+    fontWeight: "600",
+  },
+  actions: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
   },
-  replaceBtn: {
-    padding: spacing.xs,
-    minWidth: 32,
-    minHeight: 32,
+  actionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   removeBtn: {
-    padding: spacing.xs,
-    minWidth: 32,
-    minHeight: 32,
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.surface,
   },
 });

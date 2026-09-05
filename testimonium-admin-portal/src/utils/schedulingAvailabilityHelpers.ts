@@ -37,7 +37,7 @@ export const CANONICAL_SCHEDULING_SERVICES: CanonicalServiceOption[] = [
   { id: 'FIRST_COMMUNION', label: 'First Communion', category: 'Sacrament' },
   { id: 'CONFESSION', label: 'Confession', category: 'Sacrament' },
   { id: 'ANOINTING_OF_THE_SICK', label: 'Anointing of the Sick', category: 'Sacrament' },
-  { id: 'PRIVATE_MASS', label: 'Private Mass', category: 'Mass' },
+  { id: 'PRIVATE_MASS', label: 'Mass', category: 'Mass' },
   { id: 'MASS_INTENTION', label: 'Mass Intention', category: 'Mass' },
   { id: 'WAKE_MASS', label: 'Wake Mass', category: 'Mass' },
   { id: 'FUNERAL', label: 'Funeral', category: 'Mass' },

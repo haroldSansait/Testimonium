@@ -47,7 +47,7 @@ describe("Phase 5A: Mobile Scheduling Types and Labels", () => {
     expect(SCHEDULE_EVENT_LABELS.FIRST_COMMUNION).toBe("First Communion");
     expect(SCHEDULE_EVENT_LABELS.CONFESSION).toBe("Confession");
     expect(SCHEDULE_EVENT_LABELS.ANOINTING_OF_THE_SICK).toBe("Anointing of the Sick");
-    expect(SCHEDULE_EVENT_LABELS.PRIVATE_MASS).toBe("Private Mass");
+    expect(SCHEDULE_EVENT_LABELS.PRIVATE_MASS).toBe("Mass");
     expect(SCHEDULE_EVENT_LABELS.MASS_INTENTION).toBe("Mass Intention");
     expect(SCHEDULE_EVENT_LABELS.WAKE_MASS).toBe("Wake Mass");
     expect(SCHEDULE_EVENT_LABELS.FUNERAL).toBe("Funeral");

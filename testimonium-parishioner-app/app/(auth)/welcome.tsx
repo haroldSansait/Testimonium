@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
 import { isGoogleAuthAvailable } from "@/services/auth/googleAuth";
@@ -81,25 +82,48 @@ export default function WelcomeScreen() {
             Access sacramental records, schedule canonical appointments, and track certificate requests across the diocese.
           </Text>
 
-          {/* Key Services Preview Pills */}
+          {/* Key Services Preview Cards */}
           <View style={styles.featureList}>
             <View style={styles.featureItem}>
-              <Ionicons name="document-text-outline" size={16} color={colors.primary} />
-              <Text style={styles.featureText} allowFontScaling>
-                Sacramental Document Processing
-              </Text>
+              <View style={styles.featureIconWrap}>
+                <Ionicons name="document-text" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle} allowFontScaling>
+                  Sacramental Certificates
+                </Text>
+                <Text style={styles.featureDesc} allowFontScaling>
+                  Baptism, Confirmation, Marriage certificates
+                </Text>
+              </View>
             </View>
+
             <View style={styles.featureItem}>
-              <Ionicons name="calendar-outline" size={16} color={colors.primary} />
-              <Text style={styles.featureText} allowFontScaling>
-                Canonical Appointments & Blessings
-              </Text>
+              <View style={styles.featureIconWrap}>
+                <Ionicons name="calendar" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle} allowFontScaling>
+                  Appointments & Mass
+                </Text>
+                <Text style={styles.featureDesc} allowFontScaling>
+                  Canonical consultations, Mass intentions & blessings
+                </Text>
+              </View>
             </View>
+
             <View style={styles.featureItem}>
-              <Ionicons name="search-outline" size={16} color={colors.primary} />
-              <Text style={styles.featureText} allowFontScaling>
-                Real-Time Certificate Status Tracking
-              </Text>
+              <View style={styles.featureIconWrap}>
+                <Ionicons name="search" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle} allowFontScaling>
+                  Real-Time Tracking
+                </Text>
+                <Text style={styles.featureDesc} allowFontScaling>
+                  Live status updates and instant digital confirmation
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -111,18 +135,29 @@ export default function WelcomeScreen() {
             size="lg"
             onPress={() => router.push("/(auth)/login")}
           />
+
           <Button
             title="Create an Account"
             size="lg"
             variant="outline"
             onPress={() => router.push("/(auth)/register" as any)}
           />
+
           {showGoogleButton && (
             <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText} allowFontScaling>
+                  OR
+                </Text>
+                <View style={styles.dividerLine} />
+              </View>
+
               <Button
                 title="Continue with Google"
                 size="lg"
                 variant="secondary"
+                leftComponent={<GoogleLogo size={20} />}
                 loading={isSigningIn}
                 disabled={isSigningIn}
                 onPress={() => {
@@ -182,8 +217,8 @@ const styles = StyleSheet.create({
   brandTitle: {
     ...fontStyles.display,
     color: colors.primary,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
@@ -207,20 +242,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     backgroundColor: colors.surface,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
-  featureText: {
-    ...fontStyles.captionMedium,
-    color: colors.textPrimary,
+  featureIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.sm,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  featureContent: {
     flex: 1,
+  },
+  featureTitle: {
+    ...fontStyles.captionBold,
+    color: colors.textPrimary,
+  },
+  featureDesc: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
   actions: {
     gap: spacing.sm,
     paddingTop: spacing.md,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.borderLight,
+  },
+  dividerText: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
   errorBanner: {
     backgroundColor: colors.dangerSoft,

@@ -6,16 +6,19 @@ import { Screen } from "@/components/Screen";
 import { LegalModal } from "@/components/legal/LegalModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { TextInput } from "@/components/ui/TextInput";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/config/legal";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
+import { isGoogleAuthAvailable } from "@/services/auth/googleAuth";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { evaluatePasswordStrength } from "@/utils/passwordStrength";
 
 export default function RegisterScreen() {
-  const { signUpWithEmail, isRegistering } = useAuth();
+  const { signUpWithEmail, signInWithGoogle, isRegistering, isSigningIn } = useAuth();
+  const showGoogleButton = isGoogleAuthAvailable();
 
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -35,7 +38,7 @@ export default function RegisterScreen() {
   const [activeModal, setActiveModal] = useState<"TERMS" | "PRIVACY" | null>(null);
 
   const handleSubmit = async () => {
-    if (isRegistering) return;
+    if (isRegistering || isSigningIn) return;
 
     if (!firstName.trim() || !lastName.trim()) {
       setError("First Name and Last Name are required.");
@@ -89,6 +92,20 @@ export default function RegisterScreen() {
     }
   };
 
+  const handleGoogleSignUp = async () => {
+    if (isRegistering || isSigningIn) return;
+    setError(null);
+    try {
+      await signInWithGoogle();
+    } catch (cause) {
+      setError(
+        isAppError(cause)
+          ? cause.message
+          : "We could not sign up with Google. Please try again."
+      );
+    }
+  };
+
   const isFormValid =
     firstName.trim() !== "" &&
     lastName.trim() !== "" &&
@@ -138,10 +155,13 @@ export default function RegisterScreen() {
             <TextInput
               label="First Name *"
               value={firstName}
-              onChangeText={setFirstName}
+              onChangeText={(val) => {
+                setFirstName(val);
+                if (error) setError(null);
+              }}
               placeholder="e.g. Juan"
               autoCapitalize="words"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
             <TextInput
               label="Middle Name (Optional)"
@@ -149,15 +169,18 @@ export default function RegisterScreen() {
               onChangeText={setMiddleName}
               placeholder="e.g. Santos"
               autoCapitalize="words"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
             <TextInput
               label="Last Name *"
               value={lastName}
-              onChangeText={setLastName}
+              onChangeText={(val) => {
+                setLastName(val);
+                if (error) setError(null);
+              }}
               placeholder="e.g. Dela Cruz"
               autoCapitalize="words"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
             <TextInput
               label="Suffix (Optional)"
@@ -165,7 +188,7 @@ export default function RegisterScreen() {
               onChangeText={setSuffix}
               placeholder="e.g. Jr., III"
               autoCapitalize="words"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
           </View>
         </Card>
@@ -179,23 +202,29 @@ export default function RegisterScreen() {
             <TextInput
               label="Email Address *"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(val) => {
+                setEmail(val);
+                if (error) setError(null);
+              }}
               autoCapitalize="none"
               keyboardType="email-address"
               autoComplete="email"
               placeholder="e.g. juan.delacruz@example.com"
               leftIcon="mail-outline"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
             <TextInput
               label="Password *"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(val) => {
+                setPassword(val);
+                if (error) setError(null);
+              }}
               isPassword
               autoComplete="new-password"
               placeholder="Minimum 6 characters"
               leftIcon="lock-closed-outline"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
 
             {/* Live Password Strength Indicator */}
@@ -255,12 +284,15 @@ export default function RegisterScreen() {
             <TextInput
               label="Confirm Password *"
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              onChangeText={(val) => {
+                setConfirmPassword(val);
+                if (error) setError(null);
+              }}
               isPassword
               autoComplete="new-password"
               placeholder="Re-enter your password"
               leftIcon="lock-closed-outline"
-              editable={!isRegistering}
+              editable={!isRegistering && !isSigningIn}
             />
 
             {/* Password Validation Hints */}
@@ -361,17 +393,41 @@ export default function RegisterScreen() {
             title={isRegistering ? "Creating Account..." : "Register Account"}
             size="lg"
             loading={isRegistering}
-            disabled={!isFormValid || isRegistering}
+            disabled={!isFormValid || isRegistering || isSigningIn}
             onPress={() => {
               void handleSubmit();
             }}
           />
 
+          {showGoogleButton && (
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText} allowFontScaling>
+                  OR
+                </Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Button
+                title="Sign Up with Google"
+                size="lg"
+                variant="secondary"
+                leftComponent={<GoogleLogo size={20} />}
+                loading={isSigningIn}
+                disabled={isRegistering || isSigningIn}
+                onPress={() => {
+                  void handleGoogleSignUp();
+                }}
+              />
+            </>
+          )}
+
           <Button
             title="Already have an account? Sign In"
             size="lg"
             variant="outline"
-            disabled={isRegistering}
+            disabled={isRegistering || isSigningIn}
             onPress={() =>
               navigateBackOrReplace(
                 router.canGoBack,
@@ -588,6 +644,23 @@ const styles = StyleSheet.create({
     color: colors.danger,
     lineHeight: 18,
     flex: 1,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.borderLight,
+  },
+  dividerText: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
   actions: {
     gap: spacing.sm,

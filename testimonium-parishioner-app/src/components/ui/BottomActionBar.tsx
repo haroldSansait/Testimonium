@@ -15,7 +15,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
   contentStyle,
 }) => {
   const insets = useSafeAreaInsets();
-  const bottomPadding = insets.bottom > 0 ? insets.bottom : spacing.md;
+  const bottomPadding = Math.max(insets.bottom, 16);
 
   return (
     <View
@@ -34,18 +34,19 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingTop: spacing.sm,
+    borderTopColor: colors.cardBorder,
+    paddingTop: spacing.md,
     paddingHorizontal: spacing.md,
-    elevation: 8,
+    elevation: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
   },
   content: {
     flexDirection: "row",
     alignItems: "center",
+    width: "100%",
     gap: spacing.sm,
   },
 });

@@ -1,10 +1,8 @@
 import React, { useRef, useState } from "react";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -19,9 +17,11 @@ import {
   EmptyState,
   SectionHeader,
   Skeleton,
+  TextInput,
 } from "@/components/ui";
 import { useParishes } from "@/features/parishes/api";
 import type { ParishDto } from "@/features/parishes/types";
+import { useFeedback } from "@/providers/FeedbackProvider";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
@@ -66,6 +66,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 }) => {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const feedback = useFeedback();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [selectedParishOverride, setSelectedParishOverride] = useState<ParishDto | null>(null);
@@ -78,6 +79,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const applicantName = [applicantFirstName.trim(), applicantMiddleName.trim(), applicantLastName.trim()].filter(Boolean).join(" ");
   const [relationship, setRelationship] = useState("Self");
   const [purpose, setPurpose] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{
+    firstName?: string;
+    lastName?: string;
+    purpose?: string;
+  }>({});
 
   // Files
   const [selectedFiles, setSelectedFiles] = useState<Record<string, LocalSelectedFile>>({});
@@ -118,6 +124,13 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const uploadFileMutation = useUploadSupportingFile();
   const submitDraftMutation = useSubmitRequestDraft();
   const hasValidRequirementsFee = hasAuthoritativeFee(requirements?.baseFee);
+  const queryClient = useQueryClient();
+  const createdDraftIdRef = useRef<number | null>(null);
+
+  // Resolve offered documents for selected parish with explicit empty array semantics
+  const offeredDocTypes: CanonicalDocumentType[] = React.useMemo(() => {
+    return getEffectiveOfferedDocuments(selectedParish?.availableDocuments);
+  }, [selectedParish]);
 
   const handleBack = () => {
     if (step > 1 && !isSubmitting) {
@@ -126,23 +139,21 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
 
     if (applicantName.trim() || Object.keys(selectedFiles).length > 0) {
-      Alert.alert(
+      feedback.showConfirm(
         "Discard Request?",
         "You have unsaved information. Are you sure you want to leave this wizard?",
-        [
-          { text: "Keep Editing", style: "cancel" },
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => {
-              navigateBackOrReplace(
-                () => router.canGoBack(),
-                () => router.back(),
-                () => router.replace("/(app)/(tabs)/(requests)" as any)
-              );
-            },
-          },
-        ]
+        () => {
+          navigateBackOrReplace(
+            () => router.canGoBack(),
+            () => router.back(),
+            () => router.replace("/(app)/(tabs)/(requests)" as any)
+          );
+        },
+        {
+          confirmText: "Discard",
+          cancelText: "Keep Editing",
+          isDestructive: true,
+        }
       );
       return;
     }
@@ -180,10 +191,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     );
   }
 
-  // Resolve offered documents for selected parish with explicit empty array semantics
-  const offeredDocTypes: CanonicalDocumentType[] = React.useMemo(() => {
-    return getEffectiveOfferedDocuments(selectedParish?.availableDocuments);
-  }, [selectedParish]);
 
   // Step 1 -> Step 2
   const handleSelectParish = (parish: ParishDto) => {
@@ -207,34 +214,41 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   // Step 3 -> Step 4
   const handleValidateFormAndNext = () => {
     if (profile?.needsProfileCompletion) {
-      Alert.alert(
+      feedback.showWarning(
         "Profile Details Required",
         "Please complete your profile (full name and contact number) before requesting documents.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Complete Profile",
-            onPress: () => router.push("/(app)/(tabs)/profile" as any),
-          },
-        ]
+        {
+          confirmText: "Complete Profile",
+          onConfirm: () => router.push("/(app)/(tabs)/profile" as any),
+        }
       );
       return;
     }
-    if (!applicantFirstName.trim() || !applicantLastName.trim()) {
-      Alert.alert("Applicant Name Required", "Please enter both First Name and Last Name for the applicant.");
-      return;
+
+    const errs: { firstName?: string; lastName?: string; purpose?: string } = {};
+    if (!applicantFirstName.trim()) {
+      errs.firstName = "First name is required";
+    }
+    if (!applicantLastName.trim()) {
+      errs.lastName = "Last name is required";
     }
     if (!purpose.trim()) {
-      Alert.alert("Purpose Required", "Please state the reason/purpose for this document request.");
+      errs.purpose = "Please state the reason or purpose for this request";
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
       return;
     }
+
+    setFieldErrors({});
     setStep(4);
   };
 
   // Step 4 -> Step 5
   const handleValidateFilesAndNext = () => {
     if (!hasValidRequirementsFee) {
-      Alert.alert(
+      feedback.showError(
         "Fee Configuration Unavailable",
         "This parish has not supplied a valid fee for this document request. Please contact the parish office."
       );
@@ -245,7 +259,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
     if (missing.length > 0) {
       const names = missing.map((m) => m.label).join(", ");
-      Alert.alert(
+      feedback.showWarning(
         "Required Documents Missing",
         `Please attach all required documents before proceeding:\n\n• ${names}`
       );
@@ -253,7 +267,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
 
     if (relationship === "Authorized Representative" && !selectedFiles["authorization_letter"]) {
-      Alert.alert(
+      feedback.showWarning(
         "Authorization Letter Required",
         "An authorization letter is required when requesting documents as an Authorized Representative."
       );
@@ -271,19 +285,16 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     return idempotencyKeyRef.current;
   };
 
-  // Final Review -> Server Draft -> File Uploads -> Submit
-  const queryClient = useQueryClient();
-  const createdDraftIdRef = useRef<number | null>(null);
 
   const handleConfirmAndSubmit = async () => {
     if (!selectedParish || !selectedDocType || inFlightGuard.current) return;
     if (!hasValidRequirementsFee) {
-      Alert.alert("Fee Configuration Unavailable", "A valid parish fee is required before this request can be submitted.");
+      feedback.showError("Fee Configuration Unavailable", "A valid parish fee is required before this request can be submitted.");
       return;
     }
 
     if (relationship === "Authorized Representative" && !selectedFiles["authorization_letter"]) {
-      Alert.alert("Authorization Letter Required", "An authorization letter is required when requesting documents as an Authorized Representative.");
+      feedback.showWarning("Authorization Letter Required", "An authorization letter is required when requesting documents as an Authorized Representative.");
       return;
     }
 
@@ -340,35 +351,36 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       inFlightGuard.current = false;
       setIsSubmitting(false);
 
-      Alert.alert(
+      feedback.showSuccess(
         "Request Submitted Successfully",
-        `Your document request (${submitted.trackingNumber || "Reference Confirmed"}) has been submitted to ${selectedParish.name}.`
+        `Your document request has been submitted to ${selectedParish.name}. You can track its progress and review uploaded documents at any time.`,
+        {
+          referenceNumber: submitted.trackingNumber || undefined,
+          confirmText: "View Request",
+          onConfirm: () => {
+            router.replace(`/(app)/requests/${submitted.id}` as any);
+          },
+        }
       );
-
-      // Deterministically navigate to detail screen
-      router.replace(`/(app)/requests/${submitted.id}` as any);
     } catch (err: any) {
       inFlightGuard.current = false;
       setIsSubmitting(false);
       setSubmissionStage("");
 
       if (err?.code === "PROFILE_INCOMPLETE") {
-        Alert.alert(
+        feedback.showWarning(
           "Profile Details Required",
           "Please complete your profile (full name and contact number) before requesting documents.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Complete Profile",
-              onPress: () => router.push("/(app)/(tabs)/profile" as any),
-            },
-          ]
+          {
+            confirmText: "Complete Profile",
+            onConfirm: () => router.push("/(app)/(tabs)/profile" as any),
+          }
         );
         return;
       }
 
       if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
-        Alert.alert(
+        feedback.showWarning(
           "Authorization Letter Required",
           "An authorization letter is required when requesting documents as an Authorized Representative."
         );
@@ -383,21 +395,19 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
           queryKey: requestKeys.detail(user?.uid, createdDraftId),
         });
 
-        Alert.alert(
+        feedback.showConfirm(
           "Draft Saved",
           `Your application draft has been saved to your account, but an issue occurred while finalizing: ${err.message || "Network request failed"}.\n\nYou can complete uploading your documents and submit it from the Requests tab.`,
-          [
-            { text: "Stay Here", style: "cancel" },
-            {
-              text: "View Saved Draft",
-              onPress: () => {
-                router.replace(`/(app)/requests/${createdDraftId}` as any);
-              },
-            },
-          ]
+          () => {
+            router.replace(`/(app)/requests/${createdDraftId}` as any);
+          },
+          {
+            confirmText: "View Saved Draft",
+            cancelText: "Stay Here",
+          }
         );
       } else {
-        Alert.alert(
+        feedback.showError(
           "Submission Error",
           err.message ||
             "An error occurred while submitting your request. Please check your connection and try again."
@@ -484,6 +494,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${parish.name}, ${parish.municipalityCity || ""}`}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.parishIconBox}>
                     <Ionicons name="business" size={22} color={colors.primary} />
@@ -532,6 +543,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${formatDocumentType(type)}`}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.docTypeIconBox}>
                     <Ionicons name="document-text" size={22} color={colors.primary} />
@@ -560,108 +572,120 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 subtitle={`For ${formatDocumentType(selectedDocType)} at ${selectedParish?.name}`}
               />
 
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel} allowFontScaling>
-                  First Name *
-                </Text>
+              <View style={styles.inputsWrapper}>
                 <TextInput
+                  label="First Name *"
                   value={applicantFirstName}
-                  onChangeText={setApplicantFirstName}
+                  onChangeText={(val) => {
+                    setApplicantFirstName(val);
+                    if (fieldErrors.firstName) {
+                      setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
+                    }
+                  }}
                   placeholder="e.g. Juan"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.textInput}
                   maxLength={50}
                   autoCapitalize="words"
+                  error={fieldErrors.firstName}
                   accessibilityLabel="First name of the applicant"
+                  containerStyle={styles.formInputGroup}
                 />
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel} allowFontScaling>
-                  Middle Name (Optional)
-                </Text>
                 <TextInput
+                  label="Middle Name (Optional)"
                   value={applicantMiddleName}
                   onChangeText={setApplicantMiddleName}
                   placeholder="e.g. Santos"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.textInput}
                   maxLength={50}
                   autoCapitalize="words"
                   accessibilityLabel="Middle name of the applicant"
+                  containerStyle={styles.formInputGroup}
                 />
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel} allowFontScaling>
-                  Last Name *
-                </Text>
                 <TextInput
+                  label="Last Name *"
                   value={applicantLastName}
-                  onChangeText={setApplicantLastName}
+                  onChangeText={(val) => {
+                    setApplicantLastName(val);
+                    if (fieldErrors.lastName) {
+                      setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
+                    }
+                  }}
                   placeholder="e.g. Dela Cruz"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.textInput}
                   maxLength={50}
                   autoCapitalize="words"
+                  error={fieldErrors.lastName}
                   accessibilityLabel="Last name of the applicant"
+                  containerStyle={styles.formInputGroup}
                 />
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel} allowFontScaling>
-                  Relationship to Record Holder *
-                </Text>
-                <View style={styles.chipRow}>
-                  {RELATIONSHIP_OPTIONS.map((opt) => (
-                    <TouchableOpacity
-                      key={opt}
-                      onPress={() => {
-                        setRelationship(opt);
-                        if (opt !== "Authorized Representative") {
-                          setSelectedFiles((prev) => {
-                            if (!prev["authorization_letter"]) return prev;
-                            const copy = { ...prev };
-                            delete copy["authorization_letter"];
-                            return copy;
-                          });
-                        }
-                      }}
-                      style={[
-                        styles.chip,
-                        relationship === opt && styles.chipActive,
-                      ]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: relationship === opt }}
-                      accessibilityLabel={`Relationship: ${opt}`}
-                    >
-                      <Text
+                {/* Relationship Pills */}
+                <View style={styles.formInputGroup}>
+                  <Text style={styles.sectionLabel} allowFontScaling>
+                    Relationship to Record Holder *
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {RELATIONSHIP_OPTIONS.map((opt) => (
+                      <TouchableOpacity
+                        key={opt}
+                        onPress={() => {
+                          setRelationship(opt);
+                          if (opt !== "Authorized Representative") {
+                            setSelectedFiles((prev) => {
+                              if (!prev["authorization_letter"]) return prev;
+                              const copy = { ...prev };
+                              delete copy["authorization_letter"];
+                              return copy;
+                            });
+                          }
+                        }}
                         style={[
-                          styles.chipText,
-                          relationship === opt && styles.chipTextActive,
+                          styles.chip,
+                          opt === "Authorized Representative" && styles.chipWide,
+                          relationship === opt && styles.chipActive,
                         ]}
-                        allowFontScaling
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: relationship === opt }}
+                        accessibilityLabel={`Relationship: ${opt}`}
+                        activeOpacity={0.7}
                       >
-                        {opt}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        {relationship === opt && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={16}
+                            color={colors.primary}
+                            style={styles.chipIcon}
+                          />
+                        )}
+                        <Text
+                          style={[
+                            styles.chipText,
+                            relationship === opt && styles.chipTextActive,
+                          ]}
+                          allowFontScaling
+                        >
+                          {opt}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel} allowFontScaling>
-                  Purpose / Reason for Request *
-                </Text>
                 <TextInput
+                  label="Purpose / Reason for Request *"
                   value={purpose}
-                  onChangeText={setPurpose}
+                  onChangeText={(val) => {
+                    setPurpose(val);
+                    if (fieldErrors.purpose) {
+                      setFieldErrors((prev) => ({ ...prev, purpose: undefined }));
+                    }
+                  }}
                   placeholder="e.g. Marriage requirement, School admission, Personal record"
-                  placeholderTextColor={colors.textMuted}
                   multiline={true}
                   numberOfLines={3}
-                  style={[styles.textInput, styles.textArea]}
+                  style={styles.textArea}
+                  error={fieldErrors.purpose}
                   accessibilityLabel="Purpose or reason for requesting this certificate"
+                  containerStyle={styles.formInputGroup}
                 />
               </View>
             </Card>
@@ -675,7 +699,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               Required Attachments
             </Text>
             <Text style={styles.stepSubtext} allowFontScaling>
-              Attach the required identity and sacramental requirements before review.
+              Attach the required identity and sacramental documents before proceeding to review.
             </Text>
 
             {loadingRequirements ? (
@@ -732,7 +756,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                     const normalized = normalizeAuthorizationLetterFile(file);
                     setSelectedFiles((prev) => ({ ...prev, authorization_letter: normalized }));
                   } catch (err: any) {
-                    Alert.alert("Invalid File", err.message);
+                    feedback.showError("Invalid File", err.message);
                   }
                 }}
                 onFileRemoved={() => {
@@ -756,83 +780,110 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 subtitle="Please verify all information before finalizing submission."
               />
 
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Document Type:
+              {/* Group 1: Document & Parish */}
+              <View style={styles.reviewGroup}>
+                <Text style={styles.reviewGroupHeader} allowFontScaling>
+                  Document & Parish
                 </Text>
-                <Text style={styles.reviewValue} allowFontScaling>
-                  {formatDocumentType(selectedDocType)}
-                </Text>
-              </View>
-
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Target Parish:
-                </Text>
-                <Text style={styles.reviewValue} allowFontScaling>
-                  {selectedParish?.name}
-                </Text>
-              </View>
-
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Record Holder Name:
-                </Text>
-                <Text style={styles.reviewValue} allowFontScaling>
-                  {applicantName}
-                </Text>
-              </View>
-
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Relationship:
-                </Text>
-                <Text style={styles.reviewValue} allowFontScaling>
-                  {relationship}
-                </Text>
-              </View>
-
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Purpose:
-                </Text>
-                <Text style={styles.reviewValue} allowFontScaling>
-                  {purpose}
-                </Text>
-              </View>
-
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Attached Files:
-                </Text>
-                <Text style={styles.reviewValue} allowFontScaling>
-                  {Object.keys(selectedFiles).length} file(s) attached
-                </Text>
-              </View>
-
-              {relationship === "Authorized Representative" ? (
                 <View style={styles.reviewRow}>
                   <Text style={styles.reviewLabel} allowFontScaling>
-                    Authorization Letter:
+                    Document Type:
                   </Text>
-                  <Text
-                    style={[
-                      styles.reviewValue,
-                      { color: selectedFiles["authorization_letter"] ? colors.success : colors.danger },
-                    ]}
-                    allowFontScaling
-                  >
-                    {selectedFiles["authorization_letter"] ? "Attached (Ready to upload)" : "Missing"}
+                  <Text style={styles.reviewValue} allowFontScaling>
+                    {formatDocumentType(selectedDocType)}
                   </Text>
                 </View>
-              ) : null}
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel} allowFontScaling>
+                    Target Parish:
+                  </Text>
+                  <Text style={styles.reviewValue} allowFontScaling>
+                    {selectedParish?.name}
+                  </Text>
+                </View>
+              </View>
 
-              <View style={[styles.reviewRow, styles.reviewFeeRow]}>
-                <Text style={styles.reviewLabel} allowFontScaling>
-                  Authoritative Fee:
+              {/* Group 2: Applicant Information */}
+              <View style={styles.reviewGroup}>
+                <Text style={styles.reviewGroupHeader} allowFontScaling>
+                  Applicant Details
                 </Text>
-                <Text style={styles.reviewFeeValue} allowFontScaling>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel} allowFontScaling>
+                    Record Holder Name:
+                  </Text>
+                  <Text style={styles.reviewValue} allowFontScaling>
+                    {applicantName}
+                  </Text>
+                </View>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel} allowFontScaling>
+                    Relationship:
+                  </Text>
+                  <Text style={styles.reviewValue} allowFontScaling>
+                    {relationship}
+                  </Text>
+                </View>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel} allowFontScaling>
+                    Purpose:
+                  </Text>
+                  <Text style={styles.reviewValue} allowFontScaling>
+                    {purpose}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Group 3: Supporting Attachments */}
+              <View style={styles.reviewGroup}>
+                <Text style={styles.reviewGroupHeader} allowFontScaling>
+                  Supporting Attachments
+                </Text>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel} allowFontScaling>
+                    Attached Files:
+                  </Text>
+                  <Text style={styles.reviewValue} allowFontScaling>
+                    {Object.keys(selectedFiles).length} file(s) attached
+                  </Text>
+                </View>
+
+                {relationship === "Authorized Representative" ? (
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewLabel} allowFontScaling>
+                      Authorization Letter:
+                    </Text>
+                    <Text
+                      style={[
+                        styles.reviewValue,
+                        {
+                          color: selectedFiles["authorization_letter"]
+                            ? colors.success
+                            : colors.danger,
+                          fontWeight: "600",
+                        },
+                      ]}
+                      allowFontScaling
+                    >
+                      {selectedFiles["authorization_letter"] ? "Attached (Ready to upload)" : "Missing"}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Authoritative Dynamic Fee Banner */}
+              <View style={styles.feeBanner}>
+                <View style={styles.feeBannerHeader}>
+                  <Ionicons name="pricetag" size={18} color={colors.primary} />
+                  <Text style={styles.feeBannerTitle} allowFontScaling>
+                    Authoritative Parish Fee
+                  </Text>
+                </View>
+                <Text style={styles.feeBannerAmount} allowFontScaling>
                   {formatFee(requirements?.baseFee)}
+                </Text>
+                <Text style={styles.feeBannerNote} allowFontScaling>
+                  Official processing fee set by {selectedParish?.name || "the parish"}.
                 </Text>
               </View>
             </Card>
@@ -860,6 +911,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             size="lg"
             icon="arrow-forward"
             onPress={handleValidateFormAndNext}
+            style={styles.fullWidthAction}
           />
         </BottomActionBar>
       ) : step === 4 ? (
@@ -870,6 +922,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             size="lg"
             icon="arrow-forward"
             onPress={handleValidateFilesAndNext}
+            style={styles.fullWidthAction}
           />
         </BottomActionBar>
       ) : step === 5 ? (
@@ -883,6 +936,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             loading={isSubmitting}
             disabled={isSubmitting || !hasValidRequirementsFee}
             accessibilityLabel="Confirm and submit your document request"
+            style={styles.fullWidthAction}
           />
         </BottomActionBar>
       ) : null}
@@ -1022,24 +1076,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
   },
-  formGroup: {
-    marginBottom: spacing.md,
+  inputsWrapper: {
+    gap: spacing.sm,
   },
-  inputLabel: {
-    ...fontStyles.captionMedium,
-    color: colors.textSecondary,
+  formInputGroup: {
     marginBottom: spacing.xs,
   },
-  textInput: {
-    backgroundColor: colors.surfaceVariant,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...fontStyles.body,
+  sectionLabel: {
+    ...fontStyles.captionMedium,
     color: colors.textPrimary,
-    minHeight: 44,
+    marginBottom: spacing.xs,
   },
   textArea: {
     minHeight: 80,
@@ -1048,22 +1094,29 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surfaceVariant,
-    minHeight: 36,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 3,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surfaceVariant,
+    minHeight: 38,
+  },
+  chipWide: {
+    flexBasis: "100%",
   },
   chipActive: {
     borderColor: colors.primary,
     backgroundColor: colors.primarySoft,
+  },
+  chipIcon: {
+    marginRight: 4,
   },
   chipText: {
     ...fontStyles.captionMedium,
@@ -1080,35 +1133,69 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: spacing.md,
   },
+  reviewGroup: {
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  reviewGroupHeader: {
+    ...fontStyles.captionMedium,
+    color: colors.primary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+  },
   reviewRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingVertical: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    paddingVertical: 4,
     gap: spacing.sm,
   },
   reviewLabel: {
-    ...fontStyles.captionMedium,
+    ...fontStyles.caption,
     color: colors.textSecondary,
   },
   reviewValue: {
-    ...fontStyles.bodyMedium,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
+    fontWeight: "500",
     flex: 1,
     textAlign: "right",
   },
-  reviewFeeRow: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingTop: spacing.sm,
+  feeBanner: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    padding: spacing.md,
     marginTop: spacing.xs,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
-  reviewFeeValue: {
-    ...fontStyles.subheading,
+  feeBannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: 4,
+  },
+  feeBannerTitle: {
+    ...fontStyles.captionMedium,
     color: colors.primary,
-    fontWeight: "700",
+    fontWeight: "600",
+  },
+  feeBannerAmount: {
+    ...fontStyles.heading,
+    color: colors.primary,
+    fontWeight: "800",
+    fontSize: 26,
+    marginVertical: 2,
+  },
+  feeBannerNote: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
   },
   legalNotice: {
     flexDirection: "row",
@@ -1122,6 +1209,9 @@ const styles = StyleSheet.create({
   legalNoticeText: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+    flex: 1,
+  },
+  fullWidthAction: {
     flex: 1,
   },
 });

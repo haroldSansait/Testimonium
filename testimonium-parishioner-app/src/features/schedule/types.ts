@@ -27,7 +27,7 @@ export const SCHEDULE_EVENT_LABELS: Record<ScheduleEventType, string> = {
   FIRST_COMMUNION: "First Communion",
   CONFESSION: "Confession",
   ANOINTING_OF_THE_SICK: "Anointing of the Sick",
-  PRIVATE_MASS: "Private Mass",
+  PRIVATE_MASS: "Mass",
   MASS_INTENTION: "Mass Intention",
   WAKE_MASS: "Wake Mass",
   FUNERAL: "Funeral",

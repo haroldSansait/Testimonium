@@ -33,3 +33,9 @@ export type { SkeletonProps } from "./Skeleton";
 
 export { TextInput } from "./TextInput";
 export type { TextInputProps } from "./TextInput";
+
+export { FeedbackModal } from "./FeedbackModal";
+export type { FeedbackModalProps, FeedbackType } from "./FeedbackModal";
+
+export { GoogleLogo } from "./GoogleLogo";
+export type { GoogleLogoProps } from "./GoogleLogo";

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   AppState,
   ScrollView,
   StyleSheet,
@@ -24,6 +23,7 @@ import {
   useSchedulingConfiguration,
 } from "./api";
 import { useAuth } from "@/providers/AuthProvider";
+import { useFeedback } from "@/providers/FeedbackProvider";
 import { formatScheduleDate, makeSchedulePayloadSignature } from "./presentation";
 import type { ScheduleEventType } from "./types";
 
@@ -65,6 +65,7 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
 export const ScheduleWizardScreen: React.FC = () => {
   const router = useRouter();
   const { profile } = useAuth();
+  const feedback = useFeedback();
   const today = useMemo(() => getManilaDateParts(), []);
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedParishId, setSelectedParishId] = useState<number | null>(null);
@@ -223,17 +224,15 @@ export const ScheduleWizardScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (profile?.needsProfileCompletion) {
-      Alert.alert(
-        "Profile Details Required",
-        "Please complete your profile (full name and contact number) before scheduling an appointment.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Complete Profile",
-            onPress: () => router.push("/(app)/(tabs)/profile" as any),
-          },
-        ]
-      );
+      feedback.showWarning({
+        title: "Profile Details Required",
+        message: "Please complete your profile (full name and contact number) before scheduling an appointment.",
+        confirmText: "Complete Profile",
+        cancelText: "Cancel",
+        onConfirm: () => {
+          router.push("/(app)/(tabs)/profile" as any);
+        },
+      });
       return;
     }
 
@@ -253,25 +252,29 @@ export const ScheduleWizardScreen: React.FC = () => {
         },
         idempotencyKey: getIdempotencyKey(),
       });
-      Alert.alert("Schedule Request Submitted", "Your request has been sent to the parish for review.", [
-        { text: "View Details", onPress: () => router.replace(`/(app)/schedule/${created.id}` as never) },
-      ]);
+      feedback.showSuccess({
+        title: "Schedule Request Submitted",
+        message: `Your appointment request has been sent to ${selectedParish?.name || "the parish"} for review.`,
+        referenceNumber: `SR-${created.id}`,
+        confirmText: "View Details",
+        onConfirm: () => {
+          router.replace(`/(app)/schedule/${created.id}` as never);
+        },
+      });
     } catch (error: unknown) {
       const appError = isAppError(error) ? error : null;
       const code = appError?.code ?? "";
 
       if (code === "PROFILE_INCOMPLETE") {
-        Alert.alert(
-          "Profile Details Required",
-          "Please complete your profile (full name and contact number) before scheduling an appointment.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Complete Profile",
-              onPress: () => router.push("/(app)/(tabs)/profile" as any),
-            },
-          ]
-        );
+        feedback.showWarning({
+          title: "Profile Details Required",
+          message: "Please complete your profile (full name and contact number) before scheduling an appointment.",
+          confirmText: "Complete Profile",
+          cancelText: "Cancel",
+          onConfirm: () => {
+            router.push("/(app)/(tabs)/profile" as any);
+          },
+        });
         return;
       }
       const configurationChanged = [
@@ -308,7 +311,10 @@ export const ScheduleWizardScreen: React.FC = () => {
           ? appError.message
           : "Unable to submit your schedule request. Please try again.";
       setErrorMessage(retryMessage);
-      Alert.alert("Schedule Request Not Submitted", retryMessage);
+      feedback.showError({
+        title: "Schedule Request Not Submitted",
+        message: retryMessage,
+      });
     }
   };
 
@@ -319,41 +325,82 @@ export const ScheduleWizardScreen: React.FC = () => {
     return (
       <Card style={styles.calendarCard}>
         <View style={styles.calendarToolbar}>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setCalendarMonth((month) => moveMonth(month, -1))} style={styles.monthButton}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
+            onPress={() => setCalendarMonth((month) => moveMonth(month, -1))}
+            style={styles.monthButton}
+          >
             <Ionicons name="chevron-back" size={20} color={colors.primary} />
           </TouchableOpacity>
-          <Text style={styles.monthTitle} allowFontScaling>{MONTH_NAMES[calendarMonth.month - 1]} {calendarMonth.year}</Text>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setCalendarMonth((month) => moveMonth(month, 1))} style={styles.monthButton}>
+          <Text style={styles.monthTitle} allowFontScaling>
+            {MONTH_NAMES[calendarMonth.month - 1]} {calendarMonth.year}
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            onPress={() => setCalendarMonth((month) => moveMonth(month, 1))}
+            style={styles.monthButton}
+          >
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity accessibilityRole="button" onPress={() => setCalendarMonth({ year: today.year, month: today.month })} style={styles.todayButton}>
-          <Text style={styles.todayButtonText} allowFontScaling>Return to Current Month</Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => setCalendarMonth({ year: today.year, month: today.month })}
+          style={styles.todayButton}
+        >
+          <Text style={styles.todayButtonText} allowFontScaling>
+            Return to Current Month
+          </Text>
         </TouchableOpacity>
-        <View style={styles.weekRow}>{WEEKDAY_NAMES.map((name) => <Text key={name} style={styles.weekday} allowFontScaling>{name}</Text>)}</View>
+        <View style={styles.weekRow}>
+          {WEEKDAY_NAMES.map((name) => (
+            <Text key={name} style={styles.weekday} allowFontScaling>
+              {name}
+            </Text>
+          ))}
+        </View>
         <View style={styles.calendarGrid}>
           {cells.map((day, index) => {
-            if (day <= 0) return <View key={`blank-${index}`} style={styles.dayCell} />;
+            if (day <= 0) return <View key={`blank-${index}`} style={styles.dayCellContainer} />;
             const iso = isoForDay(calendarMonth.year, calendarMonth.month, day);
             const available = availableDateSet.has(iso);
             const selected = selectedDate === iso;
             const isToday = today.iso === iso;
             return (
-              <TouchableOpacity
-                key={iso}
-                accessibilityRole="button"
-                accessibilityLabel={`${iso}${available ? ", available" : ", unavailable"}`}
-                accessibilityState={{ disabled: !available, selected }}
-                disabled={!available}
-                onPress={() => chooseDate(iso)}
-                style={[styles.dayCell, styles.dayButton, available && styles.dayAvailable, selected && styles.daySelected, isToday && styles.dayToday]}
-              >
-                <Text style={[styles.dayText, !available && styles.dayDisabledText, selected && styles.daySelectedText]} allowFontScaling>{day}</Text>
-              </TouchableOpacity>
+              <View key={iso} style={styles.dayCellContainer}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`${iso}${available ? ", available" : ", unavailable"}`}
+                  accessibilityState={{ disabled: !available, selected }}
+                  disabled={!available}
+                  onPress={() => chooseDate(iso)}
+                  style={[
+                    styles.dayBadge,
+                    available && styles.dayAvailable,
+                    selected && styles.daySelected,
+                    isToday && !selected && styles.dayToday,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      !available && styles.dayDisabledText,
+                      selected && styles.daySelectedText,
+                    ]}
+                    allowFontScaling
+                  >
+                    {day}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             );
           })}
         </View>
-        <Text style={styles.calendarHelp} allowFontScaling>Only dates confirmed by the parish are selectable.</Text>
+        <Text style={styles.calendarHelp} allowFontScaling>
+          Only dates confirmed by the parish are selectable.
+        </Text>
       </Card>
     );
   };
@@ -436,7 +483,36 @@ export const ScheduleWizardScreen: React.FC = () => {
           <Text style={styles.subtitle} allowFontScaling>{selectedDate ? formatScheduleDate(selectedDate) : "Choose a date first"}</Text>
           {slotsQuery.isLoading ? <><Skeleton height={52} /><Skeleton height={52} style={styles.skeletonGap} /></> : null}
           {!slotsQuery.isLoading && (slotsQuery.data || []).length === 0 ? <EmptyState icon="time-outline" title="No time slots available" description="Choose another date to see current parish availability." /> : null}
-          <View style={styles.slotGrid}>{(slotsQuery.data || []).map((slot) => <TouchableOpacity key={slot} accessibilityRole="button" accessibilityState={{ selected: selectedSlot === slot }} onPress={() => { setSelectedSlot(slot); setErrorMessage(null); }} style={[styles.slotButton, selectedSlot === slot && styles.slotSelected]}><Text style={[styles.slotText, selectedSlot === slot && styles.slotSelectedText]} allowFontScaling>{slot}</Text></TouchableOpacity>)}</View>
+          <View style={styles.slotGrid}>
+            {(slotsQuery.data || []).map((slot) => {
+              const isSelected = selectedSlot === slot;
+              return (
+                <TouchableOpacity
+                  key={slot}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => {
+                    setSelectedSlot(slot);
+                    setErrorMessage(null);
+                  }}
+                  style={[styles.slotButton, isSelected && styles.slotSelected]}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={18}
+                    color={isSelected ? colors.surface : colors.primary}
+                    style={styles.slotIcon}
+                  />
+                  <Text
+                    style={[styles.slotText, isSelected && styles.slotSelectedText]}
+                    allowFontScaling
+                  >
+                    {slot}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>}
 
         {currentStep === 5 && <View style={styles.section}>
@@ -470,15 +546,39 @@ export const ScheduleWizardScreen: React.FC = () => {
       {/* Sticky Bottom Actions */}
       {currentStep === 3 ? (
         <BottomActionBar>
-          <Button title="Continue to Time Slot" variant="primary" size="lg" icon="arrow-forward" disabled={!selectedDate} onPress={() => setCurrentStep(4)} />
+          <Button
+            title="Continue to Time Slot"
+            variant="primary"
+            size="lg"
+            icon="arrow-forward"
+            disabled={!selectedDate}
+            onPress={() => setCurrentStep(4)}
+            style={styles.fullWidthAction}
+          />
         </BottomActionBar>
       ) : currentStep === 4 ? (
         <BottomActionBar>
-          <Button title="Continue to Confirmation" variant="primary" size="lg" icon="arrow-forward" disabled={!selectedSlot} onPress={() => setCurrentStep(5)} />
+          <Button
+            title="Continue to Confirmation"
+            variant="primary"
+            size="lg"
+            icon="arrow-forward"
+            disabled={!selectedSlot}
+            onPress={() => setCurrentStep(5)}
+            style={styles.fullWidthAction}
+          />
         </BottomActionBar>
       ) : currentStep === 5 ? (
         <BottomActionBar>
-          <Button title="Submit Schedule Request" variant="primary" size="lg" icon="checkmark-circle-outline" loading={createMutation.isPending} onPress={handleSubmit} />
+          <Button
+            title="Submit Schedule Request"
+            variant="primary"
+            size="lg"
+            icon="checkmark-circle-outline"
+            loading={createMutation.isPending}
+            onPress={handleSubmit}
+            style={styles.fullWidthAction}
+          />
         </BottomActionBar>
       ) : null}
     </Screen>
@@ -504,27 +604,28 @@ const styles = StyleSheet.create({
   choiceTitle: { ...fontStyles.subheading, color: colors.textPrimary, fontWeight: "600" },
   choiceDescription: { ...fontStyles.bodySmall, color: colors.textSecondary },
   skeletonGap: { marginTop: spacing.sm },
-  calendarCard: { gap: spacing.sm, backgroundColor: colors.surface, borderColor: colors.cardBorder },
-  calendarToolbar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  monthButton: { padding: spacing.xs },
+  calendarCard: { gap: spacing.sm, backgroundColor: colors.surface, borderColor: colors.cardBorder, padding: spacing.md, borderRadius: radii.xl },
+  calendarToolbar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: spacing.xs },
+  monthButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surfaceMuted, alignItems: "center", justifyContent: "center" },
   monthTitle: { ...fontStyles.subheading, color: colors.textPrimary, fontWeight: "700" },
-  todayButton: { alignSelf: "center", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  todayButtonText: { ...fontStyles.captionMedium, color: colors.primary, fontWeight: "600" },
-  weekRow: { flexDirection: "row" },
+  todayButton: { alignSelf: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radii.pill, backgroundColor: colors.primarySoft, marginBottom: spacing.xs },
+  todayButtonText: { ...fontStyles.captionMedium, color: colors.primary, fontWeight: "700" },
+  weekRow: { flexDirection: "row", marginBottom: spacing.xs },
   weekday: { width: "14.2857%", textAlign: "center", ...fontStyles.caption, color: colors.textMuted, fontWeight: "600" },
   calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
-  dayCell: { width: "14.2857%", aspectRatio: 1, alignItems: "center", justifyContent: "center" },
-  dayButton: { borderRadius: radii.md },
+  dayCellContainer: { width: "14.2857%", aspectRatio: 1, alignItems: "center", justifyContent: "center", paddingVertical: 2 },
+  dayBadge: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   dayAvailable: { backgroundColor: colors.primarySoft },
-  daySelected: { backgroundColor: colors.primary },
-  dayToday: { borderWidth: 1, borderColor: colors.primary },
+  daySelected: { backgroundColor: colors.primary, elevation: 3, shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 },
+  dayToday: { borderWidth: 1.5, borderColor: colors.primary },
   dayText: { ...fontStyles.bodyMedium, color: colors.textPrimary, fontWeight: "600" },
   dayDisabledText: { color: colors.disabled, fontWeight: "400" },
   daySelectedText: { color: colors.surface, fontWeight: "700" },
   calendarHelp: { ...fontStyles.caption, color: colors.textSecondary, textAlign: "center", marginTop: spacing.xs },
   slotGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  slotButton: { minWidth: "46%", flexGrow: 1, borderRadius: radii.md, padding: spacing.md, alignItems: "center", borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.surface },
+  slotButton: { minWidth: "46%", flexGrow: 1, borderRadius: radii.md, padding: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.surface },
   slotSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
+  slotIcon: { marginRight: 2 },
   slotText: { ...fontStyles.button, color: colors.textPrimary },
   slotSelectedText: { color: colors.surface },
   summaryCard: { gap: spacing.sm, backgroundColor: colors.surface, borderColor: colors.cardBorder },
@@ -534,4 +635,5 @@ const styles = StyleSheet.create({
   inputLabel: { ...fontStyles.captionMedium, color: colors.textSecondary, fontWeight: "600" },
   notesInput: { minHeight: 90, borderColor: colors.borderLight, borderWidth: 1, borderRadius: radii.md, padding: spacing.md, ...fontStyles.body, color: colors.textPrimary, textAlignVertical: "top", backgroundColor: colors.surfaceVariant },
   disclaimerText: { ...fontStyles.caption, color: colors.textSecondary, fontStyle: "italic", marginTop: -spacing.xs },
+  fullWidthAction: { flex: 1 },
 });
