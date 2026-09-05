@@ -413,6 +413,24 @@ export const EventSchedulerPage: React.FC = () => {
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Available Time Slots</label>
           {loadingSlots ? <div className='grid grid-cols-2 gap-3'><Skeleton className='h-12 w-full' /><Skeleton className='h-12 w-full' /></div> : null}
           {!loadingSlots && !availableSlots.length ? <p className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800'>No time slots are available for this date. Choose another date.</p> : null}
+          {!loadingSlots && availableSlots.length > 0 && (
+            <div className='grid grid-cols-2 sm:grid-cols-3 gap-3'>
+              {availableSlots.map((slot) => (
+                <button
+                  key={slot}
+                  type='button'
+                  onClick={() => setSelectedTimeSlot(slot)}
+                  className={`p-3.5 border rounded-xl text-xs font-bold ${
+                    selectedTimeSlot === slot
+                      ? 'border-crimson bg-crimson text-white'
+                      : 'border-border text-text-primary bg-white hover:bg-red-50'
+                  }`}
+                >
+                  {slot}
+                </button>
+              ))}
+            </div>
+          )}
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Venue or location note (optional)</label>
           <input value={venueAddress} onChange={(event) => setVenueAddress(event.target.value)} className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary' placeholder='Add a relevant location detail' />
 
