@@ -144,6 +144,14 @@ export function resolveEventType(title) {
   const directMatch = EventTypeCatalog.find(e => e.enum === uppercaseEnum);
   if (directMatch) return directMatch.enum;
 
+  // Check exact alias matches first
+  for (const event of EventTypeCatalog) {
+    if (event.aliases.some(alias => normalized === alias)) {
+      return event.enum;
+    }
+  }
+
+  // Fallback to substring matches
   for (const event of EventTypeCatalog) {
     if (event.aliases.some(alias => normalized.includes(alias))) {
       return event.enum;

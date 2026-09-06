@@ -591,6 +591,91 @@ export class NotificationDispatcher {
     await NotificationDispatcher._persist(payloads, client);
   }
 
+  /**
+   * Dispatches notifications when an emergency reschedule is executed on a confirmed schedule.
+   * Notifies both the parishioner and the assigned/retained priest post-commit.
+   */
+  static async notifyEmergencyReschedule(
+    { parishionerId, parishId, scheduleId, displayTitle, newDate, newSlot, reason, priestId, priestName },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const payloads = [];
+
+    // -- Parishioner notification --
+    if (parishionerId) {
+      payloads.push({
+        userId: parishionerId,
+        title: "Appointment Rescheduled",
+        message: `Your appointment for "${displayTitle}" has been rescheduled to ${newDate} at ${newSlot}. Reason: ${reason}`,
+        type: "IN_APP",
+        referenceType: "SCHEDULE_REQUEST",
+        referenceId: scheduleId,
+      });
+    }
+
+    // -- Retained Priest notification --
+    if (priestId) {
+      payloads.push({
+        userId: priestId,
+        title: "Assignment Schedule Updated",
+        message: `Your pastoral assignment for "${displayTitle}" has been rescheduled to ${newDate} at ${newSlot}. Reason: ${reason}`,
+        type: "IN_APP",
+        referenceType: "SCHEDULE_REQUEST",
+        referenceId: scheduleId,
+      });
+    }
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
+  /**
+   * Dispatches notifications to parish admins when a parishioner declines a proposed reschedule.
+   */
+  static async notifyProposalDeclined(
+    { parishId, scheduleId, parishionerName, displayTitle },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const payloads = [];
+
+    const adminTemplate = ScheduleTemplates.adminRescheduleResponse(displayTitle, false);
+    const adminIds = await RecipientResolver.getAdminRecipients(parishId, tx);
+
+    for (const adminId of adminIds) {
+      payloads.push({
+        userId: adminId,
+        title: adminTemplate.title,
+        message: adminTemplate.message,
+        type: "IN_APP",
+        referenceType: "SCHEDULE_REQUEST",
+        referenceId: scheduleId,
+      });
+    }
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
+  /**
+   * Notifies the owning parishioner when a priest rejects an assignment and
+   * staff must assign a replacement.
+   */
+  static async notifyPriestReassignmentRequired(
+    { parishionerId, scheduleId, displayTitle },
+    tx = null
+  ) {
+    if (!parishionerId) return;
+    const client = tx || prisma;
+    await NotificationDispatcher._persist([{
+      userId: parishionerId,
+      title: "Priest Reassignment Required",
+      message: `The priest assigned to "${displayTitle}" is unavailable. Parish staff will assign a replacement.`,
+      type: "IN_APP",
+      referenceType: "SCHEDULE_REQUEST",
+      referenceId: scheduleId,
+    }], client);
+  }
+
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------

@@ -2,6 +2,8 @@ import { Router } from "express";
 import {
   list,
   getById,
+  getByTracking,
+  getPriestAvailability,
   create,
   getConfiguration,
   getAvailabilityDates,
@@ -11,30 +13,39 @@ import {
   respondReschedule,
   assignPriest,
   respondPriestAssignment,
+  emergencyReschedule,
 } from "../controllers/ScheduleController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
-import { createScheduleSchema } from "../validators/scheduleSchemas.js";
+import {
+  createScheduleSchema,
+  updateScheduleStatusSchema,
+  proposeRescheduleSchema,
+  respondRescheduleSchema,
+  assignPriestSchema,
+  priestAssignmentResponseSchema,
+  emergencyRescheduleSchema,
+} from "../validators/scheduleSchemas.js";
 
 const router = Router();
 
-// Apply authentication middleware to all routes
 router.use(authenticateFirebaseToken);
 
-// Static / collection routes MUST precede parameterized /:id routes
 router.get("/", list);
 router.get("/configuration", getConfiguration);
 router.get("/availability-dates", getAvailabilityDates);
 router.get("/available-slots", getAvailableSlots);
 router.post("/", validateBody(createScheduleSchema), create);
 
-// Item routes
+router.get("/tracking/:reference", getByTracking);
+router.get("/:id/priest-availability", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), getPriestAvailability);
 router.get("/:id", getById);
-router.patch("/:id/status", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), updateStatus);
-router.post("/:id/propose-reschedule", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), proposeReschedule);
-router.post("/:id/respond-reschedule", checkRole(["PARISHIONER"]), respondReschedule);
-router.post("/:id/assign-priest", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), assignPriest);
-router.post("/:id/priest-respond", checkRole(["PRIEST"]), respondPriestAssignment);
+router.patch("/:id/status", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(updateScheduleStatusSchema), updateStatus);
+router.post("/:id/propose-reschedule", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(proposeRescheduleSchema), proposeReschedule);
+router.post("/:id/respond-reschedule", checkRole(["PARISHIONER"]), validateBody(respondRescheduleSchema), respondReschedule);
+router.post("/:id/assign-priest", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(assignPriestSchema), assignPriest);
+router.post("/:id/priest-respond", checkRole(["PRIEST"]), validateBody(priestAssignmentResponseSchema), respondPriestAssignment);
+router.post("/:id/emergency-reschedule", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(emergencyRescheduleSchema), emergencyReschedule);
 
 export default router;

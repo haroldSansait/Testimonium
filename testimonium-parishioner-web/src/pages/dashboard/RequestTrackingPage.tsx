@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
-import type { SacramentalRequest, RequestStatus } from '../../types';
+import type { SacramentalRequest, RequestStatus, Appointment } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -15,6 +15,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import PaymentInstructionsCard from '../../features/payments/components/PaymentInstructionsCard';
 import ReceiptUploadCard from '../../features/payments/components/ReceiptUploadCard';
 import { ErrorState } from '../../components/ui/ErrorState';
+import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
 
 const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
   switch (status) {
@@ -45,6 +46,45 @@ const formatStatusDisplay = (status: string) => {
   if (status === 'needs-correction' || status === 'needs_correction') return 'Needs Correction';
   if (status === 'payment-pending') return 'Payment Required';
   return status;
+};
+
+const formatScheduleStatusDisplay = (status: string, priestStatus?: string | null) => {
+  const norm = (status || '').toUpperCase();
+  if (norm === 'CONFIRMED') return 'Confirmed';
+  if (norm === 'COMPLETED') return 'Completed';
+  if (norm === 'CANCELLED') return 'Cancelled';
+  if (norm === 'REJECTED') return 'Declined';
+  if (norm === 'PROPOSED_RESCHEDULE' || norm === 'PROPOSED' || norm === 'WAITING_PARISHIONER_RESPONSE') {
+    return 'Reschedule Proposed';
+  }
+  if (norm === 'REQUESTED' || norm === 'BOOKED' || norm === 'PENDING') {
+    if (priestStatus === 'PENDING') {
+      return 'Pending Priest Acceptance';
+    }
+    return 'Requested / Under Review';
+  }
+  return status;
+};
+
+const getScheduleBadgeVariant = (status: string): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
+  const norm = (status || '').toLowerCase();
+  switch (norm) {
+    case 'confirmed':
+    case 'completed':
+      return 'ready';
+    case 'cancelled':
+    case 'rejected':
+      return 'rejected';
+    case 'proposed':
+    case 'proposed_reschedule':
+    case 'waiting_parishioner_response':
+      return 'correction';
+    case 'booked':
+    case 'pending':
+    case 'requested':
+    default:
+      return 'under-review';
+  }
 };
 
 const EMPTY_REQUESTS: SacramentalRequest[] = [];
@@ -101,6 +141,138 @@ export const RequestTrackingPage: React.FC = () => {
 
   // Local presentation state for responsive tabs on mobile (<1024px)
   const [mobileView, setMobileView] = useState<'requests' | 'details'>('requests');
+
+  // Mode state: 'documents' or 'schedules'
+  const [activeMode, setActiveMode] = useState<'documents' | 'schedules'>('documents');
+
+  // Schedules state
+  const [schedules, setSchedules] = useState<Appointment[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+  const [searchedSchedule, setSearchedSchedule] = useState<Appointment | null>(null);
+  const [scheduleSearchQuery, setScheduleSearchQuery] = useState('');
+  const [scheduleSearching, setScheduleSearching] = useState(false);
+  const [scheduleSearchError, setScheduleSearchError] = useState<string | null>(null);
+  const [mobileScheduleView, setMobileScheduleView] = useState<'schedules' | 'details'>('schedules');
+
+  const loadSchedules = useCallback(async () => {
+    setLoadingSchedules(true);
+    try {
+      const appts = await services.scheduler.getAppointments();
+      setSchedules(appts || []);
+      if (appts && appts.length > 0 && !selectedScheduleId) {
+        setSelectedScheduleId(String(appts[0].id));
+      }
+    } catch (err) {
+      console.error('Failed to load schedules:', err);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  }, [selectedScheduleId]);
+
+  useEffect(() => {
+    if (activeMode === 'schedules') {
+      void loadSchedules();
+    }
+  }, [activeMode, loadSchedules]);
+
+  const selectedSchedule = useMemo(() => {
+    if (searchedSchedule && String(searchedSchedule.id) === String(selectedScheduleId)) {
+      return searchedSchedule;
+    }
+    const found = schedules.find(s => String(s.id) === String(selectedScheduleId));
+    if (found) return found;
+    return searchedSchedule || (schedules.length > 0 ? schedules[0] : null);
+  }, [schedules, selectedScheduleId, searchedSchedule]);
+
+  const handleScheduleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = scheduleSearchQuery.trim();
+    if (!query) return;
+
+    setScheduleSearching(true);
+    setScheduleSearchError(null);
+
+    try {
+      const match = await services.scheduler.getAppointmentByTracking(query);
+      if (match) {
+        setSearchedSchedule(match);
+        setSelectedScheduleId(String(match.id));
+        setMobileScheduleView('details');
+      } else {
+        setSearchedSchedule(null);
+        setScheduleSearchError("We couldn't find a schedule request with that reference.");
+      }
+    } catch (err: any) {
+      const status = err?.status ?? err?.statusCode;
+      if (status === 404 || status === 403 || err?.code === 'SCHEDULE_NOT_FOUND') {
+        setScheduleSearchError("We couldn't find a schedule request with that reference.");
+      } else {
+        setScheduleSearchError("Unable to retrieve schedule status right now. Please try again.");
+      }
+      setSearchedSchedule(null);
+    } finally {
+      setScheduleSearching(false);
+    }
+  };
+
+  const handleSelectSchedule = (sched: Appointment) => {
+    setSelectedScheduleId(String(sched.id));
+    setSearchedSchedule(null);
+    setScheduleSearchQuery('');
+    setScheduleSearchError(null);
+    setMobileScheduleView('details');
+  };
+
+  const getScheduleMilestones = (schedule: Appointment) => {
+    const isPriestAssigned = Boolean(schedule.assignedPriestId || schedule.assignedPriestName);
+    const isPriestAccepted = isPriestAssigned && schedule.priestResponseStatus === 'ACCEPTED';
+    const isConfirmed = schedule.status === 'confirmed';
+    const isCompleted = (schedule.status as string) === 'completed';
+
+    return [
+      {
+        key: 'submitted',
+        label: 'Request Submitted',
+        done: true,
+        desc: 'Your schedule request was officially received by the parish.',
+      },
+      {
+        key: 'priest-assigned',
+        label: 'Priest Assigned',
+        done: isPriestAssigned,
+        desc: schedule.assignedPriestName
+          ? `Assigned to Rev. Fr. ${schedule.assignedPriestName}.`
+          : 'Parish office is assigning an available priest.',
+      },
+      {
+        key: 'priest-accepted',
+        label: 'Priest Acceptance',
+        done: isPriestAccepted,
+        desc: isPriestAccepted
+          ? 'Assigned priest has accepted the schedule.'
+          : isPriestAssigned
+          ? 'Awaiting acceptance from assigned priest.'
+          : 'Pending priest assignment.',
+      },
+      {
+        key: 'confirmed',
+        label: 'Appointment Confirmed',
+        done: isConfirmed || isCompleted,
+        desc: isConfirmed || isCompleted
+          ? 'Appointment is officially confirmed on parish calendar.'
+          : 'Final confirmation pending priest acceptance.',
+      },
+      {
+        key: 'completed',
+        label: 'Appointment Concluded',
+        done: isCompleted,
+        desc: isCompleted
+          ? 'Rite or blessing has been completed.'
+          : 'Awaiting scheduled date and occurrence.',
+      },
+    ];
+  };
 
 
   // Correction Resubmission State
@@ -317,16 +489,68 @@ export const RequestTrackingPage: React.FC = () => {
     );
   }
 
+  const handlePageRefresh = () => {
+    if (activeMode === 'schedules') {
+      setScheduleSearchQuery('');
+      setScheduleSearchError(null);
+      void loadSchedules();
+    } else {
+      handleRefresh();
+    }
+  };
+
   return (
     <div className="space-y-6 text-left" aria-live="polite">
       <PageHeader
         title="Track Request Status"
         description="Search via your reference number or view existing requests below."
-        onRefresh={handleRefresh}
+        onRefresh={handlePageRefresh}
         breadcrumbs={['Home', 'Request Tracking']}
       />
 
-      {requests.length === 0 ? (
+      {/* Mode Switcher Tabs */}
+      <div
+        className="flex bg-app-page p-1 rounded-card border border-border max-w-md w-full"
+        role="tablist"
+        aria-label="Tracking category"
+      >
+        <button
+          id="tracking-mode-tab-documents"
+          type="button"
+          role="tab"
+          aria-selected={activeMode === 'documents'}
+          aria-controls="tracking-mode-panel-documents"
+          onClick={() => setActiveMode('documents')}
+          className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-2 focus-ring ${
+            activeMode === 'documents'
+              ? 'bg-white text-crimson shadow-xs border border-border/50'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          <FileText size={15} />
+          <span>Document Request</span>
+        </button>
+        <button
+          id="tracking-mode-tab-schedules"
+          type="button"
+          role="tab"
+          aria-selected={activeMode === 'schedules'}
+          aria-controls="tracking-mode-panel-schedules"
+          onClick={() => setActiveMode('schedules')}
+          className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-2 focus-ring ${
+            activeMode === 'schedules'
+              ? 'bg-white text-crimson shadow-xs border border-border/50'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          <Calendar size={15} />
+          <span>Schedule Request</span>
+        </button>
+      </div>
+
+      {activeMode === 'documents' ? (
+        <div id="tracking-mode-panel-documents" role="tabpanel" aria-labelledby="tracking-mode-tab-documents">
+          {requests.length === 0 ? (
         <EmptyState
           title="No document requests yet"
           description="You have not submitted any certificate requests. Submit a document request using our wizard to start tracking."
@@ -949,6 +1173,294 @@ export const RequestTrackingPage: React.FC = () => {
           </div>
 
         </>
+      )}
+        </div>
+      ) : (
+        <div
+          id="tracking-mode-panel-schedules"
+          role="tabpanel"
+          aria-labelledby="tracking-mode-tab-schedules"
+          className="space-y-6"
+        >
+          {/* Mobile Tab Switcher (<1024px) for Schedule Tracking */}
+          <div
+            className="flex lg:hidden bg-app-page p-1 rounded-card border border-border"
+            role="tablist"
+            aria-label="Schedule tracking views"
+          >
+            <button
+              id="schedule-tab-list"
+              type="button"
+              onClick={() => setMobileScheduleView('schedules')}
+              role="tab"
+              aria-selected={mobileScheduleView === 'schedules'}
+              aria-controls="schedule-panel-list"
+              className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring ${
+                mobileScheduleView === 'schedules'
+                  ? 'bg-white text-crimson shadow-xs border border-border/50'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Calendar size={14} />
+              <span>My Schedules ({schedules.length})</span>
+            </button>
+            <button
+              id="schedule-tab-details"
+              type="button"
+              onClick={() => setMobileScheduleView('details')}
+              disabled={!selectedSchedule}
+              role="tab"
+              aria-selected={mobileScheduleView === 'details'}
+              aria-controls="schedule-panel-details"
+              className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring disabled:opacity-40 ${
+                mobileScheduleView === 'details'
+                  ? 'bg-white text-crimson shadow-xs border border-border/50'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Clock size={14} />
+              <span>Schedule Details</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Side: Search & Schedules List (Col-span 5 on desktop) */}
+            <section
+              id={isMobile ? "schedule-panel-list" : undefined}
+              role={isMobile ? "tabpanel" : undefined}
+              aria-labelledby={isMobile ? "schedule-tab-list" : undefined}
+              aria-label={!isMobile ? "My Scheduled Requests" : undefined}
+              className={`flex flex-col gap-6 ${mobileScheduleView === 'details' ? 'hidden lg:flex lg:col-span-5' : 'flex lg:col-span-5'}`}
+            >
+              {/* Search Form */}
+              <div className="bg-white rounded-card border border-border p-5 shadow-xs transition-all duration-fast">
+                <form onSubmit={handleScheduleSearch} className="space-y-3">
+                  <div className="space-y-1">
+                    <label htmlFor="search-schedule-input" className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                      Schedule Request / Confirmation Number
+                    </label>
+                    <p className="text-[11px] text-text-muted">Enter your confirmation number (e.g. CONF-2026-0026) or schedule ID.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <SearchInput
+                      id="search-schedule-input"
+                      placeholder="e.g. CONF-2026-0026"
+                      value={scheduleSearchQuery}
+                      onChange={e => setScheduleSearchQuery(e.target.value)}
+                      aria-label="Schedule request reference or confirmation number"
+                    />
+                    <Button type="submit" size="sm" className="font-semibold" disabled={scheduleSearching}>
+                      {scheduleSearching ? <Loader2 size={14} className="animate-spin" /> : 'Search'}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Schedules List */}
+              <div className="bg-white rounded-card border border-border p-5 shadow-xs">
+                <div className="mb-3.5 border-b border-border pb-2.5 flex justify-between items-center">
+                  <h3 className="text-sm font-bold text-text-primary">My Schedule Requests</h3>
+                  {loadingSchedules && <Loader2 size={14} className="animate-spin text-crimson" />}
+                </div>
+                {schedules.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-text-muted">
+                    No schedule appointments booked yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 pt-0">
+                    {schedules.map(sched => {
+                      const isSelected = selectedSchedule?.id === sched.id;
+                      return (
+                        <button
+                          key={sched.id}
+                          type="button"
+                          onClick={() => handleSelectSchedule(sched)}
+                          className={`w-full p-3.5 rounded-button border text-left transition-all focus-ring relative group cursor-pointer ${
+                            isSelected
+                              ? 'border-crimson bg-red-50/20 border-l-4 border-l-crimson shadow-xs'
+                              : 'border-border/80 hover:bg-app-page hover:border-gray-300'
+                          }`}
+                          aria-current={isSelected ? 'true' : undefined}
+                        >
+                          <div className="flex justify-between items-center gap-2 mb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Calendar size={14} className={isSelected ? 'text-crimson flex-shrink-0' : 'text-text-muted flex-shrink-0'} />
+                              <span className="text-xs font-mono font-bold text-text-primary truncate">
+                                {sched.confirmationNumber}
+                              </span>
+                            </div>
+                            <Badge variant={getScheduleBadgeVariant(sched.status)}>
+                              {formatScheduleStatusDisplay(sched.status, sched.priestResponseStatus)}
+                            </Badge>
+                          </div>
+                          <p className="text-xs font-semibold text-text-primary truncate">
+                            {sched.serviceName}
+                          </p>
+                          <div className="flex justify-between items-center text-[11px] text-text-muted mt-1">
+                            <span>{sched.parishName || 'Parish'}</span>
+                            <span>{sched.date}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Right Side: Details & Milestones & Reschedule History */}
+            <section
+              id={isMobile ? "schedule-panel-details" : undefined}
+              role={isMobile ? "tabpanel" : undefined}
+              aria-labelledby={isMobile ? "schedule-tab-details" : undefined}
+              aria-label={!isMobile ? "Schedule Request Details" : undefined}
+              className={`flex-1 ${mobileScheduleView === 'schedules' ? 'hidden lg:block lg:col-span-7' : 'block lg:col-span-7'}`}
+            >
+              {scheduleSearching ? (
+                <Card className="p-8 text-center text-text-muted flex flex-col items-center gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-crimson" />
+                  <p className="text-sm font-semibold">Checking schedule status...</p>
+                </Card>
+              ) : scheduleSearchError ? (
+                <EmptyState
+                  title="Schedule not found"
+                  description={scheduleSearchError}
+                  icon={<AlertCircle size={40} className="text-text-muted/40" />}
+                  action={
+                    <Button size="sm" onClick={() => {
+                      setScheduleSearchQuery('');
+                      setScheduleSearchError(null);
+                    }}>
+                      Clear Search
+                    </Button>
+                  }
+                />
+              ) : selectedSchedule ? (
+                <div className="space-y-6">
+                  {/* Status & Reference Header Card */}
+                  <Card className="p-5 sm:p-6 shadow-xs border-border">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 mb-4">
+                      <div>
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest block">
+                          Schedule Reference
+                        </span>
+                        <h2 className="text-base sm:text-lg font-mono font-bold text-text-primary">
+                          {selectedSchedule.confirmationNumber}
+                        </h2>
+                      </div>
+                      <div>
+                        <Badge variant={getScheduleBadgeVariant(selectedSchedule.status)}>
+                          {formatScheduleStatusDisplay(selectedSchedule.status, selectedSchedule.priestResponseStatus)}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Milestones Progression */}
+                    <div className="space-y-4 pt-2">
+                      <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                        Progress Milestones
+                      </h3>
+                      <div className="space-y-4 pl-1">
+                        {getScheduleMilestones(selectedSchedule).map((mile) => (
+                          <div key={mile.key} className="relative pl-6 pb-4 last:pb-0 border-l-2 border-border/80 last:border-l-transparent">
+                            <div className={`absolute -left-[9px] top-0.5 w-4 h-4 rounded-full flex items-center justify-center border-2 transition-all ${
+                              mile.done
+                                ? 'border-crimson bg-crimson text-white'
+                                : 'border-border text-text-muted bg-white'
+                            }`}>
+                              {mile.done && <CheckCircle2 size={10} className="stroke-[3]" />}
+                            </div>
+                            <div>
+                              <h4 className={`text-xs font-bold ${mile.done ? 'text-text-primary' : 'text-text-muted'}`}>
+                                {mile.label}
+                              </h4>
+                              <p className="text-[11px] text-text-muted mt-0.5 font-normal">
+                                {mile.desc}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Schedule Details Card */}
+                  <Card className="p-5 sm:p-6 shadow-xs border-border">
+                    <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider border-b border-border pb-3 mb-4">
+                      Schedule Details
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Service</span>
+                        <p className="font-semibold text-text-primary flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
+                          {selectedSchedule.serviceName}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Parish</span>
+                        <p className="font-semibold text-text-primary flex items-center gap-1.5">
+                          <Building className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
+                          {selectedSchedule.parishName || `Parish #${selectedSchedule.parishId}`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Scheduled Date</span>
+                        <p className="font-semibold text-text-primary">{selectedSchedule.date}</p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Time Slot</span>
+                        <p className="font-semibold text-text-primary">{selectedSchedule.timeSlot}</p>
+                      </div>
+
+                      <div className="space-y-1 sm:col-span-2">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Assigned Priest</span>
+                        <p className="font-semibold text-text-primary flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
+                          {selectedSchedule.assignedPriestName ? `Rev. Fr. ${selectedSchedule.assignedPriestName}` : 'Pending assignment by parish'}
+                        </p>
+                        {selectedSchedule.assignedPriestName && selectedSchedule.priestResponseStatus === 'PENDING' && (
+                          <p className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-100 inline-block mt-1">
+                            Priest Response: Awaiting Acceptance
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Confirmation No.</span>
+                        <p className="font-mono text-xs font-bold text-text-primary">{selectedSchedule.confirmationNumber}</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-4 border-t border-border flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/dashboard/schedule/${selectedSchedule.id}`)}
+                        className="gap-1.5"
+                      >
+                        <span>Open Full Schedule Details</span>
+                        <ArrowRight size={14} />
+                      </Button>
+                    </div>
+                  </Card>
+
+                  {/* Reschedule History (Reusing shared component!) */}
+                  {selectedSchedule.rescheduleHistory && selectedSchedule.rescheduleHistory.length > 0 && (
+                    <ScheduleRescheduleHistory history={selectedSchedule.rescheduleHistory} />
+                  )}
+                </div>
+              ) : (
+                <Card className="flex items-center justify-center p-12 text-center text-text-muted h-96">
+                  Select a schedule request from the list or enter a confirmation number above to view status.
+                </Card>
+              )}
+            </section>
+          </div>
+        </div>
       )}
     </div>
   );

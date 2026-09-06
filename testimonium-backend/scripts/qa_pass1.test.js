@@ -27,6 +27,7 @@ function setupMockState() {
         priestResponseReason: null,
         processedById: null,
         proposalVersion: 1,
+        version: 1,
         updatedAt: new Date("2026-08-31T00:00:00.000Z"),
         createdAt: new Date("2026-08-31T00:00:00.000Z"),
         user: { id: 501, fullName: "Juan Dela Cruz", email: "juan@example.test", emailNotificationsEnabled: true },
@@ -63,6 +64,7 @@ function setupMockState() {
         priestResponseReason: null,
         processedById: 901,
         proposalVersion: 1,
+        version: 1,
         updatedAt: new Date("2026-08-31T00:00:00.000Z"),
         createdAt: new Date("2026-08-31T00:00:00.000Z"),
         user: { id: 502, fullName: "Maria Clara", email: "maria@example.test", emailNotificationsEnabled: true },
@@ -160,7 +162,14 @@ function setupMockState() {
     },
     user: {
       findMany: async () => [],
-      findUnique: async () => ({ emailNotificationsEnabled: true }),
+      findUnique: async ({ where }) => ({
+        id: where.id,
+        fullName: "Father Thomas",
+        emailNotificationsEnabled: true,
+        status: "ACTIVE",
+        parishId: 10,
+        role: { roleName: "PRIEST" },
+      }),
     },
     activityLog: {
       create: async () => ({}),
@@ -174,12 +183,42 @@ function setupMockState() {
     emailOutbox: {
       upsert: async ({ create }) => create,
     },
+    scheduleHistory: {
+      create: async ({ data }) => data,
+    },
+    parishAvailability: {
+      findFirst: async () => null,
+    },
+    massScheduleTemplate: {
+      findMany: async () => [],
+    },
+    priestPersonalSchedule: {
+      findFirst: async () => null,
+    },
     schedule: {
       findUnique: async ({ where }) => {
         const item = state.schedules.find((s) => s.id === where.id);
         return item ? { ...item } : null;
       },
       findMany: async () => state.schedules,
+      findFirst: async () => null,
+      updateMany: async ({ where, data }) => {
+        const idx = state.schedules.findIndex(
+          (schedule) => schedule.id === where.id && schedule.version === where.version
+        );
+        if (idx === -1) return { count: 0 };
+        const current = state.schedules[idx];
+        state.schedules[idx] = {
+          ...current,
+          ...data,
+          version: current.version + 1,
+          proposalVersion: data.proposalVersion?.increment
+            ? current.proposalVersion + data.proposalVersion.increment
+            : current.proposalVersion,
+          updatedAt: new Date(),
+        };
+        return { count: 1 };
+      },
       update: async ({ where, data }) => {
         const idx = state.schedules.findIndex((s) => s.id === where.id);
         if (idx === -1) throw new Error("Schedule not found");
@@ -203,7 +242,12 @@ function setupMockState() {
         const item = state.events.find((e) => e.id === where.id);
         return item ? { ...item } : null;
       },
-      findMany: async () => state.events,
+      findMany: async ({ where } = {}) =>
+        state.events.filter((event) => {
+          if (where?.assignedPriestId !== undefined && event.assignedPriestId !== where.assignedPriestId) return false;
+          if (where?.id?.not !== undefined && event.id === where.id.not) return false;
+          return true;
+        }),
       create: async ({ data }) => {
         const item = {
           id: state.nextEventId++,
@@ -252,7 +296,7 @@ test("Part 4 Invariant A: updateStatus rejects CONFIRMED when no priest is assig
     // Schedule 101 has assignedPriestId = null
     await assert.rejects(
       async () => {
-        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10);
+        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10, state.schedules[0].version);
       },
       (err) => {
         assert.equal(err.statusCode, 422);
@@ -286,7 +330,7 @@ test("Part 4 Invariant B: updateStatus rejects CONFIRMED when priest is assigned
     const service = new ScheduleService();
     await assert.rejects(
       async () => {
-        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10);
+        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10, state.schedules[0].version);
       },
       (err) => {
         assert.equal(err.statusCode, 422);
@@ -319,7 +363,7 @@ test("Part 4 Invariant C: updateStatus rejects CONFIRMED when priest declined/re
     const service = new ScheduleService();
     await assert.rejects(
       async () => {
-        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10);
+        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10, state.schedules[0].version);
       },
       (err) => {
         assert.equal(err.statusCode, 422);
@@ -350,7 +394,7 @@ test("Part 4 Invariant D: updateStatus allows CONFIRMED when priest is assigned 
 
   try {
     const service = new ScheduleService();
-    const result = await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10);
+    const result = await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10, state.schedules[0].version);
     assert.equal(result.status, "CONFIRMED");
     assert.equal(state.schedules[0].status, "CONFIRMED");
   } finally {
@@ -384,7 +428,7 @@ test("Part 4 Invariant E: failed confirmation leaves schedule state intact", asy
     const service = new ScheduleService();
     await assert.rejects(
       async () => {
-        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10);
+        await service.updateStatus(101, "CONFIRMED", 901, "SECRETARY", 10, state.schedules[0].version);
       }
     );
     assert.equal(state.schedules[0].status, "PENDING");
@@ -421,7 +465,7 @@ test("Part 4 Invariant F: respondReschedule CONFIRMED transition is protected by
     // Accepting reschedule when no priest is assigned must be rejected
     await assert.rejects(
       async () => {
-        await service.respondReschedule(102, true, 502, "PARISHIONER");
+        await service.respondReschedule(102, true, 502, "PARISHIONER", state.schedules[1].version);
       },
       (err) => {
         assert.equal(err.statusCode, 422);
@@ -434,7 +478,7 @@ test("Part 4 Invariant F: respondReschedule CONFIRMED transition is protected by
     state.schedules[1].assignedPriestId = 201;
     state.schedules[1].priestResponseStatus = "ACCEPTED";
 
-    const accepted = await service.respondReschedule(102, true, 502, "PARISHIONER");
+    const accepted = await service.respondReschedule(102, true, 502, "PARISHIONER", state.schedules[1].version);
     assert.equal(accepted.status, "CONFIRMED");
   } finally {
     prisma.schedule.findUnique = origFindUnique;
@@ -449,16 +493,18 @@ test("Part 6 Schedule Priest Notification G/H/I: genuine assignment notifies pri
   const origFindUnique = prisma.schedule.findUnique;
   const origUpdate = prisma.schedule.update;
   const origNotificationCreateMany = prisma.notification.createMany;
+  const origTransaction = prisma.$transaction;
 
   prisma.schedule.findUnique = mock.schedule.findUnique;
   prisma.schedule.update = mock.schedule.update;
   prisma.notification.createMany = mock.notification.createMany;
+  prisma.$transaction = async (cb) => cb(mock);
 
   try {
     const service = new ScheduleService();
 
     // G: Genuine initial assignment (null -> Priest 201)
-    await service.assignPriest(101, 201, 901, "SECRETARY", 10);
+    await service.assignPriest(101, 201, 901, "SECRETARY", 10, state.schedules[0].version);
     const priestNotifs1 = state.notifications.filter(
       (n) => n.userId === 201 && n.referenceType === "SCHEDULE_REQUEST" && n.referenceId === 101
     );
@@ -467,22 +513,23 @@ test("Part 6 Schedule Priest Notification G/H/I: genuine assignment notifies pri
 
     // H: Same-priest reassignment (Priest 201 -> Priest 201) -> no duplicate notification
     state.notifications.length = 0;
-    await service.assignPriest(101, 201, 901, "SECRETARY", 10);
+    await service.assignPriest(101, 201, 901, "SECRETARY", 10, state.schedules[0].version);
     const priestNotifs2 = state.notifications.filter((n) => n.userId === 201);
     assert.equal(priestNotifs2.length, 0);
 
     // I: New priest assignment (Priest 201 -> Priest 202) -> Priest 202 notified, response reset to null
     state.notifications.length = 0;
-    await service.assignPriest(101, 202, 901, "SECRETARY", 10);
+    await service.assignPriest(101, 202, 901, "SECRETARY", 10, state.schedules[0].version);
     const priestNotifs3 = state.notifications.filter(
       (n) => n.userId === 202 && n.referenceType === "SCHEDULE_REQUEST" && n.referenceId === 101
     );
     assert.equal(priestNotifs3.length, 1);
-    assert.equal(state.schedules[0].priestResponseStatus, null);
+    assert.equal(state.schedules[0].priestResponseStatus, "PENDING");
   } finally {
     prisma.schedule.findUnique = origFindUnique;
     prisma.schedule.update = origUpdate;
     prisma.notification.createMany = origNotificationCreateMany;
+    prisma.$transaction = origTransaction;
   }
 });
 
@@ -494,12 +541,14 @@ test("Part 8 Parish Event Priest Notification J: creates GENERAL notification fo
   const origUpdateMany = prisma.parishEvent.updateMany;
   const origNotificationCreateMany = prisma.notification.createMany;
   const origActivityLog = prisma.activityLog;
+  const origTransaction = prisma.$transaction;
 
   prisma.parishEvent.findUnique = mock.parishEvent.findUnique;
   prisma.parishEvent.create = mock.parishEvent.create;
   prisma.parishEvent.updateMany = mock.parishEvent.updateMany;
   prisma.notification.createMany = mock.notification.createMany;
   prisma.activityLog = { create: async () => ({}) };
+  prisma.$transaction = async (cb) => cb(mock);
 
   try {
     const service = new ParishEventService();
@@ -563,5 +612,6 @@ test("Part 8 Parish Event Priest Notification J: creates GENERAL notification fo
     prisma.parishEvent.updateMany = origUpdateMany;
     prisma.notification.createMany = origNotificationCreateMany;
     prisma.activityLog = origActivityLog;
+    prisma.$transaction = origTransaction;
   }
 });

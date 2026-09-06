@@ -42,6 +42,101 @@ export async function lockParishSchedulingConfiguration(client, parishId) {
   }
 }
 
+/**
+ * Strictly validates and normalizes a priest ID.
+ * Required accepted input:
+ * - positive safe integer number
+ * OR
+ * - strict digit-only string representing positive safe integer
+ *
+ * Rejects: null, undefined, 0, -1, 1.5, "1.5", "123junk", " 123junk", "abc", "", NaN, Infinity.
+ *
+ * @param {*} priestId
+ * @returns {number}
+ */
+export function normalizePriestId(priestId) {
+  if (typeof priestId === "string") {
+    if (!/^\d+$/.test(priestId)) {
+      const error = new Error("Invalid priest ID. Must be a positive integer.");
+      error.statusCode = 400;
+      error.code = "INVALID_PRIEST_ID";
+      throw error;
+    }
+  } else if (typeof priestId !== "number") {
+    const error = new Error("Invalid priest ID. Must be a positive integer.");
+    error.statusCode = 400;
+    error.code = "INVALID_PRIEST_ID";
+    throw error;
+  }
+
+  const numericId = Number(priestId);
+  if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+    const error = new Error("Invalid priest ID. Must be a positive integer.");
+    error.statusCode = 400;
+    error.code = "INVALID_PRIEST_ID";
+    throw error;
+  }
+  return numericId;
+}
+
+/**
+ * Acquires an exclusive row-level lock on a priest User record to serialize
+ * concurrent priest commitment creations, assignments, and updates.
+ *
+ * Must fail closed:
+ * 1. Strictly validates priestId
+ * 2. Queries/locks exact User row
+ * 3. Verifies exactly one intended priest exists
+ * 4. Throws if invalid or missing
+ *
+ * @param {object} client - Prisma transaction client
+ * @param {number|string} priestId
+ * @returns {Promise<number>} - Normalized priest ID
+ */
+export async function lockPriestForScheduling(client, priestId) {
+  const numericId = normalizePriestId(priestId);
+  const rows = await client.$queryRaw`
+    SELECT "user_id"
+    FROM "users"
+    WHERE "user_id" = ${numericId}
+    FOR UPDATE
+  `;
+  if (!rows || rows.length !== 1) {
+    const error = new Error("Priest user not found.");
+    error.statusCode = 404;
+    error.code = "PRIEST_NOT_FOUND";
+    throw error;
+  }
+  return numericId;
+}
+
+/**
+ * Deterministically locks multiple priests in ascending ID order to prevent deadlocks.
+ * Strictly validates every provided ID and rejects malformed input completely.
+ *
+ * @param {object} client - Prisma transaction client
+ * @param {Array<number|string>} priestIds
+ * @returns {Promise<number[]>} - Unique sorted locked priest IDs
+ */
+export async function lockPriestsForScheduling(client, priestIds) {
+  if (!Array.isArray(priestIds)) {
+    const error = new Error("Invalid priest IDs list.");
+    error.statusCode = 400;
+    error.code = "INVALID_PRIEST_ID";
+    throw error;
+  }
+  if (!priestIds.length) return [];
+
+  // Validate every provided ID strictly - reject malformed input
+  const normalizedIds = priestIds.map((id) => normalizePriestId(id));
+  const uniqueSorted = Array.from(new Set(normalizedIds)).sort((a, b) => a - b);
+
+  for (const priestId of uniqueSorted) {
+    await lockPriestForScheduling(client, priestId);
+  }
+  return uniqueSorted;
+}
+
 export async function loadSchedulingRules(client, parishId, dateInput = null) {
   const exceptionDate = dateInput ? toDatabaseDate(dateInput) : null;
   const [weekdayRules, serviceWeekdayRules, dateRule] = await Promise.all([

@@ -126,17 +126,33 @@ export interface ProposeReschedulePayload {
   proposedStartDatetime?: string;
   proposedEndDatetime?: string;
   reason: string;
+  expectedVersion: number;
+}
+
+export interface EmergencyReschedulePayload {
+  targetDate: string;
+  timeSlot: string;
+  reason: string;
+  expectedVersion: number;
+}
+
+export interface PriestAvailabilityItem {
+  priestId: number | string;
+  available: boolean;
+  reasonCode?: string;
 }
 
 export interface ScheduleProvider {
   getScheduleRequests(filters: ScheduleRequestFilters): Promise<PaginatedResponse<ScheduleRequest>>;
   getScheduleRequest(id: string): Promise<ScheduleRequest>;
-  updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest>;
+  updateScheduleStatus(id: string, status: ScheduleStatus, expectedVersion: number): Promise<ScheduleRequest>;
   proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest>;
-  respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest>;
-  assignPriest(id: string, priestId: string): Promise<ScheduleRequest>;
-  respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest>;
+  respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<ScheduleRequest>;
+  assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest>;
+  respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason: string | undefined, expectedVersion: number): Promise<ScheduleRequest>;
+  emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest>;
   getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]>;
+  getPriestAvailability(scheduleId: string, params?: { date?: string; time?: string; startDatetime?: string }): Promise<PriestAvailabilityItem[]>;
 }
 
 export interface CreateParishEventPayload {

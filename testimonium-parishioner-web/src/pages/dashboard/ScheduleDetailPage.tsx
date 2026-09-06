@@ -9,6 +9,7 @@ import type { Appointment } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
 
 const STATUS_LABELS: Record<string, string> = {
   booked: 'Booked / Under Review',
@@ -61,11 +62,16 @@ export const ScheduleDetailPage: React.FC = () => {
 
   const handleRespond = async (accept: boolean) => {
     if (!appointment) return;
+    if (typeof appointment.version !== 'number') {
+      setResponseError('The schedule version is unavailable. Refreshing the latest details.');
+      void load();
+      return;
+    }
     setResponding(true);
     setResponseError(null);
     setResponseSuccess(null);
     try {
-      const updated = await services.scheduler.respondReschedule(appointment.id, accept);
+      const updated = await services.scheduler.respondReschedule(appointment.id, accept, appointment.version);
       setAppointment(updated);
       setResponseSuccess(
         accept
@@ -80,6 +86,7 @@ export const ScheduleDetailPage: React.FC = () => {
       } else {
         setResponseError(err?.message || 'Failed to submit your response. Please try again.');
       }
+      void load();
     } finally {
       setResponding(false);
     }
@@ -218,6 +225,11 @@ export const ScheduleDetailPage: React.FC = () => {
               <p className="font-mono text-xs font-bold text-text-primary">{appointment.confirmationNumber}</p>
             </div>
           </div>
+
+          {/* Reschedule history & changes */}
+          {appointment.rescheduleHistory && appointment.rescheduleHistory.length > 0 && (
+            <ScheduleRescheduleHistory history={appointment.rescheduleHistory} />
+          )}
 
           {/* Reschedule proposal response */}
           {canRespond && (

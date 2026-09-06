@@ -178,41 +178,41 @@ model Role {
 }
 
 model Parish {
-  id                      Int                        @id @default(autoincrement()) @map("parish_id")
-  parishName              String                     @unique @map("parish_name") @db.VarChar(150)
-  slug                    String?                    @unique @db.VarChar(150)
+  id                      Int                         @id @default(autoincrement()) @map("parish_id")
+  parishName              String                      @unique @map("parish_name") @db.VarChar(150)
+  slug                    String?                     @unique @db.VarChar(150)
   type                    ParishType
-  address                 String?                    @db.Text
-  municipalityCity        String                     @map("municipality_city") @db.VarChar(100)
-  province                String                     @db.VarChar(100)
-  contactNumber           String?                    @map("contact_number") @db.VarChar(20)
-  patronSaint             String?                    @map("patron_saint") @db.VarChar(150)
-  email                   String?                    @db.VarChar(150)
+  address                 String?                     @db.Text
+  municipalityCity        String                      @map("municipality_city") @db.VarChar(100)
+  province                String                      @db.VarChar(100)
+  contactNumber           String?                     @map("contact_number") @db.VarChar(20)
+  patronSaint             String?                     @map("patron_saint") @db.VarChar(150)
+  email                   String?                     @db.VarChar(150)
   latitude                Float?
   longitude               Float?
-  feastDay                String?                    @map("feast_day") @db.VarChar(100)
-  coverImage              String?                    @map("cover_image") @db.VarChar(255)
-  logoImage               String?                    @map("logo_image") @db.VarChar(255)
-  mapZoom                 Int?                       @map("map_zoom")
-  pinColor                String?                    @map("pin_color") @db.VarChar(20)
-  showLabel               Boolean                    @default(true) @map("show_label")
-  directoryDescription    String?                    @map("directory_description") @db.Text
-  locationUpdatedBy       Int?                       @map("location_updated_by")
-  locationUpdatedAt       DateTime?                  @map("location_updated_at")
-  gallery                 String[]                   @default([])
-  isActive                Boolean                    @default(true) @map("is_active")
-  documentSettings        String?                    @map("document_settings") @db.Text
-  eventSettings           String?                    @map("event_settings") @db.Text
-  officeHours             String?                    @map("office_hours") @db.Text
-  paymentQrImage          String?                    @map("payment_qr_image") @db.VarChar(255)
-  paymentQrEnabled        Boolean                    @default(false) @map("payment_qr_enabled")
-  paymentQrUpdatedAt      DateTime?                  @map("payment_qr_updated_at")
-  paymentQrUpdatedBy      Int?                       @map("payment_qr_updated_by")
-  availableDocuments      Json?                      @map("available_documents")
-  venueCapacity           Int?                       @map("venue_capacity")
-  schedulingConfigVersion Int                        @default(1) @map("scheduling_config_version")
-  createdAt               DateTime                   @default(now()) @map("created_at")
-  updatedAt               DateTime                   @updatedAt @map("updated_at")
+  feastDay                String?                     @map("feast_day") @db.VarChar(100)
+  coverImage              String?                     @map("cover_image") @db.VarChar(255)
+  logoImage               String?                     @map("logo_image") @db.VarChar(255)
+  mapZoom                 Int?                        @map("map_zoom")
+  pinColor                String?                     @map("pin_color") @db.VarChar(20)
+  showLabel               Boolean                     @default(true) @map("show_label")
+  directoryDescription    String?                     @map("directory_description") @db.Text
+  locationUpdatedBy       Int?                        @map("location_updated_by")
+  locationUpdatedAt       DateTime?                   @map("location_updated_at")
+  gallery                 String[]                    @default([])
+  isActive                Boolean                     @default(true) @map("is_active")
+  documentSettings        String?                     @map("document_settings") @db.Text
+  eventSettings           String?                     @map("event_settings") @db.Text
+  officeHours             String?                     @map("office_hours") @db.Text
+  paymentQrImage          String?                     @map("payment_qr_image") @db.VarChar(255)
+  paymentQrEnabled        Boolean                     @default(false) @map("payment_qr_enabled")
+  paymentQrUpdatedAt      DateTime?                   @map("payment_qr_updated_at")
+  paymentQrUpdatedBy      Int?                        @map("payment_qr_updated_by")
+  availableDocuments      Json?                       @map("available_documents")
+  venueCapacity           Int?                        @map("venue_capacity")
+  schedulingConfigVersion Int                         @default(1) @map("scheduling_config_version")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
   users                   User[]
   documentRequests        DocumentRequest[]
   schedules               Schedule[]
@@ -224,7 +224,7 @@ model Parish {
   serviceWeekdayRules     ParishServiceWeekdayRule[]
   scheduleDateRules       ParishScheduleDateRule[]
   dailyReports            DailyReport[]
-  councilConfiguration   ParishCouncilConfiguration?
+  councilConfiguration    ParishCouncilConfiguration?
 
   @@index([type])
   @@index([isActive])
@@ -311,6 +311,8 @@ model User {
   createdScheduleDateRules  ParishScheduleDateRule[] @relation("ScheduleDateRuleCreator")
   createdDailyReports       DailyReport[]            @relation("DailyReportCreator")
   archivedDailyReports      DailyReport[]            @relation("DailyReportArchiver")
+  personalSchedules         PriestPersonalSchedule[] @relation("PriestPersonalSchedules")
+  scheduleHistoryActor      ScheduleHistory[]        @relation("ScheduleHistoryActor")
 
   @@index([roleId])
   @@index([parishId])
@@ -413,8 +415,8 @@ model ReceiptUpload {
   transaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
   ocrResult   OcrResult?
 
-  @@index([paymentTransactionId])
   @@unique([paymentTransactionId, attemptVersion])
+  @@index([paymentTransactionId])
   @@index([imageHash])
   @@index([uploadedAt])
   @@map("receipt_uploads")
@@ -501,6 +503,7 @@ model Schedule {
   displayTitle          String?           @map("display_title") @db.VarChar(150)
   processedById         Int?              @map("processed_by")
   proposalVersion       Int               @default(0) @map("proposal_version")
+  version               Int               @default(1) @map("version")
   priestResponseStatus  String?           @map("priest_response_status") @db.VarChar(50)
   priestResponseReason  String?           @map("priest_response_reason") @db.Text
   createdAt             DateTime          @default(now()) @map("created_at")
@@ -509,6 +512,7 @@ model Schedule {
   parish                Parish            @relation(fields: [parishId], references: [id], onDelete: Restrict)
   processedBy           User?             @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
   assignedPriest        User?             @relation("SchedulePriestAssignment", fields: [assignedPriestId], references: [id], onDelete: SetNull)
+  history               ScheduleHistory[]
 
   @@index([userId])
   @@index([parishId])
@@ -521,6 +525,51 @@ model Schedule {
   @@index([createdAt])
   @@index([parishId, createdAt])
   @@map("schedules")
+}
+
+model ScheduleHistory {
+  id                   Int            @id @default(autoincrement()) @map("history_id")
+  scheduleId           Int            @map("schedule_id")
+  version              Int            @map("version")
+  requestedDate        DateTime       @map("requested_date") @db.Date
+  startDatetime        DateTime?      @map("start_datetime")
+  endDatetime          DateTime?      @map("end_datetime")
+  remarks              String?        @map("remarks") @db.Text
+  status               ScheduleStatus @map("status")
+  assignedPriestId     Int?           @map("assigned_priest_id")
+  priestResponseStatus String?        @map("priest_response_status") @db.VarChar(50)
+  reason               String         @map("reason") @db.Text
+  actorId              Int?           @map("actor_id")
+  actorRole            String         @map("actor_role") @db.VarChar(50)
+  createdAt            DateTime       @default(now()) @map("created_at")
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  actor    User?    @relation("ScheduleHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([scheduleId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([scheduleId, createdAt])
+  @@map("schedule_history")
+}
+
+model PriestPersonalSchedule {
+  id        Int      @id @default(autoincrement()) @map("id")
+  priestId  Int      @map("priest_id")
+  title     String   @db.VarChar(150)
+  notes     String?  @db.Text
+  startAt   DateTime @map("start_at")
+  endAt     DateTime @map("end_at")
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  priest User @relation("PriestPersonalSchedules", fields: [priestId], references: [id], onDelete: Cascade)
+
+  @@index([priestId])
+  @@index([priestId, startAt, endAt])
+  @@index([startAt, endAt])
+  @@map("priest_personal_schedules")
 }
 
 model ParishAvailability {

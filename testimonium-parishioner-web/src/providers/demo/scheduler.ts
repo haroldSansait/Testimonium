@@ -127,7 +127,7 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     return newAppointment;
   }
 
-  async respondReschedule(id: string, accept: boolean): Promise<Appointment> {
+  async respondReschedule(id: string, accept: boolean, _expectedVersion: number): Promise<Appointment> {
     this.appointments = this.appointments.map(a => {
       if (a.id === id) {
         return {
@@ -135,6 +135,7 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
           status: accept ? 'confirmed' : 'cancelled',
           date: accept && a.proposedDate ? a.proposedDate : a.date,
           timeSlot: accept && a.proposedTime ? a.proposedTime : a.timeSlot,
+          version: typeof a.version === 'number' ? a.version + 1 : 1,
         } as Appointment;
       }
       return a;
@@ -148,6 +149,20 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
   async getAppointmentById(id: string): Promise<Appointment> {
     const match = this.appointments.find(a => a.id === id);
     if (!match) throw new Error(`Appointment ${id} not found`);
+    return match;
+  }
+
+  async getAppointmentByTracking(reference: string): Promise<Appointment> {
+    const trimmed = (reference || "").trim().toLowerCase();
+    const match = this.appointments.find(
+      a => a.id.toLowerCase() === trimmed || a.confirmationNumber.toLowerCase() === trimmed
+    );
+    if (!match) {
+      const err: any = new Error("Schedule request reference not found.");
+      err.statusCode = 404;
+      err.status = 404;
+      throw err;
+    }
     return match;
   }
 }

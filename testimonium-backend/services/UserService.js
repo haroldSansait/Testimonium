@@ -5,6 +5,11 @@ import { RoleRepository } from "../repositories/RoleRepository.js";
 import { FirebaseAdminService } from "./FirebaseAdminService.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
+import {
+  lockParishSchedulingConfiguration,
+  lockPriestForScheduling,
+  normalizePriestId,
+} from "./SchedulingAvailability.js";
 
 export class UserService {
   constructor(
@@ -230,45 +235,124 @@ export class UserService {
       }
     }
 
-    // Clean up assignments in old parish if priest is being moved to another parish or unassigned
-    if (user.role?.roleName === "PRIEST" && parishId !== undefined && parishId !== user.parishId && user.parishId !== null) {
-      await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(numericId, user.parishId, prisma, data.parish || null);
-    }
+    // Authority-sensitive check: priest transferring parishes or role changing away from PRIEST
+    const isPriest = user.role?.roleName === "PRIEST";
+    const isParishTransfer = isPriest && parishId !== undefined && parishId !== user.parishId && user.parishId !== null;
+    const isRoleChangeFromPriest = isPriest && roleId !== undefined && roleId !== user.roleId;
+    const isAuthoritySensitivePriestChange = isParishTransfer || isRoleChangeFromPriest;
 
-    // Update in Firebase if linked
-    if (user.firebaseUid) {
-      await this.firebaseAdminService.updateUser(user.firebaseUid, {
+    let updated = null;
+
+    if (isAuthoritySensitivePriestChange) {
+      // Canonical Lock Order: sorted parish locks -> priest lock -> authoritative reread -> cleanup -> update -> commit
+      const parishIdsToLock = [user.parishId, parishId]
+        .filter((pId) => pId != null && Number.isInteger(Number(pId)) && Number(pId) > 0)
+        .sort((a, b) => a - b);
+
+      updated = await prisma.$transaction(
+        async (tx) => {
+          for (const pId of parishIdsToLock) {
+            await lockParishSchedulingConfiguration(tx, pId);
+          }
+          await lockPriestForScheduling(tx, numericId);
+
+          const currentUser = await tx.user.findUnique({
+            where: { id: numericId },
+            include: { role: true },
+          });
+          if (!currentUser) {
+            const err = new Error("User not found.");
+            err.statusCode = 404;
+            throw err;
+          }
+
+          if (currentUser.parishId) {
+            await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(
+              numericId,
+              currentUser.parishId,
+              tx,
+              data.parish || null
+            );
+          }
+
+          const dbUpdated = await tx.user.update({
+            where: { id: numericId },
+            data: {
+              fullName: finalName || data.name,
+              email: data.email,
+              roleId,
+              parishId,
+              isAssistant,
+              contactNumber: data.contactNumber !== undefined ? data.contactNumber : undefined,
+              address: data.address !== undefined ? data.address : undefined,
+            },
+            include: { role: true, parish: true },
+          });
+
+          await AuditLogService.log(actorId, "User Updated", tx, false, {
+            affectedTable: "users",
+            affectedRecordId: dbUpdated.id,
+            newValues: {
+              fullName: dbUpdated.fullName,
+              role: data.role || undefined,
+              parishId,
+              isAssistant,
+            },
+          });
+
+          return dbUpdated;
+        },
+        {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 15000,
+        }
+      );
+    } else {
+      // Standard user profile update
+      updated = await this.userRepository.update(numericId, {
+        fullName: finalName || data.name,
         email: data.email,
-        displayName: finalName || data.name,
+        roleId,
+        parishId,
+        isAssistant,
+        contactNumber: data.contactNumber !== undefined ? data.contactNumber : undefined,
+        address: data.address !== undefined ? data.address : undefined,
+      });
+
+      await AuditLogService.log(actorId, "User Updated", null, false, {
+        affectedTable: "users",
+        affectedRecordId: updated.id,
+        newValues: {
+          fullName: updated.fullName,
+          role: data.role || undefined,
+          parishId,
+          isAssistant,
+        },
       });
     }
 
-    // Update in PostgreSQL
-    const updated = await this.userRepository.update(numericId, {
-      fullName: finalName || data.name,
-      email: data.email,
-      roleId,
-      parishId,
-      isAssistant,
-      contactNumber: data.contactNumber !== undefined ? data.contactNumber : undefined,
-      address: data.address !== undefined ? data.address : undefined,
-    });
+    // AFTER COMMIT: Perform external Firebase side effect
+    if (user.firebaseUid && (data.email || finalName || data.name)) {
+      try {
+        await this.firebaseAdminService.updateUser(user.firebaseUid, {
+          email: data.email,
+          displayName: finalName || data.name,
+        });
+      } catch (fbErr) {
+        logger.error(
+          { err: fbErr, userId: numericId },
+          "[TESTIMONIUM] Firebase user profile update failed after database commit"
+        );
+      }
+    }
 
-    await AuditLogService.log(actorId, "User Updated", null, false, {
-      affectedTable: "users",
-      affectedRecordId: updated.id,
-      newValues: {
-        fullName: updated.fullName,
-        role: data.role || undefined,
-        parishId,
-        isAssistant,
-      },
-    });
     return this.mapToDto(updated);
   }
 
   /**
    * Disables user in PostgreSQL and Firebase.
+   * Atomically executes DB cleanup and status update before external Firebase call.
    * @param {string|number} id
    * @param {number} actorId
    * @returns {Promise<void>}
@@ -288,20 +372,72 @@ export class UserService {
       throw err;
     }
 
-    if (user.role?.roleName === "PRIEST" && user.parishId) {
-      await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(numericId, user.parishId, prisma);
+    const isPriest = user.role?.roleName === "PRIEST";
+
+    if (isPriest) {
+      // ATOMIC TRANSACTION: Parish lock -> Priest lock -> Authoritative reread -> Cleanup -> Update Status -> Commit
+      await prisma.$transaction(
+        async (tx) => {
+          if (user.parishId) {
+            await lockParishSchedulingConfiguration(tx, user.parishId);
+          }
+          await lockPriestForScheduling(tx, numericId);
+
+          const currentUser = await tx.user.findUnique({
+            where: { id: numericId },
+            include: { role: true },
+          });
+          if (!currentUser) {
+            const err = new Error("User not found.");
+            err.statusCode = 404;
+            throw err;
+          }
+
+          if (currentUser.parishId) {
+            await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(
+              numericId,
+              currentUser.parishId,
+              tx
+            );
+          }
+
+          await tx.user.update({
+            where: { id: numericId },
+            data: { status: "INACTIVE" },
+          });
+
+          await AuditLogService.log(actorId, "User Disabled", tx, false, {
+            affectedTable: "users",
+            affectedRecordId: user.id,
+            newValues: { status: "INACTIVE" },
+          });
+        },
+        {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 15000,
+        }
+      );
+    } else {
+      await this.userRepository.updateStatus(numericId, "INACTIVE");
+      await AuditLogService.log(actorId, "User Disabled", null, false, {
+        affectedTable: "users",
+        affectedRecordId: user.id,
+        newValues: { status: "INACTIVE" },
+      });
     }
 
+    // AFTER COMMIT: Perform external Firebase side effect
     if (user.firebaseUid) {
-      await this.firebaseAdminService.updateUser(user.firebaseUid, { disabled: true });
+      try {
+        await this.firebaseAdminService.updateUser(user.firebaseUid, { disabled: true });
+      } catch (fbErr) {
+        logger.error(
+          { err: fbErr, userId: numericId },
+          "[TESTIMONIUM] Firebase user disable failed after database commit"
+        );
+      }
     }
-
-    await this.userRepository.updateStatus(numericId, "INACTIVE");
-    await AuditLogService.log(actorId, "User Disabled", null, false, {
-      affectedTable: "users",
-      affectedRecordId: user.id,
-      newValues: { status: "INACTIVE" },
-    });
   }
 
   /**

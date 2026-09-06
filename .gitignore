@@ -29,6 +29,7 @@
 !testimonium-backend/prisma/migrations/20260902120000_add_parish_councils/migration.sql
 !testimonium-backend/prisma/migrations/20260904120000_receipt_attempt_versioning/migration.sql
 !testimonium-backend/prisma/migrations/20260905120000_add_parish_council_member_photos/migration.sql
+!testimonium-backend/prisma/migrations/20260905180000_phase4_scheduling_foundation/migration.sql
 **/prisma/*.db
 **/prisma/*.db-journal
 

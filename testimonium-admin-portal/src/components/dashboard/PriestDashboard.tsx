@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TodayScheduleList } from '@/components/dashboard/TodayScheduleList';
 import { RecentAlerts } from '@/components/dashboard/RecentAlerts';
+import { PriestMiniCalendar } from '@/components/dashboard/PriestMiniCalendar';
 import { DashboardService } from '@/services/DashboardService';
 import { useAuth } from '@/hooks/useAuth';
 import { getScheduleRequests, respondPriestAssignment } from '@/services/scheduleRequestService';
@@ -94,12 +95,16 @@ export function PriestDashboard() {
   const handleRespond = async (id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string) => {
     setIsSubmitting(true);
     const originalPending = [...pendingAssignments];
+    const assignment = originalPending.find((item) => item.id === id);
     
     // Optimistic UI update: remove item immediately from list
     setPendingAssignments(prev => prev.filter(item => item.id !== id));
     
     try {
-      await respondPriestAssignment(id, status, reason);
+      if (typeof assignment?.version !== 'number') {
+        throw new Error('This assignment is missing its concurrency version. Refresh and try again.');
+      }
+      await respondPriestAssignment(id, status, reason, assignment.version);
       setToast({
         message: `Assignment ${status === 'ACCEPTED' ? 'accepted' : 'declined'} successfully.`,
         type: 'success',
@@ -243,10 +248,11 @@ export function PriestDashboard() {
 
       {/* Schedule + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
           <TodayScheduleList items={todaySchedule} />
         </div>
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-6">
+          <PriestMiniCalendar />
           <RecentAlerts alerts={recentAlerts} />
         </div>
       </div>

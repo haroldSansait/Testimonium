@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Filter, X, Check, Calendar, Clock, User, FileText, AlertCircle, Loader2 } from 'lucide-react';
+import { Filter, X, Check, Calendar, Clock, User, FileText, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
-import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, getAvailableSlots } from '@/services/scheduleRequestService';
+import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, getAvailableSlots, getPriestAvailability } from '@/services/scheduleRequestService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -15,6 +15,7 @@ import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import { cn } from '@/utils/cn';
 import { resolveEventType } from '@/shared/EventTypeCatalog';
 import type { ScheduleFilter } from '@/services/scheduleRequestService';
+import { EmergencyRescheduleModal } from '@/components/schedule-requests/EmergencyRescheduleModal';
 
 const FILTER_TABS: { label: string; value: ScheduleFilter }[] = [
   { label: 'All Requests', value: 'all' },
@@ -32,11 +33,13 @@ interface DetailsModalProps {
   onStatusChange: (status: ScheduleStatus) => Promise<void>;
   onProposeReschedule: (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => Promise<void>;
   onAssignPriest: (priestId: string, priestName: string) => Promise<void>;
+  onEmergencyRescheduleSuccess?: (updated: ScheduleRequest) => void;
 }
 
-function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest }: DetailsModalProps) {
+function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest, onEmergencyRescheduleSuccess }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [showEmergencyRescheduleModal, setShowEmergencyRescheduleModal] = useState(false);
   const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
@@ -52,7 +55,43 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   // Request generation counter to discard stale slot responses (race protection)
   const slotRequestGen = useRef(0);
 
+  // Priest availability states
+  const [priestAvailability, setPriestAvailability] = useState<Record<string, boolean>>({});
+  const [loadingAvailability, setLoadingAvailability] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState(false);
+  const availabilityRequestGen = useRef(0);
+
   const minDate = getManilaTodayDateString();
+
+  const fetchAvailability = useCallback(async () => {
+    if (!request.id) return;
+    const gen = ++availabilityRequestGen.current;
+    setLoadingAvailability(true);
+    setAvailabilityError(false);
+    try {
+      const availabilities = await getPriestAvailability(String(request.id));
+      if (gen !== availabilityRequestGen.current) return;
+      const map: Record<string, boolean> = {};
+      for (const item of availabilities) {
+        map[String(item.priestId)] = item.available;
+      }
+      setPriestAvailability(map);
+    } catch (err) {
+      if (gen !== availabilityRequestGen.current) return;
+      console.error('Failed to load priest availability:', err);
+      setAvailabilityError(true);
+      // Fail conservatively: do not assume priests are available
+      setPriestAvailability({});
+    } finally {
+      if (gen === availabilityRequestGen.current) {
+        setLoadingAvailability(false);
+      }
+    }
+  }, [request.id]);
+
+  useEffect(() => {
+    void fetchAvailability();
+  }, [fetchAvailability]);
 
   useEffect(() => {
     const fetchPriests = async () => {
@@ -142,6 +181,10 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       setConfirmPriestModal(null);
     } catch (err) {
       console.error(err);
+      // Stale availability handling: refresh availability, mark priest unavailable, clear selected
+      await fetchAvailability();
+      setSelectedPriestId('');
+      setConfirmPriestModal(null);
     } finally {
       setIsUpdating(false);
     }
@@ -193,6 +236,15 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       setIsUpdating(false);
     }
   };
+
+  const unavailablePriests = priests.filter(
+    (p: any) => !loadingAvailability && !availabilityError && priestAvailability[String(p.id)] === false
+  );
+  const allPriestsUnavailable =
+    priests.length > 0 &&
+    !loadingAvailability &&
+    !availabilityError &&
+    unavailablePriests.length === priests.length;
 
   const allowsActions = request.status === 'Pending' || request.status === 'Under Review' || request.status === 'Tentative';
 
@@ -417,20 +469,95 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
             </div>
           </div>
 
+          {/* Conservative Availability Error State */}
+          {availabilityError && (
+            <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Unable to verify priest availability right now. Please try again.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchAvailability()}
+                className="text-xs font-semibold text-amber-800 underline hover:text-amber-950 shrink-0"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* IMPORTANT! Section: All Priests Unavailable */}
+          {allPriestsUnavailable && (
+            <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-800 uppercase tracking-wider text-[11px]">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                IMPORTANT!
+              </div>
+              <p className="text-amber-900 leading-relaxed font-medium">
+                No priests are available for this date and time.
+                <br />
+                Please propose a new schedule or reject the request.
+              </p>
+            </div>
+          )}
+
+          {/* IMPORTANT! Section: Some Priests Unavailable */}
+          {unavailablePriests.length > 0 && !allPriestsUnavailable && (
+            <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-amber-800 uppercase tracking-wider text-[11px]">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                IMPORTANT!
+              </div>
+              <p className="text-gray-700">
+                Some priests are unavailable for the selected date and time.
+              </p>
+              <div className="text-gray-800 font-medium">
+                Unavailable for {request.preferredDate} at {request.preferredTime}:
+                <ul className="mt-1 space-y-0.5 ml-1">
+                  {unavailablePriests.map((p: any) => (
+                    <li key={p.id} className="text-gray-700 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-amber-600 shrink-0" />
+                      <span className="font-semibold text-gray-900">{p.name}</span>
+                      <span className="text-gray-400">—</span>
+                      <span className="text-amber-700 font-medium">Unavailable</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <p className="text-[11px] text-gray-600 pt-0.5">
+                Choose another available priest or propose a different schedule.
+              </p>
+            </div>
+          )}
+
           {/* Priest Assignment Selector */}
           <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-2">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Priest Assignment</span>
             <CustomSelect
               value={selectedPriestId}
               onChange={handlePriestSelectChange}
-              disabled={loadingPriests || isUpdating}
-              loading={loadingPriests}
-              placeholder={loadingPriests ? 'Loading Priests...' : 'Select Priest (Primary / Assistant)...'}
-              options={priests.map((p: any) => ({
-                value: String(p.id),
-                label: p.name,
-                secondary: p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest',
-              }))}
+              disabled={loadingPriests || loadingAvailability || availabilityError || isUpdating}
+              loading={loadingPriests || loadingAvailability}
+              placeholder={
+                loadingPriests
+                  ? 'Loading Priests...'
+                  : loadingAvailability
+                  ? 'Checking priest availability...'
+                  : availabilityError
+                  ? 'Unable to verify priest availability'
+                  : 'Select Priest (Primary / Assistant)...'
+              }
+              options={priests.map((p: any) => {
+                const isAvail = priestAvailability[String(p.id)];
+                const isUnavailable = !loadingAvailability && !availabilityError && isAvail === false;
+                return {
+                  value: String(p.id),
+                  label: p.name,
+                  secondary: p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest',
+                  badge: isUnavailable ? 'Unavailable' : undefined,
+                  disabled: isUnavailable,
+                };
+              })}
             />
           </div>
 
@@ -547,6 +674,16 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                   </button>
                 </>
               )}
+              {request.status === 'Confirmed' && (
+                <button
+                  type="button"
+                  onClick={() => setShowEmergencyRescheduleModal(true)}
+                  disabled={isUpdating}
+                  className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 whitespace-nowrap transition-colors shadow-xs"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" /> Emergency Reschedule
+                </button>
+              )}
             </div>
             <button
               type="button"
@@ -557,6 +694,18 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
             </button>
           </div>
         </div>
+
+        {/* Emergency Reschedule Modal */}
+        {showEmergencyRescheduleModal && (
+          <EmergencyRescheduleModal
+            request={request}
+            onClose={() => setShowEmergencyRescheduleModal(false)}
+            onSuccess={(updated) => {
+              setShowEmergencyRescheduleModal(false);
+              onEmergencyRescheduleSuccess?.(updated);
+            }}
+          />
+        )}
       </div>
     </div>,
     document.body
@@ -646,6 +795,11 @@ export function ScheduleRequestsPage() {
 
   const handleStatusUpdate = async (status: ScheduleStatus) => {
     if (!selectedRequest) return;
+    if (typeof selectedRequest.version !== 'number') {
+      setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
+      void fetchRequests(true);
+      return;
+    }
     setIsMutating(true);
     const originalRequest = { ...selectedRequest };
     const originalRequests = [...requests];
@@ -655,7 +809,7 @@ export function ScheduleRequestsPage() {
     setSelectedRequest(prev => prev ? { ...prev, status } : null);
 
     try {
-      await updateScheduleStatus(selectedRequest.id, status);
+      await updateScheduleStatus(selectedRequest.id, status, selectedRequest.version);
       setToastMessage(`Schedule request status updated to ${status}.`);
     } catch (err: any) {
       console.error('Failed to update status:', err);
@@ -670,6 +824,11 @@ export function ScheduleRequestsPage() {
 
   const handleProposeReschedule = async (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => {
     if (!selectedRequest) return;
+    if (typeof selectedRequest.version !== 'number') {
+      setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
+      void fetchRequests(true);
+      return;
+    }
     setIsMutating(true);
     const originalRequest = { ...selectedRequest };
     const originalRequests = [...requests];
@@ -702,7 +861,10 @@ export function ScheduleRequestsPage() {
     } : null);
 
     try {
-      await proposeReschedule(selectedRequest.id, payload);
+      await proposeReschedule(selectedRequest.id, {
+        ...payload,
+        expectedVersion: selectedRequest.version,
+      });
       setToastMessage('Reschedule proposal sent successfully.');
     } catch (err: any) {
       console.error('Failed to propose reschedule:', err);
@@ -717,6 +879,11 @@ export function ScheduleRequestsPage() {
 
   const handleAssignPriest = async (priestId: string, priestName: string) => {
     if (!selectedRequest) return;
+    if (typeof selectedRequest.version !== 'number') {
+      setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
+      void fetchRequests(true);
+      return;
+    }
     setIsMutating(true);
     const originalRequest = { ...selectedRequest };
     const originalRequests = [...requests];
@@ -736,17 +903,25 @@ export function ScheduleRequestsPage() {
     } : null);
 
     try {
-      await assignPriest(selectedRequest.id, priestId);
+      await assignPriest(selectedRequest.id, priestId, selectedRequest.version);
       setToastMessage(`Priest ${priestName} assigned successfully. Notification dispatched.`);
     } catch (err: any) {
       console.error('Failed to assign priest:', err);
       setRequests(originalRequests);
       setSelectedRequest(originalRequest);
-      setToastMessage(`Error assigning priest: ${err.message || 'Failed.'}`);
+      const conflictMsg = err?.response?.data?.error || err?.message || 'Failed.';
+      setToastMessage(`Error assigning priest: ${conflictMsg}`);
+      throw err;
     } finally {
       setIsMutating(false);
       void fetchRequests(true);
     }
+  };
+
+  const handleEmergencyRescheduleSuccess = () => {
+    setToastMessage('Appointment emergency rescheduled successfully.');
+    setSelectedRequest(null);
+    void fetchRequests(true);
   };
 
   return (
@@ -810,6 +985,7 @@ export function ScheduleRequestsPage() {
           onStatusChange={handleStatusUpdate}
           onProposeReschedule={handleProposeReschedule}
           onAssignPriest={handleAssignPriest}
+          onEmergencyRescheduleSuccess={handleEmergencyRescheduleSuccess}
         />
       )}
 

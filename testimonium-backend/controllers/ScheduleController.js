@@ -79,6 +79,24 @@ export const getById = async (req, res, next) => {
   }
 };
 
+export const getByTracking = async (req, res, next) => {
+  try {
+    const { reference } = req.params;
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
+
+    const data = await scheduleService.getByTrackingReference(reference, actorId, actorRole, actorParishId);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const create = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -235,7 +253,7 @@ export const getAvailableSlots = async (req, res, next) => {
 export const updateStatus = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status } = req.body;
+    const { status, expectedVersion } = req.body;
     const processedById = req.user.id;
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
@@ -254,7 +272,7 @@ export const updateStatus = async (req, res, next) => {
       });
     }
 
-    const updated = await scheduleService.updateStatus(id, status, processedById, actorRole, actorParishId);
+    const updated = await scheduleService.updateStatus(id, status, processedById, actorRole, actorParishId, expectedVersion);
 
     return res.status(200).json({
       success: true,
@@ -269,7 +287,7 @@ export const updateStatus = async (req, res, next) => {
 export const proposeReschedule = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { proposedDate, proposedStartDatetime, proposedEndDatetime, reason } = req.body;
+    const { proposedDate, proposedStartDatetime, proposedEndDatetime, reason, expectedVersion } = req.body;
     const actorId = req.user.id;
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
@@ -282,6 +300,7 @@ export const proposeReschedule = async (req, res, next) => {
       actorId,
       actorRole,
       actorParishId,
+      expectedVersion,
     });
 
     return res.status(200).json({
@@ -297,11 +316,11 @@ export const proposeReschedule = async (req, res, next) => {
 export const respondReschedule = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { accept } = req.body;
+    const { accept, expectedVersion } = req.body;
     const actorId = req.user.id;
     const actorRole = req.user.role;
 
-    const updated = await scheduleService.respondReschedule(id, accept, actorId, actorRole);
+    const updated = await scheduleService.respondReschedule(id, accept, actorId, actorRole, expectedVersion);
 
     return res.status(200).json({
       success: true,
@@ -316,12 +335,12 @@ export const respondReschedule = async (req, res, next) => {
 export const assignPriest = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { priestId } = req.body;
+    const { priestId, expectedVersion } = req.body;
     const actorId = req.user.id;
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
 
-    const updated = await scheduleService.assignPriest(id, priestId, actorId, actorRole, actorParishId);
+    const updated = await scheduleService.assignPriest(id, priestId, actorId, actorRole, actorParishId, expectedVersion);
 
     return res.status(200).json({
       success: true,
@@ -333,10 +352,35 @@ export const assignPriest = async (req, res, next) => {
   }
 };
 
+export const getPriestAvailability = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
+
+    const results = await scheduleService.getPriestAvailability(id, {
+      actorId,
+      actorRole,
+      actorParishId,
+      candidateDate: req.query.date,
+      candidateTime: req.query.time,
+      candidateStartDatetime: req.query.startDatetime,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: results,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const respondPriestAssignment = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status, reason } = req.body;
+    const { status, reason, expectedVersion } = req.body;
     const priestId = req.user.id;
 
     if (isNaN(id)) {
@@ -353,11 +397,46 @@ export const respondPriestAssignment = async (req, res, next) => {
       });
     }
 
-    const updated = await scheduleService.respondPriestAssignment(id, priestId, status, reason);
+    const updated = await scheduleService.respondPriestAssignment(id, priestId, status, reason, expectedVersion);
 
     return res.status(200).json({
       success: true,
       message: `Schedule assignment ${status.toLowerCase()} successfully.`,
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const emergencyReschedule = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { targetDate, timeSlot, reason, expectedVersion } = req.body;
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid schedule ID.",
+      });
+    }
+
+    const updated = await scheduleService.emergencyReschedule(id, {
+      targetDate,
+      timeSlot,
+      reason,
+      actorId,
+      actorRole,
+      actorParishId,
+      expectedVersion,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Schedule request emergency-rescheduled successfully.",
       data: updated,
     });
   } catch (err) {

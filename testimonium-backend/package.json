@@ -6,7 +6,10 @@
     "scripts": {
         "dev": "nodemon server.js",
         "start": "node server.js",
-        "test": "node --test --test-concurrency=1 scripts/phase2_execution.test.js scripts/phase1_ux_onboarding.test.js scripts/phase3_phase4_backend.test.js scripts/phase3_phase4_concurrency.test.js scripts/supporting_upload_middleware.test.js scripts/phase5_scheduling.test.js scripts/planned_additions.test.js scripts/qa_pass1.test.js scripts/email_preference_and_documents.test.js scripts/verified_payment_amount.test.js scripts/analytics_users_scope.test.js scripts/activity_log_canonical.test.js scripts/parish_councils.test.js scripts/phase3_parish_council_photos.test.js"
+        "test:phase4": "node --test --test-isolation=none scripts/phase4_scheduling_foundation.test.js scripts/phase4_blocker_corrections.test.js",
+        "test:phase4:db": "node --test scripts/phase4_db_concurrency.test.js",
+        "test:phase3:db": "node --test scripts/phase3_phase4_concurrency.test.js",
+        "test": "node --test --test-concurrency=1 scripts/phase2_execution.test.js scripts/phase1_ux_onboarding.test.js scripts/phase3_phase4_backend.test.js scripts/supporting_upload_middleware.test.js scripts/phase5_scheduling.test.js scripts/planned_additions.test.js scripts/qa_pass1.test.js scripts/email_preference_and_documents.test.js scripts/verified_payment_amount.test.js scripts/analytics_users_scope.test.js scripts/activity_log_canonical.test.js scripts/parish_councils.test.js scripts/phase3_parish_council_photos.test.js"
     },
     "keywords": [],
     "author": "",

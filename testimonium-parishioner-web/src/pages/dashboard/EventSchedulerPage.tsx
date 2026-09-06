@@ -75,7 +75,7 @@ export const EventSchedulerPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [createdBooking, setCreatedBooking] = useState<Appointment | null>(null);
   const [activeProposal, setActiveProposal] = useState<{
-    id: string; serviceName: string; proposedDate: string; proposedTime: string; reason: string;
+    id: string; serviceName: string; proposedDate: string; proposedTime: string; reason: string; version?: number;
   } | null>(null);
   const [submittingProposal, setSubmittingProposal] = useState(false);
 
@@ -171,6 +171,7 @@ export const EventSchedulerPage: React.FC = () => {
         proposedDate: proposal.proposedDate || proposal.date,
         proposedTime: proposal.proposedTime || proposal.timeSlot,
         reason: proposal.rescheduleReason || 'The parish proposed an alternative schedule.',
+        version: proposal.version,
       } : null);
     } catch {
       setActiveProposal(null);
@@ -304,13 +305,19 @@ export const EventSchedulerPage: React.FC = () => {
 
   const handleRespondProposal = async (accept: boolean) => {
     if (!activeProposal) return;
+    if (typeof activeProposal.version !== 'number') {
+      setMessage('The schedule version is unavailable. Refreshing the latest proposal.');
+      await fetchProposal();
+      return;
+    }
     setSubmittingProposal(true);
     try {
-      await services.scheduler.respondReschedule(activeProposal.id, accept);
+      await services.scheduler.respondReschedule(activeProposal.id, accept, activeProposal.version);
       setMessage(`Alternative schedule ${accept ? 'accepted' : 'declined'} successfully.`);
       await fetchProposal();
-    } catch {
-      setMessage('Unable to respond to the proposed schedule. Please try again.');
+    } catch (error: any) {
+      setMessage(error?.message || 'Unable to respond to the proposed schedule. The latest state has been reloaded.');
+      await fetchProposal();
     } finally {
       setSubmittingProposal(false);
     }

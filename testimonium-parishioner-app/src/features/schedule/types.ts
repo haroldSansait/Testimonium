@@ -119,6 +119,7 @@ export interface ScheduleItem {
   processedById?: number | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  version?: number;
   createdAt: string;
   updatedAt: string;
   parish?: ScheduleParish;

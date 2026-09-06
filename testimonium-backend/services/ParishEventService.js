@@ -1,7 +1,7 @@
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
-import { ConflictHelper } from "./ConflictHelper.js";
-import { PriestAssignmentHandler } from "./PriestAssignmentHandler.js";
+import { ConflictHelper, parseManilaDateTime } from "./ConflictHelper.js";
+import { lockPriestsForScheduling, normalizePriestId } from "./SchedulingAvailability.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 
 function combineDateAndTime(date, timeStr) {
@@ -59,85 +59,114 @@ function normalizeVisibility(value, fallback = "PUBLIC") {
   return visibility;
 }
 
+async function validateAssignedEventPriest(tx, priestId, parishId) {
+  if (!priestId) return;
+  const priest = await tx.user.findUnique({
+    where: { id: priestId },
+    include: { role: true },
+  });
+  if (!priest || priest.role?.roleName !== "PRIEST") {
+    const error = new Error("Assigned user must be an existing priest.");
+    error.statusCode = 400;
+    error.code = "INVALID_PRIEST_ROLE";
+    throw error;
+  }
+  if (priest.status !== "ACTIVE") {
+    const error = new Error("Assigned priest account is not active.");
+    error.statusCode = 400;
+    error.code = "PRIEST_INACTIVE";
+    throw error;
+  }
+  if (Number(priest.parishId) !== Number(parishId)) {
+    const error = new Error("Assigned priest must belong to the event parish.");
+    error.statusCode = 403;
+    error.code = "FORBIDDEN_PARISH_ASSIGNMENT";
+    throw error;
+  }
+}
+
 export class ParishEventService {
   async createEvent(parishId, data, actorId) {
     const parsedParishId = parseInt(parishId, 10);
+    const parsedPriestId = data.assignedPriestId ? normalizePriestId(data.assignedPriestId) : null;
+    const start = parsedPriestId && data.startTime
+      ? parseManilaDateTime(data.eventDate, data.startTime)
+      : null;
+    const end = parsedPriestId && data.startTime && data.endTime
+      ? parseManilaDateTime(data.eventDate, data.endTime)
+      : null;
 
-    let start = null;
-    let end = null;
-    if (data.assignedPriestId && data.startTime && data.endTime) {
-      const combine = (d, timeStr) => {
-        try {
-          const temp = new Date(d);
-          let [hourMin, period] = timeStr.split(" ");
-          let [hours, minutes] = hourMin.split(":").map(Number);
-          if (period === "PM" && hours < 12) hours += 12;
-          if (period === "AM" && hours === 12) hours = 0;
-          temp.setHours(hours, minutes, 0, 0);
-          return temp;
-        } catch {
-          return null;
+    return prisma.$transaction(
+      async (tx) => {
+        const priestsToLock = [parsedPriestId].filter((pId) => pId !== null && pId !== undefined);
+        await lockPriestsForScheduling(tx, priestsToLock);
+        await validateAssignedEventPriest(tx, parsedPriestId, parsedParishId);
+        if (parsedPriestId) {
+          await ConflictHelper.checkPriestConflict(
+            parsedPriestId,
+            data.eventDate,
+            start,
+            end,
+            { tx, actorId }
+          );
         }
-      };
-      start = combine(data.eventDate, data.startTime);
-      end = combine(data.eventDate, data.endTime);
-    }
 
-    if (data.assignedPriestId) {
-      await ConflictHelper.checkPriestConflict(data.assignedPriestId, data.eventDate, start, end, { actorId });
-    }
+        const event = await tx.parishEvent.create({
+          data: {
+            parishId: parsedParishId,
+            createdById: actorId ? parseInt(actorId, 10) : null,
+            title: data.title,
+            eventType: data.eventType,
+            description: data.description || null,
+            location: data.location || null,
+            eventDate: new Date(data.eventDate),
+            startTime: data.startTime || null,
+            endTime: data.endTime || null,
+            assignedPriestId: parsedPriestId,
+            priestResponseStatus: parsedPriestId ? "PENDING" : null,
+            priestResponseReason: null,
+            visibility: normalizeVisibility(data.visibility),
+            isActive: true,
+          },
+          include: {
+            assignedPriest: { select: { id: true, fullName: true } },
+          },
+        });
 
-    const event = await prisma.parishEvent.create({
-      data: {
-        parishId: parsedParishId,
-        createdById: actorId ? parseInt(actorId, 10) : null,
-        title: data.title,
-        eventType: data.eventType,
-        description: data.description || null,
-        location: data.location || null,
-        eventDate: new Date(data.eventDate),
-        startTime: data.startTime || null,
-        endTime: data.endTime || null,
-        assignedPriestId: data.assignedPriestId ? parseInt(data.assignedPriestId, 10) : null,
-        visibility: normalizeVisibility(data.visibility),
-        isActive: true,
+        await AuditLogService.log(actorId, "Parish Event Created", tx, false, {
+          affectedTable: "parish_events",
+          affectedRecordId: event.id,
+          parishId: parsedParishId,
+          newValues: {
+            title: event.title,
+            eventType: event.eventType,
+            eventDate: event.eventDate,
+            startTime: event.startTime,
+            endTime: event.endTime,
+            visibility: event.visibility,
+            assignedPriestId: event.assignedPriestId,
+          },
+        });
+
+        if (event.assignedPriestId) {
+          await NotificationDispatcher._persist([{
+            userId: event.assignedPriestId,
+            title: "New Pastoral Assignment",
+            message: `You have been assigned to lead the "${event.title}" event at the parish.`,
+            type: "IN_APP",
+            referenceType: "GENERAL",
+            referenceId: null,
+          }], tx);
+        }
+
+        return event;
       },
-      include: {
-        assignedPriest: { select: { id: true, fullName: true } }
+      {
+        isolationLevel: "Serializable",
+        maxWait: 5000,
+        timeout: 15000,
       }
-    });
-
-    await AuditLogService.log(actorId, "Parish Event Created", null, false, {
-      affectedTable: "parish_events",
-      affectedRecordId: event.id,
-      parishId: parsedParishId,
-      newValues: {
-        title: event.title,
-        eventType: event.eventType,
-        eventDate: event.eventDate,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        visibility: event.visibility,
-        assignedPriestId: event.assignedPriestId,
-      },
-    });
-
-    // Notify assigned priest of their new assignment (GENERAL type — no PARISH_EVENT ref in schema).
-    if (event.assignedPriestId) {
-      await NotificationDispatcher._persist(
-        [{
-          userId: event.assignedPriestId,
-          title: "New Pastoral Assignment",
-          message: `You have been assigned to lead the "${event.title}" event at the parish.`,
-          type: "IN_APP",
-          referenceType: "GENERAL",
-          referenceId: null,
-        }],
-        prisma
-      );
-    }
-
-    return event;
+    );
   }
 
   async getEvents(parishId, year, month, { publicOnly = false } = {}) {
@@ -288,16 +317,6 @@ export class ParishEventService {
 
   async updateEvent(id, data, actorId) {
     const parsedId = parseInt(id, 10);
-    const original = await prisma.parishEvent.findUnique({
-      where: { id: parsedId }
-    });
-
-    if (!original) {
-      const err = new Error("Parish event not found.");
-      err.statusCode = 404;
-      throw err;
-    }
-
     const expectedVersion = Number(data.expectedVersion);
     if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
       const err = new Error("expectedVersion is required to update an event.");
@@ -306,113 +325,140 @@ export class ParishEventService {
       throw err;
     }
 
-    const priestId = data.assignedPriestId !== undefined ? data.assignedPriestId : original.assignedPriestId;
-    const date = data.eventDate || original.eventDate;
-    const startTime = data.startTime !== undefined ? data.startTime : original.startTime;
-    const endTime = data.endTime !== undefined ? data.endTime : original.endTime;
-
-    let start = null;
-    let end = null;
-    if (priestId && startTime && endTime) {
-      const combine = (d, timeStr) => {
-        try {
-          const temp = new Date(d);
-          let [hourMin, period] = timeStr.split(" ");
-          let [hours, minutes] = hourMin.split(":").map(Number);
-          if (period === "PM" && hours < 12) hours += 12;
-          if (period === "AM" && hours === 12) hours = 0;
-          temp.setHours(hours, minutes, 0, 0);
-          return temp;
-        } catch {
-          return null;
-        }
-      };
-      start = combine(date, startTime);
-      end = combine(date, endTime);
-    }
-
-    if (priestId) {
-      await ConflictHelper.checkPriestConflict(priestId, date, start, end, { excludeEventId: id, actorId });
-    }
-
-    const nextVisibility = normalizeVisibility(data.visibility, original.visibility);
-    const result = await prisma.parishEvent.updateMany({
-      where: { id: parsedId, version: expectedVersion },
-      data: {
-        title: data.title,
-        eventType: data.eventType,
-        description: data.description !== undefined ? data.description : original.description,
-        location: data.location !== undefined ? data.location : original.location,
-        eventDate: data.eventDate ? new Date(data.eventDate) : original.eventDate,
-        startTime: data.startTime !== undefined ? data.startTime : original.startTime,
-        endTime: data.endTime !== undefined ? data.endTime : original.endTime,
-        assignedPriestId: data.assignedPriestId !== undefined ? (data.assignedPriestId ? parseInt(data.assignedPriestId, 10) : null) : original.assignedPriestId,
-        visibility: nextVisibility,
-        version: { increment: 1 },
-      },
-    });
-    if (result.count !== 1) {
-      const err = new Error("This event changed elsewhere. Reload it before saving your edits.");
-      err.statusCode = 409;
-      err.code = "EVENT_STALE";
+    const original = await prisma.parishEvent.findUnique({ where: { id: parsedId } });
+    if (!original) {
+      const err = new Error("Parish event not found.");
+      err.statusCode = 404;
       throw err;
     }
-    const event = await prisma.parishEvent.findUnique({
-      where: { id: parsedId },
-      include: { assignedPriest: { select: { id: true, fullName: true } } },
-    });
 
-    await AuditLogService.log(actorId, "Parish Event Updated", null, false, {
-      affectedTable: "parish_events",
-      affectedRecordId: parsedId,
-      parishId: event.parishId,
-      previousValues: {
-        title: original.title,
-        eventType: original.eventType,
-        eventDate: original.eventDate,
-        startTime: original.startTime,
-        endTime: original.endTime,
-        visibility: original.visibility,
-        assignedPriestId: original.assignedPriestId,
+    return prisma.$transaction(
+      async (tx) => {
+        const requestedPriestId = data.assignedPriestId !== undefined
+          ? (data.assignedPriestId ? normalizePriestId(data.assignedPriestId) : null)
+          : original.assignedPriestId;
+        const priestsToLock = [original.assignedPriestId, requestedPriestId].filter((pId) => pId !== null && pId !== undefined);
+        await lockPriestsForScheduling(tx, priestsToLock);
+
+        const current = await tx.parishEvent.findUnique({ where: { id: parsedId } });
+        if (!current) {
+          const err = new Error("Parish event not found.");
+          err.statusCode = 404;
+          throw err;
+        }
+        if (current.version !== expectedVersion) {
+          const err = new Error("This event changed elsewhere. Reload it before saving your edits.");
+          err.statusCode = 409;
+          err.code = "EVENT_STALE";
+          throw err;
+        }
+
+        const priestId = data.assignedPriestId !== undefined
+          ? (data.assignedPriestId ? parseInt(data.assignedPriestId, 10) : null)
+          : current.assignedPriestId;
+        await validateAssignedEventPriest(tx, priestId, current.parishId);
+        const date = data.eventDate || current.eventDate;
+        const startTime = data.startTime !== undefined ? data.startTime : current.startTime;
+        const endTime = data.endTime !== undefined ? data.endTime : current.endTime;
+        const start = priestId && startTime ? parseManilaDateTime(date, startTime) : null;
+        const end = priestId && startTime && endTime ? parseManilaDateTime(date, endTime) : null;
+
+        if (priestId) {
+          await ConflictHelper.checkPriestConflict(
+            priestId,
+            date,
+            start,
+            end,
+            { excludeEventId: parsedId, tx, actorId }
+          );
+        }
+
+        const nextVisibility = normalizeVisibility(data.visibility, current.visibility);
+        const result = await tx.parishEvent.updateMany({
+          where: { id: parsedId, version: expectedVersion },
+          data: {
+            title: data.title,
+            eventType: data.eventType,
+            description: data.description !== undefined ? data.description : current.description,
+            location: data.location !== undefined ? data.location : current.location,
+            eventDate: data.eventDate ? new Date(data.eventDate) : current.eventDate,
+            startTime: data.startTime !== undefined ? data.startTime : current.startTime,
+            endTime: data.endTime !== undefined ? data.endTime : current.endTime,
+            assignedPriestId: priestId,
+            ...(priestId !== current.assignedPriestId
+              ? {
+                  priestResponseStatus: priestId ? "PENDING" : null,
+                  priestResponseReason: null,
+                }
+              : {}),
+            visibility: nextVisibility,
+            version: { increment: 1 },
+          },
+        });
+        if (result.count !== 1) {
+          const err = new Error("This event changed elsewhere. Reload it before saving your edits.");
+          err.statusCode = 409;
+          err.code = "EVENT_STALE";
+          throw err;
+        }
+
+        const event = await tx.parishEvent.findUnique({
+          where: { id: parsedId },
+          include: { assignedPriest: { select: { id: true, fullName: true } } },
+        });
+
+        await AuditLogService.log(actorId, "Parish Event Updated", tx, false, {
+          affectedTable: "parish_events",
+          affectedRecordId: parsedId,
+          parishId: event.parishId,
+          previousValues: {
+            title: current.title,
+            eventType: current.eventType,
+            eventDate: current.eventDate,
+            startTime: current.startTime,
+            endTime: current.endTime,
+            visibility: current.visibility,
+            assignedPriestId: current.assignedPriestId,
+          },
+          newValues: {
+            title: event.title,
+            eventType: event.eventType,
+            eventDate: event.eventDate,
+            startTime: event.startTime,
+            endTime: event.endTime,
+            visibility: event.visibility,
+            assignedPriestId: event.assignedPriestId,
+          },
+        });
+        if (current.visibility !== event.visibility) {
+          await AuditLogService.log(actorId, "PARISH_EVENT_VISIBILITY_CHANGED", tx, false, {
+            affectedTable: "parish_events",
+            affectedRecordId: parsedId,
+            parishId: event.parishId,
+            previousValues: { visibility: current.visibility },
+            newValues: { visibility: event.visibility },
+          });
+        }
+
+        if (event.assignedPriestId && event.assignedPriestId !== current.assignedPriestId) {
+          await NotificationDispatcher._persist([{
+            userId: event.assignedPriestId,
+            title: "New Pastoral Assignment",
+            message: `You have been assigned to lead the "${event.title}" event at the parish.`,
+            type: "IN_APP",
+            referenceType: "GENERAL",
+            referenceId: null,
+          }], tx);
+        }
+
+        return event;
       },
-      newValues: {
-        title: event.title,
-        eventType: event.eventType,
-        eventDate: event.eventDate,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        visibility: event.visibility,
-        assignedPriestId: event.assignedPriestId,
-      },
-    });
-    if (original.visibility !== event.visibility) {
-      await AuditLogService.log(actorId, "PARISH_EVENT_VISIBILITY_CHANGED", null, false, {
-        affectedTable: "parish_events",
-        affectedRecordId: parsedId,
-        parishId: event.parishId,
-        previousValues: { visibility: original.visibility },
-        newValues: { visibility: event.visibility },
-      });
-    }
-
-    // Notify newly assigned priest (only when the assignment genuinely changes to a new priest).
-    const newPriestId = event.assignedPriestId;
-    const oldPriestId = original.assignedPriestId;
-    if (newPriestId && newPriestId !== oldPriestId) {
-      await NotificationDispatcher._persist(
-        [{
-          userId: newPriestId,
-          title: "New Pastoral Assignment",
-          message: `You have been assigned to lead the "${event.title}" event at the parish.`,
-          type: "IN_APP",
-          referenceType: "GENERAL",
-          referenceId: null,
-        }],
-        prisma
-      );
-    }
-
-    return event;
+      {
+        isolationLevel: "Serializable",
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
   }
 
   async deleteEvent(id, actorId) {
@@ -442,6 +488,109 @@ export class ParishEventService {
   }
 
   async respondPriestAssignment(id, priestId, status, reason) {
-    return PriestAssignmentHandler.handleResponse(id, priestId, status, reason, "EVENT");
+    const parsedId = parseInt(id, 10);
+    const parsedPriestId = normalizePriestId(priestId);
+    if (!Number.isInteger(parsedId)) {
+      const error = new Error("Invalid event ID.");
+      error.statusCode = 400;
+      error.code = "INVALID_ID";
+      throw error;
+    }
+
+    return prisma.$transaction(
+      async (tx) => {
+        await lockPriestsForScheduling(tx, [parsedPriestId]);
+        const current = await tx.parishEvent.findUnique({
+          where: { id: parsedId },
+          include: {
+            parish: { select: { id: true, parishName: true } },
+            assignedPriest: { select: { id: true, fullName: true } },
+          },
+        });
+        if (!current) {
+          const error = new Error("Parish event not found.");
+          error.statusCode = 404;
+          throw error;
+        }
+        if (current.assignedPriestId !== parsedPriestId) {
+          const error = new Error("You are not the priest assigned to this event.");
+          error.statusCode = 403;
+          throw error;
+        }
+        if (status === "ACCEPTED" && current.priestResponseStatus === "ACCEPTED") {
+          return current;
+        }
+
+        if (status === "ACCEPTED" && current.startTime) {
+          const start = parseManilaDateTime(current.eventDate, current.startTime);
+          const end = current.endTime
+            ? parseManilaDateTime(current.eventDate, current.endTime)
+            : null;
+          await ConflictHelper.checkPriestConflict(
+            parsedPriestId,
+            current.eventDate,
+            start,
+            end,
+            {
+              excludeEventId: current.id,
+              tx,
+              actorId: parsedPriestId,
+              isPriestOwner: true,
+            }
+          );
+        }
+
+        const updated = await tx.parishEvent.update({
+          where: { id: parsedId },
+          data: {
+            assignedPriestId: status === "REJECTED" ? null : current.assignedPriestId,
+            priestResponseStatus: status,
+            priestResponseReason: reason || null,
+            version: { increment: 1 },
+          },
+          include: {
+            parish: { select: { id: true, parishName: true } },
+            assignedPriest: { select: { id: true, fullName: true } },
+          },
+        });
+
+        await NotificationDispatcher.notifyPriestResponse({
+          parishId: updated.parishId,
+          scheduleId: updated.id + 100000,
+          displayTitle: updated.title,
+          priestName: current.assignedPriest?.fullName || "Priest",
+          status,
+          reason,
+          referenceType: "SCHEDULE_REQUEST",
+        }, tx);
+
+        await AuditLogService.log(
+          parsedPriestId,
+          "Priest Assignment Response Updated",
+          tx,
+          false,
+          {
+            affectedTable: "parish_events",
+            affectedRecordId: parsedId,
+            parishId: updated.parishId,
+            previousValues: {
+              assignedPriestId: current.assignedPriestId,
+              priestResponseStatus: current.priestResponseStatus,
+            },
+            newValues: {
+              assignedPriestId: updated.assignedPriestId,
+              priestResponseStatus: updated.priestResponseStatus,
+            },
+          }
+        );
+
+        return updated;
+      },
+      {
+        isolationLevel: "Serializable",
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
   }
 }

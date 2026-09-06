@@ -35,6 +35,7 @@ import massScheduleRoutes from "./routes/massScheduleRoutes.js";
 import parishEventRoutes from "./routes/parishEventRoutes.js";
 import scheduleAvailabilityRoutes from "./routes/scheduleAvailabilityRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import priestPersonalScheduleRoutes from "./routes/priestPersonalScheduleRoutes.js";
 import { EmailOutboxWorker } from "./services/EmailOutboxWorker.js";
 
 const app = express();
@@ -112,6 +113,7 @@ app.use(`${apiVersion}/diocese`, dioceseRoutes);
 app.use(`${apiVersion}/analytics`, analyticsRoutes);
 app.use(`${apiVersion}/mass-schedules`, massScheduleRoutes);
 app.use(`${apiVersion}/parish-events`, parishEventRoutes);
+app.use(`${apiVersion}/priest/personal-schedules`, priestPersonalScheduleRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

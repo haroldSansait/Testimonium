@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test scripts/pfc_regression.test.js scripts/council_reconciliation.test.js scripts/pfc_state.test.mjs",
+    "test": "node --test scripts/pfc_regression.test.js scripts/council_reconciliation.test.js scripts/pfc_state.test.mjs scripts/priest_assignment_availability.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

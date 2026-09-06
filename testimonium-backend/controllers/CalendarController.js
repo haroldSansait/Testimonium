@@ -34,3 +34,24 @@ export const getEvents = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const getPriestCalendar = async (req, res, next) => {
+  try {
+    const priestId = req.user.id;
+    const { year, month, startDate, endDate } = req.query;
+
+    const data = await calendarService.getPriestCalendar(priestId, {
+      year,
+      month,
+      startDate,
+      endDate,
+    });
+
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    if (err.statusCode === 400) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    return next(err);
+  }
+};

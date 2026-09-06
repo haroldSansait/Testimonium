@@ -62,8 +62,9 @@ export interface ISchedulerProvider {
     location?: string;
     remarks?: string;
   }): Promise<Appointment>;
-  respondReschedule(id: string, accept: boolean): Promise<Appointment>;
+  respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<Appointment>;
   getAppointmentById(id: string): Promise<Appointment>;
+  getAppointmentByTracking(reference: string): Promise<Appointment>;
 }
 
 export interface SchedulingConfiguration {

@@ -90,6 +90,17 @@ const mapAppointment = (s: any): Appointment => {
   const priestResponseStatus = s.priestResponseStatus || null;
   const parishName = s.parish?.parishName || s.parishName || undefined;
 
+  const rescheduleHistory = Array.isArray(s.rescheduleHistory)
+    ? s.rescheduleHistory.map((h: any) => ({
+        previousDate: h.previousDate,
+        previousStart: h.previousStart || null,
+        newDate: h.newDate,
+        newStart: h.newStart || null,
+        reason: h.reason,
+        changedAt: h.changedAt,
+      }))
+    : undefined;
+
   return {
     id: String(s.id),
     parishId: String(s.parishId),
@@ -107,6 +118,8 @@ const mapAppointment = (s: any): Appointment => {
     assignedPriestId,
     assignedPriestName,
     priestResponseStatus,
+    version: typeof s.version === 'number' ? s.version : undefined,
+    rescheduleHistory,
   };
 };
 
@@ -168,14 +181,24 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     return mapAppointment(item);
   }
 
-  async respondReschedule(id: string, accept: boolean): Promise<Appointment> {
-    const response = await client.post<any>(`/schedule-requests/${id}/respond-reschedule`, { accept });
+  async respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<Appointment> {
+    const payload: { accept: boolean; expectedVersion?: number } = { accept };
+    if (typeof expectedVersion === 'number') {
+      payload.expectedVersion = expectedVersion;
+    }
+    const response = await client.post<any>(`/schedule-requests/${id}/respond-reschedule`, payload);
     const item = response?.data !== undefined ? response.data : response;
     return mapAppointment(item);
   }
 
   async getAppointmentById(id: string): Promise<Appointment> {
     const response = await client.get<any>(`/schedule-requests/${id}`);
+    const item = response?.data !== undefined ? response.data : response;
+    return mapAppointment(item);
+  }
+
+  async getAppointmentByTracking(reference: string): Promise<Appointment> {
+    const response = await client.get<any>(`/schedule-requests/tracking/${encodeURIComponent(reference.trim())}`);
     const item = response?.data !== undefined ? response.data : response;
     return mapAppointment(item);
   }

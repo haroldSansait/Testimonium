@@ -7,6 +7,7 @@ export interface CustomSelectOptionItem {
   label: string;
   secondary?: string;
   badge?: string;
+  disabled?: boolean;
 }
 
 export interface CustomSelectOptionGroup {
@@ -296,20 +297,28 @@ export function CustomSelect({
                 <div className="p-1 space-y-0.5 bg-white">
                   {group.options.map((opt) => {
                     const isSelected = String(opt.value) === String(value);
+                    const isDisabled = Boolean(opt.disabled);
                     return (
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => handleSelect(opt.value)}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (!isDisabled) {
+                            handleSelect(opt.value);
+                          }
+                        }}
                         className={cn(
-                          'w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between group cursor-pointer',
-                          isSelected
-                            ? 'bg-crimson-50 text-crimson-900 font-semibold'
-                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                          'w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between group',
+                          isDisabled
+                            ? 'opacity-60 bg-gray-50/50 text-gray-400 cursor-not-allowed select-none'
+                            : isSelected
+                            ? 'bg-crimson-50 text-crimson-900 font-semibold cursor-pointer'
+                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer'
                         )}
                       >
                         <div className="flex flex-col min-w-0 pr-2">
-                          <span className="truncate">{opt.label}</span>
+                          <span className={cn('truncate', isDisabled && 'text-gray-500 font-normal')}>{opt.label}</span>
                           {opt.secondary && (
                             <span className="text-[11px] text-gray-400 truncate">
                               {opt.secondary}
@@ -319,11 +328,18 @@ export function CustomSelect({
 
                         <div className="flex items-center gap-1.5 shrink-0">
                           {opt.badge && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-gray-100 text-gray-600">
+                            <span
+                              className={cn(
+                                'px-1.5 py-0.5 text-[10px] font-semibold rounded',
+                                isDisabled
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200/70'
+                                  : 'bg-gray-100 text-gray-600'
+                              )}
+                            >
                               {opt.badge}
                             </span>
                           )}
-                          {isSelected && <Check className="h-3.5 w-3.5 text-crimson-700 shrink-0" />}
+                          {isSelected && !isDisabled && <Check className="h-3.5 w-3.5 text-crimson-700 shrink-0" />}
                         </div>
                       </button>
                     );

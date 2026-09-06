@@ -29,6 +29,7 @@ export const ScheduleDetailScreen: React.FC = () => {
     data: schedule,
     isLoading,
     error,
+    refetch,
   } = useScheduleDetail(id);
 
   const respondMutation = useRespondReschedule();
@@ -44,6 +45,15 @@ export const ScheduleDetailScreen: React.FC = () => {
   const handleRespond = (accept: boolean) => {
     if (!id) return;
     setActionError(null);
+    if (typeof schedule?.version !== "number") {
+      const message = "The schedule version is unavailable. Refreshing the latest details.";
+      setActionError(message);
+      void refetch();
+      Alert.alert("Refresh Required", message);
+      return;
+    }
+
+    const expectedVersion = schedule.version;
 
     const actionText = accept ? "Accept" : "Decline";
     Alert.alert(
@@ -61,6 +71,7 @@ export const ScheduleDetailScreen: React.FC = () => {
               await respondMutation.mutateAsync({
                 scheduleId: id,
                 accept,
+                expectedVersion,
               });
               Alert.alert(
                 accept ? "Reschedule Accepted" : "Proposal Declined",
@@ -70,10 +81,13 @@ export const ScheduleDetailScreen: React.FC = () => {
               );
             } catch (err: any) {
               const msg =
+                err?.response?.data?.message ||
                 err?.message ||
                 "Failed to respond to reschedule proposal. Please try again.";
               setActionError(msg);
               Alert.alert("Action Failed", msg);
+              // Cleanly refetch schedule state on failure/race
+              void refetch();
             }
           },
         },
@@ -116,6 +130,9 @@ export const ScheduleDetailScreen: React.FC = () => {
   const dateFormatted = formatScheduleDate(schedule.requestedDate, "full");
   const timeSlot = extractTimeSlotFromSchedule(schedule);
   const hasProposal = isRescheduleProposalPending(schedule.status);
+  const hasPriestAssigned = Boolean(schedule.assignedPriestId);
+  const isPriestAccepted = hasPriestAssigned && schedule.priestResponseStatus === "ACCEPTED";
+  const canAcceptReschedule = hasProposal && isPriestAccepted;
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -190,6 +207,18 @@ export const ScheduleDetailScreen: React.FC = () => {
               </View>
             )}
 
+            {!isPriestAccepted && (
+              <View style={styles.priestGateBox}>
+                <Ionicons name="time-outline" size={16} color="#1E40AF" />
+                <View style={styles.priestGateContent}>
+                  <Text style={styles.priestGateTitle}>Waiting for Priest Acceptance</Text>
+                  <Text style={styles.priestGateText}>
+                    You can review the proposed date and time, but final acceptance will become available once the assigned priest accepts the schedule.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {actionError && (
               <Text style={styles.actionErrorText}>{actionError}</Text>
             )}
@@ -208,8 +237,9 @@ export const ScheduleDetailScreen: React.FC = () => {
                 variant="primary"
                 size="md"
                 onPress={() => handleRespond(true)}
+                disabled={!canAcceptReschedule || respondMutation.isPending}
                 loading={respondMutation.isPending}
-                style={styles.proposalBtn}
+                style={[styles.proposalBtn, !canAcceptReschedule && styles.disabledBtn]}
               />
             </View>
           </Card>
@@ -413,12 +443,41 @@ const styles = StyleSheet.create({
     color: colors.danger,
     marginBottom: spacing.sm,
   },
+  priestGateBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: radii.xs,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  priestGateContent: {
+    flex: 1,
+    marginLeft: spacing.xs,
+  },
+  priestGateTitle: {
+    ...fontStyles.caption,
+    fontWeight: "700",
+    color: "#1E3A8A",
+  },
+  priestGateText: {
+    ...fontStyles.caption,
+    color: "#1E40AF",
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+  },
   proposalActions: {
     flexDirection: "row",
     gap: spacing.sm,
   },
   proposalBtn: {
     flex: 1,
+  },
+  disabledBtn: {
+    opacity: 0.5,
   },
   sectionCard: {
     backgroundColor: colors.surface,

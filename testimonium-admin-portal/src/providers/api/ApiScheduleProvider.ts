@@ -1,5 +1,5 @@
 import api from '@/api/api';
-import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload } from '../interfaces';
+import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload, EmergencyReschedulePayload, PriestAvailabilityItem } from '../interfaces';
 import type { ScheduleRequest, ScheduleStatus, EventType } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
 import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
@@ -20,6 +20,7 @@ interface BackendScheduleRequestDTO {
   proposedDate: string | null;
   proposedStartDatetime: string | null;
   rescheduleReason: string | null;
+  version?: number;
   createdAt: string;
   updatedAt: string;
   user?: {
@@ -181,6 +182,7 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     rescheduleReason: dbItem.rescheduleReason || undefined,
     priestResponseStatus: dbItem.priestResponseStatus || undefined,
     priestResponseReason: dbItem.priestResponseReason || undefined,
+    version: dbItem.version ?? 1,
     isParishEvent: dbItem.isParishEvent || false,
     timeline: [
       { status: 'Pending', date: preferredDate, note: 'Schedule request submitted.' },
@@ -321,7 +323,7 @@ export const ApiScheduleProvider: ScheduleProvider = {
     return item;
   },
 
-  async updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest> {
+  async updateScheduleStatus(id: string, status: ScheduleStatus, expectedVersion: number): Promise<ScheduleRequest> {
     let backendStatus = 'PENDING';
     if (status === 'Confirmed') backendStatus = 'CONFIRMED';
     else if (status === 'Cancelled') backendStatus = 'CANCELLED';
@@ -330,7 +332,10 @@ export const ApiScheduleProvider: ScheduleProvider = {
     optimisticScheduleStatuses[id] = status;
 
     try {
-      const response = await api.patch<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/status`, { status: backendStatus });
+      const response = await api.patch<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/status`, {
+        status: backendStatus,
+        expectedVersion,
+      });
       const updated = mapToFrontend(response.data.data);
       return { ...updated, status };
     } catch (error) {
@@ -358,10 +363,10 @@ export const ApiScheduleProvider: ScheduleProvider = {
     }
   },
 
-  async respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest> {
+  async respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<ScheduleRequest> {
     optimisticScheduleStatuses[id] = accept ? 'Confirmed' : 'Cancelled';
     try {
-      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/respond-reschedule`, { accept });
+      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/respond-reschedule`, { accept, expectedVersion });
       return mapToFrontend(response.data.data);
     } catch (error) {
       delete optimisticScheduleStatuses[id];
@@ -373,10 +378,13 @@ export const ApiScheduleProvider: ScheduleProvider = {
     }
   },
 
-  async assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
+  async assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest> {
     optimisticSchedulePriests[id] = 'Assigning...';
     try {
-      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-priest`, { priestId });
+      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-priest`, {
+        priestId,
+        expectedVersion,
+      });
       const updated = mapToFrontend(response.data.data);
       if (updated.assignedPriest) {
         optimisticSchedulePriests[id] = updated.assignedPriest;
@@ -392,7 +400,22 @@ export const ApiScheduleProvider: ScheduleProvider = {
     }
   },
 
-  async respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest> {
+  async emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest> {
+    optimisticScheduleStatuses[id] = 'Confirmed';
+    try {
+      const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/emergency-reschedule`, payload);
+      return mapToFrontend(response.data.data);
+    } catch (error) {
+      delete optimisticScheduleStatuses[id];
+      throw error;
+    } finally {
+      setTimeout(() => {
+        delete optimisticScheduleStatuses[id];
+      }, 1500);
+    }
+  },
+
+  async respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason: string | undefined, expectedVersion: number): Promise<ScheduleRequest> {
     const numId = parseInt(id, 10);
     if (!isNaN(numId) && numId >= 200000) {
       const realId = numId - 200000;
@@ -404,7 +427,7 @@ export const ApiScheduleProvider: ScheduleProvider = {
       const response = await api.post<{ data: any }>(`/parish-events/${realId}/priest-respond`, { status, reason });
       return mapParishEventToFrontend(response.data.data);
     }
-    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/priest-respond`, { status, reason });
+    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/priest-respond`, { status, reason, expectedVersion });
     return mapToFrontend(response.data.data);
   },
 
@@ -418,6 +441,13 @@ export const ApiScheduleProvider: ScheduleProvider = {
     if (Array.isArray(data?.data)) return data.data;
     if (Array.isArray(data?.items)) return data.items;
     return [];
+  },
+
+  async getPriestAvailability(scheduleId: string, params?: { date?: string; time?: string; startDatetime?: string }): Promise<PriestAvailabilityItem[]> {
+    const response = await api.get<{ data: PriestAvailabilityItem[] }>(`/schedule-requests/${scheduleId}/priest-availability`, {
+      params,
+    });
+    return response.data.data || [];
   },
 };
 

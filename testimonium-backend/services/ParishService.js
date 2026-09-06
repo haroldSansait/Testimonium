@@ -20,6 +20,8 @@ import {
   DEFAULT_SUNDAY_RESTRICTED_SERVICES,
   WEEKDAYS,
   lockParishSchedulingConfiguration,
+  lockPriestsForScheduling,
+  normalizePriestId,
 } from "./SchedulingAvailability.js";
 
 const generateSlug = (name) => {
@@ -146,12 +148,7 @@ export class ParishService {
         err.statusCode = 400;
         throw err;
       }
-      const priestId = parseInt(priestConfig.existingUserId, 10);
-      if (isNaN(priestId)) {
-        const err = new Error("Invalid priest ID format.");
-        err.statusCode = 400;
-        throw err;
-      }
+      const priestId = normalizePriestId(priestConfig.existingUserId);
       existingPriestUser = await prisma.user.findUnique({
         where: { id: priestId },
         include: { role: true, parish: true },
@@ -555,11 +552,58 @@ export class ParishService {
     }
 
 
-    const parish = await prisma.$transaction(async (tx) => {
-      if (schedulingMutation) {
-        await lockParishSchedulingConfiguration(tx, numericId);
+    const isAuthoritySensitive = Boolean(schedulingMutation || data.priestId !== undefined);
+    const targetNewPriestId = data.priestId !== undefined && data.priestId !== null
+      ? normalizePriestId(data.priestId)
+      : null;
+
+    let targetOtherParishId = null;
+    if (targetNewPriestId) {
+      const prospectivePriest = await prisma.user.findUnique({
+        where: { id: targetNewPriestId },
+        select: { parishId: true },
+      });
+      if (prospectivePriest?.parishId && prospectivePriest.parishId !== numericId) {
+        targetOtherParishId = prospectivePriest.parishId;
       }
-      // 1. Fetch current parish state to verify it exists and get audit logs
+    }
+
+    const parishesToLock = [numericId, targetOtherParishId]
+      .filter((pId) => pId != null)
+      .sort((a, b) => a - b);
+
+    const parish = await prisma.$transaction(async (tx) => {
+      // 1. CANONICAL LOCK ORDER: Parish scheduling configuration row(s), ascending ID
+      if (isAuthoritySensitive) {
+        for (const pId of parishesToLock) {
+          await lockParishSchedulingConfiguration(tx, pId);
+        }
+      }
+
+      // 2. CANONICAL LOCK ORDER: Priest User row lock(s), ascending ID
+      let currentPriestId = null;
+      if (data.priestId !== undefined) {
+        const existingParish = await tx.parish.findUnique({
+          where: { id: numericId },
+          include: { users: { include: { role: true } } },
+        });
+        if (!existingParish) {
+          const err = new Error("Parish not found.");
+          err.statusCode = 404;
+          throw err;
+        }
+        const priestUser = existingParish.users.find((u) => u.role?.roleName === "PRIEST");
+        if (priestUser) {
+          currentPriestId = priestUser.id;
+        }
+
+        const priestIdsToLock = [currentPriestId, targetNewPriestId].filter((id) => id !== null && id !== undefined);
+        if (priestIdsToLock.length) {
+          await lockPriestsForScheduling(tx, priestIdsToLock);
+        }
+      }
+
+      // 3. Authoritative re-read
       const currentParish = await tx.parish.findUnique({
         where: { id: numericId },
         include: {
@@ -586,24 +630,24 @@ export class ParishService {
       const currentPriest = currentParish.users.find(u => u.role.roleName === "PRIEST");
       const currentSecretary = currentParish.users.find(u => u.role.roleName === "SECRETARY");
 
-      // 2. Handle Priest Assignment
+      // 4. Handle Priest Assignment
       if (data.priestId !== undefined) {
-        const newPriestId = data.priestId ? parseInt(data.priestId, 10) : null;
-        const currentPriestId = currentPriest ? currentPriest.id : null;
+        const newPriestId = targetNewPriestId;
+        const activePriestId = currentPriest ? currentPriest.id : null;
 
-        if (newPriestId !== currentPriestId) {
+        if (newPriestId !== activePriestId) {
           // Unassign previous priest
-          if (currentPriestId) {
+          if (activePriestId) {
+            await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(activePriestId, currentParish.id, tx);
             await tx.user.update({
-              where: { id: currentPriestId },
+              where: { id: activePriestId },
               data: { parishId: null },
             });
-            await PriestAssignmentHandler.cleanupPriestAssignmentsFromParish(currentPriestId, currentParish.id, tx);
             await AuditLogService.log(actorId, "Priest Removed", tx, false, {
               affectedTable: "parishes",
               affectedRecordId: currentParish.id,
               parishId: currentParish.id,
-              previousValues: { priestId: currentPriestId },
+              previousValues: { priestId: activePriestId },
               newValues: { priestId: null },
             });
           }

@@ -163,6 +163,7 @@ export interface ScheduleRequest {
   rescheduleReason?: string;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  version?: number;
   timeline?: { status: string; date: string; note?: string }[];
   isParishEvent?: boolean;
 }

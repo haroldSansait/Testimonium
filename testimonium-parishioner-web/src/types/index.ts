@@ -156,6 +156,15 @@ export interface SacramentalRequest {
   paymentCorrectionNote?: string | null;
 }
 
+export interface RescheduleHistoryEntry {
+  previousDate: string;
+  previousStart: string | null;
+  newDate: string;
+  newStart: string | null;
+  reason: string;
+  changedAt: string;
+}
+
 export interface Appointment {
   id: string;
   parishId: string;
@@ -173,6 +182,8 @@ export interface Appointment {
   priestResponseStatus?: 'ACCEPTED' | 'REJECTED' | 'PENDING' | null;
   remarks?: string | null;
   notes?: string | null;
+  version?: number;
+  rescheduleHistory?: RescheduleHistoryEntry[];
 }
 
 export interface Announcement {

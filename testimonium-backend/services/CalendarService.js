@@ -1,17 +1,14 @@
 import { prisma } from "../config/db.js";
+import {
+  getManilaDateString,
+  massTemplateAppliesOnDate,
+  parseManilaDateOnly,
+  parseManilaDateTime,
+} from "./ConflictHelper.js";
+import { normalizePriestId } from "./SchedulingAvailability.js";
 
 function combineDateAndTime(date, timeStr) {
-  try {
-    const d = new Date(date);
-    let [hourMin, period] = timeStr.split(" ");
-    let [hours, minutes] = hourMin.split(":").map(Number);
-    if (period === "PM" && hours < 12) hours += 12;
-    if (period === "AM" && hours === 12) hours = 0;
-    d.setHours(hours, minutes, 0, 0);
-    return d;
-  } catch (err) {
-    return null;
-  }
+  return parseManilaDateTime(date, timeStr);
 }
 
 function getThirdSaturdayOfMonth(year, month) {
@@ -286,6 +283,304 @@ export class CalendarService {
       const bPriority = priority[b.sourceType] !== undefined ? priority[b.sourceType] : 4;
       if (aPriority !== bPriority) return aPriority - bPriority;
       
+      const aTime = a.startDatetime ? new Date(a.startDatetime).getTime() : 0;
+      const bTime = b.startDatetime ? new Date(b.startDatetime).getTime() : 0;
+      return aTime - bTime;
+    });
+
+    return combined;
+  }
+
+  /**
+   * Evaluates ongoing status for a schedule/calendar item based on authoritative start and end.
+   */
+  static evaluateOngoing({ start, end, status, hasEstimatedEnd = false, now = new Date() }) {
+    if (status === "CANCELLED" || status === "REJECTED") {
+      return { isOngoing: false, isOngoingEligible: false };
+    }
+    if (!start || !end || hasEstimatedEnd) {
+      return { isOngoing: false, isOngoingEligible: false };
+    }
+    const startDate = start instanceof Date ? start : new Date(start);
+    const endDate = end instanceof Date ? end : new Date(end);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate.getTime() <= startDate.getTime()) {
+      return { isOngoing: false, isOngoingEligible: false };
+    }
+    const isOngoing = now.getTime() >= startDate.getTime() && now.getTime() < endDate.getTime();
+    return { isOngoing, isOngoingEligible: true };
+  }
+
+  /**
+   * Priest-specific backend projection.
+   * Sources:
+   * 1. Assigned Schedules (excluding cancelled/rejected)
+   * 2. Assigned ParishEvents (active)
+   * 3. Assigned recurring Mass occurrences (where priest not on leave)
+   * 4. PriestPersonalSchedule (private title & notes included for owner priest)
+   * 5. PRIEST_LEAVE
+   */
+  async getPriestCalendar(priestId, { year, month, startDate, endDate } = {}) {
+    const parsedPriestId = normalizePriestId(priestId);
+
+    let rangeStart;
+    let rangeEnd;
+
+    if (year && month) {
+      const parsedYear = parseInt(year, 10);
+      const parsedMonth = parseInt(month, 10);
+      if (
+        !Number.isInteger(parsedYear) ||
+        !Number.isInteger(parsedMonth) ||
+        parsedMonth < 1 ||
+        parsedMonth > 12 ||
+        parsedYear < 2000 ||
+        parsedYear > 2100
+      ) {
+        const error = new Error("Invalid year or month. year must be 2000–2100, month must be 1–12.");
+        error.statusCode = 400;
+        throw error;
+      }
+      const nextYear = parsedMonth === 12 ? parsedYear + 1 : parsedYear;
+      const nextMonth = parsedMonth === 12 ? 1 : parsedMonth + 1;
+      rangeStart = new Date(
+        `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-01T00:00:00.000+08:00`
+      );
+      rangeEnd = new Date(
+        `${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00.000+08:00`
+      );
+    } else if (startDate && endDate) {
+      rangeStart = new Date(startDate);
+      rangeEnd = new Date(endDate);
+      if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
+        const error = new Error("Invalid startDate or endDate.");
+        error.statusCode = 400;
+        throw error;
+      }
+    } else {
+      const manilaToday = parseManilaDateOnly(getManilaDateString(new Date()));
+      const nextYear = manilaToday.month === 12 ? manilaToday.year + 1 : manilaToday.year;
+      const nextMonth = manilaToday.month === 12 ? 1 : manilaToday.month + 1;
+      rangeStart = new Date(
+        `${manilaToday.year}-${String(manilaToday.month).padStart(2, "0")}-01T00:00:00.000+08:00`
+      );
+      rangeEnd = new Date(
+        `${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00.000+08:00`
+      );
+    }
+
+    const now = new Date();
+
+    // 1. Assigned Schedule requests (privacy safe - no sensitive parishioner PII)
+    const schedules = await prisma.schedule.findMany({
+      where: {
+        assignedPriestId: parsedPriestId,
+        status: { notIn: ["CANCELLED", "REJECTED"] },
+        requestedDate: { gte: rangeStart, lt: rangeEnd },
+      },
+      include: {
+        parish: { select: { parishName: true } },
+      },
+    });
+
+    const mappedSchedules = schedules.map((s) => {
+      // Schedule endDatetime currently comes from a legacy operational
+      // fallback, not an Admin-configured duration contract.
+      const ongoing = CalendarService.evaluateOngoing({
+        start: s.startDatetime,
+        end: null,
+        status: s.status,
+        hasEstimatedEnd: true,
+        now,
+      });
+
+      return {
+        id: `schedule-${s.id}`,
+        scheduleId: s.id,
+        eventType: s.eventType,
+        displayTitle: s.displayTitle || s.eventType,
+        requestedDate: s.requestedDate.toISOString(),
+        startDatetime: s.startDatetime ? s.startDatetime.toISOString() : null,
+        endDatetime: s.endDatetime ? s.endDatetime.toISOString() : null,
+        status: s.status,
+        priestResponseStatus: s.priestResponseStatus,
+        parish: s.parish ? { parishName: s.parish.parishName } : null,
+        remarks: null,
+        sourceType: "APPOINTMENT",
+        isOngoing: ongoing.isOngoing,
+        isOngoingEligible: ongoing.isOngoingEligible,
+      };
+    });
+
+    // 2. Assigned ParishEvents
+    const events = await prisma.parishEvent.findMany({
+      where: {
+        assignedPriestId: parsedPriestId,
+        isActive: true,
+        eventDate: { gte: rangeStart, lt: rangeEnd },
+      },
+      include: {
+        parish: { select: { parishName: true } },
+      },
+    });
+
+    const mappedEvents = events.map((e) => {
+      const start = e.startTime ? combineDateAndTime(e.eventDate, e.startTime) : null;
+      const end = e.endTime ? combineDateAndTime(e.eventDate, e.endTime) : null;
+      const hasAuthoritativeEnd = Boolean(e.endTime);
+      const ongoing = CalendarService.evaluateOngoing({
+        start,
+        end: hasAuthoritativeEnd ? end : null,
+        status: "CONFIRMED",
+        hasEstimatedEnd: !hasAuthoritativeEnd,
+        now,
+      });
+
+      return {
+        id: `event-${e.id}`,
+        eventId: e.id,
+        eventType: e.eventType,
+        displayTitle: e.title,
+        requestedDate: e.eventDate.toISOString(),
+        startDatetime: start ? start.toISOString() : null,
+        endDatetime: end ? end.toISOString() : null,
+        status: "CONFIRMED",
+        parish: e.parish ? { parishName: e.parish.parishName } : null,
+        remarks: e.description,
+        sourceType: "PARISH_EVENT",
+        location: e.location,
+        isOngoing: ongoing.isOngoing,
+        isOngoingEligible: ongoing.isOngoingEligible,
+      };
+    });
+
+    // 3. PRIEST_LEAVE in ParishAvailability
+    const leaves = await prisma.parishAvailability.findMany({
+      where: {
+        userId: parsedPriestId,
+        type: "PRIEST_LEAVE",
+        startDate: { lt: rangeEnd },
+        endDate: { gte: rangeStart },
+      },
+      include: {
+        parish: { select: { parishName: true } },
+      },
+    });
+
+    const mappedLeaves = leaves.map((l) => ({
+      id: `leave-${l.id}`,
+      eventType: l.type,
+      displayTitle: l.title,
+      requestedDate: l.startDate.toISOString(),
+      startDatetime: l.startDate.toISOString(),
+      endDatetime: l.endDate.toISOString(),
+      status: "CONFIRMED",
+      parish: l.parish ? { parishName: l.parish.parishName } : null,
+      remarks: l.description || "Priest on Leave",
+      sourceType: "AVAILABILITY",
+      isOngoing: false,
+      isOngoingEligible: false,
+    }));
+
+    // 4. Assigned recurring Mass occurrences
+    const massTemplates = await prisma.massScheduleTemplate.findMany({
+      where: {
+        assignedPriestId: parsedPriestId,
+        isActive: true,
+      },
+      include: {
+        parish: { select: { parishName: true } },
+      },
+    });
+
+    const mappedMass = [];
+    if (massTemplates.length > 0) {
+      const firstDate = parseManilaDateOnly(rangeStart);
+      const lastDate = parseManilaDateOnly(new Date(rangeEnd.getTime() - 1));
+
+      if (firstDate && lastDate) {
+        for (
+          let cursor = Date.UTC(firstDate.year, firstDate.month - 1, firstDate.day);
+          cursor <= Date.UTC(lastDate.year, lastDate.month - 1, lastDate.day);
+          cursor += 24 * 60 * 60 * 1000
+        ) {
+          const dateStr = new Date(cursor).toISOString().slice(0, 10);
+          const dayTemplates = massTemplates.filter((template) =>
+            massTemplateAppliesOnDate(template.dayType, dateStr)
+          );
+
+          for (const template of dayTemplates) {
+            const isOnLeave = leaves.some((leave) =>
+              getManilaDateString(leave.startDate) <= dateStr
+              && getManilaDateString(leave.endDate) >= dateStr
+            );
+            if (isOnLeave) continue;
+
+            const start = combineDateAndTime(dateStr, template.timeSlot);
+            mappedMass.push({
+              id: `mass-${template.id}-${dateStr}`,
+              eventType: "MASS_INTENTION",
+              displayTitle: template.label || "Holy Mass",
+              requestedDate: new Date(`${dateStr}T00:00:00.000+08:00`).toISOString(),
+              startDatetime: start ? start.toISOString() : null,
+              endDatetime: null,
+              status: "CONFIRMED",
+              parish: template.parish ? { parishName: template.parish.parishName } : null,
+              remarks: "Recurring Parish Mass Schedule",
+              sourceType: "MASS",
+              isOngoing: false,
+              isOngoingEligible: false,
+            });
+          }
+        }
+      }
+    }
+
+    // 5. PriestPersonalSchedule entries
+    const personalSchedules = await prisma.priestPersonalSchedule.findMany({
+      where: {
+        priestId: parsedPriestId,
+        startAt: { lt: rangeEnd },
+        endAt: { gt: rangeStart },
+      },
+      orderBy: { startAt: "asc" },
+    });
+
+    const mappedPersonal = personalSchedules.map((p) => {
+      const ongoing = CalendarService.evaluateOngoing({
+        start: p.startAt,
+        end: p.endAt,
+        status: "CONFIRMED",
+        hasEstimatedEnd: false,
+        now,
+      });
+
+      return {
+        id: `personal-${p.id}`,
+        personalId: p.id,
+        eventType: "PERSONAL",
+        displayTitle: p.title,
+        notes: p.notes,
+        requestedDate: p.startAt.toISOString(),
+        startDatetime: p.startAt.toISOString(),
+        endDatetime: p.endAt.toISOString(),
+        status: "CONFIRMED",
+        version: p.version,
+        remarks: p.notes,
+        sourceType: "PERSONAL",
+        isOngoing: ongoing.isOngoing,
+        isOngoingEligible: ongoing.isOngoingEligible,
+      };
+    });
+
+    const combined = [
+      ...mappedLeaves,
+      ...mappedMass,
+      ...mappedEvents,
+      ...mappedSchedules,
+      ...mappedPersonal,
+    ];
+
+    combined.sort((a, b) => {
       const aTime = a.startDatetime ? new Date(a.startDatetime).getTime() : 0;
       const bTime = b.startDatetime ? new Date(b.startDatetime).getTime() : 0;
       return aTime - bTime;

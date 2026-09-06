@@ -217,15 +217,20 @@ export const useCreateSchedule = () => {
 export interface RespondRescheduleInput {
   scheduleId: number | string;
   accept: boolean;
+  expectedVersion: number;
 }
 
 export const respondRescheduleRequest = async (
   input: RespondRescheduleInput
 ): Promise<ScheduleItem> => {
+  const body = {
+    accept: input.accept,
+    expectedVersion: input.expectedVersion,
+  };
   return apiClient.request<ScheduleItem>({
     path: `/schedule-requests/${input.scheduleId}/respond-reschedule`,
     method: "POST",
-    body: { accept: input.accept },
+    body,
     auth: true,
   });
 };

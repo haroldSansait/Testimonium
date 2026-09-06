@@ -1,10 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { prisma } from "../config/db.js";
+import {
+  isDisposableDatabaseConfigured,
+  getDisposablePrismaClient,
+} from "../test-utils/disposableDbGuard.js";
 import { ParishionerRequestService } from "../services/ParishionerRequestService.js";
 
 test("Real Concurrency Test — Database-backed Idempotency", async (t) => {
+  if (!isDisposableDatabaseConfigured()) {
+    console.log(
+      "\n[DISPOSABLE DB GUARD: SKIPPED] " +
+      "REFUSING TO RUN DB INTEGRATION TEST WITHOUT DISPOSABLE DATABASE: " +
+      "DISPOSABLE_DATABASE_URL is not set or matched shared environment.\n"
+    );
+    t.skip("REFUSING TO RUN DB INTEGRATION TEST WITHOUT DISPOSABLE DATABASE");
+    return;
+  }
+
+  const { prisma } = getDisposablePrismaClient();
   const service = new ParishionerRequestService();
 
   const createdRequestIds = [];
@@ -166,18 +180,25 @@ test("Real Concurrency Test — Database-backed Idempotency", async (t) => {
     // -------------------------------------------------------------
     // Safe Cleanup: ONLY test-created records
     // -------------------------------------------------------------
-    if (createdRequestIds.length > 0) {
-      await prisma.requestHistory.deleteMany({
-        where: { requestId: { in: createdRequestIds } },
-      });
-      await prisma.documentRequest.deleteMany({
-        where: { id: { in: createdRequestIds } },
-      });
-    }
-    if (createdIdempotencyKeys.length > 0) {
-      await prisma.idempotencyKey.deleteMany({
-        where: { key: { in: createdIdempotencyKeys } },
-      });
+    try {
+      if (createdRequestIds.length > 0) {
+        await prisma.activityLog.deleteMany({
+          where: { affectedRecordId: { in: createdRequestIds } },
+        });
+        await prisma.requestHistory.deleteMany({
+          where: { requestId: { in: createdRequestIds } },
+        });
+        await prisma.documentRequest.deleteMany({
+          where: { id: { in: createdRequestIds } },
+        });
+      }
+      if (createdIdempotencyKeys.length > 0) {
+        await prisma.idempotencyKey.deleteMany({
+          where: { key: { in: createdIdempotencyKeys } },
+        });
+      }
+    } finally {
+      await prisma.$disconnect();
     }
   }
 });

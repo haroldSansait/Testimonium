@@ -1,4 +1,4 @@
-import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload } from '../interfaces';
+import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload, EmergencyReschedulePayload, PriestAvailabilityItem } from '../interfaces';
 import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import type { PaginatedResponse } from '@/types/api';
 import { scheduleRequests } from '@/mock/scheduleRequests';
@@ -48,21 +48,28 @@ export const DemoScheduleProvider: ScheduleProvider = {
     return match;
   },
 
-  async updateScheduleStatus(id: string, status: ScheduleStatus): Promise<ScheduleRequest> {
+  async updateScheduleStatus(id: string, status: ScheduleStatus, _expectedVersion: number): Promise<ScheduleRequest> {
     store = store.map(r => {
       if (r.id !== id) return r;
       const todayStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       const newTimeline = [...(r.timeline || [])];
+
+      let note = 'Status updated.';
+      if (status === 'Confirmed') note = 'Approved and scheduled.';
+      else if (status === 'Cancelled') note = 'Request cancelled.';
+      else if (status === 'Under Review') note = 'Parish staff reviewing.';
+
       newTimeline.push({
         status,
         date: todayStr,
-        note: `Status updated to ${status}.`
+        note
       });
 
       return {
         ...r,
         status,
         assignedPriest: status === 'Confirmed' ? 'Fr. Michael Reyes' : r.assignedPriest,
+        version: (r.version ?? 1) + 1,
         timeline: newTimeline
       };
     });
@@ -88,6 +95,7 @@ export const DemoScheduleProvider: ScheduleProvider = {
         status: 'Tentative' as ScheduleStatus,
         proposedDate: payload.proposedDate,
         rescheduleReason: payload.reason,
+        version: (r.version ?? 1) + 1,
         timeline: newTimeline
       };
     });
@@ -97,18 +105,20 @@ export const DemoScheduleProvider: ScheduleProvider = {
     return updated;
   },
 
-  async respondReschedule(id: string, accept: boolean): Promise<ScheduleRequest> {
+  async respondReschedule(id: string, accept: boolean, _expectedVersion: number): Promise<ScheduleRequest> {
     const targetStatus: ScheduleStatus = accept ? 'Confirmed' : 'Cancelled';
-    return this.updateScheduleStatus(id, targetStatus);
+    const request = store.find((item) => item.id === id);
+    return this.updateScheduleStatus(id, targetStatus, request?.version ?? 1);
   },
 
-  async assignPriest(id: string, priestId: string): Promise<ScheduleRequest> {
+  async assignPriest(id: string, priestId: string, _expectedVersion: number): Promise<ScheduleRequest> {
     store = store.map(r => {
       if (r.id !== id) return r;
       return {
         ...r,
         assignedPriest: `Priest ID ${priestId}`,
         assignedPriestId: priestId,
+        version: (r.version ?? 1) + 1,
       };
     });
     const updated = store.find(r => r.id === id);
@@ -116,7 +126,31 @@ export const DemoScheduleProvider: ScheduleProvider = {
     return updated;
   },
 
-  async respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason?: string): Promise<ScheduleRequest> {
+  async emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest> {
+    store = store.map(r => {
+      if (r.id !== id) return r;
+      const todayStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const newTimeline = [...(r.timeline || [])];
+      newTimeline.push({
+        status: 'Confirmed',
+        date: todayStr,
+        note: `Emergency rescheduled to ${payload.targetDate} (${payload.timeSlot}). Reason: ${payload.reason}`
+      });
+
+      return {
+        ...r,
+        preferredDate: payload.targetDate,
+        preferredTime: payload.timeSlot,
+        version: (r.version ?? 1) + 1,
+        timeline: newTimeline
+      };
+    });
+    const updated = store.find(r => r.id === id);
+    if (!updated) throw new Error(`Schedule request ${id} not found`);
+    return updated;
+  },
+
+  async respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason: string | undefined, _expectedVersion: number): Promise<ScheduleRequest> {
     store = store.map(r => {
       if (r.id !== id) return r;
       return {
@@ -133,5 +167,19 @@ export const DemoScheduleProvider: ScheduleProvider = {
   async getAvailableSlots(_parishId: string, _date: string, _eventType: string): Promise<string[]> {
     // Demo stub — return representative canonical time slots
     return ['08:00 AM', '09:30 AM', '10:30 AM', '02:00 PM', '03:30 PM'];
-  }
+  },
+
+  async getPriestAvailability(scheduleId: string, _params?: { date?: string; time?: string; startDatetime?: string }): Promise<PriestAvailabilityItem[]> {
+    const req = store.find(r => r.id === scheduleId);
+    if (req?.preferredDate?.includes('Sep 26') || scheduleId === 'sched-req-3') {
+      return [
+        { priestId: '1', available: true },
+        { priestId: '2', available: false, reasonCode: 'PRIEST_UNAVAILABLE' },
+      ];
+    }
+    return [
+      { priestId: '1', available: true },
+      { priestId: '2', available: true },
+    ];
+  },
 };
