@@ -154,6 +154,8 @@ export interface ScheduleRequest {
   status: ScheduleStatus;
   assignedPriest?: string;
   assignedPriestId?: string;
+  requestedPriest?: { id: number | string; name: string } | string;
+  requestedPriestId?: string | number;
   parish?: string;
   parishId?: string;
   contactInfo?: string;

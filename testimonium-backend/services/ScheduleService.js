@@ -12,8 +12,9 @@ import {
   validateParishAvailability,
   PARISH_BOOKING_BLOCK_TYPES,
   validateSlotAndCapacity,
-  validatePriestConflict,
   getManilaHorizonMaxDate,
+  extractScheduleTimeSlot,
+  normalizeTimeSlotString,
 } from "./BookingValidator.js";
 import { resolveEventMetadata } from "../shared/EventTypeCatalog.js";
 import { getParishSchedulingConfiguration, requireEnabledSchedulingService } from "./SchedulingConfiguration.js";
@@ -25,6 +26,10 @@ import {
   lockPriestsForScheduling,
   normalizePriestId,
 } from "./SchedulingAvailability.js";
+import {
+  validateRequestedPriestEligibility,
+  GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE,
+} from "./ScheduleAvailabilityDomainService.js";
 import {
   ScheduleStatus,
   TERMINAL_SCHEDULE_STATUSES,
@@ -228,6 +233,22 @@ export function isScheduleElapsed(schedule, now = new Date()) {
   return false;
 }
 
+export function sanitizeSchedulePriest(sched) {
+  if (!sched) return sched;
+  const result = { ...sched };
+  if (!result.requestedPriest) {
+    return {
+      ...result,
+      requestedPriest: null,
+    };
+  }
+  result.requestedPriest = {
+    id: result.requestedPriest.id,
+    name: result.requestedPriest.fullName ?? result.requestedPriest.name ?? null,
+  };
+  return result;
+}
+
 export class ScheduleService {
   constructor(scheduleRepository = new ScheduleRepository()) {
     this.scheduleRepository = scheduleRepository;
@@ -273,10 +294,11 @@ export class ScheduleService {
           parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
           processedBy: { select: { id: true, fullName: true } },
           assignedPriest: { select: { id: true, fullName: true } },
+          requestedPriest: { select: { id: true, fullName: true } },
         },
       });
 
-      const filtered = allUserSchedules.filter((sched) => {
+      const filtered = allUserSchedules.map(sanitizeSchedulePriest).filter((sched) => {
         const elapsed = isScheduleElapsed(sched, now);
         return scope === "upcoming" ? !elapsed : elapsed;
       });
@@ -320,12 +342,13 @@ export class ScheduleService {
           parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
           processedBy: { select: { id: true, fullName: true } },
           assignedPriest: { select: { id: true, fullName: true } },
+          requestedPriest: { select: { id: true, fullName: true } },
         },
       }),
       prisma.schedule.count({ where }),
     ]);
 
-    return { data, total };
+    return { data: data.map(sanitizeSchedulePriest), total };
   }
 
   /**
@@ -350,6 +373,7 @@ export class ScheduleService {
         },
         processedBy: { select: { id: true, fullName: true, email: true } },
         assignedPriest: { select: { id: true, fullName: true, email: true } },
+        requestedPriest: { select: { id: true, fullName: true } },
         history: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: {
@@ -392,7 +416,7 @@ export class ScheduleService {
     delete schedule.history;
     schedule.rescheduleHistory = deriveRescheduleHistory(schedule, rawHistory);
 
-    return schedule;
+    return sanitizeSchedulePriest(schedule);
   }
 
   /**
@@ -441,6 +465,7 @@ export class ScheduleService {
           },
         },
         assignedPriest: { select: { id: true, fullName: true, email: true } },
+        requestedPriest: { select: { id: true, fullName: true } },
         history: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: {
@@ -483,7 +508,7 @@ export class ScheduleService {
     delete schedule.history;
     schedule.rescheduleHistory = deriveRescheduleHistory(schedule, rawHistory);
 
-    return schedule;
+    return sanitizeSchedulePriest(schedule);
   }
 
   /**
@@ -683,14 +708,10 @@ export class ScheduleService {
           }
         }
 
+        const normSlot = normalizeTimeSlotString(slot);
         const slotCount = bookingsOnDate.filter((s) => {
-          if (s.remarks) {
-            const match = s.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
-            if (match && match[1].trim().toUpperCase() === slot.trim().toUpperCase()) {
-              return true;
-            }
-          }
-          return false;
+          const sSlot = extractScheduleTimeSlot(s);
+          return sSlot && sSlot === normSlot;
         }).length;
 
         if (slotCount < schedulingConfig.slotCapacity) {
@@ -812,14 +833,10 @@ export class ScheduleService {
         }
       }
 
+      const normSlot = normalizeTimeSlotString(slot);
       const slotCount = activeBookings.filter((s) => {
-        if (s.remarks) {
-          const match = s.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
-          if (match && match[1].trim().toUpperCase() === slot.trim().toUpperCase()) {
-            return true;
-          }
-        }
-        return false;
+        const sSlot = extractScheduleTimeSlot(s);
+        return sSlot && sSlot === normSlot;
       }).length;
 
       if (slotCount < schedulingConfig.slotCapacity) {
@@ -834,7 +851,7 @@ export class ScheduleService {
    * Creates a schedule request with transaction-aware booking validation and Idempotency.
    */
   async create(payload, idempotencyKey = null) {
-    const { userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks } = payload;
+    const { userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks, requestedPriestId } = payload;
     const parsedUserId = parseInt(userId, 10);
     const parsedParishId = parseInt(parishId, 10);
 
@@ -849,12 +866,25 @@ export class ScheduleService {
     const now = new Date();
     const horizon = validateDateHorizon(requestedDate, timeSlot, now);
 
+    let parsedRequestedPriestId = null;
+    if (requestedPriestId !== undefined && requestedPriestId !== null && requestedPriestId !== "") {
+      try {
+        parsedRequestedPriestId = normalizePriestId(requestedPriestId);
+      } catch {
+        const err = new Error(GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE);
+        err.statusCode = 400;
+        err.code = "INVALID_REQUESTED_PRIEST";
+        throw err;
+      }
+    }
+
     const canonicalPayload = {
       parishId: parsedParishId,
       eventType: canonicalEventType,
       requestedDate: horizon.dateStr,
       timeSlot,
       remarks,
+      requestedPriestId: parsedRequestedPriestId,
     };
     const payloadHash = computeSchedulePayloadHash(canonicalPayload);
 
@@ -873,10 +903,11 @@ export class ScheduleService {
             include: {
               user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
               parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+              requestedPriest: { select: { id: true, fullName: true } },
             },
           });
           if (existingSchedule) {
-            return { schedule: existingSchedule, isReplay: true };
+            return { schedule: sanitizeSchedulePriest(existingSchedule), isReplay: true };
           }
         } else {
           const err = new Error(
@@ -887,6 +918,11 @@ export class ScheduleService {
           throw err;
         }
       }
+    }
+
+    // Only if this is a NEW create: validate requested priest currently eligible
+    if (parsedRequestedPriestId !== null) {
+      await validateRequestedPriestEligibility(parsedRequestedPriestId, parsedParishId, prisma);
     }
 
     // 2. Perform booking within a Serializable transaction to guarantee race protection
@@ -973,10 +1009,12 @@ export class ScheduleService {
               status: "PENDING",
               conflictFlag: false,
               remarks: fullRemarks,
+              requestedPriestId: parsedRequestedPriestId,
             },
             include: {
               user: { select: { id: true, fullName: true, email: true, contactNumber: true, emailNotificationsEnabled: true } },
               parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+              requestedPriest: { select: { id: true, fullName: true } },
             },
           });
 
@@ -1014,8 +1052,25 @@ export class ScheduleService {
         }
       );
 
-      return { schedule: result, isReplay: false };
+      return { schedule: sanitizeSchedulePriest(result), isReplay: false };
     } catch (err) {
+      // Catch Prisma P2003 foreign key constraint violation specifically for requested_priest_id
+      if (err?.code === "P2003") {
+        const fieldOrTarget = String(
+          err?.meta?.field_name ||
+          err?.meta?.target ||
+          err?.meta?.constraint ||
+          err?.message ||
+          ""
+        );
+        if (fieldOrTarget.includes("requested_priest_id") || fieldOrTarget.includes("schedules_requested_priest_id_fkey")) {
+          const fkErr = new Error(GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE);
+          fkErr.statusCode = 400;
+          fkErr.code = "INVALID_REQUESTED_PRIEST";
+          throw fkErr;
+        }
+      }
+
       const isSerializationConflict =
         err?.code === "P2034" ||
         err?.message?.includes("Serialization") ||
@@ -1050,10 +1105,11 @@ export class ScheduleService {
             include: {
               user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
               parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+              requestedPriest: { select: { id: true, fullName: true } },
             },
           });
           if (winnerSchedule) {
-            return { schedule: winnerSchedule, isReplay: true };
+            return { schedule: sanitizeSchedulePriest(winnerSchedule), isReplay: true };
           }
         }
       }
@@ -1750,7 +1806,7 @@ export class ScheduleService {
     let targetDate = schedule.requestedDate;
     let targetStart = schedule.startDatetime;
     let targetEnd = schedule.endDatetime;
-    let targetTimeSlot = schedule.timeSlot || null;
+    let targetTimeSlot = extractScheduleTimeSlot(schedule) || null;
 
     if (candidateStartDatetime) {
       targetStart = new Date(candidateStartDatetime);
@@ -1799,11 +1855,23 @@ export class ScheduleService {
         });
       } catch (conflictError) {
         // Privacy invariant: do not expose private commitment title, notes, or calendar information
-        results.push({
-          priestId: priest.id,
-          available: false,
-          reasonCode: "PRIEST_UNAVAILABLE",
-        });
+        const isExpectedConflict =
+          conflictError.statusCode === 409 &&
+          ["PRIEST_CONFLICT", "PRIEST_AVAILABILITY_UNDETERMINED"].includes(conflictError.code);
+
+        if (isExpectedConflict) {
+          results.push({
+            priestId: priest.id,
+            available: false,
+            reasonCode: "PRIEST_UNAVAILABLE",
+          });
+        } else {
+          results.push({
+            priestId: priest.id,
+            available: null,
+            reasonCode: "AVAILABILITY_CHECK_FAILED",
+          });
+        }
       }
     }
 

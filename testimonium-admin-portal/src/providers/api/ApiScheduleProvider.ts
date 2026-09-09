@@ -41,6 +41,12 @@ interface BackendScheduleRequestDTO {
     id: number;
     fullName: string;
   } | null;
+  requestedPriestId?: number | null;
+  requestedPriest?: {
+    id: number;
+    fullName?: string;
+    name?: string;
+  } | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
   isParishEvent?: boolean;
@@ -173,6 +179,8 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     status: mapScheduleStatus(dbItem.status),
     assignedPriest,
     assignedPriestId,
+    requestedPriest: dbItem.requestedPriest ? (dbItem.requestedPriest.name || dbItem.requestedPriest.fullName || undefined) : undefined,
+    requestedPriestId: dbItem.requestedPriestId ? String(dbItem.requestedPriestId) : undefined,
     parish: dbItem.parish?.parishName || 'Main Church',
     parishId: String(dbItem.parishId),
     contactInfo: dbItem.user?.email || 'Anonymous',

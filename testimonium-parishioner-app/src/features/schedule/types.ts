@@ -103,6 +103,8 @@ export interface ScheduleItem {
   userId: number;
   parishId: number;
   assignedPriestId?: number | null;
+  requestedPriestId?: number | null;
+  requestedPriest?: { id: number; name: string } | null;
   eventType: ScheduleEventType;
   requestedDate: string;
   startDatetime?: string | null;
@@ -162,12 +164,56 @@ export interface SchedulingConfiguration {
   configurationUpdatedAt: string | null;
 }
 
+export interface EligiblePriest {
+  id: number;
+  name: string;
+  isAssistant: boolean;
+}
+
+export type RecommendationReason =
+  | "PREFERRED_DATE"
+  | "PREFERRED_PRIEST_AVAILABLE"
+  | "PREFERRED_PRIEST_UNAVAILABLE"
+  | "PREFERRED_TIME";
+
+export interface ScheduleRecommendationItem {
+  date: string;
+  timeSlot: string;
+  startAt: string;
+  preferredPriestAvailable?: boolean;
+  reasons: RecommendationReason[];
+}
+
+export interface ScheduleRecommendationsResponse {
+  parishId: number;
+  eventType: string;
+  preferredDate: string;
+  window: {
+    from: string;
+    to: string;
+  };
+  generatedAt: string;
+  recommendations: ScheduleRecommendationItem[];
+  code?: string;
+}
+
+export interface RecommendationRequestPayload {
+  parishId: number;
+  eventType: string;
+  preferredDate: string;
+  dateFrom?: string;
+  dateTo?: string;
+  preferredTimeSlot?: string;
+  requestedPriestId?: number | null;
+}
+
 export interface CreateSchedulePayload {
   parishId: number;
   eventType: ScheduleEventType;
   date: string;
   timeSlot: string;
   remarks?: string;
+  requestedPriestId?: number | null;
 }
 
 export interface RespondReschedulePayload {

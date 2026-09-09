@@ -179,6 +179,8 @@ export interface Appointment {
   rescheduleReason?: string;
   assignedPriestId?: string | number | null;
   assignedPriestName?: string | null;
+  requestedPriestId?: string | number | null;
+  requestedPriestName?: string | null;
   priestResponseStatus?: 'ACCEPTED' | 'REJECTED' | 'PENDING' | null;
   remarks?: string | null;
   notes?: string | null;

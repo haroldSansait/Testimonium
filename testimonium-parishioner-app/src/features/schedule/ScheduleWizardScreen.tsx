@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { AppHeader, BottomActionBar, Button, Card, EmptyState, Skeleton } from "@/components/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { useParishes } from "@/features/parishes/api";
 import type { ParishDto } from "@/features/parishes/types";
 import { isAppError } from "@/services/api/errors";
@@ -20,11 +21,15 @@ import {
   useAvailabilityDates,
   useAvailableSlots,
   useCreateSchedule,
+  useEligiblePriests,
+  useRecommendations,
   useSchedulingConfiguration,
 } from "./api";
+import { scheduleKeys } from "./queryKeys";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFeedback } from "@/providers/FeedbackProvider";
-import { formatScheduleDate, makeSchedulePayloadSignature } from "./presentation";
+import { formatScheduleDate, makeSchedulePayloadSignature, PREFERRED_PRIEST_HELPER_COPY } from "./presentation";
+import { SuggestedTimeCard } from "./components/SuggestedTimeCard";
 import type { ScheduleEventType } from "./types";
 
 const MONTH_NAMES = [
@@ -64,14 +69,17 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
 
 export const ScheduleWizardScreen: React.FC = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { profile } = useAuth();
   const feedback = useFeedback();
   const today = useMemo(() => getManilaDateParts(), []);
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedParishId, setSelectedParishId] = useState<number | null>(null);
   const [selectedEventType, setSelectedEventType] = useState<ScheduleEventType | null>(null);
+  const [preferredDate, setPreferredDate] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [requestedPriestId, setRequestedPriestId] = useState<number | null>(null);
   const [remarks, setRemarks] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState({ year: today.year, month: today.month });
@@ -87,6 +95,22 @@ export const ScheduleWizardScreen: React.FC = () => {
   const configuration = configurationQuery.data;
   const datesQuery = useAvailabilityDates(selectedParishId, selectedEventType);
   const slotsQuery = useAvailableSlots(selectedParishId, selectedDate, selectedEventType);
+  const eligiblePriestsQuery = useEligiblePriests(selectedParishId);
+  const eligiblePriests = eligiblePriestsQuery.data || [];
+
+  const recommendationPayload = useMemo(() => {
+    if (!selectedParishId || !selectedEventType || !preferredDate) return null;
+    return {
+      parishId: selectedParishId,
+      eventType: selectedEventType,
+      preferredDate,
+      requestedPriestId: requestedPriestId || null,
+    };
+  }, [selectedParishId, selectedEventType, preferredDate, requestedPriestId]);
+
+  const recommendationsQuery = useRecommendations(recommendationPayload);
+  const recommendations = recommendationsQuery.data?.recommendations || [];
+
   const { refetch: refetchConfiguration } = configurationQuery;
   const { refetch: refetchDates } = datesQuery;
   const { refetch: refetchSlots } = slotsQuery;
@@ -178,14 +202,17 @@ export const ScheduleWizardScreen: React.FC = () => {
   const chooseParish = (parishId: number) => {
     setSelectedParishId(parishId);
     setSelectedEventType(null);
+    setPreferredDate(null);
     setSelectedDate(null);
     setSelectedSlot(null);
+    setRequestedPriestId(null);
     setErrorMessage(null);
     setCurrentStep(2);
   };
 
   const chooseService = (eventType: ScheduleEventType) => {
     setSelectedEventType(eventType);
+    setPreferredDate(null);
     setSelectedDate(null);
     setSelectedSlot(null);
     setErrorMessage(null);
@@ -193,6 +220,7 @@ export const ScheduleWizardScreen: React.FC = () => {
   };
 
   const chooseDate = (date: string) => {
+    setPreferredDate(date);
     setSelectedDate(date);
     setSelectedSlot(null);
     setErrorMessage(null);
@@ -213,6 +241,7 @@ export const ScheduleWizardScreen: React.FC = () => {
       date: selectedDate!,
       timeSlot: selectedSlot!,
       remarks,
+      requestedPriestId: requestedPriestId || null,
     });
     if (currentKeyRef.current.payloadSignature === payloadSignature && currentKeyRef.current.key) {
       return currentKeyRef.current.key;
@@ -249,6 +278,7 @@ export const ScheduleWizardScreen: React.FC = () => {
           date: selectedDate,
           timeSlot: selectedSlot,
           remarks: remarks.trim() || undefined,
+          requestedPriestId: requestedPriestId || undefined,
         },
         idempotencyKey: getIdempotencyKey(),
       });
@@ -277,6 +307,22 @@ export const ScheduleWizardScreen: React.FC = () => {
         });
         return;
       }
+
+      if (code === "INVALID_REQUESTED_PRIEST") {
+        setRequestedPriestId(null);
+        void eligiblePriestsQuery.refetch();
+        void queryClient.invalidateQueries({
+          queryKey: [...scheduleKeys.all, "recommendations"],
+        });
+        const msg = "Your preferred priest is no longer available for selection at this parish. You may submit your request without a preferred priest.";
+        setErrorMessage(msg);
+        feedback.showWarning({
+          title: "Preferred Priest Unavailable",
+          message: msg,
+        });
+        return;
+      }
+
       const configurationChanged = [
         "SCHEDULING_CONFIGURATION_INCOMPLETE", "SERVICE_NOT_OFFERED", "PARISH_INACTIVE",
       ].includes(code);
@@ -291,7 +337,10 @@ export const ScheduleWizardScreen: React.FC = () => {
       ].includes(code);
 
       const availabilityChanged = configurationChanged || dateChanged || slotChanged;
-      if (availabilityChanged) refreshAuthoritativeAvailability(true);
+      if (availabilityChanged) {
+        refreshAuthoritativeAvailability(true);
+        void recommendationsQuery.refetch();
+      }
       if (configurationChanged) {
         setSelectedEventType(null);
         setSelectedDate(null);
@@ -481,6 +530,106 @@ export const ScheduleWizardScreen: React.FC = () => {
         {currentStep === 4 && <View style={styles.section}>
           <Text style={styles.title} allowFontScaling>Choose Time Slot</Text>
           <Text style={styles.subtitle} allowFontScaling>{selectedDate ? formatScheduleDate(selectedDate) : "Choose a date first"}</Text>
+
+          <View style={styles.priestSection}>
+            <Text style={styles.sectionHeading} allowFontScaling>Preferred Priest (Optional)</Text>
+            <Text style={styles.sectionSubtext} allowFontScaling>
+              Preference only. Final assignment is determined by the parish.
+            </Text>
+            {eligiblePriestsQuery.isError ? (
+              <View style={styles.warningBanner}>
+                <Text style={styles.warningBannerText} allowFontScaling>
+                  Unable to load preferred priests. You can still proceed without a preference.
+                </Text>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={() => void eligiblePriestsQuery.refetch()}
+                  style={styles.retryButton}
+                >
+                  <Text style={styles.retryButtonText} allowFontScaling>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : eligiblePriestsQuery.isLoading ? (
+              <Skeleton height={40} />
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={() => setRequestedPriestId(null)}
+                  style={[styles.priestChip, requestedPriestId === null && styles.priestChipSelected]}
+                >
+                  <Text style={[styles.priestChipText, requestedPriestId === null && styles.priestChipTextSelected]} allowFontScaling>
+                    No preference
+                  </Text>
+                </TouchableOpacity>
+                {eligiblePriests.map((priest) => {
+                  const isSelected = requestedPriestId === priest.id;
+                  return (
+                    <TouchableOpacity
+                      key={priest.id}
+                      accessibilityRole="button"
+                      onPress={() => setRequestedPriestId(priest.id)}
+                      style={[styles.priestChip, isSelected && styles.priestChipSelected]}
+                    >
+                      <Text style={[styles.priestChipText, isSelected && styles.priestChipTextSelected]} allowFontScaling>
+                        {priest.name}{priest.isAssistant ? " (Assistant)" : ""}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+
+          <View style={styles.suggestionsSection}>
+            <Text style={styles.sectionHeading} allowFontScaling>Suggested Times</Text>
+            {Boolean(requestedPriestId) && (
+              <Text style={styles.sectionSubtext} allowFontScaling>
+                {PREFERRED_PRIEST_HELPER_COPY}
+              </Text>
+            )}
+            {recommendationsQuery.isError ? (
+              <View style={styles.warningBanner}>
+                <Text style={styles.warningBannerText} allowFontScaling>
+                  Unable to load suggestions. You can still select an available time slot below.
+                </Text>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={() => void recommendationsQuery.refetch()}
+                  style={styles.retryButton}
+                >
+                  <Text style={styles.retryButtonText} allowFontScaling>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : recommendationsQuery.isLoading ? (
+              <Skeleton height={68} />
+            ) : recommendations.length > 0 ? (
+              <View style={styles.suggestionList}>
+                {recommendations.slice(0, 6).map((rec) => {
+                  const isSelected = selectedDate === rec.date && selectedSlot === rec.timeSlot;
+                  return (
+                    <SuggestedTimeCard
+                      key={`${rec.date}-${rec.timeSlot}`}
+                      rec={rec}
+                      isSelected={isSelected}
+                      onSelect={() => {
+                        setSelectedDate(rec.date);
+                        setSelectedSlot(rec.timeSlot);
+                        setErrorMessage(null);
+                        // preferredDate anchor remains unchanged!
+                      }}
+                    />
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.noSuggestionsText} allowFontScaling>No suggestions available for this window.</Text>
+            )}
+          </View>
+
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Available Time Slots {selectedDate ? `(${formatScheduleDate(selectedDate)})` : ""}
+          </Text>
           {slotsQuery.isLoading ? <><Skeleton height={52} /><Skeleton height={52} style={styles.skeletonGap} /></> : null}
           {!slotsQuery.isLoading && (slotsQuery.data || []).length === 0 ? <EmptyState icon="time-outline" title="No time slots available" description="Choose another date to see current parish availability." /> : null}
           <View style={styles.slotGrid}>
@@ -534,11 +683,19 @@ export const ScheduleWizardScreen: React.FC = () => {
               <Text style={styles.summaryLabel} allowFontScaling>Time Slot</Text>
               <Text style={styles.summaryValue} allowFontScaling>{selectedSlot}</Text>
             </View>
+            {requestedPriestId ? (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel} allowFontScaling>Preferred Priest</Text>
+                <Text style={styles.summaryValue} allowFontScaling>
+                  {eligiblePriests.find((p) => p.id === requestedPriestId)?.name || "Requested Priest"} (Preference)
+                </Text>
+              </View>
+            ) : null}
           </Card>
           <Text style={styles.inputLabel} allowFontScaling>Notes for the parish (optional)</Text>
-          <RNTextInput value={remarks} onChangeText={setRemarks} placeholder="Add relevant details, assistance needs, or priest preference" placeholderTextColor={colors.textMuted} multiline style={styles.notesInput} maxLength={500} />
+          <RNTextInput value={remarks} onChangeText={setRemarks} placeholder="Add relevant details or assistance needs" placeholderTextColor={colors.textMuted} multiline style={styles.notesInput} maxLength={500} />
           <Text style={styles.disclaimerText} allowFontScaling>
-            Priest requests are subject to availability and are not guaranteed.
+            General notes for the parish office regarding this request.
           </Text>
         </View>}
       </ScrollView>
@@ -636,4 +793,33 @@ const styles = StyleSheet.create({
   notesInput: { minHeight: 90, borderColor: colors.borderLight, borderWidth: 1, borderRadius: radii.md, padding: spacing.md, ...fontStyles.body, color: colors.textPrimary, textAlignVertical: "top", backgroundColor: colors.surfaceVariant },
   disclaimerText: { ...fontStyles.caption, color: colors.textSecondary, fontStyle: "italic", marginTop: -spacing.xs },
   fullWidthAction: { flex: 1 },
+  priestSection: { gap: spacing.xs, marginVertical: spacing.xs },
+  sectionHeading: { ...fontStyles.captionMedium, color: colors.textPrimary, fontWeight: "700", textTransform: "uppercase" },
+  sectionSubtext: { ...fontStyles.caption, color: colors.textSecondary },
+  chipRow: { flexDirection: "row", gap: spacing.xs, paddingVertical: spacing.xs },
+  priestChip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.surface },
+  priestChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  priestChipText: { ...fontStyles.bodySmall, color: colors.textPrimary, fontWeight: "500" },
+  priestChipTextSelected: { color: colors.surface, fontWeight: "700" },
+  suggestionsSection: { gap: spacing.xs, marginVertical: spacing.xs },
+  suggestionList: { gap: spacing.xs },
+  suggestionCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.md, padding: spacing.sm + 2, gap: spacing.xxs },
+  suggestionCardSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  suggestionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  suggestionDate: { ...fontStyles.bodySmall, color: colors.textPrimary, fontWeight: "700" },
+  suggestionDateSelected: { color: colors.primary },
+  suggestionTime: { ...fontStyles.captionMedium, color: colors.textSecondary, fontWeight: "600" },
+  suggestionTimeSelected: { color: colors.primary },
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 2 },
+  reasonBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.surfaceMuted },
+  reasonBadgeText: { fontSize: 10, color: colors.textSecondary, fontWeight: "600" },
+  badgeSuccess: { backgroundColor: "#ecfdf5" },
+  badgeSuccessText: { fontSize: 10, color: "#047857", fontWeight: "600" },
+  badgeWarning: { backgroundColor: "#fffbeb" },
+  badgeWarningText: { fontSize: 10, color: "#b45309", fontWeight: "600" },
+  noSuggestionsText: { ...fontStyles.caption, color: colors.textMuted, fontStyle: "italic" },
+  warningBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fffbeb", borderWidth: 1, borderColor: "#fde68a", borderRadius: radii.md, padding: spacing.sm, gap: spacing.xs, marginVertical: spacing.xxs },
+  warningBannerText: { flex: 1, ...fontStyles.caption, color: "#92400e" },
+  retryButton: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radii.sm },
+  retryButtonText: { ...fontStyles.captionMedium, color: colors.primary, fontWeight: "700" },
 });

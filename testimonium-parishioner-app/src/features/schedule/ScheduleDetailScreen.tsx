@@ -269,6 +269,20 @@ export const ScheduleDetailScreen: React.FC = () => {
             </View>
           </View>
 
+          {schedule.requestedPriest?.name && (
+            <View style={styles.detailRow}>
+              <View style={styles.iconCol}>
+                <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+              </View>
+              <View style={styles.detailTextCol}>
+                <Text style={styles.detailLabel}>Requested Priest (Preference)</Text>
+                <Text style={styles.detailValue}>
+                  {schedule.requestedPriest.name}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {schedule.assignedPriest?.fullName && (
             <View style={styles.detailRow}>
               <View style={styles.iconCol}>

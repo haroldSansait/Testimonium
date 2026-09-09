@@ -1,4 +1,11 @@
-import type { AvailabilityDates, ISchedulerProvider, SchedulingConfiguration } from "../types";
+import type {
+  AvailabilityDates,
+  EligiblePriest,
+  ISchedulerProvider,
+  RecommendationRequestPayload,
+  ScheduleRecommendationsResponse,
+  SchedulingConfiguration,
+} from "../types";
 import type { Appointment } from "../../types";
 import { client } from "../../api/client";
 import { resolveDisplayTitle } from "../../shared/EventTypeCatalog";
@@ -22,13 +29,15 @@ function getOrGenerateWebIdempotencyKey(payload: {
   date: string;
   timeSlot: string;
   remarks?: string | null;
+  requestedPriestId?: number | null;
 }): string {
   const normParish = Number(payload.parishId);
   const normEvent = String(payload.eventType || "").toUpperCase().trim();
   const normDate = String(payload.date || "").split("T")[0].trim();
   const normSlot = String(payload.timeSlot || "").trim().toUpperCase();
-  const normRemarks = payload.remarks ? payload.remarks.trim().replace(/\s+/g, " ") : "";
-  const sig = `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}`;
+  const normRemarks = payload.remarks ? payload.remarks.trim() : "";
+  const normPriest = payload.requestedPriestId ? String(payload.requestedPriestId) : "";
+  const sig = `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}|${normPriest}`;
 
   if (currentWebKeyRef.payloadSignature === sig && currentWebKeyRef.key) {
     return currentWebKeyRef.key;
@@ -87,6 +96,8 @@ const mapAppointment = (s: any): Appointment => {
 
   const assignedPriestId = s.assignedPriestId || s.assignedPriest?.id || null;
   const assignedPriestName = s.assignedPriest?.fullName || null;
+  const requestedPriestId = s.requestedPriestId || s.requestedPriest?.id || null;
+  const requestedPriestName = s.requestedPriest?.name || s.requestedPriest?.fullName || null;
   const priestResponseStatus = s.priestResponseStatus || null;
   const parishName = s.parish?.parishName || s.parishName || undefined;
 
@@ -117,6 +128,8 @@ const mapAppointment = (s: any): Appointment => {
     rescheduleReason: s.rescheduleReason || undefined,
     assignedPriestId,
     assignedPriestName,
+    requestedPriestId,
+    requestedPriestName,
     priestResponseStatus,
     version: typeof s.version === 'number' ? s.version : undefined,
     rescheduleHistory,
@@ -148,6 +161,15 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       : response?.data || response?.items || [];
   }
 
+  async getEligiblePriests(parishId: string): Promise<EligiblePriest[]> {
+    const response = await client.get<any>("/schedule-requests/eligible-priests", { parishId });
+    return Array.isArray(response) ? response : response?.data || [];
+  }
+
+  async getRecommendations(payload: RecommendationRequestPayload): Promise<ScheduleRecommendationsResponse> {
+    return client.post<ScheduleRecommendationsResponse>("/schedule-requests/recommendations", payload);
+  }
+
   async bookAppointment(appointment: {
     parishId: string;
     eventType: string;
@@ -156,12 +178,13 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     timeSlot: string;
     location?: string;
     remarks?: string;
+    requestedPriestId?: number | null;
   }): Promise<Appointment> {
     const rawRemarks = appointment.remarks?.trim() || "";
     const venueInfo = appointment.location ? `Venue: ${appointment.location}.` : "";
     const combinedRemarks = [rawRemarks, venueInfo].filter(Boolean).join(" ") || "Parishioner Portal Request";
 
-    const payload = {
+    const payload: any = {
       parishId: parseInt(appointment.parishId, 10),
       eventType: appointment.eventType,
       displayTitle: appointment.displayTitle,
@@ -169,6 +192,10 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       timeSlot: appointment.timeSlot,
       remarks: combinedRemarks,
     };
+
+    if (appointment.requestedPriestId !== undefined && appointment.requestedPriestId !== null) {
+      payload.requestedPriestId = Number(appointment.requestedPriestId);
+    }
 
     const idempotencyKey = getOrGenerateWebIdempotencyKey(payload);
 

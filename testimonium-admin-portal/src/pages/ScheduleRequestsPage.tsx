@@ -56,7 +56,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   const slotRequestGen = useRef(0);
 
   // Priest availability states
-  const [priestAvailability, setPriestAvailability] = useState<Record<string, boolean>>({});
+  const [priestAvailability, setPriestAvailability] = useState<Record<string, boolean | null>>({});
   const [loadingAvailability, setLoadingAvailability] = useState(true);
   const [availabilityError, setAvailabilityError] = useState(false);
   const availabilityRequestGen = useRef(0);
@@ -71,7 +71,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
     try {
       const availabilities = await getPriestAvailability(String(request.id));
       if (gen !== availabilityRequestGen.current) return;
-      const map: Record<string, boolean> = {};
+      const map: Record<string, boolean | null> = {};
       for (const item of availabilities) {
         map[String(item.priestId)] = item.available;
       }
@@ -213,8 +213,8 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
     setIsUpdating(true);
     try {
       // Derive proposedStartDatetime from the canonical time slot string ("HH:MM AM/PM")
-      // instead of a hardcoded lookup table.
-      let proposedStartDatetime = `${proposedDate}T09:00:00`;
+      // with explicit Asia/Manila (+08:00) offset.
+      let proposedStartDatetime = `${proposedDate}T09:00:00+08:00`;
       const slotMatch = proposedTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
       if (slotMatch) {
         let h = parseInt(slotMatch[1], 10);
@@ -222,7 +222,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
         const period = slotMatch[3].toUpperCase();
         if (period === 'PM' && h < 12) h += 12;
         if (period === 'AM' && h === 12) h = 0;
-        proposedStartDatetime = `${proposedDate}T${String(h).padStart(2, '0')}:${m}:00`;
+        proposedStartDatetime = `${proposedDate}T${String(h).padStart(2, '0')}:${m}:00+08:00`;
       }
 
       const payload = {
@@ -239,6 +239,9 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
 
   const unavailablePriests = priests.filter(
     (p: any) => !loadingAvailability && !availabilityError && priestAvailability[String(p.id)] === false
+  );
+  const unverifiedPriests = priests.filter(
+    (p: any) => !loadingAvailability && !availabilityError && priestAvailability[String(p.id)] === null
   );
   const allPriestsUnavailable =
     priests.length > 0 &&
@@ -469,12 +472,75 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
             </div>
           </div>
 
+          {/* Requested vs Assigned Priest Display */}
+          <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50/70 border border-gray-100 rounded-xl">
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Requested Priest</span>
+              <div className="mt-1">
+                {request.requestedPriest ? (
+                  <div>
+                    <div className="text-gray-900 font-medium flex items-center gap-1.5 text-xs">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{typeof request.requestedPriest === 'object' ? request.requestedPriest.name : request.requestedPriest}</span>
+                    </div>
+                    <span className="text-[10px] text-gray-500 font-normal italic block">Preference only</span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-500 italic">No preference requested</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Assigned Priest</span>
+              <div className="mt-1">
+                {request.assignedPriest ? (
+                  <div>
+                    <div className="text-gray-900 font-medium flex items-center gap-1.5 text-xs">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{request.assignedPriest}</span>
+                    </div>
+                    {request.priestResponseStatus && (
+                      <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded mt-0.5 inline-block ${
+                        request.priestResponseStatus === 'ACCEPTED'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : request.priestResponseStatus === 'REJECTED'
+                          ? 'bg-rose-50 text-rose-700'
+                          : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {request.priestResponseStatus}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-500 italic">Not yet assigned</span>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Conservative Availability Error State */}
           {availabilityError && (
             <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>Unable to verify priest availability right now. Please try again.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchAvailability()}
+                className="text-xs font-semibold text-amber-800 underline hover:text-amber-950 shrink-0"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Unverified Priest Availability Advisory */}
+          {unverifiedPriests.length > 0 && !availabilityError && (
+            <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Unable to verify availability for {unverifiedPriests.map((p: any) => p.name).join(', ')}. Selection disabled.</span>
               </div>
               <button
                 type="button"
@@ -550,12 +616,13 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
               options={priests.map((p: any) => {
                 const isAvail = priestAvailability[String(p.id)];
                 const isUnavailable = !loadingAvailability && !availabilityError && isAvail === false;
+                const isUnverified = !loadingAvailability && !availabilityError && isAvail === null;
                 return {
                   value: String(p.id),
                   label: p.name,
                   secondary: p.role === 'PRIEST' ? 'Parish Priest' : 'Assistant Priest',
-                  badge: isUnavailable ? 'Unavailable' : undefined,
-                  disabled: isUnavailable,
+                  badge: isUnavailable ? 'Unavailable' : isUnverified ? 'Unable to verify' : undefined,
+                  disabled: isUnavailable || isUnverified,
                 };
               })}
             />
@@ -834,9 +901,19 @@ export function ScheduleRequestsPage() {
     const originalRequests = [...requests];
 
     let timeStr = '09:00 AM';
-    if (payload.proposedStartDatetime.endsWith('10:30:00')) timeStr = '10:30 AM';
-    else if (payload.proposedStartDatetime.endsWith('13:30:00')) timeStr = '01:30 PM';
-    else if (payload.proposedStartDatetime.endsWith('15:00:00')) timeStr = '03:00 PM';
+    if (payload.proposedStartDatetime.includes('10:30:00')) timeStr = '10:30 AM';
+    else if (payload.proposedStartDatetime.includes('13:30:00')) timeStr = '01:30 PM';
+    else if (payload.proposedStartDatetime.includes('15:00:00')) timeStr = '03:00 PM';
+    else {
+      const match = payload.proposedStartDatetime.match(/T(\d{2}):(\d{2}):/);
+      if (match) {
+        let h = parseInt(match[1], 10);
+        const m = match[2];
+        const period = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        timeStr = `${String(h).padStart(2, '0')}:${m} ${period}`;
+      }
+    }
 
     const preferredDate = new Date(payload.proposedDate).toLocaleDateString(undefined, {
       year: 'numeric',

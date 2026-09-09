@@ -138,7 +138,7 @@ export interface EmergencyReschedulePayload {
 
 export interface PriestAvailabilityItem {
   priestId: number | string;
-  available: boolean;
+  available: boolean | null;
   reasonCode?: string;
 }
 

@@ -20,4 +20,26 @@ export const scheduleKeys = {
       date ?? "",
       eventType ?? "",
     ] as const,
+  eligiblePriests: (parishId?: number | string | null) =>
+    [...scheduleKeys.all, "eligible-priests", String(parishId ?? "")] as const,
+  recommendations: (
+    parishId?: number | string | null,
+    eventType?: string | null,
+    preferredDate?: string | null,
+    dateFrom?: string | null,
+    dateTo?: string | null,
+    preferredTimeSlot?: string | null,
+    requestedPriestId?: number | string | null
+  ) =>
+    [
+      ...scheduleKeys.all,
+      "recommendations",
+      String(parishId ?? ""),
+      eventType ?? "",
+      preferredDate ?? "",
+      dateFrom ?? "",
+      dateTo ?? "",
+      preferredTimeSlot ?? "",
+      String(requestedPriestId ?? ""),
+    ] as const,
 };

@@ -3,7 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Check, CheckCircle, Users, AlertCircle } from 'lucide-react';
 import services from '../../providers/factory';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
-import type { AvailabilityDates, SchedulingConfiguration } from '../../providers/types';
+import type {
+  AvailabilityDates,
+  EligiblePriest,
+  ScheduleRecommendationItem,
+  SchedulingConfiguration,
+} from '../../providers/types';
 import { useParishes } from '../../hooks/useService';
 import type { Appointment } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -61,8 +66,16 @@ export const EventSchedulerPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedParishId, setSelectedParishId] = useState('');
   const [selectedEventType, setSelectedEventType] = useState('');
+  const [preferredDate, setPreferredDate] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
+  const [requestedPriestId, setRequestedPriestId] = useState<number | null>(null);
+  const [eligiblePriests, setEligiblePriests] = useState<EligiblePriest[]>([]);
+  const [loadingPriests, setLoadingPriests] = useState(false);
+  const [priestsError, setPriestsError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<ScheduleRecommendationItem[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
   const [venueAddress, setVenueAddress] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [configuration, setConfiguration] = useState<SchedulingConfiguration | null>(null);
@@ -83,6 +96,9 @@ export const EventSchedulerPage: React.FC = () => {
   const selectedService = configuration?.services.find((service) => service.eventType === selectedEventType);
 
   const reqGenRef = useRef(0);
+  const recGenRef = useRef(0);
+  const priestsGenRef = useRef(0);
+  const pendingRecommendationSlotRef = useRef<string | null>(null);
 
   const reloadConfiguration = useCallback(async () => {
     if (!selectedParishId) return;
@@ -182,14 +198,83 @@ export const EventSchedulerPage: React.FC = () => {
     if (parishes.length && !selectedParishId) setSelectedParishId(parishes[0].id);
   }, [parishes, selectedParishId]);
 
+  const loadEligiblePriests = useCallback(async () => {
+    const currentGen = ++priestsGenRef.current;
+    if (!selectedParishId) {
+      setEligiblePriests([]);
+      setPriestsError(null);
+      setLoadingPriests(false);
+      return;
+    }
+    setLoadingPriests(true);
+    setPriestsError(null);
+    try {
+      const priests = await services.scheduler.getEligiblePriests(selectedParishId);
+      if (currentGen !== priestsGenRef.current) return;
+      setEligiblePriests(priests || []);
+    } catch {
+      if (currentGen !== priestsGenRef.current) return;
+      setEligiblePriests([]);
+      setPriestsError('Unable to load preferred priests. You can still proceed without a preference.');
+    } finally {
+      if (currentGen === priestsGenRef.current) {
+        setLoadingPriests(false);
+      }
+    }
+  }, [selectedParishId]);
+
+  const fetchRecommendations = useCallback(async () => {
+    const currentGen = ++recGenRef.current;
+    if (!selectedParishId || !selectedEventType || !preferredDate) {
+      setRecommendations([]);
+      setRecommendationsError(null);
+      setLoadingRecommendations(false);
+      return;
+    }
+    setLoadingRecommendations(true);
+    setRecommendationsError(null);
+    try {
+      const res = await services.scheduler.getRecommendations({
+        parishId: Number(selectedParishId),
+        eventType: selectedEventType,
+        preferredDate: preferredDate,
+        requestedPriestId: requestedPriestId || null,
+      });
+      if (currentGen !== recGenRef.current) return;
+      setRecommendations(res.recommendations || []);
+    } catch {
+      if (currentGen !== recGenRef.current) return;
+      setRecommendations([]);
+      setRecommendationsError('Unable to load recommendations. You can still choose an available time slot below.');
+    } finally {
+      if (currentGen === recGenRef.current) {
+        setLoadingRecommendations(false);
+      }
+    }
+  }, [selectedParishId, selectedEventType, preferredDate, requestedPriestId]);
+
+  useEffect(() => {
+    void fetchRecommendations();
+  }, [fetchRecommendations]);
+
   useEffect(() => {
     setSelectedEventType('');
+    setPreferredDate('');
     setSelectedDate('');
     setSelectedTimeSlot('');
+    pendingRecommendationSlotRef.current = null;
+    setRequestedPriestId(null);
+    setEligiblePriests([]);
+    setPriestsError(null);
+    setRecommendations([]);
+    setRecommendationsError(null);
     setAvailability(null);
     setAvailableSlots([]);
-    if (selectedParishId) void reloadConfiguration();
-  }, [reloadConfiguration, selectedParishId]);
+    if (selectedParishId) {
+      void reloadConfiguration();
+    }
+    void loadEligiblePriests();
+  }, [loadEligiblePriests, reloadConfiguration, selectedParishId]);
 
   useEffect(() => { void fetchProposal(); }, [fetchProposal]);
 
@@ -223,6 +308,7 @@ export const EventSchedulerPage: React.FC = () => {
     setLoadingDates(true);
     setSelectedDate('');
     setSelectedTimeSlot('');
+    pendingRecommendationSlotRef.current = null;
     void services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType)
       .then((result) => { if (currentGen === reqGenRef.current) setAvailability(result); })
       .catch(() => { if (currentGen === reqGenRef.current) { setAvailability(null); setMessage('Could not load available dates. Please try again.'); } })
@@ -236,10 +322,35 @@ export const EventSchedulerPage: React.FC = () => {
     }
     const currentGen = ++reqGenRef.current;
     setLoadingSlots(true);
-    setSelectedTimeSlot('');
+
+    const pendingSlot = pendingRecommendationSlotRef.current;
+    if (!pendingSlot) {
+      setSelectedTimeSlot('');
+    }
+
     void services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType)
-      .then((result) => { if (currentGen === reqGenRef.current) setAvailableSlots(result); })
-      .catch(() => { if (currentGen === reqGenRef.current) { setAvailableSlots([]); setMessage('Could not load available time slots. Please try again.'); } })
+      .then((result) => {
+        if (currentGen === reqGenRef.current) {
+          setAvailableSlots(result);
+          if (pendingSlot) {
+            if (result.includes(pendingSlot)) {
+              setSelectedTimeSlot(pendingSlot);
+            } else {
+              setSelectedTimeSlot('');
+              setMessage('The recommended time slot is no longer available. Please select another slot.');
+            }
+            pendingRecommendationSlotRef.current = null;
+          }
+        }
+      })
+      .catch(() => {
+        if (currentGen === reqGenRef.current) {
+          setAvailableSlots([]);
+          setSelectedTimeSlot('');
+          pendingRecommendationSlotRef.current = null;
+          setMessage('Could not load available time slots. Please try again.');
+        }
+      })
       .finally(() => { if (currentGen === reqGenRef.current) setLoadingSlots(false); });
   }, [selectedDate, selectedEventType, selectedParishId]);
 
@@ -274,6 +385,7 @@ export const EventSchedulerPage: React.FC = () => {
         timeSlot: selectedTimeSlot,
         location: venueAddress,
         remarks: additionalNotes.trim() || undefined,
+        requestedPriestId: requestedPriestId || undefined,
       });
       setCreatedBooking(appointment);
       setCurrentStep(4);
@@ -282,11 +394,19 @@ export const EventSchedulerPage: React.FC = () => {
         openProfileModal('schedule appointments');
         return;
       }
+      if (error?.code === 'INVALID_REQUESTED_PRIEST') {
+        setRequestedPriestId(null);
+        void loadEligiblePriests();
+        void fetchRecommendations();
+        setMessage('Your preferred priest is no longer available for selection at this parish. You may submit your request without a preferred priest.');
+        return;
+      }
       if (isSchedulingAvailabilityConflict(error)) {
         setSelectedTimeSlot('');
         await reloadConfiguration();
         const nextDates = await services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType);
         setAvailability(nextDates);
+        void fetchRecommendations();
         if (selectedDate && nextDates.dates.includes(selectedDate)) {
           setAvailableSlots(await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType));
         } else {
@@ -412,32 +532,169 @@ export const EventSchedulerPage: React.FC = () => {
         </div>}
         {currentStep === 2 && <div className='space-y-4 max-w-xl mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Select Booking Date</label>
-          {loadingDates ? <Skeleton className='h-80 w-full' /> : <DatePickerCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} availableDates={availability?.dates || []} />}
+          {loadingDates ? (
+            <Skeleton className='h-80 w-full' />
+          ) : (
+            <DatePickerCalendar
+              selectedDate={selectedDate}
+              onSelectDate={(date) => {
+                pendingRecommendationSlotRef.current = null;
+                setSelectedDate(date);
+                setPreferredDate(date);
+                setSelectedTimeSlot('');
+              }}
+              availableDates={availability?.dates || []}
+            />
+          )}
           {availability && !availability.serviceAvailable ? <p className='text-xs text-amber-800'>This service has no online availability right now.</p> : null}
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(1)}>Back</Button><Button onClick={handleNext} disabled={!selectedDate}>Next Step</Button></div>
         </div>}
-        {currentStep === 3 && <div className='space-y-4 max-w-xl mx-auto'>
-          <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Available Time Slots</label>
-          {loadingSlots ? <div className='grid grid-cols-2 gap-3'><Skeleton className='h-12 w-full' /><Skeleton className='h-12 w-full' /></div> : null}
-          {!loadingSlots && !availableSlots.length ? <p className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800'>No time slots are available for this date. Choose another date.</p> : null}
-          {!loadingSlots && availableSlots.length > 0 && (
-            <div className='grid grid-cols-2 sm:grid-cols-3 gap-3'>
-              {availableSlots.map((slot) => (
+        {currentStep === 3 && <div className='space-y-5 max-w-xl mx-auto'>
+          <div className='space-y-1.5'>
+            <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>
+              Preferred Priest (Optional)
+            </label>
+            <p className='text-xs text-text-muted'>
+              Preference only. Final assignment is determined by the parish.
+            </p>
+            <CustomSelect
+              value={requestedPriestId ? String(requestedPriestId) : ''}
+              onChange={(val) => setRequestedPriestId(val ? Number(val) : null)}
+              placeholder="No priest preference"
+              options={[
+                { value: '', label: 'No priest preference' },
+                ...eligiblePriests.map((priest) => ({
+                  value: String(priest.id),
+                  label: `${priest.name}${priest.isAssistant ? ' (Assistant Priest)' : ''}`,
+                })),
+              ]}
+              disabled={loadingPriests}
+            />
+            {priestsError && (
+              <div className='flex items-center justify-between p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800'>
+                <span>{priestsError}</span>
                 <button
-                  key={slot}
                   type='button'
-                  onClick={() => setSelectedTimeSlot(slot)}
-                  className={`p-3.5 border rounded-xl text-xs font-bold ${
-                    selectedTimeSlot === slot
-                      ? 'border-crimson bg-crimson text-white'
-                      : 'border-border text-text-primary bg-white hover:bg-red-50'
-                  }`}
+                  onClick={() => void loadEligiblePriests()}
+                  className='text-crimson font-bold hover:underline ml-2 flex-shrink-0'
                 >
-                  {slot}
+                  Retry
                 </button>
-              ))}
+              </div>
+            )}
+          </div>
+
+          <div className='space-y-2 pt-2 border-t border-border/40'>
+            <div className='flex items-center justify-between'>
+              <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>
+                Suggested Times
+              </label>
+              <span className='text-[11px] text-text-muted'>Based on your preferences</span>
             </div>
-          )}
+            {requestedPriestId ? (
+              <p className='text-xs text-text-muted'>
+                Your preferred priest may not be available for every suggested time. The parish can still assign another priest.
+              </p>
+            ) : null}
+            {loadingRecommendations ? (
+              <div className='grid grid-cols-1 sm:grid-cols-2 gap-2.5'>
+                <Skeleton className='h-16 w-full' />
+                <Skeleton className='h-16 w-full' />
+              </div>
+            ) : recommendationsError ? (
+              <div className='flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800'>
+                <span>{recommendationsError}</span>
+                <button
+                  type='button'
+                  onClick={() => void fetchRecommendations()}
+                  className='text-crimson font-bold hover:underline ml-2 flex-shrink-0'
+                >
+                  Retry
+                </button>
+              </div>
+            ) : recommendations.length > 0 ? (
+              <div className='grid grid-cols-1 sm:grid-cols-2 gap-2.5'>
+                {recommendations.slice(0, 6).map((rec) => {
+                  const isSelected = selectedDate === rec.date && selectedTimeSlot === rec.timeSlot;
+                  return (
+                    <button
+                      key={`${rec.date}-${rec.timeSlot}`}
+                      type='button'
+                      onClick={() => {
+                        pendingRecommendationSlotRef.current = rec.timeSlot;
+                        setSelectedDate(rec.date);
+                        setSelectedTimeSlot(rec.timeSlot);
+                        // preferredDate anchor remains unchanged!
+                      }}
+                      className={`p-3 border rounded-xl text-left transition-all flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-crimson bg-red-50 text-crimson font-semibold ring-1 ring-crimson'
+                          : 'border-border text-text-primary bg-white hover:bg-app-page'
+                      }`}
+                    >
+                      <div className='flex items-center justify-between'>
+                        <span className='text-xs font-bold'>{rec.date}</span>
+                        <span className='text-xs font-semibold'>{rec.timeSlot}</span>
+                      </div>
+                      <div className='flex flex-wrap gap-1 mt-2'>
+                        {rec.reasons.includes('PREFERRED_DATE') && (
+                          <span className='px-1.5 py-0.5 text-[10px] rounded bg-blue-50 text-blue-700 font-medium'>Preferred Date</span>
+                        )}
+                        {rec.reasons.includes('PREFERRED_TIME') && (
+                          <span className='px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-700 font-medium'>Preferred Time</span>
+                        )}
+                        {rec.preferredPriestAvailable === true && (
+                          <span
+                            title="Your preferred priest is available at this time."
+                            className='px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700 font-medium'
+                          >
+                            Preferred Priest Available
+                          </span>
+                        )}
+                        {rec.preferredPriestAvailable === false && (
+                          <span
+                            title="Your preferred priest is unavailable at this time, but another priest may be assigned."
+                            className='px-1.5 py-0.5 text-[10px] rounded bg-amber-50 text-amber-700 font-medium'
+                          >
+                            Preferred Priest Unavailable
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className='text-xs text-text-muted italic'>No suggested times found for this window. Please choose from the available slots below.</p>
+            )}
+          </div>
+
+          <div className='space-y-2 pt-2 border-t border-border/40'>
+            <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>
+              Available Time Slots {selectedDate ? `(${selectedDate})` : ''}
+            </label>
+            {loadingSlots ? <div className='grid grid-cols-2 gap-3'><Skeleton className='h-12 w-full' /><Skeleton className='h-12 w-full' /></div> : null}
+            {!loadingSlots && !availableSlots.length ? <p className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800'>No time slots are available for this date. Choose another date.</p> : null}
+            {!loadingSlots && availableSlots.length > 0 && (
+              <div className='grid grid-cols-2 sm:grid-cols-3 gap-3'>
+                {availableSlots.map((slot) => (
+                  <button
+                    key={slot}
+                    type='button'
+                    onClick={() => setSelectedTimeSlot(slot)}
+                    className={`p-3.5 border rounded-xl text-xs font-bold ${
+                      selectedTimeSlot === slot
+                        ? 'border-crimson bg-crimson text-white'
+                        : 'border-border text-text-primary bg-white hover:bg-red-50'
+                    }`}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Venue or location note (optional)</label>
           <input value={venueAddress} onChange={(event) => setVenueAddress(event.target.value)} className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary' placeholder='Add a relevant location detail' />
 
@@ -455,10 +712,10 @@ export const EventSchedulerPage: React.FC = () => {
               onChange={(e) => setAdditionalNotes(e.target.value.slice(0, 500))}
               rows={3}
               className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary resize-none'
-              placeholder='e.g. Wheelchair accessibility, elderly attendee assistance, or priest preference'
+              placeholder='e.g. Wheelchair accessibility or elderly attendee assistance'
             />
             <p className="text-[11px] text-text-muted italic">
-              Priest requests are subject to availability and are not guaranteed.
+              General notes for the parish office regarding this request.
             </p>
           </div>
 

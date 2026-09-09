@@ -100,16 +100,19 @@ describe("Phase 5A: Schedule Presentation and Manila-safe Date Helpers", () => {
 });
 
 describe("Phase 5A: Remarks Normalization & Canonical Idempotency Signatures", () => {
-  it("normalizes remarks identically to backend canonical hashing", () => {
+  it("normalizes remarks identically to backend canonical hashing (trims outer whitespace, preserves internal whitespace)", () => {
     expect(normalizeScheduleRemarks("")).toBe("");
     expect(normalizeScheduleRemarks(null)).toBe("");
     expect(normalizeScheduleRemarks("   ")).toBe("");
     expect(normalizeScheduleRemarks("  House   Blessing   with Family  ")).toBe(
-      "House Blessing with Family"
+      "House   Blessing   with Family"
+    );
+    expect(normalizeScheduleRemarks("  Please prepare certificate  ")).toBe(
+      "Please prepare certificate"
     );
   });
 
-  it("generates identical canonical signature when whitespace differs in non-semantic ways", () => {
+  it("generates identical canonical signature when outer whitespace differs, but distinguishes internal whitespace", () => {
     const base = {
       parishId: 1,
       eventType: "BAPTISM",
@@ -118,21 +121,40 @@ describe("Phase 5A: Remarks Normalization & Canonical Idempotency Signatures", (
       remarks: "Please prepare certificate",
     };
 
-    const sameNormalized = {
+    const sameOuterWhitespace = {
       parishId: "1",
       eventType: "baptism",
       date: "2026-09-01T00:00:00.000Z",
       timeSlot: " 08:00 AM ",
-      remarks: "  Please   prepare   certificate  ",
+      remarks: "  Please prepare certificate  ",
     };
 
     expect(makeSchedulePayloadSignature(base)).toBe(
-      makeSchedulePayloadSignature(sameNormalized)
+      makeSchedulePayloadSignature(sameOuterWhitespace)
+    );
+
+    // Internal whitespace differences are preserved and produce distinct signatures
+    const differentInternalWhitespace = {
+      ...base,
+      remarks: "Please   prepare   certificate",
+    };
+
+    expect(makeSchedulePayloadSignature(base)).not.toBe(
+      makeSchedulePayloadSignature(differentInternalWhitespace)
+    );
+
+    // requestedPriestId is part of identity
+    const withPriest = {
+      ...base,
+      requestedPriestId: 5,
+    };
+    expect(makeSchedulePayloadSignature(base)).not.toBe(
+      makeSchedulePayloadSignature(withPriest)
     );
   });
 
   it("changes signature and triggers new key when ANY of the 5 canonical fields changes", () => {
-    const base = {
+    const base: Parameters<typeof makeSchedulePayloadSignature>[0] = {
       parishId: 1,
       eventType: "BAPTISM",
       date: "2026-09-01",
@@ -142,7 +164,7 @@ describe("Phase 5A: Remarks Normalization & Canonical Idempotency Signatures", (
 
     let currentSig = "";
     let currentKey = "";
-    const getKey = (payload: typeof base) => {
+    const getKey = (payload: Parameters<typeof makeSchedulePayloadSignature>[0]) => {
       const sig = makeSchedulePayloadSignature(payload);
       if (currentSig === sig && currentKey) {
         return currentKey;
@@ -175,10 +197,14 @@ describe("Phase 5A: Remarks Normalization & Canonical Idempotency Signatures", (
     // 5. Change remarks -> new key
     const kRemarks = getKey({ ...base, remarks: "Updated notes with sponsor names" });
     expect(kRemarks).not.toBe(kSlot);
+
+    // 6. Change requestedPriestId -> new key
+    const kPriest = getKey({ ...base, requestedPriestId: 50 });
+    expect(kPriest).not.toBe(kRemarks);
   });
 });
 
-describe("Phase 5A: Schedule Query Keys UID Scoping", () => {
+describe("Phase 5: Schedule Query Keys UID Scoping and Recommendations Key", () => {
   it("scopes schedule lists and detail by user ID to prevent data leakage", () => {
     const user1List = scheduleKeys.lists(101, "upcoming");
     const user2List = scheduleKeys.lists(202, "upcoming");
@@ -200,6 +226,31 @@ describe("Phase 5A: Schedule Query Keys UID Scoping", () => {
       "1",
       "2026-09-01",
       "BAPTISM",
+    ]);
+
+    const eligiblePriestsKey = scheduleKeys.eligiblePriests(1);
+    expect(eligiblePriestsKey).toEqual(["schedules", "eligible-priests", "1"]);
+
+    // Complete 7-parameter recommendation key (Section 34)
+    const recKey = scheduleKeys.recommendations(
+      1,
+      "BAPTISM",
+      "2026-09-15",
+      "2026-09-10",
+      "2026-09-20",
+      "08:00 AM",
+      42
+    );
+    expect(recKey).toEqual([
+      "schedules",
+      "recommendations",
+      "1",
+      "BAPTISM",
+      "2026-09-15",
+      "2026-09-10",
+      "2026-09-20",
+      "08:00 AM",
+      "42",
     ]);
   });
 });

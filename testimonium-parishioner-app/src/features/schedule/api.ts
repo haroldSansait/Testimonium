@@ -10,6 +10,9 @@ import { scheduleKeys } from "./queryKeys";
 import type {
   AvailabilityDatesResponse,
   CreateSchedulePayload,
+  EligiblePriest,
+  RecommendationRequestPayload,
+  ScheduleRecommendationsResponse,
   SchedulingConfiguration,
   ScheduleItem,
   ScheduleListResponse,
@@ -173,6 +176,69 @@ export const useAvailableSlots = (
     queryFn: ({ signal }) => fetchAvailableSlots(parishId!, date!, eventType!, signal),
     enabled: Boolean(parishId && date && eventType),
     staleTime: 0,
+    ...options,
+  });
+};
+
+export const fetchEligiblePriests = async (
+  parishId: number | string,
+  signal?: AbortSignal
+): Promise<EligiblePriest[]> => {
+  const queryParams = new URLSearchParams({ parishId: String(parishId) });
+  const res = await apiClient.request<EligiblePriest[]>({
+    path: `/schedule-requests/eligible-priests?${queryParams.toString()}`,
+    signal,
+    auth: true,
+  });
+  return Array.isArray(res) ? res : [];
+};
+
+export const useEligiblePriests = (
+  parishId?: number | string | null,
+  options?: Partial<UseQueryOptions<EligiblePriest[]>>
+) => {
+  return useQuery<EligiblePriest[]>({
+    queryKey: scheduleKeys.eligiblePriests(parishId),
+    queryFn: ({ signal }) => fetchEligiblePriests(parishId!, signal),
+    enabled: Boolean(parishId),
+    staleTime: 60 * 1000,
+    ...options,
+  });
+};
+
+export const fetchRecommendations = async (
+  payload: RecommendationRequestPayload,
+  signal?: AbortSignal
+): Promise<ScheduleRecommendationsResponse> => {
+  return apiClient.request<ScheduleRecommendationsResponse>({
+    path: "/schedule-requests/recommendations",
+    method: "POST",
+    body: payload,
+    signal,
+    auth: true,
+  });
+};
+
+export const useRecommendations = (
+  payload?: RecommendationRequestPayload | null,
+  options?: Partial<UseQueryOptions<ScheduleRecommendationsResponse>>
+) => {
+  const isEnabled = Boolean(
+    payload?.parishId && payload?.eventType && payload?.preferredDate
+  );
+  return useQuery<ScheduleRecommendationsResponse>({
+    queryKey: scheduleKeys.recommendations(
+      payload?.parishId,
+      payload?.eventType,
+      payload?.preferredDate,
+      payload?.dateFrom,
+      payload?.dateTo,
+      payload?.preferredTimeSlot,
+      payload?.requestedPriestId
+    ),
+    queryFn: ({ signal }) => fetchRecommendations(payload!, signal),
+    enabled: isEnabled,
+    staleTime: 30 * 1000,
     ...options,
   });
 };

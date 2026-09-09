@@ -3,6 +3,11 @@ import { resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatal
 import { CANONICAL_SCHEDULE_EVENT_TYPES } from "../services/BookingValidator.js";
 import { prisma } from "../config/db.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
+import {
+  getScheduleRecommendations,
+  getEligiblePriestsForParish,
+  normalizeParishId,
+} from "../services/ScheduleAvailabilityDomainService.js";
 
 const scheduleService = new ScheduleService();
 
@@ -100,7 +105,7 @@ export const getByTracking = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { parishId, eventType, date, timeSlot, remarks } = req.body;
+    const { parishId, eventType, date, timeSlot, remarks, requestedPriestId } = req.body;
     const idempotencyKey = req.headers["idempotency-key"] || null;
 
     // Profile completion requirement for parishioners
@@ -137,6 +142,7 @@ export const create = async (req, res, next) => {
       requestedDate: date,
       timeSlot,
       remarks,
+      requestedPriestId,
     }, idempotencyKey);
 
     return res.status(201).json({
@@ -244,6 +250,59 @@ export const getAvailableSlots = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: slots,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getRecommendations = async (req, res, next) => {
+  try {
+    const {
+      parishId,
+      eventType,
+      preferredDate,
+      dateFrom,
+      dateTo,
+      preferredTimeSlot,
+      requestedPriestId,
+    } = req.body;
+
+    const result = await getScheduleRecommendations(
+      {
+        parishId,
+        eventType,
+        preferredDate,
+        dateFrom,
+        dateTo,
+        preferredTimeSlot,
+        requestedPriestId,
+      },
+      req.user
+    );
+
+    return res.status(200).json(result);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getEligiblePriests = async (req, res, next) => {
+  try {
+    const { parishId } = req.query;
+    if (!parishId) {
+      return res.status(400).json({
+        success: false,
+        message: "parishId query parameter is required.",
+      });
+    }
+
+    const parsedParishId = normalizeParishId(parishId);
+    const data = await getEligiblePriestsForParish(parsedParishId, req.user);
+
+    return res.status(200).json({
+      success: true,
+      data,
     });
   } catch (err) {
     return next(err);

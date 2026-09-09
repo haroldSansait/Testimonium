@@ -28,6 +28,7 @@ export function computeSchedulePayloadHash(payload) {
     requestedDate: String(payload.requestedDate || payload.date || "").split("T")[0].trim(),
     timeSlot: String(payload.timeSlot || "").trim().toUpperCase(),
     remarks: String(payload.remarks || "").trim(),
+    requestedPriestId: payload.requestedPriestId ? Number(payload.requestedPriestId) : null,
   };
   return crypto
     .createHash("sha256")

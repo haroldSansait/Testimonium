@@ -206,6 +206,24 @@ export function validateParishAvailability(availabilities, dateStr) {
   return true;
 }
 
+export function normalizeTimeSlotString(value) {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = match[2];
+  const period = match[3].toUpperCase();
+  if (hour < 1 || hour > 12) return null;
+  return `${String(hour).padStart(2, "0")}:${minute} ${period}`;
+}
+
+export function extractScheduleTimeSlot(schedule) {
+  if (!schedule || typeof schedule.remarks !== "string") return null;
+  const match = schedule.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+  if (!match) return null;
+  return normalizeTimeSlotString(match[1]) || match[1].trim().toUpperCase();
+}
+
 /**
  * Validates that the requested slot is in allowable slots, and daily & slot capacities are not exceeded.
  */
@@ -216,8 +234,8 @@ export function validateSlotAndCapacity(
   customDailyLimit,
   customSlotLimit
 ) {
-  const normSlot = timeSlot.trim().toUpperCase();
-  const normalizedAllowable = (allowableSlots || []).map((s) => s.trim().toUpperCase());
+  const normSlot = normalizeTimeSlotString(timeSlot) || timeSlot.trim().toUpperCase();
+  const normalizedAllowable = (allowableSlots || []).map((s) => normalizeTimeSlotString(s) || s.trim().toUpperCase());
 
   if (
     !Array.isArray(allowableSlots) ||
@@ -252,15 +270,10 @@ export function validateSlotAndCapacity(
     throw err;
   }
 
-  // Count active bookings for this specific slot
+  // Count active bookings for this specific slot using the canonical slot identity
   const slotCount = activeBookings.filter((s) => {
-    if (s.remarks) {
-      const match = s.remarks.match(/Time Slot:\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
-      if (match && match[1].trim().toUpperCase() === normSlot) {
-        return true;
-      }
-    }
-    return false;
+    const sSlot = extractScheduleTimeSlot(s);
+    return sSlot && sSlot === normSlot;
   }).length;
 
   const slotLimit = customSlotLimit;
@@ -288,6 +301,7 @@ export function parseTimeSlotMinutes(value) {
 }
 
 /**
+ * @deprecated Legacy conflict validator retained for test compatibility only. Use ConflictHelper / ScheduleAvailabilityDomainService.
  * Validates assigned priest availability against priest's schedules and parish events.
  */
 export function validatePriestConflict(priestSchedules, parishEvents, requestedDateStr, timeSlot, ignoreScheduleId = null) {

@@ -43,40 +43,45 @@ export async function lockParishSchedulingConfiguration(client, parishId) {
 }
 
 /**
- * Strictly validates and normalizes a priest ID.
+ * Strictly validates and normalizes a positive safe integer ID.
  * Required accepted input:
  * - positive safe integer number
  * OR
  * - strict digit-only string representing positive safe integer
  *
- * Rejects: null, undefined, 0, -1, 1.5, "1.5", "123junk", " 123junk", "abc", "", NaN, Infinity.
- *
- * @param {*} priestId
- * @returns {number}
+ * Rejects: null, undefined, 0, -1, 1.5, "1.5", "123junk", " 123junk", "abc", "", NaN, Infinity, unsafe integers.
  */
-export function normalizePriestId(priestId) {
-  if (typeof priestId === "string") {
-    if (!/^\d+$/.test(priestId)) {
-      const error = new Error("Invalid priest ID. Must be a positive integer.");
+export function normalizePositiveSafeInt(value, fieldLabel = "ID", code = "INVALID_ID") {
+  if (typeof value === "string") {
+    if (!/^\d+$/.test(value)) {
+      const error = new Error(`Invalid ${fieldLabel}. Must be a positive integer.`);
       error.statusCode = 400;
-      error.code = "INVALID_PRIEST_ID";
+      error.code = code;
       throw error;
     }
-  } else if (typeof priestId !== "number") {
-    const error = new Error("Invalid priest ID. Must be a positive integer.");
+  } else if (typeof value !== "number") {
+    const error = new Error(`Invalid ${fieldLabel}. Must be a positive integer.`);
     error.statusCode = 400;
-    error.code = "INVALID_PRIEST_ID";
+    error.code = code;
     throw error;
   }
 
-  const numericId = Number(priestId);
+  const numericId = Number(value);
   if (!Number.isSafeInteger(numericId) || numericId <= 0) {
-    const error = new Error("Invalid priest ID. Must be a positive integer.");
+    const error = new Error(`Invalid ${fieldLabel}. Must be a positive integer.`);
     error.statusCode = 400;
-    error.code = "INVALID_PRIEST_ID";
+    error.code = code;
     throw error;
   }
   return numericId;
+}
+
+export function normalizePriestId(priestId) {
+  return normalizePositiveSafeInt(priestId, "priest ID", "INVALID_PRIEST_ID");
+}
+
+export function normalizeParishId(parishId) {
+  return normalizePositiveSafeInt(parishId, "parish ID", "INVALID_PARISH_ID");
 }
 
 /**

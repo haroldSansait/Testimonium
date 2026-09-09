@@ -8,6 +8,8 @@ import {
   getConfiguration,
   getAvailabilityDates,
   getAvailableSlots,
+  getEligiblePriests,
+  getRecommendations,
   updateStatus,
   proposeReschedule,
   respondReschedule,
@@ -27,6 +29,7 @@ import {
   priestAssignmentResponseSchema,
   emergencyRescheduleSchema,
 } from "../validators/scheduleSchemas.js";
+import { scheduleRecommendationsSchema } from "../validators/recommendationSchemas.js";
 
 const router = Router();
 
@@ -36,6 +39,8 @@ router.get("/", list);
 router.get("/configuration", getConfiguration);
 router.get("/availability-dates", getAvailabilityDates);
 router.get("/available-slots", getAvailableSlots);
+router.get("/eligible-priests", getEligiblePriests);
+router.post("/recommendations", validateBody(scheduleRecommendationsSchema), getRecommendations);
 router.post("/", validateBody(createScheduleSchema), create);
 
 router.get("/tracking/:reference", getByTracking);

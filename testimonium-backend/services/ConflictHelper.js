@@ -2,7 +2,15 @@ import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
 
 const MANILA_TIME_ZONE = "Asia/Manila";
-const MASS_CONFLICT_DURATION_MS = 60 * 60 * 1000;
+export const MASS_CONFLICT_DURATION_MS = 60 * 60 * 1000;
+export const OPERATIONAL_SLOT_DURATION_MS = MASS_CONFLICT_DURATION_MS;
+
+export function computeOperationalEndDatetime(startDatetime) {
+  const start = startDatetime instanceof Date ? startDatetime : new Date(startDatetime);
+  if (Number.isNaN(start.getTime())) return null;
+  return new Date(start.getTime() + MASS_CONFLICT_DURATION_MS);
+}
+
 export const BLOCKING_SCHEDULE_STATUSES = [
   "PENDING",
   "REQUESTED",
@@ -36,6 +44,38 @@ export function getManilaDateString(dateInput = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).format(date);
+}
+
+export function isValidStrictManilaDate(dateStr) {
+  if (typeof dateStr !== "string") return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const [yearStr, monthStr, dayStr] = dateStr.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(utc.getTime())) return false;
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() + 1 !== month ||
+    utc.getUTCDate() !== day
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function parseStrictManilaDateOnly(dateInput) {
+  if (!dateInput) return null;
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    const datePart = trimmed.slice(0, 10);
+    if (!isValidStrictManilaDate(datePart)) return null;
+  }
+  return parseManilaDateOnly(dateInput);
 }
 
 export function parseManilaDateOnly(dateInput) {
@@ -524,4 +564,135 @@ export class ConflictHelper {
       );
     }
   }
+}
+
+/**
+ * Pure snapshot evaluator for priest availability across 5 canonical conflict sources.
+ * In-memory evaluation against pre-fetched bounded snapshot.
+ *
+ * Distinguishes expected domain unavailability (returns { available: false, reason })
+ * from unexpected programming/system errors (throws).
+ *
+ * @param {object} snapshot Pre-loaded conflict data { leaves, schedules, events, massTemplates, personalSchedules }
+ * @param {Date} candidateStart Canonical start instant (Date object)
+ * @param {Date} candidateEnd Operational end instant (Date object)
+ * @returns {{ available: boolean, reason?: string }}
+ */
+export function evaluatePriestConflictFromSnapshot(snapshot, candidateStart, candidateEnd) {
+  if (
+    !snapshot ||
+    typeof snapshot !== "object" ||
+    !Array.isArray(snapshot.leaves) ||
+    !Array.isArray(snapshot.schedules) ||
+    !Array.isArray(snapshot.events) ||
+    !Array.isArray(snapshot.massTemplates) ||
+    !Array.isArray(snapshot.personalSchedules)
+  ) {
+    throw new Error("Invalid conflict snapshot: required array collections missing.");
+  }
+
+  const start = candidateStart instanceof Date ? candidateStart : new Date(candidateStart);
+  const end = candidateEnd instanceof Date ? candidateEnd : new Date(candidateEnd);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+    throw new Error("Invalid candidate interval: start and end must be valid dates with end > start.");
+  }
+
+  const coveredDates = getCoveredManilaDates(start, start, end);
+  const databaseDates = coveredDates.map((item) => item.databaseDate);
+
+  // 1. PRIEST_LEAVE check
+  for (const leave of snapshot.leaves) {
+    if (!leave.startDate || !leave.endDate) {
+      throw new Error("Malformed leave record in snapshot: missing startDate or endDate.");
+    }
+    const lStart = leave.startDate instanceof Date ? leave.startDate : new Date(leave.startDate);
+    const lEnd = leave.endDate instanceof Date ? leave.endDate : new Date(leave.endDate);
+    if (Number.isNaN(lStart.getTime()) || Number.isNaN(lEnd.getTime())) {
+      throw new Error("Malformed leave record in snapshot: invalid date values.");
+    }
+
+    for (const dbDate of databaseDates) {
+      if (dbDate.getTime() >= lStart.getTime() && dbDate.getTime() <= lEnd.getTime()) {
+        return { available: false, reason: "PRIEST_ON_LEAVE" };
+      }
+    }
+  }
+
+  // 2. Assigned Blocking Schedules check
+  for (const existing of snapshot.schedules) {
+    if (existing.status && !BLOCKING_SCHEDULE_STATUSES.includes(existing.status)) continue;
+
+    const resolved = resolveScheduleConflictInterval(existing, { allowUnresolved: true });
+    if (resolved.unresolved || !resolved.start || !resolved.end) {
+      // Fail closed for unresolvable legacy schedule
+      return { available: false, reason: "UNRESOLVED_SCHEDULE_INTERVAL" };
+    }
+
+    if (resolved.start < end && resolved.end > start) {
+      return { available: false, reason: "OVERLAP_SCHEDULE" };
+    }
+  }
+
+  // 3. Parish Events check
+  for (const event of snapshot.events) {
+    if (event.isActive === false) continue;
+    if (!event.startTime) {
+      return { available: false, reason: "PRIEST_AVAILABILITY_UNDETERMINED" };
+    }
+    const eventStart = parseManilaDateTime(event.eventDate, event.startTime);
+    if (!eventStart) {
+      return { available: false, reason: "PRIEST_AVAILABILITY_UNDETERMINED" };
+    }
+    let eventEnd = null;
+    if (event.endTime) {
+      eventEnd = parseManilaDateTime(event.eventDate, event.endTime);
+      if (!eventEnd) {
+        return { available: false, reason: "PRIEST_AVAILABILITY_UNDETERMINED" };
+      }
+    } else {
+      eventEnd = new Date(eventStart.getTime() + MASS_CONFLICT_DURATION_MS);
+    }
+
+    if (eventStart < end && eventEnd > start) {
+      return { available: false, reason: "OVERLAP_EVENT" };
+    }
+  }
+
+  // 4. Mass Schedule Templates check
+  for (const template of snapshot.massTemplates) {
+    if (template.isActive === false) continue;
+    for (const item of coveredDates) {
+      if (!massTemplateAppliesOnDate(template.dayType, item.dateStr)) continue;
+      if (!template.timeSlot) {
+        return { available: false, reason: "PRIEST_AVAILABILITY_UNDETERMINED" };
+      }
+      const massStart = parseManilaDateTime(item.dateStr, template.timeSlot);
+      if (!massStart) {
+        return { available: false, reason: "PRIEST_AVAILABILITY_UNDETERMINED" };
+      }
+      const massEnd = new Date(massStart.getTime() + MASS_CONFLICT_DURATION_MS);
+      if (massStart < end && massEnd > start) {
+        return { available: false, reason: "OVERLAP_MASS_TEMPLATE" };
+      }
+    }
+  }
+
+  // 5. Priest Personal Schedules check
+  for (const personal of snapshot.personalSchedules) {
+    if (!personal.startAt || !personal.endAt) {
+      throw new Error("Malformed personal schedule in snapshot: missing startAt or endAt.");
+    }
+    const pStart = personal.startAt instanceof Date ? personal.startAt : new Date(personal.startAt);
+    const pEnd = personal.endAt instanceof Date ? personal.endAt : new Date(personal.endAt);
+    if (Number.isNaN(pStart.getTime()) || Number.isNaN(pEnd.getTime())) {
+      throw new Error("Malformed personal schedule in snapshot: invalid date values.");
+    }
+
+    if (pStart < end && pEnd > start) {
+      return { available: false, reason: "OVERLAP_PERSONAL_SCHEDULE" };
+    }
+  }
+
+  return { available: true };
 }

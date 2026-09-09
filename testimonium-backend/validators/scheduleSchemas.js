@@ -7,8 +7,23 @@ const isoInstant = z.string().refine(
   "Expected an ISO-8601 timestamp with an explicit UTC offset."
 );
 
+export const strictPositiveIntSchema = z.union([
+  z.number().int().positive().refine((val) => Number.isSafeInteger(val), "Must be a safe integer"),
+  z.string().regex(/^\d+$/, "Must be digits only").transform((val, ctx) => {
+    const num = Number(val);
+    if (!Number.isSafeInteger(num) || num <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Must be a positive safe integer",
+      });
+      return z.NEVER;
+    }
+    return num;
+  }),
+]);
+
 export const createScheduleSchema = z.object({
-  parishId: z.coerce.number().int().positive("Parish ID must be a positive integer"),
+  parishId: strictPositiveIntSchema,
   eventType: z.string({
     required_error: "Event type is required"
   }).min(1, "Event type cannot be empty").refine(
@@ -28,6 +43,7 @@ export const createScheduleSchema = z.object({
   }).min(1, "Time slot cannot be empty"),
   displayTitle: z.string().optional().nullable(),
   remarks: z.string().max(1000, "Additional notes cannot exceed 1000 characters").optional().nullable(),
+  requestedPriestId: strictPositiveIntSchema.optional().nullable(),
 });
 
 export const updateScheduleStatusSchema = z.object({

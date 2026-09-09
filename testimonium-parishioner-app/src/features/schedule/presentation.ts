@@ -19,11 +19,11 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 
 /**
  * Normalizes remarks identically to the backend canonical hash logic:
- * trims outer whitespace and collapses multiple whitespace characters to single spaces.
+ * trims outer whitespace only (does not collapse internal whitespace).
  */
 export const normalizeScheduleRemarks = (remarks?: string | null): string => {
   if (!remarks || typeof remarks !== "string") return "";
-  return remarks.trim().replace(/\s+/g, " ");
+  return remarks.trim();
 };
 
 /**
@@ -37,13 +37,15 @@ export const makeSchedulePayloadSignature = (payload: {
   date: string;
   timeSlot: string;
   remarks?: string | null;
+  requestedPriestId?: number | null;
 }): string => {
   const normParish = Number(payload.parishId);
   const normEvent = String(payload.eventType || "").toUpperCase().trim();
   const normDate = String(payload.date || "").split("T")[0].trim();
   const normSlot = String(payload.timeSlot || "").trim().toUpperCase();
   const normRemarks = normalizeScheduleRemarks(payload.remarks);
-  return `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}`;
+  const normPriest = payload.requestedPriestId ? String(payload.requestedPriestId) : "";
+  return `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}|${normPriest}`;
 };
 
 /**
@@ -200,3 +202,61 @@ export const getScheduleStatusBadge = (status: ScheduleStatus): StatusBadgeInfo 
 export const isRescheduleProposalPending = (status: ScheduleStatus): boolean => {
   return status === "PROPOSED_RESCHEDULE" || status === "WAITING_PARISHIONER_RESPONSE";
 };
+
+export interface RecommendationBadgeItem {
+  key: string;
+  label: string;
+  variant: "date" | "time" | "priest-available" | "priest-unavailable";
+  accessibilityLabel: string;
+}
+
+export const PREFERRED_PRIEST_HELPER_COPY =
+  "Your preferred priest may not be available for every suggested time. The parish can still assign another priest.";
+
+export const PREFERRED_PRIEST_AVAILABLE_LABEL = "Preferred Priest Available";
+export const PREFERRED_PRIEST_UNAVAILABLE_LABEL = "Preferred Priest Unavailable";
+
+export const PREFERRED_PRIEST_AVAILABLE_TOOLTIP =
+  "Your preferred priest is available at this time.";
+export const PREFERRED_PRIEST_UNAVAILABLE_TOOLTIP =
+  "Your preferred priest is unavailable at this time, but another priest may be assigned.";
+
+export const getRecommendationBadges = (rec: {
+  reasons?: string[];
+  preferredPriestAvailable?: boolean;
+}): RecommendationBadgeItem[] => {
+  const badges: RecommendationBadgeItem[] = [];
+  if (rec.reasons?.includes("PREFERRED_DATE")) {
+    badges.push({
+      key: "preferred_date",
+      label: "Preferred Date",
+      variant: "date",
+      accessibilityLabel: "Preferred Date",
+    });
+  }
+  if (rec.reasons?.includes("PREFERRED_TIME")) {
+    badges.push({
+      key: "preferred_time",
+      label: "Preferred Time",
+      variant: "time",
+      accessibilityLabel: "Preferred Time",
+    });
+  }
+  if (rec.preferredPriestAvailable === true) {
+    badges.push({
+      key: "preferred_priest_available",
+      label: PREFERRED_PRIEST_AVAILABLE_LABEL,
+      variant: "priest-available",
+      accessibilityLabel: PREFERRED_PRIEST_AVAILABLE_TOOLTIP,
+    });
+  } else if (rec.preferredPriestAvailable === false) {
+    badges.push({
+      key: "preferred_priest_unavailable",
+      label: PREFERRED_PRIEST_UNAVAILABLE_LABEL,
+      variant: "priest-unavailable",
+      accessibilityLabel: PREFERRED_PRIEST_UNAVAILABLE_TOOLTIP,
+    });
+  }
+  return badges;
+};
+

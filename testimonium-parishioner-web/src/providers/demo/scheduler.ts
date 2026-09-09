@@ -99,6 +99,35 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     return slots;
   }
 
+  async getEligiblePriests(_parishId: string): Promise<import('../types').EligiblePriest[]> {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return [
+      { id: 101, name: 'Fr. Juan Dela Cruz', isAssistant: false },
+      { id: 102, name: 'Fr. Pedro Santos', isAssistant: true },
+    ];
+  }
+
+  async getRecommendations(payload: import('../types').RecommendationRequestPayload): Promise<import('../types').ScheduleRecommendationsResponse> {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const recs: import('../types').ScheduleRecommendationItem[] = [
+      {
+        date: payload.preferredDate,
+        timeSlot: payload.preferredTimeSlot || '09:30 AM',
+        startAt: `${payload.preferredDate}T09:30:00+08:00`,
+        preferredPriestAvailable: payload.requestedPriestId ? true : undefined,
+        reasons: ['PREFERRED_DATE', ...(payload.requestedPriestId ? ['PREFERRED_PRIEST_AVAILABLE' as const] : [])],
+      },
+    ];
+    return {
+      parishId: payload.parishId,
+      eventType: payload.eventType,
+      preferredDate: payload.preferredDate,
+      window: { from: payload.preferredDate, to: payload.preferredDate },
+      generatedAt: new Date().toISOString(),
+      recommendations: recs,
+    };
+  }
+
   async bookAppointment(appointment: {
     parishId: string;
     eventType: string;
@@ -107,6 +136,7 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     timeSlot: string;
     location?: string;
     remarks?: string;
+    requestedPriestId?: number | null;
   }): Promise<Appointment> {
     await new Promise(resolve => setTimeout(resolve, 400));
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);
@@ -121,6 +151,8 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
       confirmationNumber,
       remarks: appointment.remarks || null,
       notes: appointment.remarks || null,
+      requestedPriestId: appointment.requestedPriestId || null,
+      requestedPriestName: appointment.requestedPriestId ? (appointment.requestedPriestId === 101 ? 'Fr. Juan Dela Cruz' : 'Fr. Pedro Santos') : null,
     };
     this.appointments.unshift(newAppointment);
     this.save();

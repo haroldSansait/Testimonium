@@ -1,13 +1,6 @@
 import { prisma } from "../config/db.js";
 import { lockPriestForScheduling, normalizePriestId } from "./SchedulingAvailability.js";
-
-const ACTIVE_SCHEDULE_STATUSES = [
-  "PENDING",
-  "REQUESTED",
-  "PROPOSED_RESCHEDULE",
-  "WAITING_PARISHIONER_RESPONSE",
-  "CONFIRMED",
-];
+import { BLOCKING_SCHEDULE_STATUSES as ACTIVE_SCHEDULE_STATUSES } from "./ConflictHelper.js";
 
 export class PriestAssignmentHandler {
   /**

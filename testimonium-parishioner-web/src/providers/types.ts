@@ -48,11 +48,56 @@ export interface IRequestProvider {
   resubmitCorrections(id: string): Promise<SacramentalRequest>;
 }
 
+export interface EligiblePriest {
+  id: number;
+  name: string;
+  isAssistant: boolean;
+}
+
+export type RecommendationReason =
+  | 'PREFERRED_DATE'
+  | 'PREFERRED_PRIEST_AVAILABLE'
+  | 'PREFERRED_PRIEST_UNAVAILABLE'
+  | 'PREFERRED_TIME';
+
+export interface ScheduleRecommendationItem {
+  date: string;
+  timeSlot: string;
+  startAt: string;
+  preferredPriestAvailable?: boolean;
+  reasons: RecommendationReason[];
+}
+
+export interface ScheduleRecommendationsResponse {
+  parishId: number;
+  eventType: string;
+  preferredDate: string;
+  window: {
+    from: string;
+    to: string;
+  };
+  generatedAt: string;
+  recommendations: ScheduleRecommendationItem[];
+  code?: string;
+}
+
+export interface RecommendationRequestPayload {
+  parishId: number;
+  eventType: string;
+  preferredDate: string;
+  dateFrom?: string;
+  dateTo?: string;
+  preferredTimeSlot?: string;
+  requestedPriestId?: number | null;
+}
+
 export interface ISchedulerProvider {
   getAppointments(): Promise<Appointment[]>;
   getSchedulingConfiguration(parishId: string): Promise<SchedulingConfiguration>;
   getAvailabilityDates(parishId: string, eventType: string): Promise<AvailabilityDates>;
   getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]>;
+  getEligiblePriests(parishId: string): Promise<EligiblePriest[]>;
+  getRecommendations(payload: RecommendationRequestPayload): Promise<ScheduleRecommendationsResponse>;
   bookAppointment(appointment: {
     parishId: string;
     eventType: string;
@@ -61,6 +106,7 @@ export interface ISchedulerProvider {
     timeSlot: string;
     location?: string;
     remarks?: string;
+    requestedPriestId?: number | null;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<Appointment>;
   getAppointmentById(id: string): Promise<Appointment>;
