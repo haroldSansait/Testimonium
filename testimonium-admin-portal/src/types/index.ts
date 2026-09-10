@@ -473,3 +473,36 @@ export interface ParishAnalyticsStat {
   activeParishioners: number;
   newRegistrations: number;
 }
+
+export type CanonicalDocumentType =
+  | 'BAPTISMAL_CERTIFICATE'
+  | 'CONFIRMATION_CERTIFICATE'
+  | 'MARRIAGE_CERTIFICATE'
+  | 'FIRST_COMMUNION_CERTIFICATE'
+  | 'MARRIAGE_BANNS'
+  | 'PERMIT_TO_MARRY'
+  | 'STATUS_OF_LIBERTY';
+
+export interface VerifiedPaymentItem {
+  id: number;
+  paymentReference: string | null;
+  requestReference: string | null;
+  parishioner: {
+    id: number | null;
+    name: string | null;
+  };
+  documentType: string | null;
+  parish: {
+    id: number | null;
+    name: string | null;
+  };
+  amount: string | null;
+  status: 'VERIFIED';
+  paymentSubmittedAt: string | null;
+  verifiedAt: string | null;
+  verifiedBy: {
+    id: number;
+    name: string;
+  } | null;
+}
+

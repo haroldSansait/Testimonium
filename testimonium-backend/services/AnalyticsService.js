@@ -1,4 +1,5 @@
 import { AnalyticsRepository } from "../repositories/AnalyticsRepository.js";
+import { deriveManilaPaymentBoundaries, getCalendarDayRange } from "../utils/manilaAnalyticsDate.js";
 
 /**
  * Helper to safely calculate trend percentage.
@@ -255,6 +256,8 @@ export class AnalyticsService {
       throw error;
     }
 
+    const { paymentFrom, paymentToExclusive } = deriveManilaPaymentBoundaries(query.from, query.to);
+
     const documentStatuses = [
       "PENDING", "UNDER_REVIEW", "NEEDS_CORRECTION", "PAYMENT_PENDING",
       "PAYMENT_UNDER_REVIEW", "PAYMENT_NEEDS_CORRECTION", "PAYMENT_VERIFIED",
@@ -267,6 +270,8 @@ export class AnalyticsService {
     return this.analyticsRepository.getDescriptiveAnalytics({
       from,
       toExclusive,
+      paymentFrom,
+      paymentToExclusive,
       parishId,
       documentType: query.documentType,
       eventType: query.eventType,
@@ -276,4 +281,44 @@ export class AnalyticsService {
       includeUsers: actor.role === "DIOCESE_COORDINATOR" && !parishId,
     });
   }
+
+  async getVerifiedPayments(query, actor) {
+    let parishId = null;
+    if (actor.role === "SECRETARY") {
+      parishId = Number(actor.parish?.id || actor.parishId) || null;
+      if (!parishId) {
+        const error = new Error("Secretary account is not assigned to a parish.");
+        error.statusCode = 403;
+        error.code = "FORBIDDEN";
+        throw error;
+      }
+    } else if (actor.role === "DIOCESE_COORDINATOR") {
+      parishId = query.parishId ? Number(query.parishId) : null;
+    } else {
+      const error = new Error("You do not have permission to view administrative analytics.");
+      error.statusCode = 403;
+      error.code = "FORBIDDEN";
+      throw error;
+    }
+
+    const { fromStr, toStr, paymentFrom, paymentToExclusive } = deriveManilaPaymentBoundaries(query.from, query.to);
+    const rangeDays = getCalendarDayRange(fromStr, toStr);
+    if (!Number.isFinite(rangeDays) || rangeDays < 1 || rangeDays > 366) {
+      const error = new Error("Analytics date range must be between 1 and 366 days.");
+      error.statusCode = 400;
+      error.code = "INVALID_ANALYTICS_DATE_RANGE";
+      throw error;
+    }
+
+    return this.analyticsRepository.getVerifiedPaymentDetails({
+      from: paymentFrom,
+      toExclusive: paymentToExclusive,
+      parishId,
+      documentType: query.documentType,
+      search: query.search,
+      page: query.page ? Number(query.page) : 1,
+      limit: query.limit ? Number(query.limit) : 20,
+    });
+  }
 }
+

@@ -1,16 +1,17 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 3 September 2026
+**Last reconciled:** 9 September 2026
 
-Deploy the backend and the two Vite applications independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
+Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
 ## Production topology
 
 ```text
-app.example.org -> parishioner-web/dist
-admin.example.org -> admin-portal/dist
-api.example.org -> reverse proxy -> Node/Express :5000
-                                  -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space, SMTP
+app.example.org   -> parishioner-web/dist (SPA)
+admin.example.org -> admin-portal/dist (SPA)
+api.example.org   -> reverse proxy -> Node/Express :5000
+                                   -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space, SMTP
+Mobile App        -> Expo Native / EAS -> api.example.org/api/v1
 ```
 
 Use TLS for every public origin. Configure `CORS_ORIGINS` with the exact deployed portal origins.
@@ -33,26 +34,28 @@ Create `testimonium-backend/.env` using its `.env.example`. The application requ
 
 Never set `ENABLE_DEV_AUTH=true` in production. It bypasses Firebase token verification.
 
-## Portal configuration
+## Portal and mobile client configuration
 
-Vite variables are embedded at build time. Set them in each portal’s environment before building.
+Vite and Expo variables are embedded at build time. Set them in each client’s environment before building.
 
-| Portal | API setting | Provider setting | Other required settings |
+| Client | API setting | Provider setting | Other required settings |
 | --- | --- | --- | --- |
 | Parishioner web | `VITE_API_BASE_URL=https://api.example.org/api/v1` | `VITE_PROVIDER_MODE=api` | Firebase client variables; optional `VITE_ADMIN_PORTAL_URL` |
 | Admin portal | `VITE_API_URL=https://api.example.org/api/v1` | `VITE_DATA_PROVIDER=api` | Firebase client variables |
+| Parishioner mobile | `EXPO_PUBLIC_API_BASE_URL=https://api.example.org/api/v1` | N/A (direct API) | `google-services.json` (Android) / GoogleService-Info.plist (iOS) |
 
-`VITE_*` values are public client configuration. Never put service-account keys, R2 secrets, or database URLs in them.
+Client variables are public configuration. Never put service-account keys, R2 secrets, or database URLs in them.
 
 ## Release procedure
 
-1. Install pinned dependencies:
+1. Install pinned dependencies across workspace components:
 
    ```bash
    npm ci
    npm ci --prefix testimonium-backend
    npm ci --prefix testimonium-parishioner-web
    npm ci --prefix testimonium-admin-portal
+   npm ci --prefix testimonium-parishioner-app
    ```
 
 2. Apply database migrations before starting code that depends on them:
@@ -77,13 +80,24 @@ Vite variables are embedded at build time. Set them in each portal’s environme
    npm run build --prefix testimonium-admin-portal
    ```
 
-5. Verify `GET /api/v1/health`, an authenticated portal session, an R2 upload in a non-production test request, and the reverse-proxy SPA fallback.
+5. Build and submit mobile application releases using EAS CLI:
+
+   ```bash
+   cd testimonium-parishioner-app
+   # Production Android build (AAB)
+   eas build --platform android --profile production
+   # Preview / internal distribution build (APK)
+   eas build --platform android --profile preview
+   ```
+
+6. Verify `GET /api/v1/health`, an authenticated portal session, an R2 upload in a non-production test request, secure attachment downloads, and reverse-proxy SPA fallbacks.
 
 ## Reverse-proxy requirements
 
 - Proxy `/api/` to the backend; preserve `Authorization`, `Host`, and forwarding headers.
+- Support unbuffered streaming for file downloads (`/requests/:id/attachments/:attachmentId/download` and `/document-requests/:id/attachments/:attachmentId/download`).
 - Serve each Vite `dist/` directory with `try_files $uri $uri/ /index.html` so client-side routes work after refresh.
-- Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads are limited to 2 MB.
+- Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads and council officer portrait uploads are limited to 2 MB.
 - Enable `TRUST_PROXY=1` only when the proxy correctly supplies forwarding headers.
 
 ## Transactional email worker

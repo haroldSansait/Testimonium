@@ -1,6 +1,6 @@
 # TESTIMONIUM Project Context
 
-**Last reconciled:** 3 September 2026
+**Last reconciled:** 9 September 2026
 **Status:** Canonical system orientation and architectural map for contributors.
 
 ## System map
@@ -13,43 +13,44 @@ testimonium/
 ├── testimonium-parishioner-app/  Parishioner Expo SDK 57 / React Native mobile app
 ├── API_DOCUMENTATION.md          Registered API surface and contracts
 ├── DATABASE.md                   Database operations and migration policy
-├── Testimonium_Database_Schema.md Authoritative database schema reference (26 models)
+├── Testimonium_Database_Schema.md Authoritative database schema reference (28 models)
 ├── CLOUDFLARE_R2.md              Upload, storage, and OCR pipeline specification
 └── DEPLOYMENT.md                 Production checklist and deployment architecture
 ```
 
 ## Runtime architecture
 
-- **Backend:** Node.js ESM, Express 5, Prisma 7/`@prisma/adapter-pg`, PostgreSQL, Firebase Admin, AWS S3 SDK configured for Cloudflare R2, Sharp, OCR provider adapters, `IdempotencyService`, authoritative `SchedulingConfiguration`/`BookingValidator`, and transactional `EmailOutboxWorker`.
+- **Backend:** Node.js ESM, Express 5, Prisma 7/`@prisma/adapter-pg`, PostgreSQL, Firebase Admin, AWS S3 SDK configured for Cloudflare R2, Sharp, OCR provider adapters, `IdempotencyService`, authoritative `SchedulingConfiguration`/`BookingValidator`, centralized conflict helper and domain service (`ScheduleAvailabilityDomainService`), heuristic recommendation algorithm, and transactional `EmailOutboxWorker`.
 - **Parishioner Web:** React 19, React Router, Firebase client auth, Leaflet, Vite. `VITE_PROVIDER_MODE` supports `api` and `demo`.
 - **Admin Portal:** React 19, React Router, Firebase client auth, Leaflet, Vite. `VITE_DATA_PROVIDER` accepts `api`, `demo`, or `hybrid`.
 - **Parishioner Mobile App:** Expo SDK 57, React Native 0.86, React 19, TypeScript 6, native `@react-native-firebase/auth`, `@react-native-google-signin/google-signin`, TanStack Query, and Expo Router. Communicates directly with `/api/v1` (with `npm run dev:mobile` supporting local Android device testing over Cloudflare Quick Tunnel).
-- **Storage and Verification:** Document attachments and receipts are stored in Cloudflare R2; receipts are asynchronously retrieved, Sharp-optimized in memory, parsed via OCR, cached in process, and flagged for duplicate hashes while remaining subject to mandatory staff verification.
+- **Storage and Verification:** Document attachments, council officer photos, and receipts are stored in Cloudflare R2; receipts are asynchronously retrieved, Sharp-optimized in memory, parsed via OCR, cached in process, and flagged for duplicate hashes while remaining subject to mandatory staff verification. Secure attachments are streamed via authenticated backend download endpoints.
 
 ## Current API modules
 
 All API routes are mounted under `/api/v1`:
-`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, and `parish-events`.
+`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, and `priest/personal-schedules`.
 
 ## Tenancy and role model
 
 | Role | Boundary |
 | --- | --- |
-| `PARISHIONER` | Own profile, document requests, receipts, schedule bookings, in-app notifications, and public discovery feeds across web and mobile. |
-| `SECRETARY` | Parish-scoped request processing, payment review, availability blocks, mass templates, weekday/date rules, daily reports, and parish events. |
-| `PRIEST` | Parish-scoped operational schedule/event views, read-only scheduling rules, and liturgical assignment responses. |
+| `PARISHIONER` | Own profile, document requests, receipt uploads (with attempt versioning), schedule bookings with preferred priest selection, in-app notifications, and public discovery feeds across web and mobile. |
+| `SECRETARY` | Parish-scoped request processing, payment review, availability blocks, mass templates, weekday/date rules, daily reports, parish events, council officer photos, and emergency rescheduling. |
+| `PRIEST` | Personal commitment calendar management (`/priest/personal-schedules`), parish-scoped operational schedule/event views, read-only scheduling rules, and liturgical assignment responses. |
 | `DIOCESE_COORDINATOR` | Cross-parish administration, directory management, interactive map configuration, weekday/date rules, daily reports, system analytics, and audit log retention. |
 
-Staff tenancy is strictly derived from verified server identity, not client parameters.
+Staff tenancy is strictly derived from verified server identity, not client parameters. Parishioner mutations require a completed user profile (full name and contact number).
 
 ## Data model and workflows
 
-The Prisma schema defines 26 models: the original identity, parish, document, payment, scheduling, notification, FAQ, audit, Mass-template, event, and idempotency records plus normalized parish weekday rules, service weekday rules, date rules and service overrides, daily reports, transactional email outbox, and parish council configurations and members.
+The Prisma schema defines 28 models: identity, parish, council governance, document, payment, scheduling, personal calendar, notification, FAQ, audit, Mass-template, event, and idempotency records plus normalized parish weekday rules, service weekday rules, date rules and service overrides, daily reports, transactional email outbox, and append-only history ledgers.
 
-- **Document Requests:** Draft creation, fee snapshots, supporting file uploads, staff review cycles, correction requests/resubmissions, payment proof uploads, and immutable history logging.
-- **Payments:** R2 storage, SHA-256 duplicate image detection, OCR reference/amount extraction, and staff verification workflows.
-- **Scheduling:** 16 canonical event types, backend-enforced parish event settings (services, time slots, daily/per-slot capacities), persisted weekday/date rules, availability range checks, dynamic slot calculation, row-locked booking/configuration writes, reschedule negotiation, and database-backed idempotency key deduplication.
-- **Parish Governance:** Parish Pastoral Council (PPC) and optional Parish Finance Council (PFC) administration with position titles, member sorting, dormant state preservation when PFC is toggled off, optimistic concurrency versioning, and public directory visibility.
+- **Document Requests:** Draft creation, fee snapshots, supporting file uploads, staff review cycles, correction requests/resubmissions, authenticated download streaming, payment proof uploads, and immutable history logging.
+- **Payments:** R2 storage, receipt attempt versioning (`attempt_version`, `is_superseded`) preserving full audit history while enforcing at most one active receipt per transaction, SHA-256 duplicate image detection, OCR reference/amount extraction, and staff verification workflows.
+- **Scheduling:** 16 canonical event types, backend-enforced parish event settings (services, time slots, daily/per-slot capacities), persisted weekday/date rules, availability range checks, dynamic slot calculation, constraint-based recommendation algorithm with heuristic ranking, preferred priest requests (`requested_priest_id`), row-locked booking/configuration writes, reschedule negotiation, emergency rescheduling with version bumping, append-only `ScheduleHistory`, and database-backed idempotency key deduplication.
+- **Priest Personal Calendar:** Discrete `priest_personal_schedules` records with interval check constraints (`end_at > start_at`), optimistic versioning, and unified calendar conflict prevention across parish scheduling and personal commitments.
+- **Parish Governance:** Parish Pastoral Council (PPC) and optional Parish Finance Council (PFC) administration with position titles, member sorting, officer photos stored in R2 (`photo_object_key`, `photo_url`), dormant state preservation when PFC is toggled off, optimistic concurrency versioning, and public directory visibility.
 - **Mobile Integration:** Complete parity with parishioner web capabilities, including camera/gallery receipt capture with HEIC conversion, multi-step document and scheduling wizards, and deep-link routing.
 - **Transactional Outbox:** Guaranteed document-lifecycle and schedule status email dispatch via PostgreSQL transactional `email_outbox` claimed with `FOR UPDATE SKIP LOCKED`, honoring user-configurable `emailNotificationsEnabled` preferences.
 

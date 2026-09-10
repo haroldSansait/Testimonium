@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 3 September 2026
+**Last reconciled:** 9 September 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -27,7 +27,9 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260901120000_add_email_preference_and_document_email_types`
 - `20260902120000_add_parish_councils`
 - `20260904120000_receipt_attempt_versioning`
-- `20260905120000_add_parish_council_member_photos` (Phase 3: nullable photo_url, photo_object_key; Pending migration safety review; NOT yet applied to shared Supabase DB)
+- `20260905120000_add_parish_council_member_photos`
+- `20260905180000_phase4_scheduling_foundation`
+- `20260908214500_add_schedule_requested_priest_id`
 
 ### Development change flow
 
@@ -69,17 +71,20 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `DocumentRequest.fee` is a request-time snapshot; later parish pricing changes must not alter in-flight requests.
 - A request keeps correction notes, correction requirement IDs, payment state, receipt reference, and append-only `RequestHistory` records.
 - Receipt evidence is retained in R2, while `ReceiptUpload`, `PaymentTransaction`, and one-to-one `OcrResult` persist verification state and OCR metadata.
+- `ReceiptUpload` tracks attempt versioning: `attempt_version` > 0, compound uniqueness on `[payment_transaction_id, attempt_version]`, and a partial unique index on `payment_transaction_id` WHERE `is_superseded = false`. Re-uploading after correction automatically marks previous receipts as superseded while preserving full historical audit logs.
 - Receipt image hashes are compared against receipts tied to verified payments to flag potential reuse. The flag requires staff review.
 - Scheduling has separate venue information, slot/daily controls in parish event settings, availability blocks, and a composite index on parish/date.
 - `ParishWeekdayRule`, `ParishServiceWeekdayRule`, and `ParishScheduleDateRule` persist booking policy. The migration backfills all weekdays as available, then persists Sunday unavailable service overrides for `WEDDING`, `MARRIAGE_SPECIAL`, and `FUNERAL`; these rows remain editable configuration, not source constants.
 - Scheduling settings share `Parish.schedulingConfigVersion`. Writers lock the parish row and increment the version; booking transactions take the same lock before final validation.
-- Existing `ParishEvent` rows are backfilled to `PUBLIC` before visibility becomes non-null. Event and report writes use optimistic integer versions.
+- `Schedule` rows track integer `version` for optimistic concurrency and optional `requested_priest_id` for parishioner preferred priest selection. State mutations, reschedules, and emergency reschedules append historical snapshots to `ScheduleHistory`.
+- `PriestPersonalSchedule` records store priest calendar commitments with an interval check constraint (`end_at > start_at`), optimistic versioning (`version`), and indexes on `[priest_id]` and `[start_at, end_at]` to support conflict detection.
+- Existing `ParishEvent` rows are backfilled to `PUBLIC` before visibility becomes non-null. Event, report, and schedule writes use optimistic integer versions.
 - `DailyReport` enforces `PARISH` plus non-null parish or `DIOCESE` plus null parish with a database check constraint. Reports archive in place.
 - `EmailOutbox.transitionKey` is unique. Claim queries use `FOR UPDATE SKIP LOCKED`, a processing token, and an expiring lease; status/next-attempt indexes support recovery and retries. Dispatches respect `User.emailNotificationsEnabled` (default `true`); when disabled, transactional emails are omitted while in-app notifications persist.
 - `EmailType` covers seven canonical lifecycle events across documents and schedules (`DOCUMENT_SUBMITTED`, `DOCUMENT_NEEDS_CORRECTION`, `DOCUMENT_PAYMENT_NEEDS_CORRECTION`, `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED`).
-- `ParishCouncilConfiguration` has a 1-to-1 unique relationship with `Parish`. It manages `finance_council_enabled` and optimistic `version`. Associated `ParishCouncilMember` rows store `council_type` (`PASTORAL` or `FINANCE`), `position_title`, `member_name`, and integer `sort_order`. Toggling PFC off retains dormant finance member rows in the database to prevent accidental data loss.
+- `ParishCouncilConfiguration` has a 1-to-1 unique relationship with `Parish`. It manages `finance_council_enabled` and optimistic `version`. Associated `ParishCouncilMember` rows store `council_type` (`PASTORAL` or `FINANCE`), `position_title`, `member_name`, optional officer photos (`photo_url`, `photo_object_key`), and integer `sort_order`. Toggling PFC off retains dormant finance member rows in the database to prevent accidental data loss.
 - Parish settings such as document/event configuration, office hours, and directory metadata are stored as structured text/JSON fields; validate them at the service boundary.
-- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; optional actor/processor assignments set null.
+- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; optional actor/processor assignments set null.
 
 ## Backup and recovery
 
@@ -105,6 +110,6 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Monitor `GET /api/v1/health` after database releases.
 - Ensure connection pooling is appropriate for the hosting provider and process count.
 - Restrict database credentials to the backend/migration runner and rotate them through the secret manager.
-- Build/verify both portals after changes that affect API payloads or enum values.
+- Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
-See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference.
+See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (28 models).

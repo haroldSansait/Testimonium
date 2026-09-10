@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BarChart3,
   CalendarDays,
   FileText,
@@ -16,7 +17,10 @@ import { AnalyticsSelect, type SelectOptionGroup } from '@/components/ui/Analyti
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import { ErrorState } from '@/components/common/ErrorState';
+import { VerifiedPaymentsTable } from '@/components/analytics/VerifiedPaymentsTable';
+import { getManilaDefaultDateRange } from '@/utils/date';
 import type { Parish } from '@/types';
+
 import type { ApiError, ApiResponseEnvelope } from '@/types/api';
 
 type CountRow = Record<string, unknown> & { _count?: number; count?: number };
@@ -383,16 +387,14 @@ export function AnalyticsPage() {
   const requestIdRef = useRef(0);
 
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const dataRef = useRef<AnalyticsData | null>(null);
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [parishId, setParishId] = useState('');
 
-  // Default 1-year window
-  const [from, setFrom] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 364);
-    return date.toISOString().slice(0, 10);
-  });
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  // Default 1-year Manila window
+  const [from, setFrom] = useState(() => getManilaDefaultDateRange().from);
+  const [to, setTo] = useState(() => getManilaDefaultDateRange().to);
+  const [paymentRefreshTrigger, setPaymentRefreshTrigger] = useState(0);
   const [tab, setTab] = useState<Tab>('documents');
 
   // Sub-filter states
@@ -402,9 +404,24 @@ export function AnalyticsPage() {
   const [scheduleStatus, setScheduleStatus] = useState('');
   const [category, setCategory] = useState('');
 
-  // Async states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [staleError, setStaleError] = useState('');
+  const dataQueryKeyRef = useRef('');
+
+  const buildQueryKey = useCallback(
+    (
+      pFrom: string,
+      pTo: string,
+      pParish: string,
+      pDoc: string,
+      pEvent: string,
+      pStatus: string,
+      pCategory: string,
+      pTab: string
+    ) => `${pFrom}|${pTo}|${pParish}|${pDoc}|${pEvent}|${pStatus}|${pCategory}|${pTab}`,
+    []
+  );
 
   useEffect(() => {
     if (coordinator) {
@@ -426,60 +443,99 @@ export function AnalyticsPage() {
   }, [parishes]);
 
   // Race-protected analytics fetch
-  const load = useCallback(async () => {
-    const currentRequestId = ++requestIdRef.current;
-    setError('');
-    setLoading(true);
+  const load = useCallback(
+    async (options?: { isManualRefresh?: boolean }) => {
+      const isManualRefresh = options?.isManualRefresh ?? false;
+      const currentRequestId = ++requestIdRef.current;
+      const currentStatus =
+        tab === 'documents'
+          ? documentStatus || undefined
+          : tab === 'scheduling'
+          ? scheduleStatus || undefined
+          : undefined;
 
-    try {
-      const response = await api.get<ApiResponseEnvelope<AnalyticsData>>('/analytics/descriptive', {
-        params: {
-          from,
-          to,
-          parishId: parishId || undefined,
-          documentType: documentType || undefined,
-          eventType: eventType || undefined,
-          status:
-            tab === 'documents'
-              ? documentStatus || undefined
-              : tab === 'scheduling'
-              ? scheduleStatus || undefined
-              : undefined,
-          category: category || undefined,
-        },
-      });
+      const targetKey = buildQueryKey(
+        from,
+        to,
+        parishId,
+        documentType,
+        eventType,
+        currentStatus || '',
+        category,
+        tab
+      );
+      const isSameQuery = dataQueryKeyRef.current === targetKey;
 
-      // Ignore stale responses if another fetch was triggered
-      if (currentRequestId === requestIdRef.current) {
-        setData(response.data.data);
+      setError('');
+      setStaleError('');
+      setLoading(true);
+
+      // On automatic query changes, do not retain previous query data as current
+      if (!isSameQuery) {
+        setData(null);
+        dataRef.current = null;
       }
-    } catch (caught) {
-      if (currentRequestId === requestIdRef.current) {
-        setError((caught as ApiError)?.message || 'Unable to load descriptive analytics.');
+
+      try {
+        const response = await api.get<ApiResponseEnvelope<AnalyticsData>>('/analytics/descriptive', {
+          params: {
+            from,
+            to,
+            parishId: parishId || undefined,
+            documentType: documentType || undefined,
+            eventType: eventType || undefined,
+            status: currentStatus,
+            category: category || undefined,
+          },
+        });
+
+        // Ignore stale responses if another fetch was triggered
+        if (currentRequestId === requestIdRef.current) {
+          setData(response.data.data);
+          dataRef.current = response.data.data;
+          dataQueryKeyRef.current = targetKey;
+          setError('');
+          setStaleError('');
+        }
+      } catch (caught) {
+        if (currentRequestId === requestIdRef.current) {
+          if (isManualRefresh && isSameQuery && dataRef.current) {
+            // Same-query manual refresh failure with existing data retains data and shows inline stale warning
+            setStaleError('Unable to refresh analytics. The figures shown may be outdated.');
+          } else {
+            // Initial or new-query failure clears data and shows full error state
+            setData(null);
+            dataRef.current = null;
+            dataQueryKeyRef.current = '';
+            setError((caught as ApiError)?.message || 'Unable to load descriptive analytics.');
+          }
+        }
+      } finally {
+        if (currentRequestId === requestIdRef.current) {
+          setLoading(false);
+        }
       }
-    } finally {
-      if (currentRequestId === requestIdRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [category, documentStatus, documentType, eventType, from, parishId, scheduleStatus, tab, to]);
+    },
+    [buildQueryKey, category, documentStatus, documentType, eventType, from, parishId, scheduleStatus, tab, to]
+  );
 
   useEffect(() => {
-    void load();
+    void load({ isManualRefresh: false });
   }, [load]);
 
   const resetFilters = () => {
-    const defaultDate = new Date();
-    defaultDate.setDate(defaultDate.getDate() - 364);
-    setFrom(defaultDate.toISOString().slice(0, 10));
-    setTo(new Date().toISOString().slice(0, 10));
+    const defaultRange = getManilaDefaultDateRange();
+    setFrom(defaultRange.from);
+    setTo(defaultRange.to);
     setParishId('');
     setDocumentType('');
     setEventType('');
     setDocumentStatus('');
     setScheduleStatus('');
     setCategory('');
+    setStaleError('');
   };
+
 
   const content = useMemo(() => {
     if (!data) return null;
@@ -573,6 +629,13 @@ export function AnalyticsPage() {
   const activeTabMeta = tabMeta[tab];
   const isUpdating = loading && Boolean(data);
 
+  const handleRefresh = () => {
+    void load({ isManualRefresh: true });
+    if (tab === 'payments') {
+      setPaymentRefreshTrigger((prev) => prev + 1);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* Page Header */}
@@ -582,7 +645,7 @@ export function AnalyticsPage() {
         actions={
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={handleRefresh}
             disabled={loading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50 cursor-pointer"
           >
@@ -638,27 +701,28 @@ export function AnalyticsPage() {
             />
           )}
 
-          {/* Document Tab Filters */}
-          {tab === 'documents' && (
-            <>
-              <AnalyticsSelect
-                label="Document Type"
-                value={documentType}
-                onChange={setDocumentType}
-                allOptionLabel="All document types"
-                groups={documentTypeGroups}
-                searchPlaceholder="Search document type..."
-              />
+          {/* Document Type Filter (Documents OR Payments) */}
+          {(tab === 'documents' || tab === 'payments') && (
+            <AnalyticsSelect
+              label="Document Type"
+              value={documentType}
+              onChange={setDocumentType}
+              allOptionLabel="All document types"
+              groups={documentTypeGroups}
+              searchPlaceholder="Search document type..."
+            />
+          )}
 
-              <AnalyticsSelect
-                label="Request Status"
-                value={documentStatus}
-                onChange={setDocumentStatus}
-                allOptionLabel="All request statuses"
-                groups={documentStatusGroups}
-                searchPlaceholder="Search status..."
-              />
-            </>
+          {/* Request Status Filter (Documents only) */}
+          {tab === 'documents' && (
+            <AnalyticsSelect
+              label="Request Status"
+              value={documentStatus}
+              onChange={setDocumentStatus}
+              allOptionLabel="All request statuses"
+              groups={documentStatusGroups}
+              searchPlaceholder="Search status..."
+            />
           )}
 
           {/* Scheduling and Events Tab Filters */}
@@ -771,8 +835,26 @@ export function AnalyticsPage() {
         </div>
       )}
 
+      {/* Stale Data Warning Banner (when same-query refresh fails with existing data) */}
+      {staleError && data && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-900">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>{staleError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-1 font-semibold text-amber-800 hover:underline cursor-pointer"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Error State */}
-      {error && !data && <ErrorState message={error} onRetry={() => void load()} />}
+      {error && !data && <ErrorState message={error} onRetry={handleRefresh} />}
 
       {/* Initial Loading Skeleton */}
       {loading && !data && <AnalyticsSkeleton />}
@@ -812,6 +894,18 @@ export function AnalyticsPage() {
               </div>
             ))}
           </div>
+
+          {/* Payments Tab: Verified Payments Detail Table */}
+          {tab === 'payments' && (
+            <VerifiedPaymentsTable
+              from={from}
+              to={to}
+              parishId={parishId}
+              documentType={documentType}
+              coordinator={coordinator}
+              refreshTrigger={paymentRefreshTrigger}
+            />
+          )}
 
           {/* Coordinator-Only Diocesan Parish Comparison */}
           {coordinator && !parishId && data?.parishComparisons && (tab === 'documents' || tab === 'scheduling') && (

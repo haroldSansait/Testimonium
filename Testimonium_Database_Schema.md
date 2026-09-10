@@ -1,10 +1,10 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 3 September 2026
+**Last reconciled:** 9 September 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
-This reference summarizes the 26 physical models and 21 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
+This reference summarizes the 28 physical models and 21 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
 
 ## Enums
 
@@ -38,14 +38,14 @@ This reference summarizes the 26 physical models and 21 enums implemented in the
 | --- | --- | --- | --- |
 | `roles` | `role_id` | unique `role_name`, `description` | One role to many users. |
 | `parishes` | `parish_id` | unique `parish_name`, optional unique `slug`; type, contact/location/patron/email; coordinates (`latitude`, `longitude`), map zoom, pin color, show label; cover/logo/gallery; active flag; document/event/office/payment settings; available-documents JSON; venue capacity; `scheduling_config_version`; timestamps | One parish to users, requests, schedules, availabilities, templates, events, weekday/date rules, daily reports, activity logs, and one optional `councilConfiguration`. Indexed by type, active status, municipality. |
-| `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; `email_notifications_enabled` (Boolean, default `true`); timestamps | Required role; optional parish. Indexed by role, parish, status, creation date. |
+| `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; `email_notifications_enabled` (Boolean, default `true`); timestamps | Required role; optional parish. Relations to document requests, schedules, priest commitments, notifications, and logs. Indexed by role, parish, status, creation date. |
 
 ## Parish council governance
 
 | Table | Primary key | Important columns | Relations/indexes |
 | --- | --- | --- | --- |
 | `parish_council_configurations` | `config_id` | unique `parish_id`, `finance_council_enabled` (Boolean, default false), `version` (Int, default 1), timestamps | Cascades with parish. Unique constraint on `parish_id`. One configuration to many council members. |
-| `parish_council_members` | `member_id` | `council_configuration_id`, `council_type` (`PASTORAL`, `FINANCE`), `position_title` (VarChar(200)), `member_name` (VarChar(200)), `sort_order` (Int), timestamps | Cascades with council configuration. Composite indexes on `[council_configuration_id, council_type]` and `[council_configuration_id, sort_order]`. |
+| `parish_council_members` | `member_id` | `council_configuration_id`, `council_type` (`PASTORAL`, `FINANCE`), `position_title` (VarChar(200)), `member_name` (VarChar(200)), `photo_url` (VarChar(500), optional), `photo_object_key` (VarChar(255), optional), `sort_order` (Int), timestamps | Cascades with council configuration. Composite indexes on `[council_configuration_id, council_type]` and `[council_configuration_id, sort_order]`. |
 
 ## Document-request and payment flow
 
@@ -54,7 +54,7 @@ This reference summarizes the 26 physical models and 21 enums implemented in the
 | `document_requests` | `request_id` | owner/parish/processor IDs; unique tracking number; applicant, relationship, draft flag, document type, purpose; request and payment statuses; R2 proof key/QR reference; fee snapshot (`Decimal(10,2)`); remarks/correction fields (`correction_note`, `payment_correction_note`, `correction_requirement_ids`); processing dates | Required submitter and parish; optional processor. One-to-many attachments, transactions, history. Indexed by owner, parish, processor, type, status, payment status, date, composite `[parish_id, date_requested]`, tracking number. |
 | `request_attachments` | `attachment_id` | request ID, original name, R2 key, type, size, category (`primary`, `supporting`, `receipt`), upload time | Cascades when request is deleted; indexed by request. |
 | `payment_transactions` | `payment_id` | request ID, amount (`Decimal(10,2)`), provider/reference, verification status, verifier/date, creation time | Cascades with request; one-to-many receipts; indexed by request, verifier, composite `[status, created_at]`. |
-| `receipt_uploads` | `receipt_id` | payment transaction ID, R2 key, name, MIME type, size, SHA-256 image hash, upload time | Cascades with transaction; one-to-one OCR result; indexed by transaction, image hash, upload time. |
+| `receipt_uploads` | `receipt_id` | payment transaction ID, R2 key, name, MIME type, size, SHA-256 image hash, `attempt_version` (Int, default 1, CHECK > 0), `is_superseded` (Boolean, default false), upload time | Cascades with transaction; one-to-one OCR result; unique compound constraint on `[payment_transaction_id, attempt_version]`; unique partial index on `payment_transaction_id` WHERE `is_superseded = false`; indexed by transaction, image hash, upload time. |
 | `ocr_results` | `ocr_id` | unique receipt ID; parsed reference/amount/date/provider/merchant/account; raw text; status/confidences (`ocr_confidence`, `parser_confidence`, `final_confidence`); compression/engine metadata; duplicate flags (`is_duplicate`, `duplicate_request_id`, `duplicate_reason`) | Cascades with receipt; indexed by reference number. |
 | `request_history` | `history_id` | request/optional actor IDs, action, old/new status, remarks, timestamp | Cascades with request; actor is set null if user removed; indexed by request, actor, composite `[new_status, created_at]`. |
 
@@ -62,7 +62,9 @@ This reference summarizes the 26 physical models and 21 enums implemented in the
 
 | Table | Primary key | Important columns | Relations/indexes |
 | --- | --- | --- | --- |
-| `schedules` | `schedule_id` | requester/parish/processor/assigned-priest IDs; event type (16 canonical types); requested/start/end and proposed dates/times; location; status/conflict flag; display title; `proposal_version`; priest assignment response status and reason; timestamps | Required requester/parish; optional staff references. Indexed by user, parish, assigned priest, processor, event type, status, requested date, composite `[parish_id, requested_date]`, `created_at`, composite `[parish_id, created_at]`. |
+| `schedules` | `schedule_id` | requester/parish/processor/assigned-priest IDs; optional `requested_priest_id` (preferred priest); event type (16 canonical types); requested/start/end and proposed dates/times; location; status/conflict flag; display title; `proposal_version`; `version` (Int, default 1); priest assignment response status and reason; timestamps | Required requester/parish; optional staff references. Relations to append-only `schedule_history`. Indexed by user, parish, assigned priest, requested priest, processor, event type, status, requested date, composite `[parish_id, requested_date]`, `created_at`, composite `[parish_id, created_at]`. |
+| `schedule_history` | `history_id` | `schedule_id` (FK schedules), `version` (Int), `requested_date` (Date), `start_datetime`, `end_datetime`, `remarks`, `status` (`ScheduleStatus`), optional `assigned_priest_id`, `priest_response_status`, `reason` (Text), optional `actor_id` (FK users), `actor_role` (VarChar(50)), `created_at` (Timestamp) | Foreign key to `schedules` (RESTRICT) and `users` (SET NULL). Append-only audit record created upon reschedule proposals, status changes, emergency reschedules, and priest responses. Indexed by `schedule_id`, `actor_id`, `created_at`, and `[schedule_id, created_at]`. |
+| `priest_personal_schedules` | `id` | `priest_id` (FK users), `title` (VarChar(150)), `notes` (Text, optional), `start_at` (Timestamp), `end_at` (Timestamp), `version` (Int, default 1), `created_at`, `updated_at` | Cascades when priest user is deleted. Interval check constraint (`end_at > start_at`). Indexed by `priest_id`, composite `[priest_id, start_at, end_at]`, and `[start_at, end_at]`. |
 | `parish_weekday_rules` | `rule_id` | parish ID, `weekday`, `is_available`, timestamps | Cascades with parish. Unique constraint on `[parish_id, weekday]`; indexed by parish. |
 | `parish_service_weekday_rules` | `rule_id` | parish ID, `event_type`, `weekday`, `is_available`, timestamps | Cascades with parish. Unique constraint on `[parish_id, event_type, weekday]`; indexed by parish. |
 | `parish_schedule_date_rules` | `date_rule_id` | parish ID, `exception_date`, `base_mode` (`INHERIT`, `AVAILABLE`, `UNAVAILABLE`), reason, creator ID, timestamps | Cascades with parish; creator set null. Unique constraint on `[parish_id, exception_date]`; indexed by `[parish_id, exception_date]`. One-to-many service overrides. |
@@ -93,6 +95,8 @@ DocumentRequest 1 ── * RequestAttachment
 DocumentRequest 1 ── * PaymentTransaction 1 ── * ReceiptUpload 1 ── 0..1 OcrResult
 DocumentRequest 1 ── * RequestHistory
 User 1 ── * Schedule * ── 1 Parish
+Schedule 1 ── * ScheduleHistory
+User 1 ── * PriestPersonalSchedule
 Parish 1 ── * ParishWeekdayRule
 Parish 1 ── * ParishServiceWeekdayRule
 Parish 1 ── * ParishScheduleDateRule 1 ── * ParishScheduleDateServiceOverride
@@ -104,9 +108,12 @@ EmailOutbox (Standalone transactional outbox ledger)
 
 ## Data integrity and constraints
 
-- PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, and workflow boundaries.
+- PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, council types, and workflow boundaries.
 - `Decimal(10,2)` is used for all fee snapshots and payment amounts.
 - `DocumentRequest.correctionRequirementIds` and `Parish.gallery` are PostgreSQL string arrays; `Parish.availableDocuments` and `EmailOutbox.payload` are JSON.
+- `ReceiptUpload` enforces `attempt_version > 0`, uniqueness on `[payment_transaction_id, attempt_version]`, and at most ONE active attempt (`is_superseded = false`) per payment transaction via a unique partial index.
+- `PriestPersonalSchedule` enforces an interval check constraint (`end_at > start_at`) and optimistic versioning (`version`).
+- `Schedule` maintains optimistic concurrency control via integer `version`, references optional `requested_priest_id` for parishioner priest preferences, and generates append-only `ScheduleHistory` records across transitions.
 - `IdempotencyKey` enforces strict compound uniqueness on `[user_id, key, resource_type]` to prevent concurrent duplicate resource creation.
 - `Parish.schedulingConfigVersion` coordinates optimistic Admin writes with row-locked booking validation.
 - `ParishCouncilConfiguration.version` coordinates optimistic Admin writes on council members and finance toggle; lost updates return `409 COUNCIL_CONFIGURATION_STALE`.

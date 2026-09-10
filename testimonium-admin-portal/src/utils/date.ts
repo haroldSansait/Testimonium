@@ -81,3 +81,51 @@ export function isValidTimeRange(start24?: string | null, end24?: string | null)
   if (!start24 || !end24) return true;
   return end24 > start24;
 }
+
+/**
+ * Formats an ISO datetime string into human-readable Manila wall-clock date and time.
+ * Explicitly uses Asia/Manila timezone.
+ * Returns a fallback '—' on null, undefined, or invalid date values.
+ */
+export function formatManilaDateTime(dateInput?: string | Date | number | null): string {
+  if (!dateInput) return '—';
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return '—';
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return formatter.format(d);
+  } catch {
+    return '—';
+  }
+}
+
+/**
+ * Derives a Manila-safe default 365-day (from = today - 364 days, to = today) date range.
+ * Uses calendar-day arithmetic in Asia/Manila, avoiding UTC toISOString derivations.
+ */
+export function getManilaDefaultDateRange(now: Date = new Date()): { from: string; to: string } {
+  const to = getManilaTodayDateString(now);
+  if (!to) {
+    const fallback = new Date().toISOString().slice(0, 10);
+    return { from: fallback, to: fallback };
+  }
+  const [y, m, d] = to.split('-').map(Number);
+  const fromDate = new Date(Date.UTC(y, m - 1, d - 364));
+  const fromY = fromDate.getUTCFullYear();
+  const fromM = String(fromDate.getUTCMonth() + 1).padStart(2, '0');
+  const fromD = String(fromDate.getUTCDate()).padStart(2, '0');
+  return {
+    from: `${fromY}-${fromM}-${fromD}`,
+    to,
+  };
+}
+

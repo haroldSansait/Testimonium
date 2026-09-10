@@ -1,7 +1,26 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db.js";
 
+export function buildVerifiedPaymentWhere({ from, toExclusive, parishId, documentType }) {
+  const where = {
+    status: "VERIFIED",
+    createdAt: { gte: from, lt: toExclusive },
+  };
+
+  if (parishId || documentType) {
+    where.request = {
+      ...(parishId ? { parishId } : {}),
+      ...(documentType ? { documentType } : {}),
+    };
+  }
+
+  return where;
+}
+
 export class AnalyticsRepository {
+  constructor(client = prisma) {
+    this.prisma = client;
+  }
   /**
    * Get counts of document requests, schedules, active users, and active parishes.
    * @returns {Promise<object>}
@@ -151,7 +170,23 @@ export class AnalyticsRepository {
   }
 
   async getDescriptiveAnalytics(filters) {
-    const { from, toExclusive, parishId, documentType, eventType, documentStatus, scheduleStatus, category, includeUsers } = filters;
+    const {
+      from,
+      toExclusive,
+      paymentFrom,
+      paymentToExclusive,
+      parishId,
+      documentType,
+      eventType,
+      documentStatus,
+      scheduleStatus,
+      category,
+      includeUsers,
+    } = filters;
+
+    const pFrom = paymentFrom || from;
+    const pToExclusive = paymentToExclusive || toExclusive;
+
     const documentWhere = {
       dateRequested: { gte: from, lt: toExclusive },
       ...(parishId ? { parishId } : {}),
@@ -177,8 +212,15 @@ export class AnalyticsRepository {
       ...(category ? { category } : {}),
     };
     const paymentWhere = {
-      createdAt: { gte: from, lt: toExclusive },
-      ...(parishId ? { request: { parishId } } : {}),
+      createdAt: { gte: pFrom, lt: pToExclusive },
+      ...((parishId || documentType)
+        ? {
+            request: {
+              ...(parishId ? { parishId } : {}),
+              ...(documentType ? { documentType } : {}),
+            },
+          }
+        : {}),
     };
 
     const docParishSql = parishId ? Prisma.sql`AND dr."parish_id" = ${parishId}` : Prisma.empty;
@@ -186,6 +228,7 @@ export class AnalyticsRepository {
     const eventParishSql = parishId ? Prisma.sql`AND pe."parish_id" = ${parishId}` : Prisma.empty;
     const reportParishSql = parishId ? Prisma.sql`AND r."parish_id" = ${parishId}` : Prisma.empty;
     const documentTypeSql = documentType ? Prisma.sql`AND dr."document_type" = ${documentType}::"DocumentType"` : Prisma.empty;
+    const paymentDocTypeSql = documentType ? Prisma.sql`AND dr."document_type" = ${documentType}::"DocumentType"` : Prisma.empty;
     const eventTypeSql = eventType ? Prisma.sql`AND s."event_type" = ${eventType}::"ScheduleEventType"` : Prisma.empty;
     const documentStatusSql = documentStatus ? Prisma.sql`AND dr."status" = ${documentStatus}::"DocumentRequestStatus"` : Prisma.empty;
     const scheduleStatusSql = scheduleStatus ? Prisma.sql`AND s."status" = ${scheduleStatus}::"ScheduleStatus"` : Prisma.empty;
@@ -244,25 +287,41 @@ export class AnalyticsRepository {
       }),
       prisma.receiptUpload.count({
         where: {
-          uploadedAt: { gte: from, lt: toExclusive },
-          ...(parishId ? { transaction: { request: { parishId } } } : {}),
+          uploadedAt: { gte: pFrom, lt: pToExclusive },
+          ...((parishId || documentType)
+            ? {
+                transaction: {
+                  request: {
+                    ...(parishId ? { parishId } : {}),
+                    ...(documentType ? { documentType } : {}),
+                  },
+                },
+              }
+            : {}),
         },
       }),
       prisma.requestHistory.count({
         where: {
-          createdAt: { gte: from, lt: toExclusive },
+          createdAt: { gte: pFrom, lt: pToExclusive },
           newStatus: "PAYMENT_NEEDS_CORRECTION",
-          ...(parishId ? { request: { parishId } } : {}),
+          ...((parishId || documentType)
+            ? {
+                request: {
+                  ...(parishId ? { parishId } : {}),
+                  ...(documentType ? { documentType } : {}),
+                },
+              }
+            : {}),
         },
       }),
       prisma.$queryRaw`
-        SELECT to_char(date_trunc('month', pt."created_at"), 'YYYY-MM') AS month,
+        SELECT to_char(date_trunc('month', (pt."created_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Manila'), 'YYYY-MM') AS month,
                COUNT(*)::int AS count,
                COALESCE(SUM(pt."amount"), 0)::text AS amount
         FROM "payment_transactions" pt
         JOIN "document_requests" dr ON dr."request_id" = pt."request_id"
-        WHERE pt."created_at" >= ${from} AND pt."created_at" < ${toExclusive}
-          AND pt."status" = 'VERIFIED' ${docParishSql}
+        WHERE pt."created_at" >= ${pFrom} AND pt."created_at" < ${pToExclusive}
+          AND pt."status" = 'VERIFIED' ${docParishSql} ${paymentDocTypeSql}
         GROUP BY 1 ORDER BY 1`,
       prisma.schedule.count({ where: scheduleWhere }),
       prisma.schedule.groupBy({ by: ["eventType"], where: scheduleWhere, _count: true }),
@@ -329,4 +388,183 @@ export class AnalyticsRepository {
       parishComparisons: parishId ? null : { documents: documentByParish, schedules: scheduleByParish },
     };
   }
+
+  async getVerifiedPaymentDetails({
+    from,
+    toExclusive,
+    parishId,
+    documentType,
+    search,
+    page = 1,
+    limit = 20,
+  }) {
+    const baseWhere = buildVerifiedPaymentWhere({
+      from,
+      toExclusive,
+      parishId,
+      documentType,
+    });
+
+    const trimmedSearch = typeof search === "string" ? search.trim() : "";
+    const searchWhere = trimmedSearch
+      ? {
+          OR: [
+            { referenceNumber: { contains: trimmedSearch, mode: "insensitive" } },
+            { request: { trackingNumber: { contains: trimmedSearch, mode: "insensitive" } } },
+            { request: { user: { fullName: { contains: trimmedSearch, mode: "insensitive" } } } },
+            {
+              receipts: {
+                some: {
+                  isSuperseded: false,
+                  ocrResult: { referenceNumber: { contains: trimmedSearch, mode: "insensitive" } },
+                },
+              },
+            },
+          ],
+        }
+      : null;
+
+    const where = searchWhere
+      ? { AND: [baseWhere, searchWhere] }
+      : baseWhere;
+
+    const readTx = async (tx) => {
+      const total = await tx.paymentTransaction.count({ where });
+
+      if (total === 0) {
+        return {
+          data: [],
+          pagination: {
+            page: 1,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      }
+
+      const totalPages = Math.ceil(total / limit);
+      const effectivePage = Math.min(Math.max(1, page), totalPages);
+      const skip = (effectivePage - 1) * limit;
+
+      const rows = await tx.paymentTransaction.findMany({
+        where,
+        select: {
+          id: true,
+          referenceNumber: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          verifiedAt: true,
+          request: {
+            select: {
+              trackingNumber: true,
+              documentType: true,
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+              parish: {
+                select: {
+                  id: true,
+                  parishName: true,
+                },
+              },
+            },
+          },
+          verifier: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+          receipts: {
+            where: { isSuperseded: false },
+            orderBy: { attemptVersion: "desc" },
+            take: 1,
+            select: {
+              ocrResult: {
+                select: {
+                  referenceNumber: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [
+          { verifiedAt: { sort: "desc", nulls: "last" } },
+          { id: "desc" },
+        ],
+        skip,
+        take: limit,
+      });
+
+      const data = rows.map((row) => {
+        const activeReceipt = row.receipts?.[0];
+        const paymentReference =
+          row.referenceNumber ??
+          activeReceipt?.ocrResult?.referenceNumber ??
+          null;
+
+        let formattedAmount = null;
+        if (row.amount !== null && row.amount !== undefined) {
+          formattedAmount =
+            typeof row.amount.toFixed === "function"
+              ? row.amount.toFixed(2)
+              : String(row.amount);
+        }
+
+        return {
+          id: row.id,
+          paymentReference,
+          requestReference: row.request?.trackingNumber ?? null,
+          parishioner: {
+            id: row.request?.user?.id ?? null,
+            name: row.request?.user?.fullName ?? null,
+          },
+          documentType: row.request?.documentType ?? null,
+          parish: {
+            id: row.request?.parish?.id ?? null,
+            name: row.request?.parish?.parishName ?? null,
+          },
+          amount: formattedAmount,
+          status: "VERIFIED",
+          paymentSubmittedAt: row.createdAt
+            ? (row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt))
+            : null,
+          verifiedAt: row.verifiedAt
+            ? (row.verifiedAt instanceof Date ? row.verifiedAt.toISOString() : String(row.verifiedAt))
+            : null,
+          verifiedBy: row.verifier
+            ? {
+                id: row.verifier.id,
+                name: row.verifier.fullName,
+              }
+            : null,
+        };
+      });
+
+      return {
+        data,
+        pagination: {
+          page: effectivePage,
+          limit,
+          total,
+          totalPages,
+        },
+      };
+    };
+
+    const client = this.prisma || prisma;
+    if (typeof client.$transaction === "function") {
+      return await client.$transaction(readTx, {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      });
+    }
+    return await readTx(client);
+  }
 }
+
+

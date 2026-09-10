@@ -58,3 +58,17 @@ export const getDescriptive = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const getVerifiedPayments = async (req, res, next) => {
+  try {
+    const result = await analyticsService.getVerifiedPayments(req.query, req.user);
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
