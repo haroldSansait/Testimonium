@@ -30,6 +30,7 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260905120000_add_parish_council_member_photos`
 - `20260905180000_phase4_scheduling_foundation`
 - `20260908214500_add_schedule_requested_priest_id`
+- `20260910120000_add_rag_chatbot`
 
 ### Development change flow
 
@@ -83,7 +84,9 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `EmailOutbox.transitionKey` is unique. Claim queries use `FOR UPDATE SKIP LOCKED`, a processing token, and an expiring lease; status/next-attempt indexes support recovery and retries. Dispatches respect `User.emailNotificationsEnabled` (default `true`); when disabled, transactional emails are omitted while in-app notifications persist.
 - `EmailType` covers seven canonical lifecycle events across documents and schedules (`DOCUMENT_SUBMITTED`, `DOCUMENT_NEEDS_CORRECTION`, `DOCUMENT_PAYMENT_NEEDS_CORRECTION`, `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED`).
 - `ParishCouncilConfiguration` has a 1-to-1 unique relationship with `Parish`. It manages `finance_council_enabled` and optimistic `version`. Associated `ParishCouncilMember` rows store `council_type` (`PASTORAL` or `FINANCE`), `position_title`, `member_name`, optional officer photos (`photo_url`, `photo_object_key`), and integer `sort_order`. Toggling PFC off retains dormant finance member rows in the database to prevent accidental data loss.
-- Parish settings such as document/event configuration, office hours, and directory metadata are stored as structured text/JSON fields; validate them at the service boundary.
+- `KnowledgeSource` stores diocesan and parish procedure text with a database check constraint (`scope = 'DIOCESE' AND parish_id IS NULL` OR `scope = 'PARISH' AND parish_id IS NOT NULL`), governance lifecycle (`authority`: `PROVISIONAL` -> `CONFIRMED`, `status`: `DRAFT` -> `ACTIVE` -> `RETIRED`), and optimistic integer `version`. Content and knowledge edits create a new version set of chunks and invalidate the previous version as `STALE`; governance-only confirm, publish, retire, and embedding-retry transitions preserve the content version. Migrated legacy FAQ records start in `DRAFT` and `PROVISIONAL` status without automatic retrieval; Coordinators subsequently review the source text, supply reviewed chunk sets, confirm, embed, and publish through standard governance.
+- `KnowledgeChunk` stores chunk content, deterministic SHA-256 `contentHash`, `sourceVersion`, and 768-dimensional embeddings (`vector(768)` via PostgreSQL `pgvector`). Versioned chunk uniqueness is enforced via `@@unique([sourceId, sourceVersion, chunkOrder])`. Worker lease fields (`processingToken`, `leaseExpiresAt`, `embeddingAttemptCount`, `embeddingErrorCode`) manage background embedding progression (`PENDING` -> `PROCESSING` -> `READY` / `FAILED` / `STALE`). Chunks become eligible for embedding once the source is `CONFIRMED` in `DRAFT` status; sources become `ACTIVE` only when all current-version chunks are `READY`.
+- `ChatbotLog` records additive telemetry including `selectedParishId`, `retrievedChunkIds`, `retrievalScores`, `fallback`, `category`, and latency. Default privacy posture writes `NULL` for `question` and `response` (`CHATBOT_LOG_RAW_TEXT=false`).
 - Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; optional actor/processor assignments set null.
 
 ## Backup and recovery
@@ -112,4 +115,4 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Restrict database credentials to the backend/migration runner and rotate them through the secret manager.
 - Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
-See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (28 models).
+See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (30 models and 26 enums).

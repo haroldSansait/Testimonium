@@ -2,6 +2,7 @@ import type { IParishProvider } from "../types";
 import type { Parish } from "../../types";
 import { client } from "../../api/client";
 import { getParishImage, getParishGallery } from "../../utils/parishImages";
+import { collectAllActiveParishes } from "./parishPagination";
 
 const mapParish = (p: any): Parish => {
   if (!p) return p;
@@ -62,10 +63,9 @@ const mapParish = (p: any): Parish => {
 
 export class ApiParishProvider implements IParishProvider {
   async getParishes(): Promise<Parish[]> {
-    const response = await client.get<any>("/parishes");
-    const list = Array.isArray(response)
-      ? response
-      : response?.items || response?.data || [];
+    const list = await collectAllActiveParishes<any>((page, limit) =>
+      client.get<any>("/parishes", { page, limit, status: "Active" })
+    );
     return list.map(mapParish);
   }
 

@@ -3,6 +3,7 @@ import { auth } from '../firebaseConfig';
 import { clearAllPollingTimers } from '../hooks/useService';
 import { SESSION_CONFIG, type SessionState, type LogoutReason, type SessionBroadcastEvent } from '../config/sessionConfig';
 import { logSessionEvent } from '../utils/sessionLogger';
+import { clearCaloySessionStorage } from '../features/chat/caloyStorage';
 
 // Generate unique ID for this browser tab instance
 const TAB_ID = Math.random().toString(36).substring(2, 9);
@@ -171,6 +172,9 @@ class SessionServiceImpl {
   // ── Idempotent Centralized Logout ────────────────────────────────────────
 
   public async logout(reason: LogoutReason = 'manual'): Promise<void> {
+    // Clear Caloy-owned context immediately, before async sign-out or route unmounts.
+    clearCaloySessionStorage();
+
     if (this.logoutInProgress) {
       return; // Already logging out
     }
@@ -210,7 +214,7 @@ class SessionServiceImpl {
     try {
       localStorage.removeItem(SESSION_CONFIG.SESSION_START_KEY);
       localStorage.removeItem(SESSION_CONFIG.STORAGE_SYNC_KEY);
-      sessionStorage.clear();
+      sessionStorage.removeItem('testimonium_registration_session');
     } catch (err) {
       console.error('[ParishionerSessionService] Storage cleanup error:', err);
     }

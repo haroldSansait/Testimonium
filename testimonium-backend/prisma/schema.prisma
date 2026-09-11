@@ -225,6 +225,7 @@ model Parish {
   scheduleDateRules       ParishScheduleDateRule[]
   dailyReports            DailyReport[]
   councilConfiguration    ParishCouncilConfiguration?
+  knowledgeSources        KnowledgeSource[]           @relation("ParishKnowledgeSources")
 
   @@index([type])
   @@index([isActive])
@@ -314,6 +315,8 @@ model User {
   archivedDailyReports      DailyReport[]            @relation("DailyReportArchiver")
   personalSchedules         PriestPersonalSchedule[] @relation("PriestPersonalSchedules")
   scheduleHistoryActor      ScheduleHistory[]        @relation("ScheduleHistoryActor")
+  approvedKnowledgeSources  KnowledgeSource[]        @relation("KnowledgeSourceApprovedBy")
+  updatedKnowledgeSources   KnowledgeSource[]        @relation("KnowledgeSourceUpdatedBy")
 
   @@index([roleId])
   @@index([parishId])
@@ -633,14 +636,120 @@ model FaqKnowledgeBase {
   @@map("faq_knowledge_base")
 }
 
+enum KnowledgeScope {
+  DIOCESE
+  PARISH
+}
+
+enum KnowledgeAuthority {
+  CONFIRMED
+  PROVISIONAL
+}
+
+enum KnowledgeSourceStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum KnowledgeSourceType {
+  SYSTEM_GUIDE
+  PARISH_PROCEDURE
+  DIOCESE_PROCEDURE
+  CLERGY_INTERVIEW
+  OFFICIAL_SOURCE
+  LEGACY_FAQ
+  ADMIN_ENTRY
+}
+
+enum EmbeddingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+  STALE
+}
+
+model KnowledgeSource {
+  id              Int                   @id @default(autoincrement()) @map("source_id")
+  title           String                @db.VarChar(200)
+  sourceText      String                @map("source_text") @db.Text
+  category        String?               @db.VarChar(100)
+  sourceType      KnowledgeSourceType   @map("source_type")
+  sourceReference String?               @map("source_reference") @db.VarChar(500)
+  scope           KnowledgeScope        @default(DIOCESE)
+  parishId        Int?                  @map("parish_id")
+  authority       KnowledgeAuthority    @default(PROVISIONAL)
+  status          KnowledgeSourceStatus @default(DRAFT)
+  version         Int                   @default(1)
+  approvedById    Int?                  @map("approved_by_id")
+  approvedAt      DateTime?             @map("approved_at") @db.Timestamptz(6)
+  updatedById     Int?                  @map("updated_by_id")
+  effectiveFrom   DateTime?             @map("effective_from") @db.Timestamptz(6)
+  retiredAt       DateTime?             @map("retired_at") @db.Timestamptz(6)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parish          Parish?               @relation("ParishKnowledgeSources", fields: [parishId], references: [id], onDelete: Cascade)
+  approvedBy      User?                 @relation("KnowledgeSourceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  updatedBy       User?                 @relation("KnowledgeSourceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  chunks          KnowledgeChunk[]
+
+  @@index([scope, status, authority])
+  @@index([parishId])
+  @@index([category])
+  @@index([sourceType])
+  @@map("knowledge_sources")
+}
+
+model KnowledgeChunk {
+  id                    Int                          @id @default(autoincrement()) @map("chunk_id")
+  sourceId              Int                          @map("source_id")
+  content               String                       @db.Text
+  chunkOrder            Int                          @map("chunk_order")
+  contentHash           String                       @map("content_hash") @db.VarChar(64)
+  sourceVersion         Int                          @default(1) @map("source_version")
+  embedding             Unsupported("vector(768)")?
+  embeddingProvider     String?                      @map("embedding_provider") @db.VarChar(50)
+  embeddingModel        String?                      @map("embedding_model") @db.VarChar(100)
+  embeddingDimensions   Int?                         @map("embedding_dimensions")
+  embeddingStatus       EmbeddingStatus              @default(PENDING) @map("embedding_status")
+  embeddedAt            DateTime?                    @map("embedded_at") @db.Timestamptz(6)
+  processingToken       String?                      @map("processing_token") @db.VarChar(100)
+  leaseExpiresAt        DateTime?                    @map("lease_expires_at") @db.Timestamptz(6)
+  embeddingAttemptCount Int                          @default(0) @map("embedding_attempt_count")
+  embeddingErrorCode    String?                      @map("embedding_error_code") @db.VarChar(100)
+  metadata              Json?
+  createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  source                KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, sourceVersion, chunkOrder])
+  @@index([sourceId])
+  @@index([embeddingStatus])
+  @@index([sourceId, sourceVersion])
+  @@index([sourceId, embeddingStatus])
+  @@map("knowledge_chunks")
+}
+
 model ChatbotLog {
-  id        Int      @id @default(autoincrement()) @map("chatbot_log_id")
-  userId    Int?     @map("user_id")
-  sessionId String?  @map("session_id") @db.VarChar(100)
-  question  String   @db.Text
-  response  String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                 Int       @id @default(autoincrement()) @map("chatbot_log_id")
+  userId             Int?      @map("user_id")
+  sessionId          String?   @map("session_id") @db.VarChar(100)
+  selectedParishId   Int?      @map("selected_parish_id")
+  question           String?   @db.Text
+  response           String?   @db.Text
+  retrievedChunkIds  Int[]     @default([]) @map("retrieved_chunk_ids")
+  retrievalScores    Float[]   @default([]) @map("retrieval_scores")
+  fallback           Boolean   @default(false)
+  fallbackReason     String?   @map("fallback_reason") @db.VarChar(100)
+  category           String?   @db.VarChar(100)
+  embeddingProvider  String?   @map("embedding_provider") @db.VarChar(50)
+  generationProvider String?   @map("generation_provider") @db.VarChar(50)
+  generationModel    String?   @map("generation_model") @db.VarChar(100)
+  latencyMs          Int?      @map("latency_ms")
+  errorCategory      String?   @map("error_category") @db.VarChar(100)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user               User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([sessionId])

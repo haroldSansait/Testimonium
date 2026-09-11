@@ -141,8 +141,31 @@ export interface IAnnouncementProvider {
   getAnnouncements(): Promise<Announcement[]>;
 }
 
+export interface ChatSource {
+  id: number;
+  title: string;
+  sourceType: string;
+  sourceReference?: string | null;
+  authority: string;
+  scope: string;
+  parishId?: number | null;
+}
+
+export interface ChatResponse {
+  answer: string;
+  fallback: boolean;
+  fallbackReason?: string | null;
+  sessionId?: string;
+  category?: string | null;
+  sources: ChatSource[];
+}
+
 export interface IChatProvider {
-  sendMessage(message: string): Promise<string>;
+  sendMessage(
+    question: string,
+    selectedParishId?: number | null,
+    sessionId?: string
+  ): Promise<ChatResponse>;
 }
 
 export interface IMapProvider {

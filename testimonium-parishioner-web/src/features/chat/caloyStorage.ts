@@ -1,0 +1,112 @@
+import type { ChatSource } from '../../providers/types';
+
+export interface ChatMessage {
+  id: string;
+  sender: 'user' | 'caloy';
+  text: string;
+  timestamp: string;
+  fallback?: boolean;
+  sources?: ChatSource[];
+  isError?: boolean;
+}
+
+export const CALOY_STORAGE_KEYS = {
+  messages: 'testimonium_caloy_messages',
+  sessionId: 'testimonium_caloy_session_id',
+  parishId: 'testimonium_caloy_parish_id',
+} as const;
+
+interface CaloyStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function defaultStorage(): CaloyStorage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+function isValidSource(value: unknown): value is ChatSource {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'number' || !Number.isInteger(value.id) || value.id <= 0) return false;
+  if (typeof value.title !== 'string' || value.title.length === 0) return false;
+  if (typeof value.sourceType !== 'string' || value.sourceType.length === 0) return false;
+  if (typeof value.authority !== 'string' || value.authority.length === 0) return false;
+  if (typeof value.scope !== 'string' || value.scope.length === 0) return false;
+  if (!isOptionalString(value.sourceReference)) return false;
+  if (value.parishId !== undefined && value.parishId !== null && (
+    typeof value.parishId !== 'number' || !Number.isInteger(value.parishId) || value.parishId <= 0
+  )) {
+    return false;
+  }
+  return true;
+}
+
+export function isValidChatMessage(value: unknown): value is ChatMessage {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string' || value.id.length === 0) return false;
+  if (value.sender !== 'user' && value.sender !== 'caloy') return false;
+  if (typeof value.text !== 'string') return false;
+  if (typeof value.timestamp !== 'string' || Number.isNaN(Date.parse(value.timestamp))) return false;
+  if (value.fallback !== undefined && typeof value.fallback !== 'boolean') return false;
+  if (value.isError !== undefined && typeof value.isError !== 'boolean') return false;
+  if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every(isValidSource))) return false;
+  return true;
+}
+
+export function parseCaloyMessages(rawValue: string): ChatMessage[] | null {
+  try {
+    const parsed: unknown = JSON.parse(rawValue);
+    return Array.isArray(parsed) && parsed.length > 0 && parsed.every(isValidChatMessage)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readCaloyMessages(storage: CaloyStorage | null = defaultStorage()): ChatMessage[] | null {
+  if (!storage) return null;
+  try {
+    const rawValue = storage.getItem(CALOY_STORAGE_KEYS.messages);
+    if (!rawValue) return null;
+    const messages = parseCaloyMessages(rawValue);
+    if (!messages) storage.removeItem(CALOY_STORAGE_KEYS.messages);
+    return messages;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCaloyMessages(messages: ChatMessage[], storage: CaloyStorage | null = defaultStorage()): boolean {
+  if (!storage || messages.length === 0 || !messages.every(isValidChatMessage)) return false;
+  try {
+    storage.setItem(CALOY_STORAGE_KEYS.messages, JSON.stringify(messages));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearCaloySessionStorage(storage: CaloyStorage | null = defaultStorage()): void {
+  if (!storage) return;
+  for (const key of Object.values(CALOY_STORAGE_KEYS)) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Best-effort cleanup must not prevent logout.
+    }
+  }
+}

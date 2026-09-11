@@ -50,6 +50,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.VIEW_ACTIVITY_LOG,
     PERMISSIONS.MANAGE_PARISH_SETTINGS,
     PERMISSIONS.MANAGE_MAP_CONFIG,
+    PERMISSIONS.MANAGE_KNOWLEDGE_BASE,
   ],
 
   // Parishioners do not have access to the admin portal.

@@ -104,6 +104,19 @@ Client variables are public configuration. Never put service-account keys, R2 se
 
 The API process starts the PostgreSQL email-outbox worker after the HTTP listener and stops it gracefully before disconnecting Prisma. Multiple API replicas are supported: workers claim rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the lease. The worker processes all seven `EmailType` notification triggers across document and scheduling workflows while honoring recipient user preferences (`email_notifications_enabled`). Configure bounded SMTP timeouts and all SMTP secrets in the deployment secret manager.
 
+## AI / RAG Chatbot deployment and worker sequence
+
+The Caloy chatbot and Knowledge Base follow a strictly additive, phased rollout order:
+1. **Additive Migration**: Apply migration `20260910120000_add_rag_chatbot` to enable the `pgvector` extension, add `vector(768)` columns, knowledge tables, and enums.
+2. **Backend Deployment**: Deploy the API with `CHATBOT_ENABLED=false` (safe default). In this state, the server starts normally without requiring Gemini credentials, and public queries return safe unavailable responses.
+3. **Admin Portal Deployment**: Deploy the Admin Portal with the Knowledge Base governance interface (`MANAGE_KNOWLEDGE_BASE` permission for Diocese Coordinator).
+4. **Secret Configuration**: Configure `GEMINI_API_KEY` in the backend environment/secret manager for controlled development/staging.
+5. **Corpus Ingestion**: Ingest reviewed knowledge procedures via `node scripts/import_knowledge.js --file corpus/initial_corpus.json` (always imported as `DRAFT` + `PROVISIONAL`).
+6. **Governance Lifecycle**: In the Admin Portal, the Diocese Coordinator reviews and confirms sources (`CONFIRMED`). The background embedding worker embeds current-version chunks into `READY` status. Once all chunks are ready, the Coordinator publishes the source (`ACTIVE`).
+7. **Calibration and Evaluation**: Calibrate retrieval thresholds and run the Golden Question evaluation fixture (`tests/fixtures/chatbot_eval.json`).
+8. **Web Client Integration**: Deploy Parishioner Web with live API chat provider and parish context selector.
+9. **Public Enablement**: Switch `CHATBOT_ENABLED=true` in production only after owner sign-off.
+
 ## Operational checks and rollback
 
 - Keep database backups and verify a restore path before migrations; see [DATABASE.md](DATABASE.md).

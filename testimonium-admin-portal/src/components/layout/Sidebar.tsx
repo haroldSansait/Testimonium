@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  BookOpen,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/utils/cn';
@@ -125,6 +126,12 @@ const ALL_NAV_ITEMS: NavItem[] = [
     icon: <ClipboardList className="w-4 h-4" />,
     permission: PERMISSIONS.VIEW_ACTIVITY_LOG,
   },
+  {
+    to: '/knowledge-base',
+    label: 'Knowledge Base',
+    icon: <BookOpen className="w-4 h-4" />,
+    permission: PERMISSIONS.MANAGE_KNOWLEDGE_BASE,
+  },
 ];
 
 const CATEGORIES = [
@@ -142,7 +149,7 @@ const CATEGORIES = [
   },
   {
     title: 'Diocese',
-    itemKeys: ['/parish-management', '/user-management', '/map-configuration', '/activity-log', '/analytics'],
+    itemKeys: ['/parish-management', '/user-management', '/map-configuration', '/knowledge-base', '/activity-log', '/analytics'],
   },
 ];
 

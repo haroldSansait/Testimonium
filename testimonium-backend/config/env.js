@@ -161,7 +161,42 @@ export const env = {
     imageUploadMax: parsePositiveInt(process.env.PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX ?? process.env.IMAGE_UPLOAD_RATE_LIMIT_MAX, 5, "PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX"),
     mapSaveMax: parsePositiveInt(process.env.MAP_SAVE_RATE_LIMIT_MAX, 20, "MAP_SAVE_RATE_LIMIT_MAX"),
   },
+  chatbot: {
+    enabled: parseBoolean(process.env.CHATBOT_ENABLED, false, "CHATBOT_ENABLED"),
+    logRawText: parseBoolean(process.env.CHATBOT_LOG_RAW_TEXT, false, "CHATBOT_LOG_RAW_TEXT"),
+    generationProvider: (process.env.AI_GENERATION_PROVIDER || "gemini").toLowerCase().trim(),
+    generationModel: (process.env.AI_GENERATION_MODEL || "gemini-3.7-flash").trim(),
+    embeddingProvider: (process.env.AI_EMBEDDING_PROVIDER || "gemini").toLowerCase().trim(),
+    embeddingModel: (process.env.AI_EMBEDDING_MODEL || "gemini-embedding-2").trim(),
+    embeddingDimensions: parsePositiveInt(process.env.AI_EMBEDDING_DIMENSIONS, 768, "AI_EMBEDDING_DIMENSIONS"),
+    geminiApiKey: (process.env.GEMINI_API_KEY || "").trim(),
+    generationTimeoutMs: parsePositiveInt(process.env.CHATBOT_GENERATION_TIMEOUT_MS, 25000, "CHATBOT_GENERATION_TIMEOUT_MS"),
+    embeddingTimeoutMs: parsePositiveInt(process.env.CHATBOT_EMBEDDING_TIMEOUT_MS, 15000, "CHATBOT_EMBEDDING_TIMEOUT_MS"),
+    maxRetries: parsePositiveInt(process.env.CHATBOT_MAX_RETRIES, 2, "CHATBOT_MAX_RETRIES"),
+    topK: parsePositiveInt(process.env.CHATBOT_TOP_K, 8, "CHATBOT_TOP_K"),
+    maxContextChunks: parsePositiveInt(process.env.CHATBOT_MAX_CONTEXT_CHUNKS, 4, "CHATBOT_MAX_CONTEXT_CHUNKS"),
+    maxContextTokens: parsePositiveInt(process.env.CHATBOT_MAX_CONTEXT_TOKENS, 3500, "CHATBOT_MAX_CONTEXT_TOKENS"),
+    maxOutputTokens: parsePositiveInt(process.env.CHATBOT_MAX_OUTPUT_TOKENS, 700, "CHATBOT_MAX_OUTPUT_TOKENS"),
+    minSimilarity: parseConfidence(process.env.CHATBOT_MIN_SIMILARITY, 0.65, "CHATBOT_MIN_SIMILARITY"),
+    rateLimits: {
+      rateLimitMax: parsePositiveInt(process.env.CHATBOT_RATE_LIMIT_MAX, 10, "CHATBOT_RATE_LIMIT_MAX"),
+      dailyLimitMax: parsePositiveInt(process.env.CHATBOT_DAILY_LIMIT_MAX, 50, "CHATBOT_DAILY_LIMIT_MAX"),
+      windowMs: parsePositiveInt(process.env.CHATBOT_RATE_LIMIT_WINDOW_MS, 600000, "CHATBOT_RATE_LIMIT_WINDOW_MS"),
+    },
+    worker: {
+      pollMs: parsePositiveInt(process.env.CHATBOT_WORKER_POLL_MS, 15000, "CHATBOT_WORKER_POLL_MS"),
+      batchSize: parsePositiveInt(process.env.CHATBOT_WORKER_BATCH_SIZE, 5, "CHATBOT_WORKER_BATCH_SIZE"),
+      leaseSeconds: parsePositiveInt(process.env.CHATBOT_WORKER_LEASE_SECONDS, 60, "CHATBOT_WORKER_LEASE_SECONDS"),
+    },
+  },
 };
+
+if (env.chatbot.embeddingDimensions !== 768) {
+  console.warn(
+    `[Config] Invalid AI_EMBEDDING_DIMENSIONS "${env.chatbot.embeddingDimensions}". Expected 768 for gemini-embedding-2. Resetting to 768.`
+  );
+  env.chatbot.embeddingDimensions = 768;
+}
 
 export const getMissingRequiredConfig = () => {
   const missing = [];
@@ -173,6 +208,15 @@ export const getMissingRequiredConfig = () => {
   for (const key of requiredKeys) {
     if (!process.env[key]) {
       missing.push(key);
+    }
+  }
+
+  if (env.chatbot?.enabled) {
+    const usesGemini =
+      env.chatbot.generationProvider === "gemini" ||
+      env.chatbot.embeddingProvider === "gemini";
+    if (usesGemini && !env.chatbot.geminiApiKey) {
+      missing.push("GEMINI_API_KEY");
     }
   }
 

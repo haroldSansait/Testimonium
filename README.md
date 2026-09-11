@@ -79,7 +79,7 @@ npm run test:dev-mobile               # run mobile dev tunnel script tests
 
 ```text
 Parishioner Web  ──┐
-Parishioner App  ──┼──> Express API (/api/v1) ──> PostgreSQL via Prisma (28 models)
+Parishioner App  ──┼──> Express API (/api/v1) ──> PostgreSQL via Prisma (30 models)
 Admin Portal     ──┘         │
                              ├──> Firebase Admin token verification
                              ├──> Cloudflare R2 (attachments, receipts, & officer photos)

@@ -173,6 +173,17 @@ Parish events accept `PUBLIC` or `PARISH_PRIVATE` visibility. Public discovery e
 | GET | `/activity-log` | Coordinator | View audit records with role, personnel, action, and date filtering. |
 | GET | `/activity-log/action-types` | Coordinator | View centralized catalog of canonical audit action types. |
 | POST | `/activity-log/archive`, `/archive-all`, `/restore`, `/restore-all`, `/purge` | Coordinator | Administer audit-log retention. |
+| POST | `/chatbot/query` | Parishioner | Query Caloy AI chatbot for verified guides and procedures. Strict schema, rate-limited, no internal state leakage. |
+| GET | `/chatbot/knowledge` | Coordinator | List knowledge sources with strict, bounded query fields: `page` (default 1), `limit` (default 20, maximum 100), `status`, `authority`, `scope`, `parishId`, `category`, and `search`. Returns `{ total, page, limit, totalPages, data }`. |
+| POST | `/chatbot/knowledge` | Coordinator | Create a new knowledge source with initial chunks (DRAFT + PROVISIONAL). |
+| GET | `/chatbot/knowledge/:id` | Coordinator | Get knowledge source details including current-version chunks and embedding status. |
+| PATCH | `/chatbot/knowledge/:id` | Coordinator | Update knowledge source. Optimistic concurrency with required `expectedVersion`. Invalidates old chunks and resets to DRAFT + PROVISIONAL. |
+| POST | `/chatbot/knowledge/:id/confirm` | Coordinator | Confirm a DRAFT source (authority becomes CONFIRMED). Requires positive integer `expectedVersion`. Chunks become eligible for embedding worker. |
+| POST | `/chatbot/knowledge/:id/publish` | Coordinator | Publish a CONFIRMED source with all READY chunks (status becomes ACTIVE). Requires positive integer `expectedVersion`. Retrievable by Caloy. |
+| POST | `/chatbot/knowledge/:id/retire` | Coordinator | Retire an active knowledge source (status becomes RETIRED). Requires positive integer `expectedVersion`. Excluded from future retrieval. |
+| POST | `/chatbot/knowledge/:id/retry-embedding` | Coordinator | Retry failed chunk embeddings for a knowledge source (FAILED chunks reset to PENDING). Requires positive integer `expectedVersion`. |
+
+For `POST /chatbot/query`, `selectedParishId` is optional question context, not parishioner tenancy. With no selection, retrieval is diocese-wide knowledge only. Selecting any active parish P retrieves diocese-wide knowledge plus PARISH P knowledge while excluding every other parish; parishioners may freely switch the selected active parish and are not restricted by `User.parishId`.
 
 
 ## Idempotency and concurrency controls
@@ -191,6 +202,8 @@ A worker claims due rows with `FOR UPDATE SKIP LOCKED`, a unique processing toke
 Parish council management uses optimistic concurrency control through `ParishCouncilConfiguration.version`. Every `PUT /parishes/:id/councils` mutation must supply `expectedVersion`. If the stored version differs, the API aborts the transaction with `409 COUNCIL_CONFIGURATION_STALE`. Saving requires at least one member when the Parish Finance Council is enabled, and toggling PFC disabled preserves existing finance rows as dormant snapshots rather than destroying them.
 
 Scheduling entities (`schedules` and `priest_personal_schedules`) enforce optimistic concurrency control via integer `version` columns. Stale mutation attempts are rejected with conflict errors. Transitions on `schedules` automatically append audit entries to `schedule_history`.
+
+Knowledge base operations (`PATCH /chatbot/knowledge/:id`, `POST /chatbot/knowledge/:id/confirm`, `POST /chatbot/knowledge/:id/publish`, `POST /chatbot/knowledge/:id/retire`, and `POST /chatbot/knowledge/:id/retry-embedding`) enforce strict optimistic concurrency control via a required positive integer `expectedVersion`. Concurrent or stale updates are rejected with `409 KNOWLEDGE_CONCURRENCY_CONFLICT`.
 
 The backend implements database-backed idempotency via the `idempotency_keys` table and `IdempotencyService`. For endpoints supporting idempotency (e.g. `POST /schedule-requests`), clients can provide an `Idempotency-Key` header (UUID or unique string up to 128 characters). If a duplicate request with the exact payload hash is detected, the previously created resource is returned idempotently. If the same key is submitted with a different payload, a `409 Conflict` is returned.
 

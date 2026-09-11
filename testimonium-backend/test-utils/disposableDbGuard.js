@@ -40,21 +40,28 @@ export function validateDisposableDatabaseUrl(urlInput = process.env[DISPOSABLE_
     );
   }
 
-  // Check equality against configured shared database URLs
-  const sharedUrls = [
-    process.env.DATABASE_URL,
-    process.env.SUPABASE_DATABASE_URL,
-  ].filter(Boolean);
-
-  for (const shared of sharedUrls) {
-    if (cleanUrl === shared.trim()) {
+  // Check against known shared/cloud database hosts
+  const host = parsed.hostname.toLowerCase();
+  for (const pattern of FORBIDDEN_HOST_PATTERNS) {
+    if (host.includes(pattern)) {
       throw new Error(
         "REFUSING TO RUN DB INTEGRATION TEST WITHOUT DISPOSABLE DATABASE: " +
-        `Supplied URL strictly matches configured shared database URL.`
+        `Host "${host}" matches forbidden shared provider pattern "${pattern}".`
+      );
+    }
+  }
+
+  // Check equality against configured shared Supabase URL
+  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
+  if (supabaseUrl) {
+    if (cleanUrl === supabaseUrl.trim()) {
+      throw new Error(
+        "REFUSING TO RUN DB INTEGRATION TEST WITHOUT DISPOSABLE DATABASE: " +
+        `Supplied URL strictly matches configured SUPABASE_DATABASE_URL.`
       );
     }
     try {
-      const parsedShared = new URL(shared.trim());
+      const parsedShared = new URL(supabaseUrl.trim());
       if (
         parsed.hostname === parsedShared.hostname &&
         parsed.port === parsedShared.port &&
@@ -67,17 +74,6 @@ export function validateDisposableDatabaseUrl(urlInput = process.env[DISPOSABLE_
       }
     } catch {
       // Ignore unparseable shared string
-    }
-  }
-
-  // Check against known shared/cloud database hosts
-  const host = parsed.hostname.toLowerCase();
-  for (const pattern of FORBIDDEN_HOST_PATTERNS) {
-    if (host.includes(pattern)) {
-      throw new Error(
-        "REFUSING TO RUN DB INTEGRATION TEST WITHOUT DISPOSABLE DATABASE: " +
-        `Host "${host}" matches forbidden shared provider pattern "${pattern}".`
-      );
     }
   }
 

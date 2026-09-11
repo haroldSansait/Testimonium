@@ -13,7 +13,7 @@ testimonium/
 ├── testimonium-parishioner-app/  Parishioner Expo SDK 57 / React Native mobile app
 ├── API_DOCUMENTATION.md          Registered API surface and contracts
 ├── DATABASE.md                   Database operations and migration policy
-├── Testimonium_Database_Schema.md Authoritative database schema reference (28 models)
+├── Testimonium_Database_Schema.md Authoritative database schema reference (30 models, 26 enums)
 ├── CLOUDFLARE_R2.md              Upload, storage, and OCR pipeline specification
 └── DEPLOYMENT.md                 Production checklist and deployment architecture
 ```
@@ -44,7 +44,7 @@ Staff tenancy is strictly derived from verified server identity, not client para
 
 ## Data model and workflows
 
-The Prisma schema defines 28 models: identity, parish, council governance, document, payment, scheduling, personal calendar, notification, FAQ, audit, Mass-template, event, and idempotency records plus normalized parish weekday rules, service weekday rules, date rules and service overrides, daily reports, transactional email outbox, and append-only history ledgers.
+The Prisma schema defines 30 models and 26 enums across identity, parish and council governance, documents and payments, scheduling and personal calendars, notifications, FAQ, audit, Mass templates, events, reports, transactional email, idempotency, and the governed AI/RAG knowledge source, chunk, and chatbot telemetry records.
 
 - **Document Requests:** Draft creation, fee snapshots, supporting file uploads, staff review cycles, correction requests/resubmissions, authenticated download streaming, payment proof uploads, and immutable history logging.
 - **Payments:** R2 storage, receipt attempt versioning (`attempt_version`, `is_superseded`) preserving full audit history while enforcing at most one active receipt per transaction, SHA-256 duplicate image detection, OCR reference/amount extraction, and staff verification workflows.

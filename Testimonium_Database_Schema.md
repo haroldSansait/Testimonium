@@ -4,7 +4,7 @@
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
-This reference summarizes the 28 physical models and 21 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
+This reference summarizes the 30 physical models and 26 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
 
 ## Enums
 
@@ -31,6 +31,11 @@ This reference summarizes the 28 physical models and 21 enums implemented in the
 | `EmailType` | `DOCUMENT_SUBMITTED`, `DOCUMENT_NEEDS_CORRECTION`, `DOCUMENT_PAYMENT_NEEDS_CORRECTION`, `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED` |
 | `OcrStatus` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
 | `ParishCouncilType` | `PASTORAL`, `FINANCE` |
+| `KnowledgeScope` | `DIOCESE`, `PARISH` |
+| `KnowledgeAuthority` | `CONFIRMED`, `PROVISIONAL` |
+| `KnowledgeSourceStatus` | `DRAFT`, `ACTIVE`, `RETIRED` |
+| `KnowledgeSourceType` | `SYSTEM_GUIDE`, `PARISH_PROCEDURE`, `DIOCESE_PROCEDURE`, `CLERGY_INTERVIEW`, `OFFICIAL_SOURCE`, `LEGACY_FAQ`, `ADMIN_ENTRY` |
+| `EmbeddingStatus` | `PENDING`, `PROCESSING`, `READY`, `FAILED`, `STALE` |
 
 ## Identity and parish directory
 
@@ -81,11 +86,18 @@ This reference summarizes the 28 physical models and 21 enums implemented in the
 | `email_outbox` | `email_outbox_id` | unique `transition_key`, recipient email, `email_type`, `reference_type`, `reference_id`, `payload` (JSON), `status` (`QUEUED`, `PROCESSING`, `SENT`, `RETRY`, `FAILED`), `attempt_count`, `next_attempt_at`, `last_error`, `provider_message_id`, `processing_token`, `processing_at`, `lease_expires_at`, `queued_at`, `sent_at`, timestamps | Indexed by `[status, next_attempt_at]`, `[lease_expires_at]`, `[reference_type, reference_id]`. |
 | `notifications` | `notification_id` | user, title/message, delivery type (`PUSH`, `IN_APP`, `EMAIL`), read state/time, sent/created dates, optional reference type (`DOCUMENT_REQUEST`, `SCHEDULE_REQUEST`, `GENERAL`) and reference ID | Cascades with user; indexed by user, read state, sent date. |
 | `faq_knowledge_base` | `faq_id` | question, answer, category, active flag, optional updater, timestamps | Updater set null; indexed by updater, active, category. |
-| `chatbot_logs` | `chatbot_log_id` | optional user/session, question, response, timestamp | User set null; indexed by user, session, created date. |
 | `activity_logs` | `log_id` | optional user, action, affected table/record, IP/user-agent, archive fields, system flag, `role`, `parish_id`, `previous_values`, `new_values`, `metadata`, timestamps | User/parish set null; indexed by user, affected table, created date, parish. |
 | `idempotency_keys` | `idempotency_id` | user ID, unique key string (`VarChar(128)`), resource type (`VarChar(50)`), resource ID (`Int`), payload hash SHA-256 (`VarChar(64)`), creation time | Cascades with user; unique compound constraint on `[user_id, key, resource_type]`; indexed by `[user_id, key]`. |
 
-## Entity relationship diagram
+## Knowledge Base and AI/RAG Chatbot
+
+| Table | Primary key | Important columns | Relations/indexes |
+| --- | --- | --- | --- |
+| `knowledge_sources` | `source_id` | `title`, `source_text`, `category`, `source_type` (Enum), `source_reference`, `scope` (Enum), `parish_id`, `authority` (Enum, default `PROVISIONAL`), `status` (Enum, default `DRAFT`), `version` (Int, default 1), `approved_by_id`, `approved_at`, `updated_by_id`, `effective_from`, `retired_at`, timestamps | Optional parish relation. Optional User relations (`approvedBy`, `updatedBy`). One source to many chunks. Check constraint: `(scope = 'DIOCESE' AND parish_id IS NULL) OR (scope = 'PARISH' AND parish_id IS NOT NULL)`. Indexed by `[scope, status, authority]`, `[parish_id]`, `[category]`, `[source_type]`. |
+| `knowledge_chunks` | `chunk_id` | `source_id`, `content`, `chunk_order`, `content_hash` (SHA-256), `source_version`, `embedding` (`vector(768)` via pgvector), `embedding_provider`, `embedding_model`, `embedding_dimensions`, `embedding_status` (Enum, default `PENDING`), `embedded_at`, `processing_token`, `lease_expires_at`, `embedding_attempt_count`, `embedding_error_code`, `metadata` (JSON), timestamps | Belongs to `knowledge_sources`. Versioned uniqueness constraint: `@@unique([source_id, source_version, chunk_order])`. Indexed by `[source_id]`, `[embedding_status]`, `[source_id, source_version]`, `[source_id, embedding_status]`. |
+| `chatbot_logs` | `chatbot_log_id` | `user_id`, `session_id`, `selected_parish_id`, `question` (nullable), `response` (nullable), `retrieved_chunk_ids` (PostgreSQL `INTEGER[]`), `retrieval_scores` (PostgreSQL `DOUBLE PRECISION[]`), `fallback` (Boolean), `fallback_reason`, `category`, `embedding_provider`, `generation_provider`, `generation_model`, `latency_ms`, `error_category`, `created_at` | Optional User relation. Nullable text supports metadata-only logging when `CHATBOT_LOG_RAW_TEXT=false`. Indexed by `[user_id]`, `[session_id]`, and `[created_at]`. |
+
+## Relationship graph summary
 
 ```text
 Role 1 ── * User * ── 0..1 Parish
@@ -102,6 +114,7 @@ Parish 1 ── * ParishServiceWeekdayRule
 Parish 1 ── * ParishScheduleDateRule 1 ── * ParishScheduleDateServiceOverride
 Parish 1 ── * (ParishAvailability, MassScheduleTemplate, ParishEvent)
 Parish 0..1 ── * DailyReport
+Parish 0..1 ── * KnowledgeSource 1 ── * KnowledgeChunk
 User 1 ── * (Notification, ActivityLog, ChatbotLog, IdempotencyKey)
 EmailOutbox (Standalone transactional outbox ledger)
 ```
@@ -118,4 +131,6 @@ EmailOutbox (Standalone transactional outbox ledger)
 - `Parish.schedulingConfigVersion` coordinates optimistic Admin writes with row-locked booking validation.
 - `ParishCouncilConfiguration.version` coordinates optimistic Admin writes on council members and finance toggle; lost updates return `409 COUNCIL_CONFIGURATION_STALE`.
 - Toggling `finance_council_enabled` to false preserves dormant finance member records in `parish_council_members` rather than deleting them.
+- `KnowledgeSource` enforces a check constraint: `(scope = 'DIOCESE' AND parish_id IS NULL) OR (scope = 'PARISH' AND parish_id IS NOT NULL)` to guarantee strict diocesan vs parish tenancy.
+- `KnowledgeChunk` enforces compound uniqueness on `[source_id, source_version, chunk_order]` to allow non-destructive versioned chunk evolution.
 - Schema changes require explicit Prisma migrations. Consult [DATABASE.md](DATABASE.md) for the database migration protocol.

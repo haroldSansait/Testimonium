@@ -25,12 +25,19 @@
 
 # Prisma Client Database Specific Exclusions (Fixed subfolder tracking)
 **/prisma/migrations/**/*.sql
+!testimonium-backend/prisma/migrations/20260704123959_init_testimonium_relational_schema/migration.sql
+!testimonium-backend/prisma/migrations/20260704140000_rename_vicariate_admin_to_diocese_coordinator/migration.sql
+!testimonium-backend/prisma/migrations/20260705113749_make_firebase_uid_optional/migration.sql
+!testimonium-backend/prisma/migrations/20260707131952_add_patron_saint_and_email_to_parish/migration.sql
+!testimonium-backend/prisma/migrations/20260823120000_add_idempotency_keys/migration.sql
 !testimonium-backend/prisma/migrations/20260829090000_planned_additions/migration.sql
+!testimonium-backend/prisma/migrations/20260901120000_add_email_preference_and_document_email_types/migration.sql
 !testimonium-backend/prisma/migrations/20260902120000_add_parish_councils/migration.sql
 !testimonium-backend/prisma/migrations/20260904120000_receipt_attempt_versioning/migration.sql
 !testimonium-backend/prisma/migrations/20260905120000_add_parish_council_member_photos/migration.sql
 !testimonium-backend/prisma/migrations/20260905180000_phase4_scheduling_foundation/migration.sql
 !testimonium-backend/prisma/migrations/20260908214500_add_schedule_requested_priest_id/migration.sql
+!testimonium-backend/prisma/migrations/*_add_rag_chatbot/migration.sql
 **/prisma/*.db
 **/prisma/*.db-journal
 

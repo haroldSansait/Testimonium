@@ -20,6 +20,8 @@ import { ProfilePage } from '@/pages/ProfilePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { MapConfigurationPage } from '@/pages/MapConfigurationPage';
 import { ReportsPage } from '@/pages/ReportsPage';
+import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
+import { KnowledgeSourceDetailPage } from '@/pages/KnowledgeSourceDetailPage';
 
 
 export function AppRouter() {
@@ -103,6 +105,13 @@ export function AppRouter() {
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_USERS} />}>
         <Route element={<AdminLayout />}>
           <Route path="/user-management" element={<UserManagementPage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_KNOWLEDGE_BASE} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
+          <Route path="/knowledge-base/:id" element={<KnowledgeSourceDetailPage />} />
         </Route>
       </Route>
 

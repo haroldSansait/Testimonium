@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Sample initial corpus for TESTIMONIUM sacramental document processing",
+  "sources": [
+    {
+      "title": "Sacramental Certificate Request Overview",
+      "sourceText": "Parishioners can request baptismal, confirmation, marriage, and death certificates through the TESTIMONIUM portal. Each request must specify the recipient details and upload valid identification. An Authorization Letter is required if requesting on behalf of another individual.",
+      "category": "DOCUMENT_REQUESTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "https://testimonium.sanctuary/guides/certificates",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Parishioners can request baptismal, confirmation, marriage, and death certificates through the TESTIMONIUM portal. Each request must specify the recipient details and upload valid identification.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "An Authorization Letter and valid government-issued ID of the certificate owner are strictly required if requesting on behalf of another individual who is of legal age.",
+          "chunkOrder": 1
+        }
+      ]
+    }
+  ]
+}
