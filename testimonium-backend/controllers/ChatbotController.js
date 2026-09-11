@@ -7,7 +7,7 @@ export class ChatbotController {
 
   queryChatbot = async (req, res, next) => {
     try {
-      const { question, sessionId, selectedParishId } = req.body;
+      const { question, sessionId, selectedParishId, structuredClarification, conversationContext } = req.body;
       const userId = req.user?.id || null;
 
       const result = await this.chatbotService.handleQuery({
@@ -15,6 +15,8 @@ export class ChatbotController {
         sessionId,
         selectedParishId,
         userId,
+        structuredClarification,
+        conversationContext,
       });
 
       return res.status(200).json({

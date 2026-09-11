@@ -2,9 +2,14 @@ import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
 import { RetrievalService } from "./RetrievalService.js";
 import { ChatbotLogRepository } from "../repositories/ChatbotLogRepository.js";
-import { getChatCompletionProvider } from "./ai/providerFactory.js";
-import { detectSocialIntent } from "./ai/socialIntentClassifier.js";
-import { detectClarificationNeeded } from "./ai/clarificationDetector.js";
+import { getChatCompletionProvider, getSemanticRouter } from "./ai/providerFactory.js";
+import { FakeSemanticRouter } from "./ai/FakeSemanticRouter.js";
+import { detectTrivialSocial, SOCIAL_RESPONSES } from "./ai/socialIntentClassifier.js";
+import { LiveToolRouter } from "./ai/liveTools/LiveToolRouter.js";
+import { LiveToolRegistry } from "./ai/liveTools/LiveToolRegistry.js";
+import { defaultAiQuotaTracker } from "./ai/aiQuotaTracker.js";
+import { defaultContextManager } from "./ai/ConversationContextManager.js";
+import { sanitizeQuestionForModel } from "./ai/semanticValidationHelper.js";
 
 const DEFAULT_FALLBACK_TEXT =
   "I don't have enough verified TESTIMONIUM information to confirm that. Please contact your parish office for assistance.";
@@ -12,16 +17,27 @@ const DEFAULT_FALLBACK_TEXT =
 export class ChatbotService {
   constructor({
     retrievalService = new RetrievalService(),
-    logRepository = new ChatbotLogRepository(),
+    logRepository = null,
     chatProvider = null,
     prismaClient = prisma,
     isEnabled = null,
+    liveToolRouter = null,
+    semanticRouter = null,
+    aiQuotaTracker = defaultAiQuotaTracker,
+    contextManager = defaultContextManager,
   } = {}) {
-    this.retrievalService = retrievalService;
-    this.logRepository = logRepository;
-    this.getChatProvider = chatProvider ? () => chatProvider : getChatCompletionProvider;
     this.prisma = prismaClient;
+    this.retrievalService = retrievalService;
+    this.logRepository = logRepository || new ChatbotLogRepository(prismaClient);
+    this.getChatProvider = chatProvider ? () => chatProvider : getChatCompletionProvider;
     this.isEnabled = isEnabled !== null ? Boolean(isEnabled) : Boolean(env.chatbot?.enabled);
+    this.liveToolRouter =
+      liveToolRouter || new LiveToolRouter({ registry: new LiveToolRegistry({ prismaClient }), prismaClient });
+    this.semanticRouter =
+      semanticRouter ||
+      (chatProvider?.providerName === "fake" ? new FakeSemanticRouter() : getSemanticRouter());
+    this.aiQuotaTracker = aiQuotaTracker;
+    this.contextManager = contextManager;
   }
 
   /**
@@ -73,9 +89,20 @@ export class ChatbotService {
   }
 
   /**
-   * Main query entrypoint.
+   * Main query entrypoint (aliases: handleQuery, answerQuestion).
    */
-  async handleQuery({ question, sessionId = null, selectedParishId = null, userId = null }) {
+  async answerQuestion(args) {
+    return this.handleQuery(args);
+  }
+
+  async handleQuery({
+    question,
+    sessionId = null,
+    selectedParishId = null,
+    userId = null,
+    structuredClarification = null,
+    conversationContext = null,
+  }) {
     const startTime = Date.now();
 
     // 1. Feature flag guard
@@ -88,69 +115,297 @@ export class ChatbotService {
 
     // 2. Normalize question
     const normalizedQuestion = this.normalizeQuestion(question);
-    if (!normalizedQuestion) {
+    if (!normalizedQuestion && !structuredClarification) {
       const err = new Error("Question must not be empty or whitespace");
       err.statusCode = 400;
       err.code = "VALIDATION_ERROR";
       throw err;
     }
 
-    // 3. Validate optional parish
-    const parish = await this.validateParish(selectedParishId);
-    const effectiveParishId = parish ? parish.id : null;
+    // 3. Zero-cost optimization ONLY for unambiguous, trivial single-purpose greetings/thanks
+    // NOTE: Runs BEFORE validateParish so greetings work even if selectedParishId in storage is stale or invalid!
+    const trivialSocial = detectTrivialSocial(normalizedQuestion);
+    if (trivialSocial) {
+      const updatedCtx = this.contextManager.updateContext(sessionId, {
+        lastResponseType: "SOCIAL",
+      });
 
-    // Route 1: Social / Casual Intents (0 Gemini calls)
-    const socialMatch = detectSocialIntent(normalizedQuestion);
-    if (socialMatch) {
       await this.logRepository.logQuery({
         userId,
         sessionId,
-        selectedParishId: effectiveParishId,
+        selectedParishId: null,
         question: normalizedQuestion,
-        response: socialMatch.answer,
+        response: trivialSocial.answer,
         fallback: false,
         category: "SOCIAL",
         latencyMs: Date.now() - startTime,
       });
 
       return {
-        answer: socialMatch.answer,
+        answer: trivialSocial.answer,
         fallback: false,
         fallbackReason: null,
         sessionId,
         category: "SOCIAL",
         responseType: "SOCIAL",
         sources: [],
+        conversationContext: updatedCtx,
       };
     }
 
-    // Route 2: Contextual Clarification for parish-dependent questions (0 Gemini calls)
-    const clarificationMatch = detectClarificationNeeded(normalizedQuestion, effectiveParishId);
-    if (clarificationMatch) {
+    // 4. Validate optional parish for operational routes
+    const parish = await this.validateParish(selectedParishId);
+    const effectiveParishId = parish ? parish.id : null;
+
+    // 5. UI Continuation Fast Path (0 Gemini calls, 0 AI Quota)
+    // Structured inline selector button submissions are protocol actions, NOT natural language
+    if (
+      structuredClarification &&
+      (structuredClarification.toolId || structuredClarification.originalIntent) &&
+      this.liveToolRouter
+    ) {
+      const safeContext = this.contextManager.getContext(sessionId, conversationContext);
+      const liveResult = await this.liveToolRouter.validateAndExecute({
+        structuredClarification,
+        normalizedQuestion,
+        selectedParishId: effectiveParishId,
+        userId,
+        conversationContext: safeContext,
+      });
+
+      if (liveResult) {
+        const updatedCtx = this.contextManager.updateContext(sessionId, {
+          lastIntent: liveResult.executedParams?.intentId || structuredClarification.toolId || structuredClarification.originalIntent,
+          lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
+          lastParishName: liveResult.executedParams?.parishName || null,
+          lastDocumentType: liveResult.executedParams?.documentType || null,
+          lastScheduleEvent: liveResult.executedParams?.eventType || null,
+          lastDatePhrase: liveResult.executedParams?.date || null,
+          lastResponseType: liveResult.responseType,
+        });
+
+        await this.logRepository.logQuery({
+          userId,
+          sessionId,
+          selectedParishId: effectiveParishId,
+          question: normalizedQuestion,
+          response: liveResult.answer,
+          fallback: Boolean(liveResult.fallback),
+          fallbackReason: liveResult.fallbackReason || null,
+          category: liveResult.category || "LIVE_DATA",
+          latencyMs: Date.now() - startTime,
+          errorCategory: liveResult.fallbackReason || null,
+        });
+
+        return {
+          ...liveResult,
+          sessionId,
+          conversationContext: updatedCtx,
+        };
+      }
+    }
+
+    // 6. Safe Conversational Context
+    const safeContext = this.contextManager.getContext(sessionId, conversationContext);
+
+    // 7. Sensitive Message Sanitization (extract tracking numbers locally before model call)
+    const sanitizedQuestion = sanitizeQuestionForModel(normalizedQuestion);
+
+    // 8. AI Quota Check (Semantic Router Gemini call IS an AI call!)
+    if (this.aiQuotaTracker) {
+      const quotaKey = userId || sessionId || "anonymous";
+      const quotaCheck = this.aiQuotaTracker.consume(quotaKey);
+      if (!quotaCheck.allowed) {
+        const safeErr = new Error(quotaCheck.message);
+        safeErr.statusCode = 429;
+        safeErr.code = quotaCheck.code || "CHATBOT_AI_LIMIT_REACHED";
+        safeErr.retryAfter = quotaCheck.retryAfter;
+
+        await this.logRepository.logQuery({
+          userId,
+          sessionId,
+          selectedParishId: effectiveParishId,
+          question: normalizedQuestion,
+          fallback: true,
+          fallbackReason: safeErr.code,
+          latencyMs: Date.now() - startTime,
+          errorCategory: safeErr.code,
+        });
+
+        throw safeErr;
+      }
+    }
+
+    // 9. Semantic Interpretation Layer (Gemini gemini-3.5-flash-lite)
+    let interpretation;
+    try {
+      interpretation = await this.semanticRouter.interpret({
+        sanitizedQuestion,
+        conversationContext: safeContext,
+        selectedParishName: parish ? parish.parishName : null,
+      });
+    } catch (err) {
+      console.error(`[ChatbotService] Semantic routing error: ${err.message}`);
+      // Fall back to RAG on transient model error
+      interpretation = {
+        route: "RAG",
+        intent: null,
+        entities: { parishName: null, documentType: null, scheduleEvent: null, datePhrase: null, trackingNumberPresent: false },
+        usesPreviousContext: false,
+      };
+    }
+
+    // 10. Route Dispatch & Authoritative Backend Validation
+
+    // 10A. SOCIAL
+    if (interpretation.route === "SOCIAL") {
+      const answer = SOCIAL_RESPONSES.GREETING;
+      const updatedCtx = this.contextManager.updateContext(sessionId, {
+        lastResponseType: "SOCIAL",
+      });
+
       await this.logRepository.logQuery({
         userId,
         sessionId,
-        selectedParishId: effectiveParishId,
+        selectedParishId: null,
         question: normalizedQuestion,
-        response: clarificationMatch.answer,
+        response: answer,
         fallback: false,
-        category: "CLARIFICATION",
+        category: "SOCIAL",
         latencyMs: Date.now() - startTime,
       });
 
       return {
-        answer: clarificationMatch.answer,
+        answer,
         fallback: false,
         fallbackReason: null,
         sessionId,
-        category: "CLARIFICATION",
-        responseType: "CLARIFICATION",
-        clarificationType: clarificationMatch.clarificationType,
+        category: "SOCIAL",
+        responseType: "SOCIAL",
         sources: [],
+        conversationContext: updatedCtx,
       };
     }
 
-    // Route 3: RAG pipeline
+    // 10B. CAPABILITIES
+    if (interpretation.route === "CAPABILITIES") {
+      const answer = SOCIAL_RESPONSES.CAPABILITIES;
+      const updatedCtx = this.contextManager.updateContext(sessionId, {
+        lastResponseType: "SOCIAL",
+      });
+
+      await this.logRepository.logQuery({
+        userId,
+        sessionId,
+        selectedParishId: null,
+        question: normalizedQuestion,
+        response: answer,
+        fallback: false,
+        category: "SOCIAL",
+        latencyMs: Date.now() - startTime,
+      });
+
+      return {
+        answer,
+        fallback: false,
+        fallbackReason: null,
+        sessionId,
+        category: "SOCIAL",
+        responseType: "SOCIAL",
+        sources: [],
+        conversationContext: updatedCtx,
+      };
+    }
+
+    // 10C. OUT_OF_SCOPE
+    if (interpretation.route === "OUT_OF_SCOPE") {
+      const answer = SOCIAL_RESPONSES.OUT_OF_SCOPE_CASUAL;
+      const updatedCtx = this.contextManager.updateContext(sessionId, {
+        lastResponseType: "SOCIAL",
+      });
+
+      await this.logRepository.logQuery({
+        userId,
+        sessionId,
+        selectedParishId: null,
+        question: normalizedQuestion,
+        response: answer,
+        fallback: false,
+        category: "SOCIAL",
+        latencyMs: Date.now() - startTime,
+      });
+
+      return {
+        answer,
+        fallback: false,
+        fallbackReason: null,
+        sessionId,
+        category: "SOCIAL",
+        responseType: "SOCIAL",
+        sources: [],
+        conversationContext: updatedCtx,
+      };
+    }
+
+    // 10D. LIVE_TOOL
+    if (interpretation.route === "LIVE_TOOL" && this.liveToolRouter) {
+      const liveResult = await this.liveToolRouter.validateAndExecute({
+        semanticProposal: interpretation,
+        normalizedQuestion,
+        selectedParishId: effectiveParishId,
+        userId,
+        conversationContext: safeContext,
+      });
+
+      if (liveResult) {
+        let updatedCtx = safeContext;
+        if (liveResult.responseType === "LIVE_DATA") {
+          updatedCtx = this.contextManager.updateContext(sessionId, {
+            lastIntent: interpretation.intent,
+            lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
+            lastParishName: liveResult.executedParams?.parishName || null,
+            lastDocumentType: liveResult.executedParams?.documentType || null,
+            lastScheduleEvent: liveResult.executedParams?.eventType || null,
+            lastDatePhrase: liveResult.executedParams?.date || null,
+            lastResponseType: "LIVE_DATA",
+          });
+        } else if (liveResult.responseType === "CLARIFICATION") {
+          updatedCtx = this.contextManager.updateContext(sessionId, {
+            lastIntent: interpretation.intent,
+            lastParishId: liveResult.structuredClarification?.collected?.parishId || effectiveParishId,
+            lastDocumentType: liveResult.structuredClarification?.collected?.documentType || null,
+            lastResponseType: "CLARIFICATION",
+          });
+        }
+
+        await this.logRepository.logQuery({
+          userId,
+          sessionId,
+          selectedParishId: effectiveParishId,
+          question: normalizedQuestion,
+          response: liveResult.answer,
+          fallback: Boolean(liveResult.fallback),
+          fallbackReason: liveResult.fallbackReason || null,
+          category: liveResult.category || "LIVE_DATA",
+          latencyMs: Date.now() - startTime,
+          errorCategory: liveResult.fallbackReason || null,
+        });
+
+        return {
+          ...liveResult,
+          sessionId,
+          conversationContext: updatedCtx,
+        };
+      }
+    }
+
+    // 10E. RAG Pipeline (Procedural and general platform knowledge)
+    // Explicit topic change: previous intent is cleared
+    const updatedCtx = this.contextManager.updateContext(sessionId, {
+      lastIntent: null,
+      lastResponseType: "RAG",
+    });
+
     let retrievalResult;
     try {
       retrievalResult = await this.retrievalService.retrieveKnowledge({
@@ -159,9 +414,21 @@ export class ChatbotService {
       });
     } catch (err) {
       console.error(`[ChatbotService] Retrieval error: ${err.message}`);
-      const safeErr = new Error("Failed to retrieve knowledge");
-      safeErr.statusCode = 503;
-      safeErr.code = err.code || "CHATBOT_RETRIEVAL_UNAVAILABLE";
+      const isProvider429 =
+        err.status === 429 ||
+        err.statusCode === 429 ||
+        err.code === "RESOURCE_EXHAUSTED" ||
+        err.code === "AI_PROVIDER_RATE_LIMITED" ||
+        String(err.message || "").toLowerCase().includes("quota") ||
+        String(err.message || "").toLowerCase().includes("rate limit");
+
+      const safeErr = new Error(
+        isProvider429
+          ? "Caloy's AI service is temporarily at its usage limit. Please try again later."
+          : "Failed to retrieve knowledge"
+      );
+      safeErr.statusCode = isProvider429 ? 429 : 503;
+      safeErr.code = isProvider429 ? "AI_PROVIDER_RATE_LIMITED" : (err.code || "CHATBOT_RETRIEVAL_UNAVAILABLE");
 
       await this.logRepository.logQuery({
         userId,
@@ -169,7 +436,7 @@ export class ChatbotService {
         selectedParishId: effectiveParishId,
         question: normalizedQuestion,
         fallback: true,
-        fallbackReason: "RETRIEVAL_ERROR",
+        fallbackReason: safeErr.code,
         latencyMs: Date.now() - startTime,
         errorCategory: safeErr.code,
       });
@@ -188,7 +455,7 @@ export class ChatbotService {
     const retrievedChunkIds = candidates.map((c) => c.chunkId ?? c.id);
     const retrievalScores = candidates.map((c) => c.semanticScore);
 
-    // 4. Evidence Gate: if no evidence or top candidate fails minimum similarity, DO NOT call LLM
+    // Evidence Gate: if no evidence or top candidate fails minimum similarity, DO NOT call LLM
     if (!hasSufficientEvidence || candidates.length === 0) {
       let fallbackAnswer = DEFAULT_FALLBACK_TEXT;
       if (parish) {
@@ -224,10 +491,11 @@ export class ChatbotService {
         sessionId,
         category: null,
         sources: [],
+        conversationContext: updatedCtx,
       };
     }
 
-    // 5. Grounded Generation
+    // Grounded Generation
     const chatProvider = this.getChatProvider();
     const evidencePayload = candidates.map((c) => ({
       id: c.chunkId ?? c.id,
@@ -247,9 +515,21 @@ export class ChatbotService {
       });
     } catch (err) {
       console.error(`[ChatbotService] Generation error: ${err.code || "UNKNOWN"}`);
-      const safeErr = new Error("Failed to generate answer");
-      safeErr.statusCode = 503;
-      safeErr.code = err.code || "CHATBOT_GENERATION_UNAVAILABLE";
+      const isProvider429 =
+        err.status === 429 ||
+        err.statusCode === 429 ||
+        err.code === "RESOURCE_EXHAUSTED" ||
+        err.code === "AI_PROVIDER_RATE_LIMITED" ||
+        String(err.message || "").toLowerCase().includes("quota") ||
+        String(err.message || "").toLowerCase().includes("rate limit");
+
+      const safeErr = new Error(
+        isProvider429
+          ? "Caloy's AI service is temporarily at its usage limit. Please try again later."
+          : "Failed to generate answer"
+      );
+      safeErr.statusCode = isProvider429 ? 429 : 503;
+      safeErr.code = isProvider429 ? "AI_PROVIDER_RATE_LIMITED" : (err.code || "CHATBOT_GENERATION_UNAVAILABLE");
 
       await this.logRepository.logQuery({
         userId,
@@ -259,7 +539,7 @@ export class ChatbotService {
         retrievedChunkIds,
         retrievalScores,
         fallback: true,
-        fallbackReason: "GENERATION_ERROR",
+        fallbackReason: safeErr.code,
         category,
         embeddingProvider,
         generationProvider: chatProvider.providerName,
@@ -291,10 +571,11 @@ export class ChatbotService {
         sessionId,
         category: null,
         sources: [],
+        conversationContext: updatedCtx,
       };
     };
 
-    // 6. Handle model-reported insufficient evidence or empty text
+    // Handle model-reported insufficient evidence or empty text
     if (!generationResult.answer || !generationResult.answer.trim()) {
       const fallbackPayload = buildFallbackResponse("INSUFFICIENT_EVIDENCE");
 
@@ -318,9 +599,7 @@ export class ChatbotService {
       return fallbackPayload;
     }
 
-    // 7. Independent Service-Level Citation Invariant:
-    // Every factual answer MUST have citedChunkIds.length >= 1
-    // AND every citedChunkId must belong to the EXACT chunks actually supplied to generation.
+    // Independent Service-Level Citation Invariant
     const citedIds = Array.isArray(generationResult.citedChunkIds)
       ? generationResult.citedChunkIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
       : [];
@@ -329,7 +608,6 @@ export class ChatbotService {
       citedIds.length >= 1 && citedIds.every((id) => suppliedChunkIdsSet.has(id));
 
     if (!allCitationsValid) {
-      // Discard unsupported answer -> return deterministic safe fallback
       const fallbackPayload = buildFallbackResponse("UNSUPPORTED_OR_MISSING_CITATIONS");
 
       await this.logRepository.logQuery({
@@ -352,7 +630,7 @@ export class ChatbotService {
       return fallbackPayload;
     }
 
-    // 8. Assemble verified cited sources
+    // Assemble verified cited sources
     const citedSet = new Set(citedIds);
     const citedSources = [];
     const seenSourceIds = new Set();
@@ -373,7 +651,7 @@ export class ChatbotService {
       }
     }
 
-    // Best-effort log
+    // Log successful query
     await this.logRepository.logQuery({
       userId,
       sessionId,
@@ -390,7 +668,7 @@ export class ChatbotService {
       latencyMs: Date.now() - startTime,
     });
 
-    // 9. Return safe public DTO (NO messageId, NO embeddings, NO raw scores)
+    // Return safe public DTO
     return {
       answer: generationResult.answer,
       fallback: false,
@@ -399,6 +677,7 @@ export class ChatbotService {
       sessionId,
       category,
       sources: citedSources,
+      conversationContext: updatedCtx,
     };
   }
 }

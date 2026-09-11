@@ -32,6 +32,29 @@ export const chatbotQuerySchema = z
       .positive("selectedParishId must be a positive integer")
       .optional()
       .nullable(),
+    structuredClarification: z
+      .object({
+        originalQuestion: z.string().optional(),
+        toolId: z.string().optional(),
+        originalIntent: z.string().optional(),
+        collected: z.record(z.any()).optional(),
+        missing: z.string().optional(),
+        nextRequired: z.string().optional(),
+      })
+      .optional()
+      .nullable(),
+    conversationContext: z
+      .object({
+        lastIntent: z.string().nullable().optional(),
+        lastParishId: z.number().int().positive().nullable().optional(),
+        lastParishName: z.string().nullable().optional(),
+        lastDocumentType: z.string().nullable().optional(),
+        lastScheduleEvent: z.string().nullable().optional(),
+        lastDatePhrase: z.string().nullable().optional(),
+        lastResponseType: z.string().nullable().optional(),
+      })
+      .optional()
+      .nullable(),
   })
   .strict({
     message: "Unknown fields are not allowed in chatbot query payload",

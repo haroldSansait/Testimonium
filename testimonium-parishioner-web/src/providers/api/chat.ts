@@ -5,12 +5,16 @@ export class ApiChatProvider implements IChatProvider {
   async sendMessage(
     question: string,
     selectedParishId?: number | null,
-    sessionId?: string
+    sessionId?: string,
+    structuredClarification?: any,
+    conversationContext?: any
   ): Promise<ChatResponse> {
     const payload: {
       question: string;
       sessionId?: string;
       selectedParishId?: number;
+      structuredClarification?: any;
+      conversationContext?: any;
     } = {
       question: question.trim(),
     };
@@ -21,6 +25,14 @@ export class ApiChatProvider implements IChatProvider {
 
     if (selectedParishId && Number.isInteger(Number(selectedParishId)) && Number(selectedParishId) > 0) {
       payload.selectedParishId = Number(selectedParishId);
+    }
+
+    if (structuredClarification) {
+      payload.structuredClarification = structuredClarification;
+    }
+
+    if (conversationContext) {
+      payload.conversationContext = conversationContext;
     }
 
     const response = await client.post<ChatResponse>("/chatbot/query", payload);
@@ -34,6 +46,10 @@ export class ApiChatProvider implements IChatProvider {
       sources: Array.isArray(response.sources) ? response.sources : [],
       responseType: response.responseType,
       clarificationType: response.clarificationType,
+      clarificationOptions: response.clarificationOptions,
+      structuredClarification: response.structuredClarification,
+      liveData: response.liveData,
+      conversationContext: response.conversationContext,
     };
   }
 }

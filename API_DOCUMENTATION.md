@@ -185,6 +185,100 @@ Parish events accept `PUBLIC` or `PARISH_PRIVATE` visibility. Public discovery e
 
 For `POST /chatbot/query`, `selectedParishId` is optional question context, not parishioner tenancy. With no selection, retrieval is diocese-wide knowledge only. Selecting any active parish P retrieves diocese-wide knowledge plus PARISH P knowledge while excluding every other parish; parishioners may freely switch the selected active parish and are not restricted by `User.parishId`.
 
+### Caloy Semantic Routing & Authoritative Validation Architecture
+
+Caloy operates using a **Gemini-First Natural Language Understanding + Safe Tool Validation** architecture. Instead of hardcoded regex command patterns or phrase dictionaries, Caloy utilizes Gemini (`gemini-3.5-flash-lite`) to semantically interpret what the user means, while the backend maintains strict, authoritative control over what can be executed.
+
+```
+USER MESSAGE
+    ↓
+SAFE CONVERSATIONAL CONTEXT
+    ↓
+GEMINI SEMANTIC INTERPRETATION (gemini-3.5-flash-lite)
+    ↓
+STRICT STRUCTURED INTENT + ENTITIES
+    ↓
+BACKEND VALIDATION & BOUNDARY ENFORCEMENT
+    ├── SOCIAL (Zero-cost greetings/identity/capabilities)
+    ├── CAPABILITIES (Dynamic platform capabilities, no death certs)
+    ├── LIVE TOOL (Authoritative server validation & execution)
+    ├── RAG (Procedural retrieval with 0.65 threshold & verification)
+    ├── CLARIFICATION (Structured parameter collection: PARISH, DOC, EVENT, DATE)
+    └── OUT OF SCOPE (Polite ecclesiastical domain boundary)
+    ↓
+BACKEND EXECUTES ONLY APPROVED ACTION
+    ↓
+FINAL RESPONSE + EPHEMERAL SAFE CONTEXT
+```
+
+#### Core Architectural Principles
+1. **Semantic Understanding vs. Fixed Capabilities:**
+   - Caloy's allowed capabilities and safety rules are hardcoded and strictly enforced by the backend.
+   - User phrasing is **never** restricted to regex dictionaries. Natural phrasing variants (e.g. *"What would getting a copy of my baptism record cost over at St Joseph?"*, *"Which clergy members are currently serving this parish?"*) are understood semantically.
+2. **Model Authority Boundaries:**
+   - Gemini **never** directly executes tools, receives Prisma clients, or issues database queries.
+   - Gemini output is strictly treated as a proposal (`route`, `intent`, `entities`).
+   - Arbitrary or hallucinated tool proposals (e.g. `DROP_DATABASE`, `DELETE_USER`) are rejected immediately by the backend registry.
+   - The model can never authorize users; private operational tools strictly use `req.user.id` from authenticated session principals.
+3. **Data Privacy & Sanitization:**
+   - Private live operational records (payment transactions, request records, uploaded receipts, OCR output, staff remarks) are **never** provided to Gemini.
+   - Sensitive tracking numbers are masked to `<TRACKING_NUMBER>` before semantic evaluation; the backend retains and matches the identifier locally.
+4. **Lightweight Ephemeral Conversational Context:**
+   - Safe ephemeral state (`lastIntent`, `lastParishId`, `lastParishName`, `lastDocumentType`, `lastScheduleEvent`, `lastDatePhrase`, `lastResponseType`) is retained in session storage and backend session memory (30-minute TTL).
+   - Zero database persistence; cleared immediately upon user sign-out.
+   - Natural follow-ups (e.g. *"How about St. Joseph?"*, *"What about the requirements?"*) inherit context seamlessly. Explicit topic changes immediately clear previous intent.
+5. **Approved Live Tools (Current Operational State):**
+   - `GET_ACTIVE_PARISH_PRIESTS`: Queries active clergy assigned to the requested parish.
+   - `GET_PARISH_DOCUMENTS`: Queries document offerings configured for a parish.
+   - `GET_DOCUMENT_REQUIREMENTS`: Queries current document requirements checklist.
+   - `GET_DOCUMENT_FEE`: Returns effective parish fee with fallback if no fee is configured.
+   - `GET_PARISH_OFFICE_INFO`: Returns public office hours, contact numbers, email, and address.
+   - `GET_CALENDAR_SLOT_AVAILABILITY`: Safe availability slots without exposing other parishioners' bookings.
+   - `CHECK_MY_REQUEST_STATUS`: Authenticated lookup scoped strictly to caller's owned `DocumentRequest` records.
+   - `CHECK_MY_PAYMENT_STATUS`: Authenticated lookup scoped strictly to caller's owned payment/request records.
+   - `GET_MY_UPCOMING_SCHEDULES`: Authenticated lookup for upcoming sacramental appointments in Asia/Manila timezone.
+6. **Procedural Knowledge Pipeline (RAG):**
+   - Used for stable procedural, policy, and system guidance.
+   - Embedding: `gemini-embedding-2` (768 dimensions), cosine vector search with `CHATBOT_MIN_SIMILARITY=0.65`, evidence gating, generation via `gemini-3.5-flash-lite`, and strict citation verification.
+
+#### Rate Limiting & Quota Management
+- **General Abuse Limiter:** HTTP layer (default 60 requests / 10 minutes) protecting against rapid messaging/spam. Returns `CHATBOT_RATE_LIMITED`.
+- **AI Quota Limiter:** In-memory sliding window tracker (default 20 requests / 10 minutes, 50 requests / 24 hours per user). Substantive semantic router queries consume 1 AI token.
+- **Zero-Cost Fast Paths:** Only exact trivial single-purpose greetings/thanks and UI selector continuations (`structuredClarification`) bypass AI quota consumption.
+- **Provider 429 Distinction:** Upstream Gemini HTTP 429 exhaustion maps to `AI_PROVIDER_RATE_LIMITED`.
+
+#### Additive Response Contract
+```json
+{
+  "answer": "string",
+  "fallback": false,
+  "fallbackReason": null,
+  "sessionId": "uuid",
+  "responseType": "SOCIAL" | "CLARIFICATION" | "LIVE_DATA" | "RAG" | "FALLBACK",
+  "clarificationType": "PARISH" | "DOCUMENT_TYPE" | "SCHEDULE_EVENT" | "DATE" | null,
+  "clarificationOptions": [{ "label": "string", "value": "string" }],
+  "structuredClarification": {
+    "originalQuestion": "string",
+    "originalIntent": "string",
+    "toolId": "string",
+    "collected": {},
+    "missing": "string"
+  },
+  "liveData": { "label": "Current TESTIMONIUM Data", "asOf": "ISO8601", "parishId": 1 },
+  "conversationContext": {
+    "lastIntent": "string",
+    "lastParishId": 1,
+    "lastParishName": "string",
+    "lastDocumentType": "string",
+    "lastScheduleEvent": "string",
+    "lastDatePhrase": "string",
+    "lastResponseType": "string"
+  },
+  "sources": []
+}
+```
+
+
 
 ## Idempotency and concurrency controls
 

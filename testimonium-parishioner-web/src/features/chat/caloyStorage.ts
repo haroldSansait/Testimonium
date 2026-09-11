@@ -8,8 +8,21 @@ export interface ChatMessage {
   fallback?: boolean;
   sources?: ChatSource[];
   isError?: boolean;
-  responseType?: 'RAG' | 'FALLBACK' | 'SOCIAL' | 'CLARIFICATION';
-  clarificationType?: 'PARISH' | null;
+  responseType?: 'RAG' | 'FALLBACK' | 'SOCIAL' | 'CLARIFICATION' | 'LIVE_DATA';
+  clarificationType?: 'PARISH' | 'DOCUMENT_TYPE' | 'SCHEDULE_EVENT' | 'DATE' | null;
+  clarificationOptions?: Array<{ label: string; value: string | number }>;
+  structuredClarification?: {
+    originalQuestion?: string;
+    toolId: string;
+    collected?: Record<string, any>;
+    nextRequired?: string;
+  } | null;
+  liveData?: {
+    label: string;
+    asOf: string;
+    parishId?: number | null;
+  };
+  isRestored?: boolean;
 }
 
 export const CALOY_STORAGE_KEYS = {
@@ -17,6 +30,8 @@ export const CALOY_STORAGE_KEYS = {
   sessionId: 'testimonium_caloy_session_id',
   parishId: 'testimonium_caloy_parish_id',
   pendingQuestion: 'testimonium_caloy_pending_question',
+  structuredClarification: 'testimonium_caloy_structured_clarification',
+  conversationContext: 'testimonium_caloy_conversation_context',
 } as const;
 
 interface CaloyStorage {
@@ -66,8 +81,9 @@ export function isValidChatMessage(value: unknown): value is ChatMessage {
   if (value.fallback !== undefined && typeof value.fallback !== 'boolean') return false;
   if (value.isError !== undefined && typeof value.isError !== 'boolean') return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every(isValidSource))) return false;
-  if (value.responseType !== undefined && !['RAG', 'FALLBACK', 'SOCIAL', 'CLARIFICATION'].includes(value.responseType as string)) return false;
-  if (value.clarificationType !== undefined && value.clarificationType !== null && value.clarificationType !== 'PARISH') return false;
+  if (value.responseType !== undefined && !['RAG', 'FALLBACK', 'SOCIAL', 'CLARIFICATION', 'LIVE_DATA'].includes(value.responseType as string)) return false;
+  if (value.clarificationType !== undefined && value.clarificationType !== null && !['PARISH', 'DOCUMENT_TYPE', 'SCHEDULE_EVENT', 'DATE'].includes(value.clarificationType as string)) return false;
+  if (value.isRestored !== undefined && typeof value.isRestored !== 'boolean') return false;
   return true;
 }
 
@@ -88,8 +104,12 @@ export function readCaloyMessages(storage: CaloyStorage | null = defaultStorage(
     const rawValue = storage.getItem(CALOY_STORAGE_KEYS.messages);
     if (!rawValue) return null;
     const messages = parseCaloyMessages(rawValue);
-    if (!messages) storage.removeItem(CALOY_STORAGE_KEYS.messages);
-    return messages;
+    if (!messages) {
+      storage.removeItem(CALOY_STORAGE_KEYS.messages);
+      return null;
+    }
+    // Mark restored messages so animation doesn't replay
+    return messages.map((m) => ({ ...m, isRestored: true }));
   } catch {
     return null;
   }
@@ -140,5 +160,59 @@ export function clearPendingQuestion(storage: CaloyStorage | null = defaultStora
   if (!storage) return;
   try {
     storage.removeItem(CALOY_STORAGE_KEYS.pendingQuestion);
+  } catch {}
+}
+
+export function getStructuredClarification(storage: CaloyStorage | null = defaultStorage()): any | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(CALOY_STORAGE_KEYS.structuredClarification);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStructuredClarification(data: any, storage: CaloyStorage | null = defaultStorage()): boolean {
+  if (!storage || !data || typeof data !== 'object') return false;
+  try {
+    storage.setItem(CALOY_STORAGE_KEYS.structuredClarification, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearStructuredClarification(storage: CaloyStorage | null = defaultStorage()): void {
+  if (!storage) return;
+  try {
+    storage.removeItem(CALOY_STORAGE_KEYS.structuredClarification);
+  } catch {}
+}
+
+export function getConversationContext(storage: CaloyStorage | null = defaultStorage()): any | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(CALOY_STORAGE_KEYS.conversationContext);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setConversationContext(data: any, storage: CaloyStorage | null = defaultStorage()): boolean {
+  if (!storage || !data || typeof data !== 'object') return false;
+  try {
+    storage.setItem(CALOY_STORAGE_KEYS.conversationContext, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearConversationContext(storage: CaloyStorage | null = defaultStorage()): void {
+  if (!storage) return;
+  try {
+    storage.removeItem(CALOY_STORAGE_KEYS.conversationContext);
   } catch {}
 }

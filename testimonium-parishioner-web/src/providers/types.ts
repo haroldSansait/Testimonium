@@ -158,8 +158,29 @@ export interface ChatResponse {
   sessionId?: string;
   category?: string | null;
   sources: ChatSource[];
-  responseType?: 'RAG' | 'FALLBACK' | 'SOCIAL' | 'CLARIFICATION';
-  clarificationType?: 'PARISH' | null;
+  responseType?: 'RAG' | 'FALLBACK' | 'SOCIAL' | 'CLARIFICATION' | 'LIVE_DATA';
+  clarificationType?: 'PARISH' | 'DOCUMENT_TYPE' | 'SCHEDULE_EVENT' | 'DATE' | null;
+  clarificationOptions?: Array<{ label: string; value: string | number }>;
+  structuredClarification?: {
+    originalQuestion?: string;
+    toolId: string;
+    collected?: Record<string, any>;
+    nextRequired?: string;
+  } | null;
+  liveData?: {
+    label: string;
+    asOf: string;
+    parishId?: number | null;
+  };
+  conversationContext?: {
+    lastIntent?: string | null;
+    lastParishId?: number | null;
+    lastParishName?: string | null;
+    lastDocumentType?: string | null;
+    lastScheduleEvent?: string | null;
+    lastDatePhrase?: string | null;
+    lastResponseType?: string | null;
+  } | null;
 }
 
 export interface IChatProvider {
@@ -167,6 +188,19 @@ export interface IChatProvider {
     question: string,
     selectedParishId?: number | null,
     sessionId?: string
+  ): Promise<ChatResponse>;
+  sendMessage(
+    question: string,
+    selectedParishId?: number | null,
+    sessionId?: string,
+    structuredClarification?: any
+  ): Promise<ChatResponse>;
+  sendMessage(
+    question: string,
+    selectedParishId?: number | null,
+    sessionId?: string,
+    structuredClarification?: any,
+    conversationContext?: any
   ): Promise<ChatResponse>;
 }
 

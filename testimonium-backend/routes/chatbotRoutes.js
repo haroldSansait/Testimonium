@@ -12,8 +12,7 @@ import {
   listKnowledgeSchema,
 } from "../validators/knowledgeSchemas.js";
 import {
-  chatbotUserTenMinuteLimiter,
-  chatbotUserDailyLimiter,
+  chatGeneralAbuseLimiter,
 } from "../middlewares/rateLimit.js";
 
 const router = Router();
@@ -25,8 +24,7 @@ router.post(
   "/query",
   authenticateFirebaseToken,
   checkRole(["PARISHIONER"]),
-  chatbotUserTenMinuteLimiter,
-  chatbotUserDailyLimiter,
+  chatGeneralAbuseLimiter,
   validateBody(chatbotQuerySchema),
   chatbotController.queryChatbot
 );

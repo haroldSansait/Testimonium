@@ -3,9 +3,12 @@ import { GeminiEmbeddingAdapter } from "./GeminiEmbeddingAdapter.js";
 import { GeminiChatAdapter } from "./GeminiChatAdapter.js";
 import { FakeEmbeddingProvider } from "./FakeEmbeddingProvider.js";
 import { FakeChatCompletionProvider } from "./FakeChatCompletionProvider.js";
+import { SemanticIntentRouter } from "./SemanticIntentRouter.js";
+import { FakeSemanticRouter } from "./FakeSemanticRouter.js";
 
 let customEmbeddingProvider = null;
 let customChatProvider = null;
+let customSemanticRouter = null;
 
 export const setCustomEmbeddingProvider = (provider) => {
   customEmbeddingProvider = provider;
@@ -15,9 +18,14 @@ export const setCustomChatProvider = (provider) => {
   customChatProvider = provider;
 };
 
+export const setCustomSemanticRouter = (router) => {
+  customSemanticRouter = router;
+};
+
 export const resetCustomProviders = () => {
   customEmbeddingProvider = null;
   customChatProvider = null;
+  customSemanticRouter = null;
 };
 
 export const getEmbeddingProvider = () => {
@@ -100,3 +108,26 @@ export const getChatCompletionProvider = () => {
   throw new Error(`Unsupported chat generation provider: ${providerType}`);
 };
 
+export const getSemanticRouter = () => {
+  if (customSemanticRouter) {
+    return customSemanticRouter;
+  }
+
+  const isTestRuntime =
+    process.env.NODE_ENV === "test" ||
+    process.execArgv.includes("--test") ||
+    Boolean(process.env.NODE_TEST_CONTEXT) ||
+    env.chatbot?.generationProvider === "fake" ||
+    env.chatbot?.generationProvider === "test";
+
+  if (isTestRuntime) {
+    return new FakeSemanticRouter();
+  }
+
+  return new SemanticIntentRouter({
+    apiKey: env.chatbot?.geminiApiKey,
+    model: env.chatbot?.semanticRouterModel || "gemini-3.5-flash-lite",
+    timeoutMs: env.chatbot?.generationTimeoutMs,
+    maxRetries: env.chatbot?.maxRetries,
+  });
+};

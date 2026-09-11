@@ -338,14 +338,14 @@ export const adaptiveWriteRateLimiter = rateLimit({
   },
 });
 
-// 4.1 Chatbot 10-Minute User Limiter (10 queries per 10 minutes)
-export const chatbotUserTenMinuteLimiter = rateLimit({
-  windowMs: env.chatbot?.rateLimits?.windowMs || 10 * 60 * 1000,
-  max: env.chatbot?.rateLimits?.rateLimitMax || 10,
+// 4.1 Chat General Abuse Limiter (prevents DoS/spam for all queries; default: 60 / 10m)
+export const chatGeneralAbuseLimiter = rateLimit({
+  windowMs: env.chatbot?.rateLimits?.generalWindowMs || 10 * 60 * 1000,
+  max: env.chatbot?.rateLimits?.generalAbuseMax || 60,
   standardHeaders: true,
   legacyHeaders: false,
-  store: createRateLimitStore("rl:chatbot:10m:"),
-  keyGenerator: (req) => getRateLimitKey(req, "rl:chatbot:10m:"),
+  store: createRateLimitStore("rl:chatbot:abuse:"),
+  keyGenerator: (req) => getRateLimitKey(req, "rl:chatbot:abuse:"),
   handler: (req, res) => {
     const resetTime = req.rateLimit?.resetTime;
     const retryAfter = resetTime
@@ -356,11 +356,11 @@ export const chatbotUserTenMinuteLimiter = rateLimit({
     return res.status(429).json({
       success: false,
       code: "CHATBOT_RATE_LIMITED",
-      message: "You have reached the 10-minute question limit. Please wait before asking another question.",
+      message: "You're sending messages too quickly. Please wait a moment.",
       errors: [
         {
           code: "CHATBOT_RATE_LIMITED",
-          message: "Too many chatbot queries. Please try again later.",
+          message: "You're sending messages too quickly. Please wait a moment.",
           retryAfter,
         },
       ],
@@ -368,32 +368,6 @@ export const chatbotUserTenMinuteLimiter = rateLimit({
   },
 });
 
-// 4.2 Chatbot Daily User Limiter (50 queries per 24 hours)
-export const chatbotUserDailyLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000,
-  max: env.chatbot?.rateLimits?.dailyLimitMax || 50,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: createRateLimitStore("rl:chatbot:24h:"),
-  keyGenerator: (req) => getRateLimitKey(req, "rl:chatbot:24h:"),
-  handler: (req, res) => {
-    const resetTime = req.rateLimit?.resetTime;
-    const retryAfter = resetTime
-      ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
-      : 86400;
-    res.setHeader("Retry-After", String(retryAfter));
-
-    return res.status(429).json({
-      success: false,
-      code: "CHATBOT_RATE_LIMITED",
-      message: "You have reached your daily limit for questions. Please try again tomorrow.",
-      errors: [
-        {
-          code: "CHATBOT_RATE_LIMITED",
-          message: "Daily chatbot question quota exceeded.",
-          retryAfter,
-        },
-      ],
-    });
-  },
-});
+// Backward-compatible exports
+export const chatbotUserTenMinuteLimiter = chatGeneralAbuseLimiter;
+export const chatbotUserDailyLimiter = (req, res, next) => next();

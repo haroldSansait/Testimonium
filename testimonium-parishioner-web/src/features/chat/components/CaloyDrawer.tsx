@@ -14,6 +14,11 @@ import {
   getPendingQuestion,
   setPendingQuestion,
   clearPendingQuestion,
+  getStructuredClarification,
+  setStructuredClarification,
+  clearStructuredClarification,
+  getConversationContext,
+  setConversationContext,
   type ChatMessage,
 } from '../caloyStorage';
 
@@ -84,9 +89,38 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     }
   });
 
+  const [revealingMessageId, setRevealingMessageId] = useState<string | null>(null);
+  const activeRevealTimerRef = useRef<any>(null);
+  const activeRevealFullTextRef = useRef<{ id: string; fullText: string } | null>(null);
+
   const drawerRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Complete any active progressive reveal immediately (e.g. if user sends a new message)
+  const completeActiveReveal = useCallback(() => {
+    if (activeRevealTimerRef.current) {
+      clearInterval(activeRevealTimerRef.current);
+      activeRevealTimerRef.current = null;
+    }
+    if (activeRevealFullTextRef.current) {
+      const { id, fullText } = activeRevealFullTextRef.current;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, text: fullText } : m))
+      );
+      activeRevealFullTextRef.current = null;
+    }
+    setRevealingMessageId(null);
+  }, []);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (activeRevealTimerRef.current) {
+        clearInterval(activeRevealTimerRef.current);
+      }
+    };
+  }, []);
 
   // Load parishes for inline clarification and context chip
   useEffect(() => {
@@ -221,10 +255,14 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
   const executeQuery = async (
     questionText: string,
     parishIdToUse: number | null,
-    appendUserMessage = true
+    appendUserMessage = true,
+    structuredClarificationOverride?: any
   ) => {
     const cleanInput = questionText.trim();
     if (!cleanInput || isTyping) return;
+
+    // Fast-complete previous reveal if user sends while animation is running
+    completeActiveReveal();
 
     if (appendUserMessage) {
       const userMsg: ChatMessage = {
@@ -241,7 +279,19 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     scrollToBottom(true);
 
     try {
-      const result = await services.chat.sendMessage(cleanInput, parishIdToUse, sessionId);
+      const clarificationPayload = structuredClarificationOverride !== undefined
+        ? structuredClarificationOverride
+        : getStructuredClarification();
+
+      const contextPayload = getConversationContext();
+
+      const result = await services.chat.sendMessage(
+        cleanInput,
+        parishIdToUse,
+        sessionId,
+        clarificationPayload,
+        contextPayload
+      );
 
       if (result.sessionId && result.sessionId !== sessionId) {
         setSessionId(result.sessionId);
@@ -250,36 +300,108 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
         } catch {}
       }
 
-      // Track pending question for parish clarification
-      if (result.clarificationType === 'PARISH') {
-        setPendingQuestion(cleanInput);
-      } else {
-        clearPendingQuestion();
+      if (result.conversationContext) {
+        setConversationContext(result.conversationContext);
       }
 
-      const replyMsg: ChatMessage = {
-        id: `c_${Date.now()}`,
-        sender: 'caloy',
-        text: result.answer,
-        timestamp: new Date().toISOString(),
-        fallback: result.fallback,
-        sources: result.fallback ? [] : result.sources || [],
-        responseType: result.responseType,
-        clarificationType: result.clarificationType,
-      };
+      // Track structured clarification or simple pending question
+      if (result.structuredClarification) {
+        setStructuredClarification(result.structuredClarification);
+        if (appendUserMessage) {
+          setPendingQuestion(cleanInput);
+        }
+      } else if (result.clarificationType === 'PARISH') {
+        setPendingQuestion(cleanInput);
+        clearStructuredClarification();
+      } else {
+        clearPendingQuestion();
+        clearStructuredClarification();
+      }
 
-      setMessages((prev) => [...prev, replyMsg]);
+      const fullAnswer = result.answer;
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+      const replyMsgId = `c_${Date.now()}`;
+
+      // Progressive reveal cadence: ~18ms ticks, finishing short answers in ~0.5s and long in ~1s
+      const shouldAnimate = !prefersReducedMotion && fullAnswer && fullAnswer.length > 20;
+
+      if (shouldAnimate) {
+        const chunkSize = Math.max(3, Math.ceil(fullAnswer.length / 35));
+        let currIndex = Math.min(chunkSize, fullAnswer.length);
+
+        const initialMsg: ChatMessage = {
+          id: replyMsgId,
+          sender: 'caloy',
+          text: fullAnswer.slice(0, currIndex),
+          timestamp: new Date().toISOString(),
+          fallback: result.fallback,
+          sources: result.fallback ? [] : result.sources || [],
+          responseType: result.responseType,
+          clarificationType: result.clarificationType,
+          clarificationOptions: result.clarificationOptions,
+          structuredClarification: result.structuredClarification,
+          liveData: result.liveData,
+        };
+
+        setRevealingMessageId(replyMsgId);
+        activeRevealFullTextRef.current = { id: replyMsgId, fullText: fullAnswer };
+        setMessages((prev) => [...prev, initialMsg]);
+
+        activeRevealTimerRef.current = setInterval(() => {
+          currIndex = Math.min(currIndex + chunkSize, fullAnswer.length);
+          const nextSlice = fullAnswer.slice(0, currIndex);
+
+          setMessages((prev) =>
+            prev.map((m) => (m.id === replyMsgId ? { ...m, text: nextSlice } : m))
+          );
+
+          if (currIndex >= fullAnswer.length) {
+            if (activeRevealTimerRef.current) {
+              clearInterval(activeRevealTimerRef.current);
+              activeRevealTimerRef.current = null;
+            }
+            activeRevealFullTextRef.current = null;
+            setRevealingMessageId(null);
+          }
+        }, 18);
+      } else {
+        const replyMsg: ChatMessage = {
+          id: replyMsgId,
+          sender: 'caloy',
+          text: fullAnswer,
+          timestamp: new Date().toISOString(),
+          fallback: result.fallback,
+          sources: result.fallback ? [] : result.sources || [],
+          responseType: result.responseType,
+          clarificationType: result.clarificationType,
+          clarificationOptions: result.clarificationOptions,
+          structuredClarification: result.structuredClarification,
+          liveData: result.liveData,
+        };
+
+        setMessages((prev) => [...prev, replyMsg]);
+      }
     } catch (err: any) {
       console.warn('[CaloyDrawer] Query error:', err);
 
       let errorText =
         'I apologize, but my AI services are currently offline. Please contact your parish office directly for help.';
 
-      if (err?.statusCode === 429 || err?.code === 'CHATBOT_RATE_LIMITED') {
-        errorText = "You've reached the message limit for now. Please wait a few minutes before trying again.";
-      } else if (err?.statusCode === 503 || err?.code === 'CHATBOT_UNAVAILABLE') {
+      const errCode = err?.code || err?.error || '';
+      const errMsg = String(err?.message || '');
+
+      if (errCode === 'AI_PROVIDER_RATE_LIMITED' || errMsg.includes('AI_PROVIDER_RATE_LIMITED')) {
+        errorText = "Caloy's AI service is temporarily at its usage limit. Please try again later.";
+      } else if (errCode === 'CHATBOT_AI_LIMIT_REACHED' || errMsg.includes('CHATBOT_AI_LIMIT_REACHED')) {
+        errorText = "You've reached Caloy's AI question limit for now. You can still use basic assistant features, or try again in a few minutes.";
+      } else if (err?.statusCode === 429 || errCode === 'CHATBOT_RATE_LIMITED' || errMsg.includes('CHATBOT_RATE_LIMITED')) {
+        errorText = "You're sending messages too quickly. Please wait a moment.";
+      } else if (err?.statusCode === 503 || errCode === 'CHATBOT_UNAVAILABLE') {
         errorText = 'Caloy is temporarily unavailable. Please check back later or contact your parish office.';
-      } else if (err?.name === 'TypeError' || String(err?.message || '').includes('fetch')) {
+      } else if (err?.name === 'TypeError' || errMsg.includes('fetch')) {
         errorText = 'Unable to connect to Caloy. Please check your internet connection and try again.';
       }
 
@@ -305,13 +427,62 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     await executeQuery(inputValue, selectedParishId, true);
   };
 
-  // Inline clarification selection handler
+  // Inline clarification selection handlers
   const handleInlineParishSelect = async (parishId: number) => {
     handleSelectParish(parishId);
+    const structured = getStructuredClarification();
+    if (structured) {
+      const updated = {
+        ...structured,
+        collected: { ...(structured.collected || {}), parishId },
+      };
+      setStructuredClarification(updated);
+      const pending = getPendingQuestion() || structured.originalQuestion;
+      await executeQuery(pending || 'Continue', parishId, false, updated);
+      return;
+    }
     const pending = getPendingQuestion();
     if (pending) {
       clearPendingQuestion();
       await executeQuery(pending, parishId, false);
+    }
+  };
+
+  const handleInlineDocTypeSelect = async (docType: string) => {
+    const structured = getStructuredClarification();
+    const parishIdToUse = selectedParishId;
+    if (structured) {
+      const updated = {
+        ...structured,
+        collected: { ...(structured.collected || {}), documentType: docType },
+      };
+      setStructuredClarification(updated);
+      const pending = getPendingQuestion() || structured.originalQuestion;
+      await executeQuery(pending || 'Continue', parishIdToUse, false, updated);
+      return;
+    }
+    const pending = getPendingQuestion();
+    if (pending) {
+      await executeQuery(`${pending} ${docType}`, parishIdToUse, false);
+    }
+  };
+
+  const handleInlineEventTypeSelect = async (eventType: string) => {
+    const structured = getStructuredClarification();
+    const parishIdToUse = selectedParishId;
+    if (structured) {
+      const updated = {
+        ...structured,
+        collected: { ...(structured.collected || {}), scheduleEvent: eventType },
+      };
+      setStructuredClarification(updated);
+      const pending = getPendingQuestion() || structured.originalQuestion;
+      await executeQuery(pending || 'Continue', parishIdToUse, false, updated);
+      return;
+    }
+    const pending = getPendingQuestion();
+    if (pending) {
+      await executeQuery(`${pending} ${eventType}`, parishIdToUse, false);
     }
   };
 
@@ -471,8 +642,23 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                   <SafeMarkdown text={msg.text} />
                 )}
 
+                {/* Live Data Badge for TESTIMONIUM verified live operational results */}
+                {msg.responseType === 'LIVE_DATA' && revealingMessageId !== msg.id && (
+                  <div className="mt-2 pt-2 border-t border-border/70 flex items-center justify-between text-[11px] text-emerald-700 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-emerald-600 font-bold">✓</span>
+                      <span>Current TESTIMONIUM Data</span>
+                    </span>
+                    {msg.liveData?.asOf && (
+                      <span className="text-[10px] text-text-muted">
+                        Updated just now
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Inline Parish Clarification Selector */}
-                {msg.clarificationType === 'PARISH' && (
+                {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && (
                   <div className="mt-3 pt-2.5 border-t border-border/70">
                     <label
                       htmlFor={`parish-clarify-${msg.id}`}
@@ -505,8 +691,77 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                   </div>
                 )}
 
-                {/* Sources Section for verified answers */}
-                {msg.sources && msg.sources.length > 0 && !msg.fallback && (
+                {/* Inline Document Type Clarification Selector */}
+                {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && (
+                  <div className="mt-3 pt-2.5 border-t border-border/70">
+                    <label
+                      htmlFor={`doc-clarify-${msg.id}`}
+                      className="block text-[11px] font-medium text-text-muted mb-1.5"
+                    >
+                      Select document type to continue:
+                    </label>
+                    <select
+                      id={`doc-clarify-${msg.id}`}
+                      disabled={isTyping}
+                      defaultValue=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          handleInlineDocTypeSelect(val);
+                        }
+                      }}
+                      className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                      aria-label="Select document type for clarification"
+                    >
+                      <option value="" disabled>
+                        Choose a document type...
+                      </option>
+                      <option value="BAPTISMAL_CERTIFICATE">Baptismal Certificate</option>
+                      <option value="CONFIRMATION_CERTIFICATE">Confirmation Certificate</option>
+                      <option value="FIRST_COMMUNION_CERTIFICATE">First Communion Certificate</option>
+                      <option value="MARRIAGE_CERTIFICATE">Marriage Certificate</option>
+                      <option value="DEATH_CERTIFICATE">Death Certificate</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Inline Schedule Event Clarification Selector */}
+                {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && (
+                  <div className="mt-3 pt-2.5 border-t border-border/70">
+                    <label
+                      htmlFor={`event-clarify-${msg.id}`}
+                      className="block text-[11px] font-medium text-text-muted mb-1.5"
+                    >
+                      Select sacramental event:
+                    </label>
+                    <select
+                      id={`event-clarify-${msg.id}`}
+                      disabled={isTyping}
+                      defaultValue=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          handleInlineEventTypeSelect(val);
+                        }
+                      }}
+                      className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                      aria-label="Select schedule event for clarification"
+                    >
+                      <option value="" disabled>
+                        Choose an event type...
+                      </option>
+                      <option value="BAPTISM">Baptism</option>
+                      <option value="WEDDING">Wedding</option>
+                      <option value="FUNERAL_MASS">Funeral Mass</option>
+                      <option value="BLESSING">Blessing</option>
+                      <option value="MASS_INTENTION">Mass Intention</option>
+                      <option value="CONFESSION">Confession</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Sources Section for verified answers (revealed after text completes) */}
+                {msg.sources && msg.sources.length > 0 && revealingMessageId !== msg.id && !msg.fallback && (
                   <SourcesAccordion sources={msg.sources} />
                 )}
 
