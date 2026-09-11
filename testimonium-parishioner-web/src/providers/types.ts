@@ -158,6 +158,8 @@ export interface ChatResponse {
   sessionId?: string;
   category?: string | null;
   sources: ChatSource[];
+  responseType?: 'RAG' | 'FALLBACK' | 'SOCIAL' | 'CLARIFICATION';
+  clarificationType?: 'PARISH' | null;
 }
 
 export interface IChatProvider {

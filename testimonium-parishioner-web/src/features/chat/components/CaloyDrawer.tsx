@@ -1,14 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send } from 'lucide-react';
+import { X, Send, Church } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import services from '../../../providers/factory';
+import type { Parish } from '../../../types';
 import { ParishSelector } from './ParishSelector';
 import { SourcesAccordion } from './SourcesAccordion';
+import { SafeMarkdown } from './SafeMarkdown';
 import {
   CALOY_STORAGE_KEYS,
   readCaloyMessages,
   writeCaloyMessages,
+  getPendingQuestion,
+  setPendingQuestion,
+  clearPendingQuestion,
   type ChatMessage,
 } from '../caloyStorage';
 
@@ -49,6 +54,9 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [parishes, setParishes] = useState<Parish[]>([]);
+  const [showManualParishSelect, setShowManualParishSelect] = useState(false);
+
   const [selectedParishId, setSelectedParishId] = useState<number | null>(() => {
     try {
       const stored = sessionStorage.getItem(CALOY_STORAGE_KEYS.parishId);
@@ -79,6 +87,25 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
   const drawerRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load parishes for inline clarification and context chip
+  useEffect(() => {
+    let mounted = true;
+    async function loadParishes() {
+      try {
+        const list = await services.parish.getParishes();
+        if (mounted) {
+          setParishes(list || []);
+        }
+      } catch (err) {
+        console.warn('[CaloyDrawer] Failed to load parish list:', err);
+      }
+    }
+    loadParishes();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Initialize messages from sessionStorage with safe fallback
   useEffect(() => {
@@ -164,7 +191,6 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     return () => {
       clearTimeout(focusTimer);
       window.removeEventListener('keydown', handleKeyDown);
-      // Restore focus to trigger on close
       triggerRef?.current?.focus();
     };
   }, [isOpen, onClose, triggerRef]);
@@ -191,31 +217,44 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     scrollToBottom();
   }, [messages, isTyping, scrollToBottom]);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanInput = inputValue.trim();
+  // Core execution function for queries
+  const executeQuery = async (
+    questionText: string,
+    parishIdToUse: number | null,
+    appendUserMessage = true
+  ) => {
+    const cleanInput = questionText.trim();
     if (!cleanInput || isTyping) return;
 
-    const userMsg: ChatMessage = {
-      id: `u_${Date.now()}`,
-      sender: 'user',
-      text: cleanInput,
-      timestamp: new Date().toISOString(),
-    };
+    if (appendUserMessage) {
+      const userMsg: ChatMessage = {
+        id: `u_${Date.now()}`,
+        sender: 'user',
+        text: cleanInput,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+    }
 
-    setMessages((prev) => [...prev, userMsg]);
     setInputValue('');
     setIsTyping(true);
     scrollToBottom(true);
 
     try {
-      const result = await services.chat.sendMessage(cleanInput, selectedParishId, sessionId);
+      const result = await services.chat.sendMessage(cleanInput, parishIdToUse, sessionId);
 
       if (result.sessionId && result.sessionId !== sessionId) {
         setSessionId(result.sessionId);
         try {
           sessionStorage.setItem(CALOY_STORAGE_KEYS.sessionId, result.sessionId);
         } catch {}
+      }
+
+      // Track pending question for parish clarification
+      if (result.clarificationType === 'PARISH') {
+        setPendingQuestion(cleanInput);
+      } else {
+        clearPendingQuestion();
       }
 
       const replyMsg: ChatMessage = {
@@ -225,6 +264,8 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
         timestamp: new Date().toISOString(),
         fallback: result.fallback,
         sources: result.fallback ? [] : result.sources || [],
+        responseType: result.responseType,
+        clarificationType: result.clarificationType,
       };
 
       setMessages((prev) => [...prev, replyMsg]);
@@ -258,6 +299,23 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     }
   };
 
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isTyping) return;
+    await executeQuery(inputValue, selectedParishId, true);
+  };
+
+  // Inline clarification selection handler
+  const handleInlineParishSelect = async (parishId: number) => {
+    handleSelectParish(parishId);
+    const pending = getPendingQuestion();
+    if (pending) {
+      clearPendingQuestion();
+      await executeQuery(pending, parishId, false);
+    }
+  };
+
+  const selectedParish = parishes.find((p) => String(p.id) === String(selectedParishId));
   const remainingChars = MAX_QUESTION_LENGTH - inputValue.length;
 
   const drawerElement = (
@@ -271,6 +329,31 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
       aria-hidden={!isOpen}
       inert={!isOpen}
     >
+      {/* Unpurgeable animation style for Caloy typing dots */}
+      <style>{`
+        @keyframes caloyDotPulse {
+          0%, 80%, 100% {
+            transform: scale(0.6);
+            opacity: 0.35;
+          }
+          40% {
+            transform: scale(1.15);
+            opacity: 1;
+          }
+        }
+        .caloy-typing-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 9999px;
+          background-color: #8B0000;
+          display: inline-block;
+          animation: caloyDotPulse 1.4s infinite ease-in-out both;
+        }
+        .caloy-typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .caloy-typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        .caloy-typing-dot:nth-child(3) { animation-delay: 0s; }
+      `}</style>
+
       {/* Backdrop */}
       <div
         className={`fixed inset-0 bg-black/40 transition-opacity duration-300 ${
@@ -309,12 +392,58 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
           </button>
         </div>
 
-        {/* Parish Filter Selector */}
-        <ParishSelector
-          selectedParishId={selectedParishId}
-          onSelectParish={handleSelectParish}
-          disabled={isTyping}
-        />
+        {/* Parish Context Bar / Chip */}
+        <div className="bg-app-page/90 border-b border-border px-3.5 py-2 text-xs flex items-center justify-between">
+          {selectedParish ? (
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
+              <span className="text-crimson font-bold text-sm">📍</span>
+              <span className="truncate font-semibold text-text-primary" title={selectedParish.name}>
+                {selectedParish.name}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-text-muted">
+              <Church className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+              <span className="truncate">Diocese-wide (All Parishes)</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowManualParishSelect((prev) => !prev)}
+              disabled={isTyping}
+              className="text-xs text-crimson hover:underline font-semibold focus-ring px-1 py-0.5 rounded"
+              aria-label={selectedParish ? "Change selected parish" : "Select a parish"}
+            >
+              {selectedParish ? "Change" : "Select Parish"}
+            </button>
+            {selectedParish && (
+              <button
+                type="button"
+                onClick={() => handleSelectParish(null)}
+                disabled={isTyping}
+                className="text-text-muted hover:text-text-primary p-0.5 rounded hover:bg-gray-200 transition-colors focus-ring"
+                title="Clear parish filter to diocese-wide"
+                aria-label="Clear parish filter to diocese-wide"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Expandable Manual Parish Filter Selector */}
+        {showManualParishSelect && (
+          <ParishSelector
+            selectedParishId={selectedParishId}
+            onSelectParish={(pId) => {
+              handleSelectParish(pId);
+              setShowManualParishSelect(false);
+            }}
+            disabled={isTyping}
+          />
+        )}
 
         {/* Messages List Container */}
         <div
@@ -336,7 +465,45 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                     : 'bg-white text-text-primary border border-border rounded-tl-none shadow-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.text}</p>
+                {msg.sender === 'user' ? (
+                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                ) : (
+                  <SafeMarkdown text={msg.text} />
+                )}
+
+                {/* Inline Parish Clarification Selector */}
+                {msg.clarificationType === 'PARISH' && (
+                  <div className="mt-3 pt-2.5 border-t border-border/70">
+                    <label
+                      htmlFor={`parish-clarify-${msg.id}`}
+                      className="block text-[11px] font-medium text-text-muted mb-1.5"
+                    >
+                      Select your parish to continue:
+                    </label>
+                    <select
+                      id={`parish-clarify-${msg.id}`}
+                      disabled={isTyping}
+                      defaultValue=""
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (val && Number.isInteger(val) && val > 0) {
+                          handleInlineParishSelect(val);
+                        }
+                      }}
+                      className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                      aria-label="Select parish for clarification"
+                    >
+                      <option value="" disabled>
+                        Choose a parish...
+                      </option>
+                      {parishes.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Sources Section for verified answers */}
                 {msg.sources && msg.sources.length > 0 && !msg.fallback && (
@@ -359,11 +526,18 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
 
           {/* Typing Indicator */}
           {isTyping && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-border rounded-card rounded-tl-none p-3 shadow-sm flex items-center space-x-1.5">
-                <div className="w-2 h-2 rounded-full bg-crimson/50 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 rounded-full bg-crimson/50 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 rounded-full bg-crimson/50 animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div
+              className="flex justify-start items-end space-x-2"
+              role="status"
+              aria-label="Caloy is typing an answer"
+            >
+              <div className="w-7 h-7 rounded-full bg-crimson text-white flex items-center justify-center text-xs font-serif font-bold flex-shrink-0 shadow-sm">
+                C
+              </div>
+              <div className="bg-white border border-border rounded-card rounded-tl-none px-4 py-3 shadow-sm flex items-center space-x-2">
+                <span className="caloy-typing-dot" />
+                <span className="caloy-typing-dot" />
+                <span className="caloy-typing-dot" />
                 <span className="sr-only">Caloy is typing an answer</span>
               </div>
             </div>

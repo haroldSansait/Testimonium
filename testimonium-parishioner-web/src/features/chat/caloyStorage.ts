@@ -8,12 +8,15 @@ export interface ChatMessage {
   fallback?: boolean;
   sources?: ChatSource[];
   isError?: boolean;
+  responseType?: 'RAG' | 'FALLBACK' | 'SOCIAL' | 'CLARIFICATION';
+  clarificationType?: 'PARISH' | null;
 }
 
 export const CALOY_STORAGE_KEYS = {
   messages: 'testimonium_caloy_messages',
   sessionId: 'testimonium_caloy_session_id',
   parishId: 'testimonium_caloy_parish_id',
+  pendingQuestion: 'testimonium_caloy_pending_question',
 } as const;
 
 interface CaloyStorage {
@@ -63,6 +66,8 @@ export function isValidChatMessage(value: unknown): value is ChatMessage {
   if (value.fallback !== undefined && typeof value.fallback !== 'boolean') return false;
   if (value.isError !== undefined && typeof value.isError !== 'boolean') return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every(isValidSource))) return false;
+  if (value.responseType !== undefined && !['RAG', 'FALLBACK', 'SOCIAL', 'CLARIFICATION'].includes(value.responseType as string)) return false;
+  if (value.clarificationType !== undefined && value.clarificationType !== null && value.clarificationType !== 'PARISH') return false;
   return true;
 }
 
@@ -109,4 +114,31 @@ export function clearCaloySessionStorage(storage: CaloyStorage | null = defaultS
       // Best-effort cleanup must not prevent logout.
     }
   }
+}
+
+export function getPendingQuestion(storage: CaloyStorage | null = defaultStorage()): string | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(CALOY_STORAGE_KEYS.pendingQuestion);
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setPendingQuestion(question: string, storage: CaloyStorage | null = defaultStorage()): boolean {
+  if (!storage || !question || typeof question !== 'string') return false;
+  try {
+    storage.setItem(CALOY_STORAGE_KEYS.pendingQuestion, question.trim());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearPendingQuestion(storage: CaloyStorage | null = defaultStorage()): void {
+  if (!storage) return;
+  try {
+    storage.removeItem(CALOY_STORAGE_KEYS.pendingQuestion);
+  } catch {}
 }

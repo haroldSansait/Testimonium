@@ -32,6 +32,8 @@ export class ApiChatProvider implements IChatProvider {
       sessionId: response.sessionId || sessionId,
       category: response.category || null,
       sources: Array.isArray(response.sources) ? response.sources : [],
+      responseType: response.responseType,
+      clarificationType: response.clarificationType,
     };
   }
 }

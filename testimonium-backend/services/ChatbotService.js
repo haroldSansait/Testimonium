@@ -3,6 +3,8 @@ import { prisma } from "../config/db.js";
 import { RetrievalService } from "./RetrievalService.js";
 import { ChatbotLogRepository } from "../repositories/ChatbotLogRepository.js";
 import { getChatCompletionProvider } from "./ai/providerFactory.js";
+import { detectSocialIntent } from "./ai/socialIntentClassifier.js";
+import { detectClarificationNeeded } from "./ai/clarificationDetector.js";
 
 const DEFAULT_FALLBACK_TEXT =
   "I don't have enough verified TESTIMONIUM information to confirm that. Please contact your parish office for assistance.";
@@ -97,6 +99,58 @@ export class ChatbotService {
     const parish = await this.validateParish(selectedParishId);
     const effectiveParishId = parish ? parish.id : null;
 
+    // Route 1: Social / Casual Intents (0 Gemini calls)
+    const socialMatch = detectSocialIntent(normalizedQuestion);
+    if (socialMatch) {
+      await this.logRepository.logQuery({
+        userId,
+        sessionId,
+        selectedParishId: effectiveParishId,
+        question: normalizedQuestion,
+        response: socialMatch.answer,
+        fallback: false,
+        category: "SOCIAL",
+        latencyMs: Date.now() - startTime,
+      });
+
+      return {
+        answer: socialMatch.answer,
+        fallback: false,
+        fallbackReason: null,
+        sessionId,
+        category: "SOCIAL",
+        responseType: "SOCIAL",
+        sources: [],
+      };
+    }
+
+    // Route 2: Contextual Clarification for parish-dependent questions (0 Gemini calls)
+    const clarificationMatch = detectClarificationNeeded(normalizedQuestion, effectiveParishId);
+    if (clarificationMatch) {
+      await this.logRepository.logQuery({
+        userId,
+        sessionId,
+        selectedParishId: effectiveParishId,
+        question: normalizedQuestion,
+        response: clarificationMatch.answer,
+        fallback: false,
+        category: "CLARIFICATION",
+        latencyMs: Date.now() - startTime,
+      });
+
+      return {
+        answer: clarificationMatch.answer,
+        fallback: false,
+        fallbackReason: null,
+        sessionId,
+        category: "CLARIFICATION",
+        responseType: "CLARIFICATION",
+        clarificationType: clarificationMatch.clarificationType,
+        sources: [],
+      };
+    }
+
+    // Route 3: RAG pipeline
     let retrievalResult;
     try {
       retrievalResult = await this.retrievalService.retrieveKnowledge({
@@ -166,6 +220,7 @@ export class ChatbotService {
         answer: fallbackAnswer,
         fallback: true,
         fallbackReason: "INSUFFICIENT_EVIDENCE",
+        responseType: "FALLBACK",
         sessionId,
         category: null,
         sources: [],
@@ -232,6 +287,7 @@ export class ChatbotService {
         answer: fallbackAnswer,
         fallback: true,
         fallbackReason: reason,
+        responseType: "FALLBACK",
         sessionId,
         category: null,
         sources: [],
@@ -339,6 +395,7 @@ export class ChatbotService {
       answer: generationResult.answer,
       fallback: false,
       fallbackReason: null,
+      responseType: "RAG",
       sessionId,
       category,
       sources: citedSources,
