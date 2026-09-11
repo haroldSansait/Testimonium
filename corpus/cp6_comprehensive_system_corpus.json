@@ -1,0 +1,443 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Comprehensive verified system knowledge corpus for TESTIMONIUM Caloy AI assistant covering all stable parishioner-facing operations",
+  "sources": [
+    {
+      "title": "Account Registration and Verification Requirements",
+      "sourceText": "Parishioners can create a TESTIMONIUM account using their email address and password or through Google Sign-In. During registration, parishioners must provide their First Name and Last Name (Middle Name and Suffix are optional), a valid email address, and a password containing at least 6 characters. To complete registration, parishioners must explicitly accept the Terms of Service and Privacy Policy. Upon registration, TESTIMONIUM sends an activation email with a verification link to the registered email address. Parishioners must verify their email address before accessing full account features. If the verification link expires or is not received, parishioners can request a new verification email from the login page.",
+      "category": "ACCOUNT_SETTINGS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM User Guide - Account Registration",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Parishioners can register for TESTIMONIUM using email and password or Google Sign-In. Required registration fields include First Name, Last Name, email address, a password of at least 6 characters, and acceptance of the Terms of Service and Privacy Policy.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "After registering, an activation email with a verification link is sent to the parishioner. Email verification is required before accessing full account features. Users can resend the verification link from the login page if needed.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Profile Details and Completeness Requirement",
+      "sourceText": "Parishioners can manage their personal profile details from the Profile page in the TESTIMONIUM dashboard, including full name, contact phone number, residential address, and default home parish. TESTIMONIUM enforces a Profile Completeness rule: a parishioner must have a valid full name and non-empty contact number before submitting sacramental certificate requests or scheduling sacramental appointments. If either field is missing or incomplete, the system blocks new requests and prompts the parishioner to complete their profile details first.",
+      "category": "ACCOUNT_SETTINGS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Profile Management & Validation Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "From the Profile page, parishioners can update their personal information, including full name, contact phone number, home address, and default parish selection.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Under the Profile Completeness rule, parishioners must have both a full name and a contact number on file before submitting document requests or booking sacramental appointments. Incomplete profiles are prompted to add missing details first.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Email Notification Preferences and In-App System Alerts",
+      "sourceText": "TESTIMONIUM provides both in-app and email notifications to keep parishioners informed about their document requests and sacramental appointments. Parishioners can toggle email notifications on or off in their Account Profile settings. When enabled, automatic transactional emails are sent for major milestones, including request submission confirmation, document correction notices, payment correction notices, reschedule proposals, schedule confirmations, and ready-for-pickup notifications. In-app notifications in the dashboard notification center are always delivered and cannot be disabled.",
+      "category": "ACCOUNT_SETTINGS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Notification Architecture Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Parishioners can enable or disable email notifications from their Profile settings. When active, transactional emails are sent for request submissions, correction alerts, payment issues, schedule confirmations, reschedule proposals, and ready-for-pickup notices.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "In-app notifications appear in the notification bell and personal dashboard for all important transaction updates. In-app notifications are always delivered to ensure users never miss critical updates regarding their requests.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Parish Directory Information and Local Offerings",
+      "sourceText": "The TESTIMONIUM Parish Directory displays all active Catholic parishes, quasi-parishes, and mission stations within the diocese. For each parish, parishioners can view contact information, email address, telephone number, physical address, municipality or city, patron saint, feast day, office hours, and interactive map location. Each parish configures which specific sacramental certificates and scheduling services it currently offers. If a parish has disabled a particular document type or event service in its local settings, that service cannot be requested from that church.",
+      "category": "PARISH_DIRECTORY",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Parish Directory & Local Configuration",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "The Parish Directory provides public information for all active diocesan churches, including address, city, patron saint, feast day, contact phone, email, office hours, and map location.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Each member parish manages its own list of available sacramental certificates and scheduling services. Parishioners can only request documents and event types that the selected parish currently offers.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Parish Context Selection in Caloy Chatbot",
+      "sourceText": "When conversing with Caloy in TESTIMONIUM, parishioners can select a specific parish to set the conversation context for church-specific inquiries. Selecting a parish provides Caloy with knowledge about that parish's public directory details, document availability, and office hours. Selecting a parish is for question context only: it does not grant administrative access, does not lock or change the user's permanent home parish, does not restrict requesting from other churches, and can be cleared or switched at any time using the parish selector chip.",
+      "category": "PARISH_DIRECTORY",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Caloy AI Assistant Context Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Selecting a parish in Caloy sets the conversation context for church-specific inquiries, allowing Caloy to answer questions using that parish's directory details, available services, and office hours.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parish selection in Caloy is question context only. It does not alter user account permissions, does not modify default home parish settings, and can be changed or cleared at any time using the parish chip.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Document Request Drafts, Submission, and Cancellation",
+      "sourceText": "When a parishioner starts a sacramental certificate request in TESTIMONIUM, the request is initially created as a draft and assigned a unique tracking number in the sequence SR-YYYY-######. Parishioners can save drafts and return to complete them later. Once all required information, applicant details, and identity documents are uploaded, the parishioner submits the draft for parish review. Requesters may cancel their request while it is in PENDING, NEEDS_CORRECTION, PAYMENT_PENDING, or PAYMENT_NEEDS_CORRECTION status. Once parish staff begins PROCESSING the certificate or reaches terminal states (COMPLETED, REJECTED, or already CANCELLED), cancellation is no longer permitted.",
+      "category": "DOCUMENT_REQUESTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Document Request Service Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Starting a document request creates a draft with an official tracking number formatted as SR-YYYY-######. Parishioners can save drafts and return later before submitting for parish review.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parishioners can cancel a document request while it remains in PENDING, NEEDS_CORRECTION, PAYMENT_PENDING, or PAYMENT_NEEDS_CORRECTION status. Once a request enters PROCESSING, COMPLETED, or REJECTED, it can no longer be cancelled.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Document Correction and Resubmission Workflow",
+      "sourceText": "If parish staff reviews a submitted certificate request and finds unclear identity images, missing relationship evidence, or inaccurate personal information, the request is placed in NEEDS_CORRECTION status. The parishioner receives an email and in-app alert with specific correction notes and identified requirements needing replacement. The parishioner visits the Request Tracking dashboard, uploads the corrected replacement files, and resubmits the request. Resubmitting corrected documents transitions the request back to UNDER_REVIEW for staff verification.",
+      "category": "DOCUMENT_REQUESTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Document Review & Correction Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "When a request is marked NEEDS_CORRECTION, parish staff provides specific remarks indicating what documents or details need correction, such as an unreadable ID or missing authorization file.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parishioners can resolve NEEDS_CORRECTION by uploading replacement documents through the Request Tracking dashboard. Resubmitting moves the request back to UNDER_REVIEW for parish staff re-evaluation.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Claiming Certificates Ready for Pickup",
+      "sourceText": "When parish staff finishes verifying parish records, preparing the certificate, and securing the official signature and parish seal, the document request status updates to READY_FOR_PICKUP. Parishioners receive an email and in-app notification indicating their document is ready. The claimant must visit the parish office during operating hours, present a valid government-issued ID, provide the tracking number, and settle any outstanding fees. If an authorized representative is claiming the certificate, the representative must present their own valid ID, the certificate owner's ID, and the signed Authorization Letter. Once released, staff marks the request COMPLETED.",
+      "category": "DOCUMENT_REQUESTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Document Fulfillment Guidelines",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "READY_FOR_PICKUP indicates that the sacramental certificate is prepared, signed, sealed, and ready for claiming at the parish office. Parishioners must bring a valid government ID and their tracking number.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "If an authorized representative is picking up a certificate, they must bring their valid government ID, a copy of the owner's valid ID, and the signed Authorization Letter. Once claimed, the request status is marked COMPLETED.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "File Upload Formats, Size Limits, and Binary Validation",
+      "sourceText": "TESTIMONIUM enforces strict security and format requirements for all file uploads. Every uploaded file must not exceed the maximum allowable size of 5 Megabytes (5 MB). For general supporting documents and valid IDs, accepted formats are PDF, JPEG, PNG, and WebP. For Authorization Letters, accepted formats are PDF, JPEG, and PNG only; WebP is explicitly disallowed. For Payment Receipts, accepted formats are JPEG and PNG only; PDF, WebP, and Apple HEIC/HEIF images are disallowed. The system inspects binary magic bytes to verify genuine file signatures and automatically rejects corrupted, empty, or disguised files.",
+      "category": "ATTACHMENTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM File Upload & Security Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "All file uploads in TESTIMONIUM have a maximum size limit of 5 MB. Valid IDs and supporting documents accept PDF, JPEG, PNG, and WebP. Authorization Letters accept PDF, JPEG, and PNG only (no WebP).",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Payment receipts only accept JPEG and PNG formats up to 5 MB. iPhone HEIC/HEIF, PDF, and WebP formats are not supported for receipts. Uploads are verified via binary file signatures to reject corrupted or disguised files.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Authorized Representative Eligibility and Identification Rules",
+      "sourceText": "Parishioners may submit a document request on behalf of another adult person—such as an adult brother, sister, relative, spouse, or friend—by applying as an Authorized Representative. Representative requests strictly require uploading a signed Authorization Letter from the certificate owner and valid government-issued IDs for both the certificate owner and the designated representative. Parents or legal guardians requesting sacramental certificates for minor children (under 18 years old) are exempt from providing an authorization letter, but must upload their own valid identification and state their parental or guardian relationship.",
+      "category": "REPRESENTATIVE_REQUESTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "Diocesan Document Privacy and Representative Policy",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Requesting a certificate for another adult (such as a brother, sister, relative, or friend) requires selecting Authorized Representative, uploading a signed Authorization Letter, and providing valid IDs for both parties.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parents and legal guardians requesting records for minor children do not need an Authorization Letter. They must upload their own valid government-issued ID and indicate their relationship to the minor.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Payment Proof Submission and Payment Statuses",
+      "sourceText": "When a requested certificate requires a processing fee, the request moves to PAYMENT_PENDING status after initial staff review. The parishioner can view the authoritative fee amount and parish payment instructions, including GCash QR codes or bank deposit details. The parishioner uploads proof of payment (such as a GCash transaction screenshot or bank transfer slip) in JPEG or PNG format up to 5MB. Upon upload, the request status updates to PAYMENT_UNDER_REVIEW, and the payment status changes to PROOF_SUBMITTED. Uploading proof does not verify the payment; parish staff must manually review and confirm the transaction before documents are prepared.",
+      "category": "PAYMENTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Payment Workflow Specification",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "In PAYMENT_PENDING status, parishioners can view the required fee and parish payment options (such as GCash QR code or bank details). Parishioners upload payment proof in JPEG or PNG format under 5 MB.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Submitting payment proof moves the request to PAYMENT_UNDER_REVIEW with payment status PROOF_SUBMITTED. Parish staff manually verifies received funds against parish accounts before marking payment verified.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Payment Proof Correction and Resubmission Workflow",
+      "sourceText": "If parish staff inspects an uploaded payment receipt and finds it illegible, cropped, missing reference numbers, or showing an incorrect amount, the request moves to PAYMENT_NEEDS_CORRECTION status. The parishioner receives an email and notification explaining the payment issue. To correct the payment, the parishioner uploads a new receipt image from the request dashboard. Each new receipt is stored as an incremented attempt version (Attempt #2, #3, etc.) and automatically supersedes previous receipts. Resubmitting an updated receipt returns the request to PAYMENT_UNDER_REVIEW for staff re-evaluation.",
+      "category": "PAYMENTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Receipt Verification and Correction Lifecycle",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "PAYMENT_NEEDS_CORRECTION occurs when an uploaded payment receipt is blurry, cropped, missing the transaction reference, or displays an incorrect amount. Staff notes explain the required correction.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parishioners resolve PAYMENT_NEEDS_CORRECTION by uploading a clearer replacement receipt from their dashboard. The new receipt supersedes previous attempts and moves the request back to PAYMENT_UNDER_REVIEW.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "OCR Technology Role and Anti-Fraud Verification",
+      "sourceText": "TESTIMONIUM utilizes Optical Character Recognition (OCR) technology to scan uploaded payment receipts and extract reference numbers, transaction amounts, and dates. This information assists parish secretaries by pre-populating payment details and evaluating image readability against a quality confidence gate (75% threshold). OCR also performs anti-fraud duplicate checks against previously verified receipts to prevent reusing transaction images. OCR is strictly an administrative scanning tool; it never automatically approves payments or verifies funds without manual parish staff review.",
+      "category": "PAYMENTS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM OCR Integration & Deduplication Architecture",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "OCR scans uploaded payment receipts to assist parish staff with reference numbers, amounts, and dates. It enforces a readability quality gate requiring clear, legible text before staff can proceed with verification.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "OCR includes anti-fraud checks that detect duplicate receipt images or reused reference numbers. OCR never automatically approves payments; all transactions require manual staff verification against bank records.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Supported Sacramental Services and Appointment Request Process",
+      "sourceText": "Parishioners can request sacramental appointments through the TESTIMONIUM schedule module for a wide range of Catholic services, including Baptisms, Weddings, Confirmations, Funerals, Wake Masses, Blessings (house, business, or vehicle), First Communions, Anointing of the Sick, Confessions, Private Masses, Mass Intentions, and Thanksgiving Masses. To schedule a service, the parishioner selects the parish, chooses the event type, picks an available calendar date and time slot within parish operating hours, and submits the request. The request remains tentative until officially reviewed and confirmed by the parish office.",
+      "category": "SCHEDULING",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Sacramental Scheduling Catalog",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "TESTIMONIUM supports scheduling for Baptisms, Weddings, Confirmations, Funerals, Wake Masses, Blessings, First Communions, Anointing of the Sick, Confessions, Private Masses, and Mass Intentions.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "To book an appointment, parishioners select the parish, sacramental service type, and an open date and time slot from the parish calendar. All submitted bookings are tentative until approved by the parish office.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Schedule Request Statuses and Progression",
+      "sourceText": "A sacramental appointment in TESTIMONIUM progresses through defined statuses: REQUESTED or PENDING (submitted booking awaiting parish staff review), PROPOSED_RESCHEDULE or WAITING_PARISHIONER_RESPONSE (parish staff proposed an alternative date or time slot), CONFIRMED (celebrant priest assigned, accepted, and booking finalized), COMPLETED (sacramental event has taken place), CANCELLED (booking withdrawn by user or declined reschedule proposal), and REJECTED (booking cannot be accommodated by the parish). Parishioners can track real-time schedule status and history in their dashboard.",
+      "category": "SCHEDULING",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Schedule State Machine & Lifecycle",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Schedule requests start as REQUESTED or PENDING awaiting staff review. If conflicts arise, staff may propose an alternative date (PROPOSED_RESCHEDULE). Once a priest is assigned and accepts, it becomes CONFIRMED.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "A schedule reaches COMPLETED once the sacrament is celebrated. If the parishioner withdraws the booking or declines a proposal, it becomes CANCELLED. If unaccommodated by the parish, it becomes REJECTED.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Schedule Reschedule Proposals and Parishioner Response Options",
+      "sourceText": "When a requested appointment slot conflicts with liturgical schedules, church closures, or priest availability, parish staff may propose an alternative date and time slot. The schedule status updates to PROPOSED_RESCHEDULE (WAITING_PARISHIONER_RESPONSE), and the parishioner receives an email and dashboard notification. The parishioner must respond through their schedule detail dashboard: accepting the proposal locks in the new date and time, while declining the proposal automatically cancels the request so the parishioner can choose a different date.",
+      "category": "SCHEDULING",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Scheduling Proposal & Acceptance Workflow",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "If a requested appointment slot is unavailable, parish staff can propose an alternative date and time slot. The schedule moves to PROPOSED_RESCHEDULE awaiting the parishioner's response.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parishioners review reschedule proposals in their dashboard. Accepting confirms the newly proposed slot, while declining cancels the request so a new booking can be initiated if desired.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Emergency Rescheduling Policy and Liturgical Disruptions",
+      "sourceText": "Under exceptional circumstances—such as celebrant illness, severe weather emergencies, urgent parish maintenance, or unexpected liturgical conflicts—authorized parish staff may execute an emergency reschedule on an already CONFIRMED appointment. Staff must record an official emergency reason between 5 and 1000 characters. When an emergency reschedule is executed, TESTIMONIUM dispatches immediate in-app and email notifications to the affected parishioner detailing the updated date, time, and reason for the emergency change.",
+      "category": "SCHEDULING",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Emergency Rescheduling Architecture",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Parish staff may perform an emergency reschedule on a CONFIRMED appointment only during genuine emergencies, such as celebrant illness, severe weather, or urgent church disruptions.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Staff must provide a documented reason when executing an emergency reschedule. The system immediately sends high-priority in-app and email notifications to the parishioner with the new schedule details.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Celebrant Assignment and Confirmed Priest Invariant",
+      "sourceText": "Parishioners may express a preference for a requested priest when scheduling a sacramental event, but celebrant assignment is subject to parish clergy schedules, health, and pastoral duties. Under TESTIMONIUM's Confirmed Priest Invariant, an appointment cannot be marked CONFIRMED until an assigned priest has explicitly accepted the assignment. If the assigned priest is unable to celebrate the service, parish staff reassigns the booking to another available celebrant before confirmation.",
+      "category": "SCHEDULING",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Clergy Assignment & Scheduling Invariants",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Indicating a preferred priest is a request only and cannot be guaranteed. The parish office confirms celebrant assignments based on clergy availability and parish pastoral duties.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Under the Confirmed Priest Invariant, an appointment can only become CONFIRMED when a priest is assigned and has accepted the booking. If a priest is unavailable, staff reassigns the event before confirmation.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Diocese and Member Parish Organizational Structure",
+      "sourceText": "TESTIMONIUM is organized across the Catholic Diocese, serving multiple member parishes, quasi-parishes, and mission stations. The Diocese establishes common ecclesiastical policies, guidelines, and verified system knowledge. Each member parish operates its own local parish office, maintains its historical sacramental registry books, sets local office hours, and manages its own calendar schedules. Parishes may also have advisory Pastoral Councils and Finance Councils. Parishioners are diocesan members and can request documents or schedule celebrations at any member church.",
+      "category": "SYSTEM_ORGANIZATION",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Diocesan Governance & Architecture",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "TESTIMONIUM connects all parishes across the diocese under unified diocesan guidelines, while allowing each parish to independently manage its local office hours, registry books, and schedules.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Parishes may include advisory Pastoral and Finance Councils. Parishioners are not restricted to their home church and can engage with any parish in the diocese where their sacraments or records are located.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "System Roles and Parishioner Interactions",
+      "sourceText": "TESTIMONIUM defines clear roles with specific responsibilities: Parishioners submit certificate requests, book sacramental appointments, upload required files, and track progress from their personal dashboard. Parish Secretaries (parish staff) review submitted document requests, inspect payment proof, verify physical registry books, prepare certificates, and propose schedule adjustments. Priests serve as sacramental celebrants, view assigned liturgies, and accept or decline appointments. Diocese Coordinators oversee diocese-wide configurations, review and confirm system knowledge, and support all member parishes.",
+      "category": "SYSTEM_ROLES",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Role & Permissions Architecture",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Parishioners submit requests and appointments through their dashboard. Parish Secretaries manage incoming requests, inspect payment receipts, search church registry books, and prepare certificates.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Priests serve as celebrants and accept or decline event assignments. Diocese Coordinators oversee diocesan operations, manage diocese-wide settings, and verify official system knowledge.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "System Boundaries and Live Operational Data Limitations",
+      "sourceText": "Caloy is TESTIMONIUM's virtual assistant designed to provide general procedural guidance, document requirements, and workflow explanations. Caloy does NOT have access to live database records, real-time tracking of individual requests, personal payment statuses, or specific appointment availability slots. Caloy cannot check whether an individual's certificate is ready, confirm whether a payment was approved, or know unrecorded parish office hours. For live tracking updates and real-time questions, parishioners should check their dashboard or contact their parish office directly.",
+      "category": "SYSTEM_LIMITATIONS",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Architectural Boundaries & Scope",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Caloy provides procedural guidance and explanations of TESTIMONIUM rules. Caloy has no access to live database tracking, individual request statuses, or real-time appointment slot availability.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Caloy cannot look up personal payment verification outcomes, check if a specific certificate is ready, or guarantee priest schedules. Parishioners should check their dashboard or contact their parish office for live updates.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Data Privacy Boundaries and Confidentiality Protections",
+      "sourceText": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy never accesses, reads, or exposes personal identification documents, payment screenshots, or private user records.",
+      "category": "PRIVACY",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Data Privacy Policy & Security Architecture",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Uploaded identification documents, authorization letters, and payment receipts are stored securely and accessible only to the applicant and authorized parish office staff handling the transaction.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Sacramental records are confidential archives released only to authorized individuals. Caloy has no access to uploaded personal documents, payment proofs, or private parishioner files.",
+          "chunkOrder": 1
+        }
+      ]
+    },
+    {
+      "title": "Common User Errors and Request Rejection Causes",
+      "sourceText": "Document requests and appointment bookings may be delayed, flagged for correction, or rejected due to common submission mistakes. Frequent document errors include uploading blurry or cropped ID photos, submitting unsupported file formats (such as WebP for authorization letters or HEIC/HEIF for payment receipts), failing to attach a signed Authorization Letter when requesting for another adult, leaving profile contact numbers blank, or requesting certificate types not offered by the selected parish. In scheduling, common errors include booking slots outside parish operating hours or failing to respond to alternative date proposals.",
+      "category": "TROUBLESHOOTING",
+      "sourceType": "SYSTEM_GUIDE",
+      "sourceReference": "TESTIMONIUM Document Processing & Quality Guidelines",
+      "scope": "DIOCESE",
+      "parishId": null,
+      "chunks": [
+        {
+          "content": "Common document request errors include blurry ID photos, unsupported file types (WebP for letters, HEIC for receipts), missing authorization letters for another adult, and incomplete profile contact numbers.",
+          "chunkOrder": 0
+        },
+        {
+          "content": "Scheduling delays often stem from requesting slots outside parish operating hours, scheduling conflicts, or failing to respond to reschedule proposals. Checking requirements beforehand prevents delays.",
+          "chunkOrder": 1
+        }
+      ]
+    }
+  ]
+}
