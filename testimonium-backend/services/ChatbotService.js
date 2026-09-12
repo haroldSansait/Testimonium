@@ -2,11 +2,12 @@ import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
 import { RetrievalService } from "./RetrievalService.js";
 import { ChatbotLogRepository } from "../repositories/ChatbotLogRepository.js";
-import { getChatCompletionProvider, getSemanticRouter } from "./ai/providerFactory.js";
+import { getChatCompletionProvider, getSemanticRouter, getCaloyResponseComposer } from "./ai/providerFactory.js";
 import { FakeSemanticRouter } from "./ai/FakeSemanticRouter.js";
-import { detectTrivialSocial, SOCIAL_RESPONSES } from "./ai/socialIntentClassifier.js";
+import { detectTrivialSocial, detectSocialIntent, SOCIAL_RESPONSES } from "./ai/socialIntentClassifier.js";
 import { LiveToolRouter } from "./ai/liveTools/LiveToolRouter.js";
 import { LiveToolRegistry } from "./ai/liveTools/LiveToolRegistry.js";
+import { TOOL_IDS } from "./ai/liveTools/liveToolSchemas.js";
 import { defaultAiQuotaTracker } from "./ai/aiQuotaTracker.js";
 import { defaultContextManager } from "./ai/ConversationContextManager.js";
 import { sanitizeQuestionForModel } from "./ai/semanticValidationHelper.js";
@@ -14,6 +15,8 @@ import { sanitizeCitationMarkers } from "./ai/citationUtils.js";
 
 const DEFAULT_FALLBACK_TEXT =
   "I don't have enough verified TESTIMONIUM information to confirm that. Please contact your parish office for assistance.";
+
+const CHATBOT_REQUEST_DEADLINE_MS = 25000;
 
 export class ChatbotService {
   constructor({
@@ -26,6 +29,7 @@ export class ChatbotService {
     semanticRouter = null,
     aiQuotaTracker = defaultAiQuotaTracker,
     contextManager = defaultContextManager,
+    responseComposer = null,
   } = {}) {
     this.prisma = prismaClient;
     this.retrievalService = retrievalService;
@@ -33,12 +37,13 @@ export class ChatbotService {
     this.getChatProvider = chatProvider ? () => chatProvider : getChatCompletionProvider;
     this.isEnabled = isEnabled !== null ? Boolean(isEnabled) : Boolean(env.chatbot?.enabled);
     this.liveToolRouter =
-      liveToolRouter || new LiveToolRouter({ registry: new LiveToolRegistry({ prismaClient }), prismaClient });
+      liveToolRouter || new LiveToolRouter({ registry: new LiveToolRegistry({ prismaClient }), prismaClient, responseComposer });
     this.semanticRouter =
       semanticRouter ||
       (chatProvider?.providerName === "fake" ? new FakeSemanticRouter() : getSemanticRouter());
     this.aiQuotaTracker = aiQuotaTracker;
     this.contextManager = contextManager;
+    this.responseComposer = responseComposer || getCaloyResponseComposer();
   }
 
   /**
@@ -105,6 +110,7 @@ export class ChatbotService {
     conversationContext = null,
   }) {
     const startTime = Date.now();
+    const requestDeadline = startTime + CHATBOT_REQUEST_DEADLINE_MS;
 
     // 1. Feature flag guard
     if (!this.isEnabled) {
@@ -159,9 +165,18 @@ export class ChatbotService {
     const effectiveParishId = parish ? parish.id : null;
 
     // 5. UI Continuation Fast Path (0 Gemini calls, 0 AI Quota)
-    // Structured inline selector button submissions are protocol actions, NOT natural language
-    if (
+    // Structured inline selector button submissions are protocol actions, NOT natural language.
+    // If the user typed natural text instead of clicking a button, route through semantic interpretation!
+    const isExplicitButtonSelection = Boolean(
       structuredClarification &&
+      (structuredClarification.isButtonSelection ||
+       structuredClarification.selectedValue !== undefined ||
+       structuredClarification.choice !== undefined ||
+       !normalizedQuestion)
+    );
+
+    if (
+      isExplicitButtonSelection &&
       (structuredClarification.toolId || structuredClarification.originalIntent) &&
       this.liveToolRouter
     ) {
@@ -172,22 +187,60 @@ export class ChatbotService {
         selectedParishId: effectiveParishId,
         userId,
         conversationContext: safeContext,
+        deadline: requestDeadline,
       });
 
       if (liveResult) {
-        const updatedCtx = this.contextManager.updateContext(sessionId, {
-          lastIntent: liveResult.executedParams?.intentId || structuredClarification.toolId || structuredClarification.originalIntent,
-          lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
-          lastParishName: liveResult.executedParams?.parishName || null,
-          lastDocumentType: liveResult.executedParams?.documentType || null,
-          lastScheduleEvent: liveResult.executedParams?.eventType || null,
-          lastDatePhrase: liveResult.executedParams?.date || null,
-          lastTimePhrase: liveResult.executedParams?.timeSlot || null,
-          lastPriestName: liveResult.executedParams?.priestName || null,
-          lastPriestId: liveResult.executedParams?.priestId || null,
-          lastVicariateName: liveResult.liveData?.vicariate || safeContext.lastVicariateName || null,
-          lastResponseType: liveResult.responseType,
-        });
+        let updatedCtx = safeContext;
+        if (liveResult.responseType === "LIVE_DATA") {
+          updatedCtx = this.contextManager.updateContext(sessionId, {
+            lastIntent: liveResult.executedParams?.intentId || structuredClarification.toolId || structuredClarification.originalIntent,
+            lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
+            lastParishName: liveResult.executedParams?.parishName || null,
+            lastDocumentType: liveResult.executedParams?.documentType || null,
+            lastScheduleEvent: liveResult.executedParams?.eventType || null,
+            lastDatePhrase: liveResult.executedParams?.date || null,
+            lastTimePhrase: liveResult.executedParams?.timeSlot || null,
+            lastPriestName: liveResult.executedParams?.priestName || null,
+            lastPriestId: liveResult.executedParams?.priestId || null,
+            lastVicariateName: liveResult.liveData?.vicariate || safeContext.lastVicariateName || null,
+            lastResponseType: "LIVE_DATA",
+            pendingClarificationIntent: null,
+            pendingMissingParam: null,
+            pendingCollected: null,
+          });
+        } else if (liveResult.responseType === "CLARIFICATION") {
+          updatedCtx = this.contextManager.updateContext(sessionId, {
+            lastIntent: liveResult.structuredClarification?.toolId || structuredClarification.toolId || structuredClarification.originalIntent,
+            lastParishId: liveResult.structuredClarification?.collected?.parishId || effectiveParishId,
+            lastParishName: liveResult.structuredClarification?.collected?.parishName || safeContext.lastParishName || null,
+            lastDocumentType: liveResult.structuredClarification?.collected?.documentType || null,
+            lastScheduleEvent: liveResult.structuredClarification?.collected?.eventType || null,
+            lastDatePhrase: liveResult.structuredClarification?.collected?.date || null,
+            lastTimePhrase: liveResult.structuredClarification?.collected?.timeSlot || null,
+            lastPriestName: liveResult.structuredClarification?.collected?.priestName || null,
+            lastPriestId: liveResult.structuredClarification?.collected?.priestId || null,
+            lastVicariateName: safeContext.lastVicariateName || null,
+            lastResponseType: "CLARIFICATION",
+            pendingClarificationIntent: liveResult.structuredClarification?.toolId || structuredClarification.toolId,
+            pendingMissingParam: liveResult.structuredClarification?.missing || liveResult.clarificationType || null,
+            pendingCollected: liveResult.structuredClarification?.collected || {},
+          });
+        } else {
+          updatedCtx = this.contextManager.updateContext(sessionId, {
+            lastIntent: liveResult.executedParams?.intentId || structuredClarification.toolId || structuredClarification.originalIntent,
+            lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
+            lastParishName: liveResult.executedParams?.parishName || null,
+            lastDocumentType: liveResult.executedParams?.documentType || null,
+            lastScheduleEvent: liveResult.executedParams?.eventType || null,
+            lastDatePhrase: liveResult.executedParams?.date || null,
+            lastTimePhrase: liveResult.executedParams?.timeSlot || null,
+            lastPriestName: liveResult.executedParams?.priestName || null,
+            lastPriestId: liveResult.executedParams?.priestId || null,
+            lastVicariateName: liveResult.liveData?.vicariate || safeContext.lastVicariateName || null,
+            lastResponseType: liveResult.responseType,
+          });
+        }
 
         await this.logRepository.logQuery({
           userId,
@@ -212,6 +265,11 @@ export class ChatbotService {
 
     // 6. Safe Conversational Context
     const safeContext = this.contextManager.getContext(sessionId, conversationContext);
+    if (structuredClarification && (structuredClarification.toolId || structuredClarification.originalIntent)) {
+      safeContext.pendingClarificationIntent = structuredClarification.toolId || structuredClarification.originalIntent;
+      safeContext.pendingMissingParam = structuredClarification.missing || structuredClarification.nextRequired || null;
+      safeContext.pendingCollected = structuredClarification.collected || null;
+    }
 
     // 7. Sensitive Message Sanitization (extract tracking numbers locally before model call)
     const sanitizedQuestion = sanitizeQuestionForModel(normalizedQuestion);
@@ -261,10 +319,54 @@ export class ChatbotService {
     }
 
     // 10. Route Dispatch & Authoritative Backend Validation
+    const socialCheck = detectSocialIntent(normalizedQuestion);
+    if (socialCheck?.intent === "WHO_ARE_YOU" || socialCheck?.intent === "HOW_ARE_YOU" || socialCheck?.intent === "DECLINE_OR_CLOSE") {
+      interpretation.route = "SOCIAL";
+      interpretation.intent = socialCheck.intent;
+    }
 
     // 10A. SOCIAL
     if (interpretation.route === "SOCIAL") {
-      const answer = SOCIAL_RESPONSES.GREETING;
+      const socialIntent = interpretation.intent || socialCheck?.intent;
+
+      let answer = SOCIAL_RESPONSES.GREETING;
+      if (socialIntent === "THANKS") {
+        answer = SOCIAL_RESPONSES.THANKS;
+      } else if (socialIntent === "DECLINE_OR_CLOSE") {
+        answer = SOCIAL_RESPONSES.DECLINE_OR_CLOSE;
+      } else if (socialIntent === "GOODBYE") {
+        answer = SOCIAL_RESPONSES.GOODBYE;
+      } else if (socialIntent === "WHO_ARE_YOU" || socialIntent === "HOW_ARE_YOU") {
+        const defaultAnswer = socialIntent === "WHO_ARE_YOU"
+          ? SOCIAL_RESPONSES.WHO_ARE_YOU
+          : SOCIAL_RESPONSES.HOW_ARE_YOU;
+
+        const composer = this.responseComposer || getCaloyResponseComposer();
+        const hasComposerBudget = Date.now() + 3000 <= requestDeadline;
+        if (composer && hasComposerBudget) {
+          try {
+            const compResult = await composer.compose({
+              responseType: socialIntent,
+              structuredFacts: null,
+              conversationContext: safeContext,
+              capabilityHints: [
+                TOOL_IDS.GET_ACTIVE_PARISHES,
+                TOOL_IDS.GET_PARISH_DOCUMENTS,
+                TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY,
+              ],
+              userMessage: normalizedQuestion,
+              fallbackAnswer: defaultAnswer,
+            });
+            answer = compResult.answer || defaultAnswer;
+          } catch (compErr) {
+            console.warn(`[ChatbotService] Personality composer error (${socialIntent}), falling back: ${compErr.message}`);
+            answer = defaultAnswer;
+          }
+        } else {
+          answer = defaultAnswer;
+        }
+      }
+
       const updatedCtx = this.contextManager.updateContext(sessionId, {
         lastResponseType: "SOCIAL",
       });
@@ -354,12 +456,43 @@ export class ChatbotService {
 
     // 10D. LIVE_TOOL
     if (interpretation.route === "LIVE_TOOL" && this.liveToolRouter) {
+      // If user started a NEW_TOPIC, clear stale scheduling/intent context while preserving stable parish context
+      if (interpretation.pendingRelation === "NEW_TOPIC") {
+        safeContext.pendingClarificationIntent = null;
+        safeContext.pendingMissingParam = null;
+        safeContext.pendingCollected = null;
+        safeContext.lastScheduleEvent = null;
+        safeContext.lastDatePhrase = null;
+        safeContext.lastTimePhrase = null;
+        safeContext.lastPriestName = null;
+        safeContext.lastPriestId = null;
+        safeContext.lastDocumentType = null;
+        structuredClarification = null;
+      } else if (interpretation.pendingRelation === "ANSWER_PENDING" && safeContext.pendingClarificationIntent) {
+        // User answered pending clarification: restore pending intent and merge collected parameters
+        interpretation.intent = safeContext.pendingClarificationIntent;
+        if (safeContext.pendingCollected) {
+          interpretation.entities = {
+            ...safeContext.pendingCollected,
+            ...interpretation.entities,
+            ...(interpretation.entities?.parishName ? { parishName: interpretation.entities.parishName } : {}),
+            ...(interpretation.entities?.datePhrase ? { datePhrase: interpretation.entities.datePhrase } : {}),
+            ...(interpretation.entities?.scheduleEvent ? { scheduleEvent: interpretation.entities.scheduleEvent } : {}),
+            ...(interpretation.entities?.documentType ? { documentType: interpretation.entities.documentType } : {}),
+            ...(interpretation.entities?.timePhrase ? { timePhrase: interpretation.entities.timePhrase } : {}),
+            ...(interpretation.entities?.priestName ? { priestName: interpretation.entities.priestName } : {}),
+          };
+        }
+      }
+
       const liveResult = await this.liveToolRouter.validateAndExecute({
         semanticProposal: interpretation,
         normalizedQuestion,
         selectedParishId: effectiveParishId,
         userId,
         conversationContext: safeContext,
+        structuredClarification: structuredClarification || (safeContext.pendingClarificationIntent ? { toolId: safeContext.pendingClarificationIntent, collected: safeContext.pendingCollected } : null),
+        deadline: requestDeadline,
       });
 
       if (liveResult) {
@@ -377,13 +510,26 @@ export class ChatbotService {
             lastPriestId: liveResult.executedParams?.priestId || null,
             lastVicariateName: liveResult.liveData?.vicariate || safeContext.lastVicariateName || null,
             lastResponseType: "LIVE_DATA",
+            pendingClarificationIntent: null,
+            pendingMissingParam: null,
+            pendingCollected: null,
           });
         } else if (liveResult.responseType === "CLARIFICATION") {
           updatedCtx = this.contextManager.updateContext(sessionId, {
-            lastIntent: interpretation.intent,
+            lastIntent: liveResult.structuredClarification?.toolId || interpretation.intent,
             lastParishId: liveResult.structuredClarification?.collected?.parishId || effectiveParishId,
+            lastParishName: liveResult.structuredClarification?.collected?.parishName || safeContext.lastParishName || null,
             lastDocumentType: liveResult.structuredClarification?.collected?.documentType || null,
+            lastScheduleEvent: liveResult.structuredClarification?.collected?.eventType || null,
+            lastDatePhrase: liveResult.structuredClarification?.collected?.date || null,
+            lastTimePhrase: liveResult.structuredClarification?.collected?.timeSlot || null,
+            lastPriestName: liveResult.structuredClarification?.collected?.priestName || null,
+            lastPriestId: liveResult.structuredClarification?.collected?.priestId || null,
+            lastVicariateName: safeContext.lastVicariateName || null,
             lastResponseType: "CLARIFICATION",
+            pendingClarificationIntent: liveResult.structuredClarification?.toolId || interpretation.intent,
+            pendingMissingParam: liveResult.structuredClarification?.missing || liveResult.clarificationType || null,
+            pendingCollected: liveResult.structuredClarification?.collected || {},
           });
         }
 
@@ -419,6 +565,11 @@ export class ChatbotService {
       lastPriestId: null,
       lastResponseType: "RAG",
     });
+
+    // Check remaining deadline budget before RAG retrieval
+    if (Date.now() + 3000 > requestDeadline) {
+      return buildFallbackResponse("DEADLINE_EXHAUSTED");
+    }
 
     let retrievalResult;
     try {

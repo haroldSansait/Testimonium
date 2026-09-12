@@ -5,10 +5,13 @@ import { FakeEmbeddingProvider } from "./FakeEmbeddingProvider.js";
 import { FakeChatCompletionProvider } from "./FakeChatCompletionProvider.js";
 import { SemanticIntentRouter } from "./SemanticIntentRouter.js";
 import { FakeSemanticRouter } from "./FakeSemanticRouter.js";
+import { CaloyResponseComposer } from "./CaloyResponseComposer.js";
+import { FakeCaloyResponseComposer } from "./FakeCaloyResponseComposer.js";
 
 let customEmbeddingProvider = null;
 let customChatProvider = null;
 let customSemanticRouter = null;
+let customCaloyResponseComposer = null;
 
 export const setCustomEmbeddingProvider = (provider) => {
   customEmbeddingProvider = provider;
@@ -22,10 +25,15 @@ export const setCustomSemanticRouter = (router) => {
   customSemanticRouter = router;
 };
 
+export const setCustomCaloyResponseComposer = (composer) => {
+  customCaloyResponseComposer = composer;
+};
+
 export const resetCustomProviders = () => {
   customEmbeddingProvider = null;
   customChatProvider = null;
   customSemanticRouter = null;
+  customCaloyResponseComposer = null;
 };
 
 export const getEmbeddingProvider = () => {
@@ -129,5 +137,28 @@ export const getSemanticRouter = () => {
     model: env.chatbot?.semanticRouterModel || "gemini-3.5-flash-lite",
     timeoutMs: env.chatbot?.generationTimeoutMs,
     maxRetries: env.chatbot?.maxRetries,
+  });
+};
+
+export const getCaloyResponseComposer = () => {
+  if (customCaloyResponseComposer) {
+    return customCaloyResponseComposer;
+  }
+
+  const isTestRuntime =
+    process.env.NODE_ENV === "test" ||
+    process.execArgv.includes("--test") ||
+    Boolean(process.env.NODE_TEST_CONTEXT) ||
+    env.chatbot?.generationProvider === "fake" ||
+    env.chatbot?.generationProvider === "test";
+
+  if (isTestRuntime) {
+    return new FakeCaloyResponseComposer();
+  }
+
+  return new CaloyResponseComposer({
+    apiKey: env.chatbot?.geminiApiKey,
+    model: env.chatbot?.generationModel || "gemini-3.5-flash-lite",
+    timeoutMs: 12000,
   });
 };

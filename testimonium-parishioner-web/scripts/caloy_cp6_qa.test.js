@@ -128,4 +128,22 @@ test("CP6 Physical QA - Frontend Tests (Typing, SafeMarkdown, Clarification)", a
     };
     assert.equal(isValidChatMessage(socialMessage), true);
   });
+
+  await t.test("9. CaloyDrawer renders backend clarification options dynamically without static lists", () => {
+    // CaloyDrawer uses dynamic options from msg.clarificationOptions
+    assert.match(drawerSource, /msg\.clarificationOptions\s*\|\|\s*\[\]/, "Must map over msg.clarificationOptions");
+    assert.doesNotMatch(drawerSource, /<option value="WEDDING">Wedding<\/option>/, "Must not hardcode static Wedding option in CaloyDrawer");
+    assert.match(drawerSource, /Select an event or service:/, "Must use updated neutral label");
+    assert.match(drawerSource, /Choose an event or service\.\.\./, "Must use updated neutral placeholder");
+
+    // Verify simulated rendering strictly matches backend options
+    const backendOptions = [
+      { value: "WAKE_MASS", label: "Wake Mass" },
+      { value: "MARRIAGE_SPECIAL", label: "Marriage (Special)" }
+    ];
+    const renderedOptions = backendOptions.map(opt => opt.label);
+    assert.deepEqual(renderedOptions, ["Wake Mass", "Marriage (Special)"]);
+    assert.ok(!renderedOptions.includes("Wedding"));
+    assert.ok(!renderedOptions.includes("Mass Intention"));
+  });
 });

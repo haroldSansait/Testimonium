@@ -6,6 +6,7 @@ export const TOOL_IDS = {
   GET_ACTIVE_PARISHES: "GET_ACTIVE_PARISHES",
   GET_ACTIVE_PARISH_PRIESTS: "GET_ACTIVE_PARISH_PRIESTS",
   GET_PARISH_DOCUMENTS: "GET_PARISH_DOCUMENTS",
+  GET_PARISH_SCHEDULABLE_EVENTS: "GET_PARISH_SCHEDULABLE_EVENTS",
   GET_DOCUMENT_REQUIREMENTS: "GET_DOCUMENT_REQUIREMENTS",
   GET_DOCUMENT_FEE: "GET_DOCUMENT_FEE",
   GET_PARISH_OFFICE_INFO: "GET_PARISH_OFFICE_INFO",
@@ -55,6 +56,17 @@ export const TOOL_DEFINITIONS = {
     name: "Get Parish Available Documents",
     classification: "PUBLIC_PARISH",
     description: "Returns the sacramental document types currently offered by a specific parish.",
+    requiredParameters: ["parishId"],
+    clarificationTypeIfMissing: {
+      parishId: "PARISH",
+    },
+  },
+
+  [TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS]: {
+    id: TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS,
+    name: "Get Parish Schedulable Events",
+    classification: "PUBLIC_PARISH",
+    description: "Returns the sacramental event types and services currently enabled for appointment scheduling at a specific parish.",
     requiredParameters: ["parishId"],
     clarificationTypeIfMissing: {
       parishId: "PARISH",

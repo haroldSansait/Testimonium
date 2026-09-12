@@ -181,6 +181,40 @@ export const HomeScreen: React.FC = () => {
           )}
         </Card>
 
+        {/* Ask Caloy Entry Card */}
+        <Pressable
+          onPress={() => router.push("/(app)/caloy" as any)}
+          accessibilityRole="button"
+          accessibilityLabel="Ask Caloy, TESTIMONIUM virtual assistant. Need help with requests, schedules, requirements, parish information, or other questions?"
+          accessibilityHint="Navigates to full-screen Caloy chat"
+          style={({ pressed }) => [styles.caloyCard, pressed && styles.caloyCardPressed]}
+        >
+          <View style={styles.caloyCardContent}>
+            <View style={styles.caloyIconCircle}>
+              <Ionicons name="sparkles" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.caloyTextContainer}>
+              <View style={styles.caloyTitleRow}>
+                <Text style={styles.caloyTitle} allowFontScaling>
+                  Ask Caloy
+                </Text>
+                <View style={styles.caloyBadge}>
+                  <Text style={styles.caloyBadgeText}>AI ASSISTANT</Text>
+                </View>
+              </View>
+              <Text style={styles.caloySubtitle} allowFontScaling>
+                Need help with requests, schedules, requirements, parish information, or other TESTIMONIUM questions?
+              </Text>
+            </View>
+          </View>
+          <View style={styles.caloyFooter}>
+            <Text style={styles.caloyActionText} allowFontScaling>
+              Chat with Caloy
+            </Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+          </View>
+        </Pressable>
+
         {/* Quick Access Grid (6 Services in 2-Column Responsive Flex Rows) */}
         <View style={styles.sectionContainer}>
           <SectionHeader
@@ -702,5 +736,82 @@ const styles = StyleSheet.create({
   profileReminderBtn: {
     alignSelf: "flex-end",
     backgroundColor: colors.surface,
+  },
+  caloyCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.cardBorder,
+    borderWidth: 1,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+  },
+  caloyCardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }],
+  },
+  caloyCardContent: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  caloyIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: spacing.md,
+  },
+  caloyTextContainer: {
+    flex: 1,
+  },
+  caloyTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.xxs,
+  },
+  caloyTitle: {
+    ...fontStyles.heading,
+    color: colors.textPrimary,
+  },
+  caloyBadge: {
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary + "20",
+  },
+  caloyBadgeText: {
+    ...fontStyles.meta,
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  caloySubtitle: {
+    ...fontStyles.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  caloyFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: spacing.sm,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  caloyActionText: {
+    ...fontStyles.captionMedium,
+    color: colors.primary,
+    fontWeight: "600",
+    marginRight: spacing.xxs,
   },
 });

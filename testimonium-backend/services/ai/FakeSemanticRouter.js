@@ -30,6 +30,29 @@ export class FakeSemanticRouter {
   _inferDefaultInterpretation(sanitizedQuestion, conversationContext) {
     const text = (sanitizedQuestion || "").toLowerCase();
 
+    // 0. Social / Decline or Acknowledgement
+    if (
+      /^(no(\s*,)?\s*thanks?|no\s+thank\s+you|okay(\s*,)?\s*thanks?|ok\s+thanks?|sige(\s*,)?\s*salamat|salamat\s+gid|way\s+kaso(\s+ah)?|okay\s+lang|ok\s+lang)(\s+caloy)?$/i.test(
+        text
+      )
+    ) {
+      return {
+        route: "SOCIAL",
+        intent: "DECLINE_OR_CLOSE",
+        pendingRelation: null,
+        entities: {
+          parishName: null,
+          documentType: null,
+          scheduleEvent: null,
+          datePhrase: null,
+          timePhrase: null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: false,
+      };
+    }
+
     // 1. Social / Greetings
     if (/^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy)(\s+caloy)?/i.test(text)) {
       if (
@@ -43,7 +66,8 @@ export class FakeSemanticRouter {
       ) {
         return {
           route: "SOCIAL",
-          intent: null,
+          intent: "GREETING",
+          pendingRelation: null,
           entities: {
             parishName: null,
             documentType: null,
@@ -114,17 +138,25 @@ export class FakeSemanticRouter {
     let scheduleEvent = null;
     if (/\b(marriage\s+special|special\s+wedding)\b/i.test(text)) scheduleEvent = "MARRIAGE_SPECIAL";
     else if (/\b(wedding|kasal)\b/i.test(text)) scheduleEvent = "WEDDING";
-    if (/\b(baptism|binyag)\b/i.test(text)) scheduleEvent = "BAPTISM";
+    else if (/\b(baptism|binyag)\b/i.test(text)) scheduleEvent = "BAPTISM";
+    else if (/\b(wake\s+mass|wake|misa\s+sa\s+patay)\b/i.test(text)) scheduleEvent = "WAKE_MASS";
+    else if (/\b(mass\s+intention|pamisa|intention)\b/i.test(text)) scheduleEvent = "MASS_INTENTION";
+    else if (/\b(funeral|burial|libing)\b/i.test(text)) scheduleEvent = "FUNERAL";
+    else if (/\b(confirmation|kumpil)\b/i.test(text)) scheduleEvent = "CONFIRMATION";
+    else if (/\b(first\s+communion|komunyon)\b/i.test(text)) scheduleEvent = "FIRST_COMMUNION";
+    else if (/\b(confession|kumpisal)\b/i.test(text)) scheduleEvent = "CONFESSION";
+    else if (/\b(anointing|last\s+rites)\b/i.test(text)) scheduleEvent = "ANOINTING_OF_THE_SICK";
 
     let datePhrase = null;
-    if (/tomorrow/i.test(text)) datePhrase = "tomorrow";
-    else if (/today/i.test(text)) datePhrase = "today";
+    if (/tomorrow|bukas|ugma/i.test(text)) datePhrase = "tomorrow";
+    else if (/today|ngayon|karun/i.test(text)) datePhrase = "today";
     else if (/next\s+monday/i.test(text)) datePhrase = "next Monday";
-    else if (/monday/i.test(text)) datePhrase = "Monday";
+    else if (/monday|sa\s+lunes/i.test(text)) datePhrase = "Monday";
     else if (/next\s+saturday/i.test(text)) datePhrase = "next Saturday";
-    else if (/saturday/i.test(text)) datePhrase = "Saturday";
+    else if (/saturday|sa\s+sabado/i.test(text)) datePhrase = "Saturday";
     else if (/next\s+sunday/i.test(text)) datePhrase = "next Sunday";
-    else if (/sunday/i.test(text)) datePhrase = "Sunday";
+    else if (/sunday|sa\s+linggo/i.test(text)) datePhrase = "Sunday";
+    else if (/(?:on\s+)?(?:september|sept|sep)\.?\s*17(?:st|nd|rd|th)?|17(?:st|nd|rd|th)?\s*(?:of\s+)?(?:september|sept|sep)/i.test(text)) datePhrase = "2026-09-17";
 
     let timePhrase = null;
     if (/\b2\s*(pm|p\.m\.)\b|\b2:00\s*(pm|p\.m\.)\b|\bat\s+2\b/i.test(text)) timePhrase = "2:00 PM";
@@ -341,9 +373,13 @@ export class FakeSemanticRouter {
       }
 
       if (/\b(how\s+about|what\s+about|in\s+here|there)\b/i.test(text)) {
+        let followUpIntent = conversationContext.lastIntent;
+        if (conversationContext.lastIntent === "GET_PARISH_SCHEDULABLE_EVENTS" && scheduleEvent) {
+          followUpIntent = "GET_CALENDAR_SLOT_AVAILABILITY";
+        }
         return {
           route: "LIVE_TOOL",
-          intent: conversationContext.lastIntent,
+          intent: followUpIntent,
           entities: {
             parishName: parishName || conversationContext.lastParishName || null,
             documentType: documentType || conversationContext.lastDocumentType || null,
@@ -512,6 +548,53 @@ export class FakeSemanticRouter {
       };
     }
 
+    // Schedulable events inquiry at parish (distinct from document types)
+    if (
+      /\b(what\s+events\s+(can\s+i\s+schedule|are\s+schedulable|are\s+available)|anong\s+(mga\s+)?event.*(schedule|e-schedule|i-schedule|pwede\s+i\s+schedule|pwede\s+ko\s+e\s+schedule)|what\s+services\s+(can\s+i\s+schedule|are\s+available\s+for\s+scheduling)|schedulable\s+events|events\s+(i\s+can|to)\s+schedule|services\s+available\s+for\s+scheduling)\b/i.test(
+        text
+      )
+    ) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_PARISH_SCHEDULABLE_EVENTS",
+        pendingRelation: (conversationContext?.pendingMissingParam || conversationContext?.pendingClarificationIntent) ? "NEW_TOPIC" : null,
+        entities: {
+          parishName,
+          documentType: null,
+          scheduleEvent: null,
+          datePhrase: null,
+          timePhrase: null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: false,
+      };
+    }
+
+    // Direct event scheduling inquiry (e.g. "Can I schedule a Wake Mass?", "pwede ba mag sched ng wake mass sa St joseph?", "pwede ba ako mag request ng schedule para sa isang wake mass?", "How about Wake Mass at St. Joseph?")
+    if (
+      scheduleEvent &&
+      (/\b(schedule|sched|booking|book|mag-sched|mag-schedule|request\s+ng\s+schedule|slots?|open|available|how\s+about|pwede\s+ba|can\s+i|may\s+wake\s+mass)\b/i.test(text) ||
+       conversationContext?.lastIntent === "GET_PARISH_SCHEDULABLE_EVENTS" ||
+       conversationContext?.lastIntent === "GET_CALENDAR_SLOT_AVAILABILITY")
+    ) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_CALENDAR_SLOT_AVAILABILITY",
+        pendingRelation: null,
+        entities: {
+          parishName,
+          documentType: null,
+          scheduleEvent,
+          datePhrase,
+          timePhrase,
+          priestName,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: Boolean(conversationContext?.lastParishName && !parishName),
+      };
+    }
+
     if (
       /\b(slots?|availability|schedules?|open\s+for|anything\s+open)\b/i.test(
         text
@@ -520,6 +603,7 @@ export class FakeSemanticRouter {
       return {
         route: "LIVE_TOOL",
         intent: "GET_CALENDAR_SLOT_AVAILABILITY",
+        pendingRelation: null,
         entities: {
           parishName,
           documentType,
@@ -533,8 +617,41 @@ export class FakeSemanticRouter {
       };
     }
 
+    // Pending clarification resolution (e.g. user replies with a date or missing parameter)
+    const hasPendingClarification = Boolean(
+      conversationContext?.pendingMissingParam ||
+      conversationContext?.pendingClarificationIntent ||
+      conversationContext?.lastResponseType === "CLARIFICATION"
+    );
+
+    if (hasPendingClarification) {
+      const missing = (conversationContext?.pendingMissingParam || "date").toLowerCase();
+      if (
+        (missing === "date" && datePhrase) ||
+        ((missing === "parish" || missing === "parishid") && parishName) ||
+        ((missing === "eventtype" || missing === "schedule_event" || missing === "event") && scheduleEvent) ||
+        ((missing === "documenttype" || missing === "document_type" || missing === "document") && documentType)
+      ) {
+        return {
+          route: "LIVE_TOOL",
+          intent: conversationContext?.pendingClarificationIntent || conversationContext?.lastIntent || "GET_CALENDAR_SLOT_AVAILABILITY",
+          pendingRelation: "ANSWER_PENDING",
+          entities: {
+            parishName: parishName || conversationContext?.lastParishName || null,
+            documentType: documentType || conversationContext?.lastDocumentType || null,
+            scheduleEvent: scheduleEvent || conversationContext?.lastScheduleEvent || null,
+            datePhrase: datePhrase || conversationContext?.lastDatePhrase || null,
+            timePhrase: timePhrase || conversationContext?.lastTimePhrase || null,
+            priestName: priestName || conversationContext?.lastPriestName || null,
+            trackingNumberPresent: false,
+          },
+          usesPreviousContext: true,
+        };
+      }
+    }
+
     if (
-      /\b(documents\s+(are\s+available|can\s+i\s+request|do\s+you\s+offer)|available\s+documents)\b/i.test(
+      /\b(documents\s+(are\s+available|can\s+i\s+request|do\s+you\s+offer)|available\s+documents|anong\s+(mga\s+)?(papeles|dokumento|certificates?)\s+ang\s+(available|pwede))\b/i.test(
         text
       ) &&
       !/\btestimonium\s+support\b/i.test(text)
@@ -542,6 +659,7 @@ export class FakeSemanticRouter {
       return {
         route: "LIVE_TOOL",
         intent: "GET_PARISH_DOCUMENTS",
+        pendingRelation: hasPendingClarification ? "NEW_TOPIC" : null,
         entities: {
           parishName,
           documentType,
@@ -603,6 +721,15 @@ export class FakeSemanticRouter {
       }
     }
 
-    return this._inferDefaultInterpretation(sanitizedQuestion, conversationContext);
+    const result = this._inferDefaultInterpretation(sanitizedQuestion, conversationContext);
+    const hasPendingClarification = Boolean(
+      conversationContext?.pendingMissingParam ||
+      conversationContext?.pendingClarificationIntent ||
+      conversationContext?.lastResponseType === "CLARIFICATION"
+    );
+    if (hasPendingClarification && !result.pendingRelation) {
+      result.pendingRelation = "NEW_TOPIC";
+    }
+    return result;
   }
 }

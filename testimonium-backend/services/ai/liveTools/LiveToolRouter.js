@@ -12,25 +12,34 @@ import {
   extractTimeSlotFromText,
   extractPriestReference,
 } from "../semanticValidationHelper.js";
+import { getCaloyResponseComposer } from "../providerFactory.js";
+import { getParishSchedulingConfiguration } from "../../SchedulingConfiguration.js";
+import { humanizeEventType } from "./enumFormatters.js";
 
-// Canonical schedule events for clarification dropdowns
-const EVENT_SYNONYMS = [
-  { type: "WEDDING" },
-  { type: "BAPTISM" },
-  { type: "CONFIRMATION" },
-  { type: "FUNERAL" },
-  { type: "WAKE_MASS" },
-  { type: "BLESSING" },
-  { type: "MASS_INTENTION" },
-  { type: "FIRST_COMMUNION" },
-  { type: "CONFESSION" },
-  { type: "ANOINTING_OF_THE_SICK" },
-];
+export const EFFECTIVE_CAPABILITY_HINTS = {
+  [TOOL_IDS.GET_ACTIVE_PARISHES]: [TOOL_IDS.GET_PARISH_DOCUMENTS, TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS, TOOL_IDS.GET_PARISH_OFFICE_INFO],
+  [TOOL_IDS.GET_ACTIVE_PARISH_PRIESTS]: [TOOL_IDS.CHECK_PRIEST_AVAILABILITY, TOOL_IDS.GET_PARISH_OFFICE_INFO],
+  [TOOL_IDS.GET_PARISH_DOCUMENTS]: [TOOL_IDS.GET_DOCUMENT_REQUIREMENTS, TOOL_IDS.GET_DOCUMENT_FEE],
+  [TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS]: [TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY, TOOL_IDS.GET_AVAILABLE_DATES, TOOL_IDS.GET_PARISH_OFFICE_INFO],
+  [TOOL_IDS.GET_DOCUMENT_REQUIREMENTS]: [TOOL_IDS.GET_DOCUMENT_FEE, TOOL_IDS.GET_PARISH_OFFICE_INFO],
+  [TOOL_IDS.GET_DOCUMENT_FEE]: [TOOL_IDS.GET_DOCUMENT_REQUIREMENTS, TOOL_IDS.GET_PARISH_OFFICE_INFO],
+  [TOOL_IDS.GET_PARISH_OFFICE_INFO]: [TOOL_IDS.GET_PARISH_DOCUMENTS, TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS, TOOL_IDS.GET_ACTIVE_PARISHES],
+  [TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY]: [TOOL_IDS.CHECK_PRIEST_AVAILABILITY, TOOL_IDS.GET_AVAILABLE_DATES],
+  [TOOL_IDS.GET_AVAILABLE_DATES]: [TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY],
+  [TOOL_IDS.CHECK_PRIEST_AVAILABILITY]: [TOOL_IDS.GET_AVAILABLE_PRIESTS_FOR_SLOT, TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY],
+  [TOOL_IDS.GET_AVAILABLE_PRIESTS_FOR_SLOT]: [TOOL_IDS.CHECK_PRIEST_AVAILABILITY, TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY],
+  [TOOL_IDS.GET_PARISH_EVENTS_FOR_DATE]: [TOOL_IDS.GET_PARISH_OFFICE_INFO],
+  [TOOL_IDS.CHECK_MY_REQUEST_STATUS]: [TOOL_IDS.CHECK_MY_PAYMENT_STATUS],
+  [TOOL_IDS.CHECK_MY_PAYMENT_STATUS]: [TOOL_IDS.CHECK_MY_REQUEST_STATUS],
+  [TOOL_IDS.GET_MY_UPCOMING_SCHEDULES]: [TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY],
+  [TOOL_IDS.GET_VICARIATE_DIRECTORY]: [TOOL_IDS.GET_ACTIVE_PARISHES],
+};
 
 export class LiveToolRouter {
-  constructor({ registry = null, prismaClient = null } = {}) {
+  constructor({ registry = null, prismaClient = null, responseComposer = null } = {}) {
     this.registry = registry || new LiveToolRegistry({ prismaClient });
     this.prisma = prismaClient || this.registry.prisma;
+    this.responseComposer = responseComposer;
     this.cachedParishes = null;
     this.cachedParishesAt = 0;
   }
@@ -51,7 +60,7 @@ export class LiveToolRouter {
     try {
       const parishes = await this.prisma.parish.findMany({
         where: { isActive: true },
-        select: { id: true, parishName: true },
+        select: { id: true, parishName: true, eventSettings: true },
       });
       this.cachedParishes = parishes;
       this.cachedParishesAt = now;
@@ -59,6 +68,27 @@ export class LiveToolRouter {
     } catch {
       return this.cachedParishes || [];
     }
+  }
+
+  /**
+   * Helper: retrieve parish with eventSettings from list or DB
+   */
+  async getParishWithSettings(parishId, parishesList = []) {
+    if (!parishId) return null;
+    let p = parishesList.find((x) => x.id === parishId);
+    if (p && p.eventSettings !== undefined && p.eventSettings !== null) {
+      return p;
+    }
+    if (this.prisma?.parish?.findUnique) {
+      try {
+        const full = await this.prisma.parish.findUnique({
+          where: { id: parishId },
+          select: { id: true, parishName: true, isActive: true, eventSettings: true },
+        });
+        if (full) return full;
+      } catch {}
+    }
+    return p || null;
   }
 
   /**
@@ -179,10 +209,16 @@ export class LiveToolRouter {
     // 8. Available Documents at Parish
     const isGeneralPlatformDocs = /\b(what\s+documents\s+does\s+testimonium\s+support|what\s+can\s+i\s+request\s+on\s+testimonium)\b/i.test(lower);
     if (!isGeneralPlatformDocs) {
-      const isParishDocs = /\b(available\s+documents|what\s+documents\s+(are\s+available|do\s+you\s+offer|does\s+.*offer)|offered\s+documents|list\s+of\s+documents)\b/i.test(lower);
+      const isParishDocs = /\b(available\s+documents|what\s+documents\s+(are\s+available|do\s+you\s+offer|does\s+.*offer)|offered\s+documents|list\s+of\s+documents|anong\s+(mga\s+)?(papeles|dokumento|certificates?)\s+ang\s+(available|pwede))\b/i.test(lower);
       if (isParishDocs) {
         return { toolId: TOOL_IDS.GET_PARISH_DOCUMENTS };
       }
+    }
+
+    // 8.5 Schedulable Events at Parish (distinct from document offerings)
+    const isSchedulableEvents = /\b(what\s+events\s+(can\s+i\s+schedule|are\s+(available|schedulable))|anong\s+(mga\s+)?event.*(schedule|e-schedule|i-schedule|pwede\s+i\s+schedule|pwede\s+ko\s+e\s+schedule)|what\s+services\s+(can\s+i\s+schedule|are\s+available\s+for\s+scheduling)|schedulable\s+events|events\s+(i\s+can|to)\s+schedule|services\s+available\s+for\s+scheduling)\b/i.test(lower);
+    if (isSchedulableEvents) {
+      return { toolId: TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS };
     }
 
     // 9. Parish Office Info
@@ -191,13 +227,24 @@ export class LiveToolRouter {
       return { toolId: TOOL_IDS.GET_PARISH_OFFICE_INFO };
     }
 
-    // 10. Calendar Slot Availability
-    const isSlotAvailability = /\b(what\s+slots\s+are\s+available|available\s+slots|open\s+slots|available\s+schedules|available\s+schedule|slots\s+tomorrow|slots\s+on|can\s+i\s+book\s+at|is\s+.*(open|available)\s+for\s+(a\s+)?(wedding|baptism|funeral)|wedding\s+times|baptism\s+times)\b/i.test(lower);
+    // 10. Calendar Slot Availability & Specific Event Scheduling
+    const detectedEvent = this.extractEventType(text);
+    const isSchedulingInquiry = /\b(schedule|scheduling|sched|mag-sched|mag-schedule|mag\s+sched|mag\s+schedule|book|booking|slot|slots|open|available)\b/i.test(lower);
+    if (detectedEvent && isSchedulingInquiry && !isGeneralScheduling) {
+      return {
+        toolId: TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY,
+        timeSlot: extractTimeSlotFromText(text),
+        eventType: detectedEvent,
+        date: this.extractDate(text),
+      };
+    }
+
+    const isSlotAvailability = /\b(what\s+slots\s+are\s+available|available\s+slots|open\s+slots|available\s+schedules|available\s+schedule|slots\s+tomorrow|slots\s+on|can\s+i\s+book\s+at|is\s+.*(open|available)\s+for\s+(a\s+)?(wedding|baptism|funeral|wake|wake\s+mass|mass)|wedding\s+times|baptism\s+times)\b/i.test(lower);
     if (isSlotAvailability) {
       return {
         toolId: TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY,
         timeSlot: extractTimeSlotFromText(text),
-        eventType: this.extractEventType(text),
+        eventType: detectedEvent,
         date: this.extractDate(text),
       };
     }
@@ -334,6 +381,7 @@ export class LiveToolRouter {
     structuredClarification = null,
     conversationContext = null,
     activeParishes = null,
+    deadline = null,
   }) {
     let intentId = null;
     let collected = {};
@@ -373,6 +421,16 @@ export class LiveToolRouter {
 
     // 3. Resolve Parish
     let resolvedParishId = selectedParishId || collected.parishId || null;
+    if (
+      !resolvedParishId &&
+      structuredClarification?.selectedValue &&
+      (structuredClarification.missing === "parish" || structuredClarification.nextRequired === "parish")
+    ) {
+      const parsedId = Number(structuredClarification.selectedValue);
+      if (Number.isInteger(parsedId) && parsedId > 0) {
+        resolvedParishId = parsedId;
+      }
+    }
     let resolvedParishName = null;
 
     if (semanticProposal?.entities?.parishName) {
@@ -397,8 +455,20 @@ export class LiveToolRouter {
       resolvedParishName = conversationContext.lastParishName;
     }
 
+    if (resolvedParishId && !resolvedParishName) {
+      const p = parishes.find((x) => x.id === resolvedParishId);
+      if (p) resolvedParishName = p.parishName;
+    }
+
     // 4. Resolve Document Type
     let resolvedDocType = collected.documentType || null;
+    if (
+      !resolvedDocType &&
+      structuredClarification?.selectedValue &&
+      (structuredClarification.missing === "documentType" || structuredClarification.nextRequired === "documentType")
+    ) {
+      resolvedDocType = structuredClarification.selectedValue;
+    }
     if (semanticProposal?.entities?.documentType) {
       const docRes = resolveDocumentType(semanticProposal.entities.documentType);
       if (docRes.isSupported) {
@@ -432,8 +502,15 @@ export class LiveToolRouter {
     }
 
     // 5. Resolve Schedule Event
-    let resolvedEventType = collected.eventType || null;
-    if (semanticProposal?.entities?.scheduleEvent) {
+    let resolvedEventType = collected.eventType || collected.scheduleEvent || null;
+    if (
+      !resolvedEventType &&
+      structuredClarification?.selectedValue &&
+      (structuredClarification.missing === "eventType" || structuredClarification.nextRequired === "eventType")
+    ) {
+      resolvedEventType = resolveScheduleEventType(structuredClarification.selectedValue) || structuredClarification.selectedValue;
+    }
+    if (!resolvedEventType && semanticProposal?.entities?.scheduleEvent) {
       resolvedEventType = resolveScheduleEventType(semanticProposal.entities.scheduleEvent);
     } else if (!resolvedEventType) {
       const eventInText = this.extractEventType(normalizedQuestion);
@@ -443,9 +520,19 @@ export class LiveToolRouter {
         resolvedEventType = conversationContext.lastScheduleEvent;
       }
     }
+    if (resolvedEventType) {
+      resolvedEventType = resolveScheduleEventType(resolvedEventType) || resolvedEventType;
+    }
 
     // 6. Resolve Date
     let resolvedDate = collected.date || null;
+    if (
+      !resolvedDate &&
+      structuredClarification?.selectedValue &&
+      (structuredClarification.missing === "date" || structuredClarification.nextRequired === "date")
+    ) {
+      resolvedDate = resolveManilaDate(structuredClarification.selectedValue);
+    }
     if (semanticProposal?.entities?.datePhrase) {
       resolvedDate = resolveManilaDate(semanticProposal.entities.datePhrase);
     } else if (!resolvedDate) {
@@ -537,11 +624,16 @@ export class LiveToolRouter {
             value: type,
           }));
         } else if (clarifyType === "SCHEDULE_EVENT") {
-          clarifyPrompt = "Which sacramental event are you scheduling for (e.g. Baptism, Wedding)?";
-          clarificationOptions = EVENT_SYNONYMS.map((e) => ({
-            label: e.type.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
-            value: e.type,
-          }));
+          clarifyPrompt = "Which event or service would you like to check?";
+          const targetParish = await this.getParishWithSettings(resolvedParishId, parishes);
+          if (targetParish) {
+            const config = getParishSchedulingConfiguration(targetParish);
+            const enabledServices = Array.isArray(config?.enabledServices) ? config.enabledServices : [];
+            clarificationOptions = enabledServices.map((type) => ({
+              label: humanizeEventType(type),
+              value: type,
+            }));
+          }
         } else if (clarifyType === "DATE") {
           clarifyPrompt = "Which date would you like to check availability for (e.g. tomorrow or YYYY-MM-DD)?";
         } else if (clarifyType === "TIME") {
@@ -549,6 +641,8 @@ export class LiveToolRouter {
         } else if (clarifyType === "PRIEST") {
           clarifyPrompt = "Which priest would you like to check availability for?";
         }
+
+        const stableClarificationId = `clarify_${intentId}_${reqParam}_${params.parishId || "global"}`;
 
         return {
           answer: clarifyPrompt,
@@ -559,6 +653,7 @@ export class LiveToolRouter {
           clarificationType: clarifyType,
           clarificationOptions: clarificationOptions.length > 0 ? clarificationOptions : undefined,
           structuredClarification: {
+            id: stableClarificationId,
             originalQuestion: structuredClarification?.originalQuestion || normalizedQuestion,
             originalIntent: intentId,
             toolId: intentId,
@@ -571,6 +666,37 @@ export class LiveToolRouter {
       }
     }
 
+    // 11. Authoritative Parish Scheduling Configuration Check for Events
+    if (
+      params.parishId &&
+      params.eventType &&
+      (intentId === TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY ||
+       intentId === TOOL_IDS.GET_AVAILABLE_DATES ||
+       intentId === TOOL_IDS.CHECK_PRIEST_AVAILABILITY ||
+       intentId === TOOL_IDS.GET_AVAILABLE_PRIESTS_FOR_SLOT)
+    ) {
+      const targetParish = await this.getParishWithSettings(params.parishId, parishes);
+      if (targetParish) {
+        const config = getParishSchedulingConfiguration(targetParish);
+        if (config && config.isConfigured && Array.isArray(config.enabledServices)) {
+          if (!config.enabledServices.includes(params.eventType)) {
+            const eventLabel = humanizeEventType(params.eventType);
+            const pName = targetParish.parishName || "This parish";
+            const answer = `**${pName}** does not currently offer **${eventLabel}** scheduling. Please choose one of the services enabled by the parish or contact the parish office.`;
+            return {
+              answer,
+              fallbackAnswer: answer,
+              fallback: true,
+              fallbackReason: "EVENT_NOT_OFFERED",
+              responseType: "FALLBACK",
+              category: "LIVE_DATA",
+              sources: [],
+            };
+          }
+        }
+      }
+    }
+
     // 9. All required parameters present -> Authoritative Server Execution
     let executionResult;
     try {
@@ -580,6 +706,9 @@ export class LiveToolRouter {
           break;
         case TOOL_IDS.GET_PARISH_DOCUMENTS:
           executionResult = await this.registry.getParishDocuments({ parishId: params.parishId });
+          break;
+        case TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS:
+          executionResult = await this.registry.getParishSchedulableEvents({ parishId: params.parishId });
           break;
         case TOOL_IDS.GET_DOCUMENT_REQUIREMENTS:
           executionResult = await this.registry.getDocumentRequirements({
@@ -677,8 +806,46 @@ export class LiveToolRouter {
       };
     }
 
+    if (executionResult.fallback) {
+      return executionResult;
+    }
+
+    const fallbackAnswer = executionResult.fallbackAnswer || executionResult.answer;
+    let finalAnswer = fallbackAnswer;
+
+    // Check request deadline budget before invoking LLM response composer (Section 47)
+    const remainingBudget = deadline ? deadline - Date.now() : 12000;
+    const MIN_COMPOSER_BUDGET_MS = 3000;
+
+    const composer = this.responseComposer || getCaloyResponseComposer();
+    const isComposeEligible = !executionResult.deterministicOnly && Boolean(executionResult.structuredFacts);
+
+    if (composer && isComposeEligible) {
+      if (remainingBudget < MIN_COMPOSER_BUDGET_MS) {
+        console.warn(`[LiveToolRouter] Request deadline nearly exhausted (${remainingBudget}ms left), skipping composer and returning deterministic fallback.`);
+      } else {
+        const effectiveHints = EFFECTIVE_CAPABILITY_HINTS[intentId] || [];
+        try {
+          const composition = await composer.compose({
+            responseType: "LIVE_DATA",
+            structuredFacts: executionResult.structuredFacts,
+            conversationContext,
+            capabilityHints: effectiveHints,
+            userMessage: normalizedQuestion,
+            fallbackAnswer,
+          });
+          if (composition && composition.answer) {
+            finalAnswer = composition.answer;
+          }
+        } catch (compErr) {
+          console.warn(`[LiveToolRouter] Composer error, safely falling back to deterministic answer: ${compErr.message}`);
+          finalAnswer = fallbackAnswer;
+        }
+      }
+    }
+
     return {
-      answer: executionResult.answer,
+      answer: finalAnswer,
       fallback: false,
       fallbackReason: null,
       responseType: "LIVE_DATA",
@@ -699,6 +866,7 @@ export class LiveToolRouter {
     structuredClarification = null,
     semanticProposal = null,
     conversationContext = null,
+    deadline = null,
   }) {
     return this.validateAndExecute({
       semanticProposal,
@@ -707,6 +875,7 @@ export class LiveToolRouter {
       userId,
       structuredClarification,
       conversationContext,
+      deadline,
     });
   }
 }

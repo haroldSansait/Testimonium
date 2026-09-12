@@ -19,6 +19,7 @@ import { onSessionExpired } from "@/services/auth/sessionEvents";
 import { firebaseAuth } from "@/services/firebase";
 import { queryClient } from "@/services/queryClient";
 import { devDiagnostic, safeErrorDetails } from "@/services/devDiagnostics";
+import { clearCaloyStorage } from "@/features/caloy/caloyStorage";
 import type {
   AuthBootstrapState,
   BackendUserProfile,
@@ -96,6 +97,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const mountedRef = useRef(true);
 
   const resetLocalState = useCallback(async () => {
+    const priorUid = uidRef.current;
+    if (priorUid) {
+      await clearCaloyStorage(priorUid);
+    }
     generationRef.current += 1;
     uidRef.current = null;
     interactiveOperationRef.current = null;

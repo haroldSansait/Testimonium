@@ -13,6 +13,7 @@ export const SOCIAL_RESPONSES = {
   GREETING: "Hi! 👋 How can I help you with TESTIMONIUM today?",
   THANKS: "You're welcome! Let me know if you need help with anything else in TESTIMONIUM.",
   GOODBYE: "Goodbye! Feel free to return if you have more questions about TESTIMONIUM. God bless!",
+  DECLINE_OR_CLOSE: "You're welcome! Feel free to ask anytime if you need help with TESTIMONIUM.",
   HOW_ARE_YOU: "I'm doing well, thank you! How can I assist you with your parish documents or scheduling today?",
   WHO_ARE_YOU: "I'm Caloy, the virtual parish assistant for TESTIMONIUM. I help explain verified guides and procedures for sacramental certificate requests, event scheduling, and parish office workflows.",
   CAPABILITIES: `I can help you with:
@@ -82,8 +83,10 @@ export function detectSocialIntent(rawText) {
   let text = rawText
     .toLowerCase()
     .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
+    .replace(/[,\-_/]+/g, " ")
     .replace(/[?!.,;:]+$/g, "")
     .replace(/^[?!.,;:]+/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 
   if (!text) {
@@ -153,9 +156,19 @@ export function detectSocialIntent(rawText) {
     };
   }
 
+  // 3.5 Decline or Acknowledgement / Closing (e.g. "No, thanks", "No thanks", "Okay thanks", "Sige salamat", "Way kaso ah", "Okay lang")
+  if (
+    /^(no(\s*,)?\s*thanks?|no\s+thank\s+you|okay(\s*,)?\s*thanks?|ok\s+thanks?|sige(\s*,)?\s*salamat|salamat\s+gid|way\s+kaso(\s+ah)?|okay\s+lang|ok\s+lang)(\s+caloy)?$/i.test(text)
+  ) {
+    return {
+      intent: "DECLINE_OR_CLOSE",
+      answer: SOCIAL_RESPONSES.DECLINE_OR_CLOSE,
+    };
+  }
+
   // 4. Thanks / Gratitude
   if (
-    /^(thanks|thank\s+you|thank\s+you\s+very\s+much|many\s+thanks|salamat|maraming\s+salamat|saludo)(\s+caloy)?$/i.test(text)
+    /^(thanks|thank\s+you|thank\s+you\s+very\s+much|many\s+thanks|salamat|maraming\s+salamat|daghang\s+salamat|saludo)(\s+caloy)?$/i.test(text)
   ) {
     return {
       intent: "THANKS",
@@ -175,7 +188,7 @@ export function detectSocialIntent(rawText) {
 
   // 6. Greetings (only when coreText is empty or pure greeting)
   if (
-    /^(hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|greetings|howdy|magandang\s+(araw|umaga|hapon|gabi))(\s+caloy)?$/i.test(text) ||
+    /^(hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|greetings|howdy|magandang\s+(araw|umaga|hapon|gabi)|maayong\s+(aga|hapon|gab-i|buntag))(\s+caloy)?$/i.test(text) ||
     (coreText === "" && greetingPrefixRegex.test(text))
   ) {
     return {
@@ -216,17 +229,26 @@ export function detectTrivialSocial(rawText) {
     return null;
   }
 
-  if (/^(hello|hi|hey|good\s+(morning|afternoon|evening)|howdy)(\s+caloy)?$/i.test(clean)) {
+  if (/^(hello|hi|hey|good\s+(morning|afternoon|evening)|howdy|magandang\s+(umaga|hapon|gabi|araw)|maayong\s+(aga|hapon|gab-i|buntag))(\s+caloy)?$/i.test(clean)) {
     return {
       intent: "GREETING",
       answer: SOCIAL_RESPONSES.GREETING,
     };
   }
 
-  if (/^(thanks|thank\s+you|salamat|maraming\s+salamat)(\s+caloy)?$/i.test(clean)) {
+  if (/^(thanks|thank\s+you|salamat|maraming\s+salamat|daghang\s+salamat)(\s+caloy)?$/i.test(clean)) {
     return {
       intent: "THANKS",
       answer: SOCIAL_RESPONSES.THANKS,
+    };
+  }
+
+  if (
+    /^(no(\s*,)?\s*thanks?|no\s+thank\s+you|okay(\s*,)?\s*thanks?|ok\s+thanks?|sige(\s*,)?\s*salamat|salamat\s+gid|way\s+kaso(\s+ah)?|okay\s+lang|ok\s+lang)(\s+caloy)?$/i.test(clean)
+  ) {
+    return {
+      intent: "DECLINE_OR_CLOSE",
+      answer: SOCIAL_RESPONSES.DECLINE_OR_CLOSE,
     };
   }
 

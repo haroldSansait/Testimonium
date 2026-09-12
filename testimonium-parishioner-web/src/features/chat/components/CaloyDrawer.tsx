@@ -348,7 +348,19 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
 
         setRevealingMessageId(replyMsgId);
         activeRevealFullTextRef.current = { id: replyMsgId, fullText: fullAnswer };
-        setMessages((prev) => [...prev, initialMsg]);
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (
+            lastMsg &&
+            lastMsg.sender === 'caloy' &&
+            lastMsg.clarificationType &&
+            lastMsg.clarificationType === initialMsg.clarificationType &&
+            (lastMsg.text === fullAnswer || lastMsg.text === initialMsg.text)
+          ) {
+            return prev.map((m, idx) => (idx === prev.length - 1 ? initialMsg : m));
+          }
+          return [...prev, initialMsg];
+        });
 
         activeRevealTimerRef.current = setInterval(() => {
           currIndex = Math.min(currIndex + chunkSize, fullAnswer.length);
@@ -382,7 +394,19 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
           liveData: result.liveData,
         };
 
-        setMessages((prev) => [...prev, replyMsg]);
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (
+            lastMsg &&
+            lastMsg.sender === 'caloy' &&
+            lastMsg.clarificationType &&
+            lastMsg.clarificationType === replyMsg.clarificationType &&
+            lastMsg.text === replyMsg.text
+          ) {
+            return prev.map((m, idx) => (idx === prev.length - 1 ? replyMsg : m));
+          }
+          return [...prev, replyMsg];
+        });
       }
     } catch (err: any) {
       console.warn('[CaloyDrawer] Query error:', err);
@@ -434,6 +458,8 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     if (structured) {
       const updated = {
         ...structured,
+        isButtonSelection: true,
+        selectedValue: parishId,
         collected: { ...(structured.collected || {}), parishId },
       };
       setStructuredClarification(updated);
@@ -454,6 +480,8 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     if (structured) {
       const updated = {
         ...structured,
+        isButtonSelection: true,
+        selectedValue: docType,
         collected: { ...(structured.collected || {}), documentType: docType },
       };
       setStructuredClarification(updated);
@@ -473,7 +501,13 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     if (structured) {
       const updated = {
         ...structured,
-        collected: { ...(structured.collected || {}), scheduleEvent: eventType },
+        isButtonSelection: true,
+        selectedValue: eventType,
+        collected: {
+          ...(structured.collected || {}),
+          eventType,
+          scheduleEvent: eventType,
+        },
       };
       setStructuredClarification(updated);
       const pending = getPendingQuestion() || structured.originalQuestion;
@@ -622,7 +656,7 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
           className="flex-1 overflow-y-auto p-4 space-y-4 bg-app-base"
           aria-live="polite"
         >
-          {messages.map((msg) => (
+          {messages.map((msg, idx) => (
             <div
               key={msg.id}
               className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -658,7 +692,7 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                 )}
 
                 {/* Inline Parish Clarification Selector */}
-                {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && (
+                {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && idx === messages.length - 1 && (
                   <div className="mt-3 pt-2.5 border-t border-border/70">
                     <label
                       htmlFor={`parish-clarify-${msg.id}`}
@@ -692,7 +726,7 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                 )}
 
                 {/* Inline Document Type Clarification Selector */}
-                {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && (
+                {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && idx === messages.length - 1 && (
                   <div className="mt-3 pt-2.5 border-t border-border/70">
                     <label
                       htmlFor={`doc-clarify-${msg.id}`}
@@ -726,13 +760,13 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                 )}
 
                 {/* Inline Schedule Event Clarification Selector */}
-                {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && (
+                {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && idx === messages.length - 1 && (
                   <div className="mt-3 pt-2.5 border-t border-border/70">
                     <label
                       htmlFor={`event-clarify-${msg.id}`}
                       className="block text-[11px] font-medium text-text-muted mb-1.5"
                     >
-                      Select sacramental event:
+                      Select an event or service:
                     </label>
                     <select
                       id={`event-clarify-${msg.id}`}
@@ -748,14 +782,13 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                       aria-label="Select schedule event for clarification"
                     >
                       <option value="" disabled>
-                        Choose an event type...
+                        Choose an event or service...
                       </option>
-                      <option value="BAPTISM">Baptism</option>
-                      <option value="WEDDING">Wedding</option>
-                      <option value="FUNERAL_MASS">Funeral Mass</option>
-                      <option value="BLESSING">Blessing</option>
-                      <option value="MASS_INTENTION">Mass Intention</option>
-                      <option value="CONFESSION">Confession</option>
+                      {(msg.clarificationOptions || []).map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 )}

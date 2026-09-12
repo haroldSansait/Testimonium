@@ -135,7 +135,7 @@ export const AnimatedAssistantMessage = forwardRef<
                 htmlFor={`event-clarify-${msg.id}`}
                 className="block text-[11px] font-medium text-text-muted mb-1.5"
               >
-                Select a sacramental event type:
+                Select an event or service:
               </label>
               <select
                 id={`event-clarify-${msg.id}`}
@@ -151,15 +151,13 @@ export const AnimatedAssistantMessage = forwardRef<
                 aria-label="Select event type for clarification"
               >
                 <option value="" disabled>
-                  Choose an event...
+                  Choose an event or service...
                 </option>
-                <option value="BAPTISM">Baptism</option>
-                <option value="WEDDING">Wedding</option>
-                <option value="CONFIRMATION">Confirmation</option>
-                <option value="FUNERAL">Funeral</option>
-                <option value="BLESSING">Blessing</option>
-                <option value="MASS_INTENTION">Mass Intention</option>
-                <option value="CONFESSION">Confession</option>
+                {(msg.clarificationOptions || []).map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
           )}

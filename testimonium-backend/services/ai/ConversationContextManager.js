@@ -31,6 +31,10 @@ export class ConversationContextManager {
       lastVicariateId: null,
       lastVicariateName: null,
       lastResponseType: null,
+      pendingClarificationIntent: null,
+      pendingMissingParam: null,
+      pendingCollected: null,
+      turnCount: 0,
     };
   }
 
@@ -45,6 +49,15 @@ export class ConversationContextManager {
     const parishId = Number(raw.lastParishId);
     const priestId = Number(raw.lastPriestId);
 
+    let pendingCollected = null;
+    if (raw.pendingCollected && typeof raw.pendingCollected === "object" && !Array.isArray(raw.pendingCollected)) {
+      pendingCollected = { ...raw.pendingCollected };
+    }
+
+    const turnCount = Number.isInteger(raw.turnCount) && raw.turnCount >= 0
+      ? raw.turnCount
+      : (raw.lastIntent || raw.lastResponseType ? 1 : 0);
+
     return {
       lastIntent: typeof raw.lastIntent === "string" && raw.lastIntent.trim() ? raw.lastIntent.trim() : null,
       lastParishId: Number.isInteger(parishId) && parishId > 0 ? parishId : null,
@@ -58,6 +71,10 @@ export class ConversationContextManager {
       lastVicariateId: raw.lastVicariateId !== undefined && raw.lastVicariateId !== null ? String(raw.lastVicariateId).trim() || null : null,
       lastVicariateName: typeof raw.lastVicariateName === "string" && raw.lastVicariateName.trim() ? raw.lastVicariateName.trim() : null,
       lastResponseType: typeof raw.lastResponseType === "string" && raw.lastResponseType.trim() ? raw.lastResponseType.trim() : null,
+      pendingClarificationIntent: typeof raw.pendingClarificationIntent === "string" && raw.pendingClarificationIntent.trim() ? raw.pendingClarificationIntent.trim() : null,
+      pendingMissingParam: typeof raw.pendingMissingParam === "string" && raw.pendingMissingParam.trim() ? raw.pendingMissingParam.trim() : null,
+      pendingCollected,
+      turnCount,
     };
   }
 
@@ -90,7 +107,12 @@ export class ConversationContextManager {
    * Updates context for a session.
    */
   updateContext(sessionId, newContext) {
-    const sanitized = this.sanitizeContext(newContext);
+    const existing = (sessionId && this.sessions.get(sessionId)?.context) || this.getEmptyContext();
+    const merged = { ...existing, ...newContext };
+    if (newContext.turnCount === undefined) {
+      merged.turnCount = (existing.turnCount || 0) + 1;
+    }
+    const sanitized = this.sanitizeContext(merged);
     if (sessionId && typeof sessionId === "string") {
       this.sessions.set(sessionId, {
         context: sanitized,

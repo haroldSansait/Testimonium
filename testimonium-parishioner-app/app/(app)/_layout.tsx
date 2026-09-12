@@ -56,6 +56,10 @@ export default function AppRootStackLayout() {
         name="profile/privacy"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
+      <Stack.Screen
+        name="caloy/index"
+        options={{ headerShown: false, animation: "slide_from_bottom" }}
+      />
     </Stack>
   );
 }

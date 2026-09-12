@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { env } from "../../config/env.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
 import { TOOL_IDS } from "./liveTools/liveToolSchemas.js";
+import { getManilaDateString } from "../ConflictHelper.js";
 
 const ALLOWED_ROUTES = ["SOCIAL", "CAPABILITIES", "LIVE_TOOL", "RAG", "OUT_OF_SCOPE"];
 
@@ -16,7 +17,8 @@ You NEVER query databases, execute code, or authorize access.
 ALLOWED ROUTES:
 ==================================================
 1. "SOCIAL":
-   Greetings, casual farewells, pleasantries (e.g. "Hello", "Good morning", "Thanks", "How are you?").
+   Greetings, identity inquiries (e.g. "Who are you?", "Introduce yourself", "What is your name?"), casual farewells, pleasantries (e.g. "Hello", "Good morning", "Thanks", "How are you?"), or polite acknowledgements / declines (e.g. "No, thanks", "No thanks", "Okay thanks", "Sige salamat", "Way kaso ah", "Okay lang").
+   Set intent to "WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", or "DECLINE_OR_CLOSE".
    Do NOT use SOCIAL if the message contains an actual question or substantive inquiry.
 
 2. "CAPABILITIES":
@@ -41,7 +43,10 @@ ALLOWED LIVE TOOL INTENTS & THEIR MEANING:
   Inquiries about priests or clergy currently active, assigned, or serving at a specific parish.
 
 - "GET_PARISH_DOCUMENTS":
-  Inquiries about which sacramental certificates or documents a specific parish currently offers or issues.
+  Inquiries about which sacramental certificates or documents a specific parish currently offers or issues (e.g. "What documents can I request?", "Anong certificates ang available?"). Completely distinct from schedulable events!
+
+- "GET_PARISH_SCHEDULABLE_EVENTS":
+  Inquiries asking what sacramental events, services, or rites a specific parish offers for appointment scheduling (e.g. "What events can I schedule at St. Joseph?", "Anong mga event ang pwede ko e schedule sa St. Joseph?", "What services are available for booking?"). Distinct from requestable document offerings! Does NOT require a date.
 
 - "GET_DOCUMENT_REQUIREMENTS":
   Inquiries about required supporting documents or prerequisites to request a specific document type.
@@ -53,7 +58,7 @@ ALLOWED LIVE TOOL INTENTS & THEIR MEANING:
   Inquiries about parish office hours, telephone numbers, email address, physical location, or contact info.
 
 - "GET_CALENDAR_SLOT_AVAILABILITY":
-  Inquiries about available calendar appointment slots or schedules for a sacramental event (e.g. Wedding, Baptism) on a date, or checking a specific time.
+  Inquiries asking to schedule, book, or check available appointment slots for a specific sacramental event (e.g. Wedding, Baptism, Wake Mass, Mass Intention, Funeral, etc.) at a parish, whether asking generally about scheduling that event, on a specific date, or at a specific time (e.g. "Can I schedule a Wake Mass?", "Pwede ba ako mag request ng schedule para sa isang wake mass?", "pwede ba ako mag sched ng wake mass sa St joseph?", "Pwede ba sa Monday mag schedule ng wake mass?").
 
   scheduleEvent must normalize to one of these exact backend enum values when present:
   WEDDING, MARRIAGE_SPECIAL, BAPTISM, CONFIRMATION, FIRST_COMMUNION, CONFESSION, ANOINTING_OF_THE_SICK, PRIVATE_MASS, MASS_INTENTION, WAKE_MASS, FUNERAL, MASS_OF_HOLY_SPIRIT, FIESTA, THANKSGIVING, BLESSING, DELIVERANCE.
@@ -99,11 +104,25 @@ LIVE TOOL vs. RAG SEMANTIC DISTINCTION:
   Example: "Who are the priests at St. Joseph?" -> "LIVE_TOOL" (GET_ACTIVE_PARISH_PRIESTS)
   Example: "How much is a baptism cert at Guadalupe?" -> "LIVE_TOOL" (GET_DOCUMENT_FEE)
   Example: "What wedding slots are open tomorrow?" -> "LIVE_TOOL" (GET_CALENDAR_SLOT_AVAILABILITY)
+  Example: "What events can I schedule at St. Joseph?" -> "LIVE_TOOL" (GET_PARISH_SCHEDULABLE_EVENTS)
 
 ==================================================
-CONVERSATIONAL CONTEXT REASONING:
+AUTHORITATIVE DATE & CALENDAR CONTEXT:
+==================================================
+The prompt provides the authoritative CURRENT DATE (ASIA/MANILA).
+- Normalize natural relative dates ("tomorrow", "today") and Philippine local date terms ("bukas" = tomorrow, "ugma" = tomorrow, "ngayon" = today) into canonical relative phrases ("tomorrow", "today") or canonical YYYY-MM-DD.
+- Normalize natural absolute dates ("September 17", "Sept 17", "September 17th", "on September 17", "17 September") into canonical "YYYY-MM-DD" or standard date phrase based on the Manila calendar context.
+
+==================================================
+CONVERSATIONAL CONTEXT & PENDING CLARIFICATION REASONING:
 ==================================================
 When safe conversation context is provided:
+- If a pending clarification is active (e.g. Caloy previously asked for a DATE for Wake Mass, or a PARISH for document fee):
+  Semantically evaluate whether the user's current message answers the clarification or changes topic:
+  * Set "pendingRelation": "ANSWER_PENDING" if the user's message supplies or answers the pending parameter (e.g. "bukas", "September 17", "Monday", "2 PM"). Inherit the pending intent and prior collected entities, and populate the entity.
+  * Set "pendingRelation": "NEW_TOPIC" if the user asks a new question, changes topic, asks what events can be scheduled, asks about documents, asks how much something costs, or asks a fresh substantive inquiry (e.g. "Anong mga event ang pwede i schedule sa St. Joseph?", "How much is Marriage Banns?"). Do NOT trap the user in the pending clarification; route the new message independently to its own intent and set usesPreviousContext = false (while preserving parish if applicable).
+  * If no pending clarification was active, set pendingRelation: null.
+
 - If the current message is a follow-up (e.g. "How about St. Joseph?", "What about the requirements?", "What about Saturday?", "Who serves there?"):
   Infer the intent and missing entities from the previous turn!
   Example: Previous intent was GET_DOCUMENT_FEE for BAPTISMAL_CERTIFICATE at Guadalupe. User says "How about St. Joseph?"
@@ -123,6 +142,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY):
 {
   "route": "SOCIAL" | "CAPABILITIES" | "LIVE_TOOL" | "RAG" | "OUT_OF_SCOPE",
   "intent": string | null,
+  "pendingRelation": "ANSWER_PENDING" | "NEW_TOPIC" | null,
   "entities": {
     "parishName": string | null,
     "documentType": string | null,
@@ -159,6 +179,18 @@ export class SemanticIntentRouter {
     conversationContext,
     selectedParishName,
   }) {
+    const now = new Date();
+    const manilaDateStr = getManilaDateString(now);
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const [year, month, day] = manilaDateStr.split("-").map(Number);
+    const manilaToday = new Date(Date.UTC(year, month - 1, day));
+    const manilaDayName = dayNames[manilaToday.getUTCDay()];
+
+    let pendingSection = "None";
+    if (conversationContext?.pendingMissingParam || conversationContext?.pendingClarificationIntent) {
+      pendingSection = `Waiting for user to provide ${conversationContext.pendingMissingParam || "clarification"} for intent ${conversationContext.pendingClarificationIntent || conversationContext.lastIntent || "ACTIVE_FLOW"}`;
+    }
+
     let contextSection = "None";
     if (conversationContext) {
       const parts = [];
@@ -178,7 +210,13 @@ export class SemanticIntentRouter {
 
     const selectedParishSection = selectedParishName ? selectedParishName : "None selected";
 
-    return `CURRENT CONVERSATION CONTEXT:
+    return `CURRENT DATE (ASIA/MANILA):
+${manilaDateStr} (${manilaDayName})
+
+PENDING CLARIFICATION STATE:
+${pendingSection}
+
+CURRENT CONVERSATION CONTEXT:
 ${contextSection}
 
 CURRENT SELECTED PARISH (FROM UI):
@@ -207,6 +245,7 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
       return {
         route: "RAG",
         intent: null,
+        pendingRelation: null,
         entities: {
           parishName: null,
           documentType: null,
@@ -222,7 +261,13 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
     let intent = null;
     if (route === "LIVE_TOOL" && ALLOWED_INTENTS.includes(parsed.intent)) {
       intent = parsed.intent;
+    } else if (route === "SOCIAL" && ["WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", "DECLINE_OR_CLOSE"].includes(parsed.intent)) {
+      intent = parsed.intent;
     }
+
+    const pendingRelation = ["ANSWER_PENDING", "NEW_TOPIC"].includes(parsed.pendingRelation)
+      ? parsed.pendingRelation
+      : null;
 
     const entities = {
       parishName: typeof parsed.entities?.parishName === "string" && parsed.entities.parishName.trim()
@@ -249,6 +294,7 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
     return {
       route,
       intent,
+      pendingRelation,
       entities,
       usesPreviousContext: Boolean(parsed.usesPreviousContext),
     };

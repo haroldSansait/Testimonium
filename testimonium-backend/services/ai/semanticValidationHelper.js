@@ -264,10 +264,28 @@ function isMinorRelativeDateMisspelling(token, canonical) {
   return edits <= maxEdits;
 }
 
+const MONTH_MAP = {
+  january: 1, jan: 1,
+  february: 2, feb: 2,
+  march: 3, mar: 3,
+  april: 4, apr: 4,
+  may: 5,
+  june: 6, jun: 6,
+  july: 7, jul: 7,
+  august: 8, aug: 8,
+  september: 9, sept: 9, sep: 9,
+  october: 10, oct: 10,
+  november: 11, nov: 11,
+  december: 12, dec: 12,
+};
+
 /**
  * Resolves natural date phrases in Asia/Manila context into YYYY-MM-DD.
+ * Supports absolute natural dates (e.g. "September 17", "Sept 17th", "17 September"),
+ * ISO format ("2026-09-17"), relative English terms ("tomorrow", "today", day-of-week),
+ * and safe local-language terms ("bukas", "ugma").
  *
- * @param {string} datePhrase e.g. "tomorrow", "next Saturday", "2026-09-12"
+ * @param {string} datePhrase e.g. "tomorrow", "September 17", "next Saturday", "2026-09-12"
  * @param {Date} [referenceDate] Optional reference date (defaults to current Date)
  * @returns {string | null} YYYY-MM-DD in Asia/Manila or null
  */
@@ -290,38 +308,93 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
   }
 
   const now = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime()) ? referenceDate : new Date();
+  const manilaDateStr = getManilaDateString(now); // YYYY-MM-DD
+  const [currentYear, currentMonth, currentDay] = manilaDateStr.split("-").map(Number);
+  const manilaToday = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay));
 
-  // 2. "today"
-  if (dateWords.some((word) => isMinorRelativeDateMisspelling(word, "today"))) {
-    return getManilaDateString(now);
+  // 2. "today", "ngayon", "karun"
+  if (
+    dateWords.some((word) => isMinorRelativeDateMisspelling(word, "today")) ||
+    /\b(ngayon|karun)\b/i.test(lower)
+  ) {
+    return manilaDateStr;
   }
 
-  // 3. "tomorrow"
-  if (dateWords.some((word) => isMinorRelativeDateMisspelling(word, "tomorrow"))) {
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    return getManilaDateString(tomorrow);
+  // 3. "tomorrow", "bukas", "ugma"
+  if (
+    dateWords.some((word) => isMinorRelativeDateMisspelling(word, "tomorrow")) ||
+    /\b(bukas|ugma)\b/i.test(lower)
+  ) {
+    const tomorrow = new Date(manilaToday.getTime() + 24 * 60 * 60 * 1000);
+    return tomorrow.toISOString().slice(0, 10);
   }
 
-  // 4. Day of the week (e.g. "Saturday", "next Saturday", "on Sunday")
+  // 4. Absolute natural dates: Month + Day (e.g. "September 17", "Sept 17th", "on September 17", "September 17, 2026")
+  const monthDayMatch = lower.match(
+    /(?:on\s+)?\b(january|february|march|april|may|june|july|august|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i
+  );
+  if (monthDayMatch) {
+    const monthName = monthDayMatch[1].toLowerCase();
+    const month = MONTH_MAP[monthName];
+    const day = parseInt(monthDayMatch[2], 10);
+    const year = monthDayMatch[3] ? parseInt(monthDayMatch[3], 10) : currentYear;
+
+    if (month && day >= 1 && day <= 31) {
+      const candidate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      if (isValidStrictManilaDate(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  // 5. Absolute natural dates: Day + Month (e.g. "17 September", "17th of September", "17 Sept 2026")
+  const dayMonthMatch = lower.match(
+    /(?:on\s+)?\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s+)?(january|february|march|april|may|june|july|august|september|sept|sep|october|oct|november|nov|december|dec)\.?(?:\s*,?\s*(\d{4}))?\b/i
+  );
+  if (dayMonthMatch) {
+    const day = parseInt(dayMonthMatch[1], 10);
+    const monthName = dayMonthMatch[2].toLowerCase();
+    const month = MONTH_MAP[monthName];
+    const year = dayMonthMatch[3] ? parseInt(dayMonthMatch[3], 10) : currentYear;
+
+    if (month && day >= 1 && day <= 31) {
+      const candidate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      if (isValidStrictManilaDate(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  // 6. Day of the week (e.g. "Saturday", "next Saturday", "on Sunday", "sa lunes")
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const localDayNames = {
+    linggo: 0,
+    lunes: 1,
+    martes: 2,
+    miyerkules: 3,
+    miyerkoles: 3,
+    huwebes: 4,
+    biyernes: 5,
+    sabado: 6,
+  };
+
   for (let targetDay = 0; targetDay < 7; targetDay++) {
     const name = dayNames[targetDay];
     if (lower.includes(name)) {
-      // Determine day of week in Asia/Manila
-      const manilaDateStr = getManilaDateString(now); // YYYY-MM-DD
-      const [year, month, day] = manilaDateStr.split("-").map(Number);
-      const manilaToday = new Date(Date.UTC(year, month - 1, day));
-      const currentDay = manilaToday.getUTCDay();
+      const currentDayOfWeek = manilaToday.getUTCDay();
+      let diffDays = targetDay - currentDayOfWeek;
+      if (diffDays <= 0) diffDays += 7;
 
-      let diffDays = targetDay - currentDay;
-      if (lower.includes("next")) {
-        // "next Saturday": if today is Saturday (diff=0), next Saturday is +7
-        // if today is before Saturday, "next Saturday" conventionally means the upcoming or the following week.
-        // In scheduling inquiries: "next Saturday" is the upcoming Saturday (+7 if diff <= 0, else diff + (diff <= 0 ? 7 : 0))
-        if (diffDays <= 0) diffDays += 7;
-      } else {
-        if (diffDays <= 0) diffDays += 7;
-      }
+      const targetDate = new Date(manilaToday.getTime() + diffDays * 24 * 60 * 60 * 1000);
+      return targetDate.toISOString().slice(0, 10);
+    }
+  }
+
+  for (const [localDay, dayNum] of Object.entries(localDayNames)) {
+    if (new RegExp(`\\b${localDay}\\b`, "i").test(lower)) {
+      const currentDayOfWeek = manilaToday.getUTCDay();
+      let diffDays = dayNum - currentDayOfWeek;
+      if (diffDays <= 0) diffDays += 7;
 
       const targetDate = new Date(manilaToday.getTime() + diffDays * 24 * 60 * 60 * 1000);
       return targetDate.toISOString().slice(0, 10);

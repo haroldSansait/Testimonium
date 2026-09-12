@@ -249,11 +249,20 @@ FINAL RESPONSE + EPHEMERAL SAFE CONTEXT
    - Embedding: `gemini-embedding-2` (768 dimensions), cosine vector search with `CHATBOT_MIN_SIMILARITY=0.65`, evidence gating, generation via `gemini-3.5-flash-lite`, and strict citation verification.
    - Lexical matching enhanced with payment canonical terms (`gcash`, `ocr`, `receipt`, `verify`). Dedicated topic change reset prevents scheduling context contamination.
 
+7. **Caloy Experience Architecture (Response Composer & Personality):**
+   - **Central Policy (`CaloyPolicy.js`):** Defines canonical identity ("Caloy, your TESTIMONIUM assistant"), restrained saint-like personality (warm, calm, respectful, service-oriented, non-theatrical, no preachy religious catchphrases), pastoral boundaries (defers theological/confessional questions gently to priests/parish office), prompt-injection resistance, and natural language mirroring.
+   - **Grounded Response Composer (`CaloyResponseComposer.js`):** Takes verified structured facts from backend live tools and rephrases into natural Caloy prose. Operates under a strict 12-second timeout with 0 retries. If composer fails or encounters provider 429, it safely falls back to the deterministic tool answer without breaking the query.
+   - **Runtime Fact-Preservation Validator:** Verifies canonical facts (currency amounts, tracking numbers, parish names, priest names, schedule dates/times/slots, safe statuses) against approved facts before releasing composed answers. If validation fails or conflict is detected, falls back to deterministic answer.
+   - **Follow-up Capability Validation:** Optional structured follow-ups are validated against registered whitelist capabilities; valid follow-up text is seamlessly appended to the final answer (zero new public API fields required).
+   - **Native Multilingual Mirroring:** Uses Gemini's native multilingual ability to match the user's natural language and code-switching (English, Tagalog, Hiligaynon, Cebuano, Taglish) per turn without a rigid classifier, language enum, language persistence, or corpus duplication.
+   - **Private Data Sanitization Boundary:** Authenticated private tools (`CHECK_MY_REQUEST_STATUS`, `CHECK_MY_PAYMENT_STATUS`, `GET_MY_UPCOMING_SCHEDULES`) send strictly authorized user-visible fields to Gemini. Raw staff notes, OCR confidence/text, Cloudflare R2 URLs, and private audit trails are strictly forbidden and filtered backend-side.
+   - **Mobile Caloy Architecture:** Mobile client (`testimonium-parishioner-app`) uses the same `/chatbot/query` endpoint with Firebase Bearer token authentication. Preserves 5-tab layout with prominent Home card navigating to full-screen Caloy chat. Local state is stored via AsyncStorage namespaced by Firebase UID (`testimonium_caloy_context_v1:<uid>`), capped at 50 messages, and cleared on logout and account change. Zero AI provider secrets exist on mobile or web.
+
 #### Rate Limiting & Quota Management
 - **General Abuse Limiter:** HTTP layer (default 60 requests / 10 minutes) protecting against rapid messaging/spam. Returns `CHATBOT_RATE_LIMITED`.
 - **AI Quota Limiter:** In-memory sliding window tracker (default 20 requests / 10 minutes, 50 requests / 24 hours per user). Substantive semantic router queries consume 1 AI token.
 - **Zero-Cost Fast Paths:** Only exact trivial single-purpose greetings/thanks and UI selector continuations (`structuredClarification`) bypass AI quota consumption.
-- **Provider 429 Distinction:** Upstream Gemini HTTP 429 exhaustion maps to `AI_PROVIDER_RATE_LIMITED`.
+- **Provider 429 Distinction:** Upstream Gemini HTTP 429 exhaustion maps to `AI_PROVIDER_RATE_LIMITED`. If composer encounters provider 429 during live-tool execution, it silently returns the factual deterministic answer.
 
 #### Additive Response Contract
 ```json

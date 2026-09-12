@@ -49,3 +49,7 @@ jest.mock("@react-native-google-signin/google-signin", () => ({
     PLAY_SERVICES_NOT_AVAILABLE: "PLAY_SERVICES_NOT_AVAILABLE",
   },
 }));
+
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock")
+);
