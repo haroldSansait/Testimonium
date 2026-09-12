@@ -49,6 +49,8 @@ export class FakeSemanticRouter {
             documentType: null,
             scheduleEvent: null,
             datePhrase: null,
+            timePhrase: null,
+            priestName: null,
             trackingNumberPresent: false,
           },
           usesPreviousContext: false,
@@ -72,6 +74,8 @@ export class FakeSemanticRouter {
           documentType: null,
           scheduleEvent: null,
           datePhrase: null,
+          timePhrase: null,
+          priestName: null,
           trackingNumberPresent: false,
         },
         usesPreviousContext: false,
@@ -88,6 +92,8 @@ export class FakeSemanticRouter {
           documentType: null,
           scheduleEvent: null,
           datePhrase: null,
+          timePhrase: null,
+          priestName: null,
           trackingNumberPresent: false,
         },
         usesPreviousContext: false,
@@ -106,14 +112,197 @@ export class FakeSemanticRouter {
     if (/\b(death|patay)\b/i.test(text)) documentType = "DEATH_CERTIFICATE";
 
     let scheduleEvent = null;
-    if (/\b(wedding|kasal)\b/i.test(text)) scheduleEvent = "WEDDING";
+    if (/\b(marriage\s+special|special\s+wedding)\b/i.test(text)) scheduleEvent = "MARRIAGE_SPECIAL";
+    else if (/\b(wedding|kasal)\b/i.test(text)) scheduleEvent = "WEDDING";
     if (/\b(baptism|binyag)\b/i.test(text)) scheduleEvent = "BAPTISM";
 
     let datePhrase = null;
     if (/tomorrow/i.test(text)) datePhrase = "tomorrow";
-    if (/today/i.test(text)) datePhrase = "today";
-    if (/next\s+saturday/i.test(text)) datePhrase = "next Saturday";
+    else if (/today/i.test(text)) datePhrase = "today";
+    else if (/next\s+monday/i.test(text)) datePhrase = "next Monday";
+    else if (/monday/i.test(text)) datePhrase = "Monday";
+    else if (/next\s+saturday/i.test(text)) datePhrase = "next Saturday";
     else if (/saturday/i.test(text)) datePhrase = "Saturday";
+    else if (/next\s+sunday/i.test(text)) datePhrase = "next Sunday";
+    else if (/sunday/i.test(text)) datePhrase = "Sunday";
+
+    let timePhrase = null;
+    if (/\b2\s*(pm|p\.m\.)\b|\b2:00\s*(pm|p\.m\.)\b|\bat\s+2\b/i.test(text)) timePhrase = "2:00 PM";
+    else if (/\b10\s*(am|a\.m\.)\b|\b10:00\s*(am|a\.m\.)\b|\b10\s+in\s+the\s+morning\b/i.test(text)) timePhrase = "10:00 AM";
+    else if (/\bafternoon\b/i.test(text)) timePhrase = "afternoon";
+    else if (/\bmorning\b/i.test(text)) timePhrase = "morning";
+
+    let priestName = null;
+    if (/julius(\s+l\.?)?(\s+monta[ñn]o)?/i.test(text)) {
+      priestName = "Fr. Julius L. Montaño";
+    } else if (/fr\.?\s*julius/i.test(text)) {
+      priestName = "Fr. Julius";
+    } else if (/the\s+parish\s+priest|the\s+pastor/i.test(text)) {
+      priestName = "parish priest";
+    }
+
+    // Test-only deterministic stand-in for Gemini's semantic range intent.
+    // Production phrasing flexibility remains owned by SemanticIntentRouter.
+    if (/\b(what|which)\s+(days|dates)\s+are\s+available\b|\bwhat\s+dates\s+have\b.*\bopenings?\b|\bavailable\s+(days|dates)\b|\bopenings?\s+(this|next)\s+week\b|\bnext\s+available\b.*\b(day|date)\b/i.test(text)) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_AVAILABLE_DATES",
+        entities: {
+          parishName: parishName || conversationContext?.lastParishName || null,
+          documentType: null,
+          scheduleEvent: scheduleEvent || conversationContext?.lastScheduleEvent || null,
+          datePhrase,
+          timePhrase: null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: Boolean(conversationContext?.lastIntent),
+      };
+    }
+
+    // Vicariate Directory (standalone or follow-up)
+    const isVicariateQuery = /\bvicariate\b/i.test(text);
+    const isVicariateFollowUp =
+      Boolean(conversationContext?.lastVicariateName || conversationContext?.lastIntent === "GET_VICARIATE_DIRECTORY") &&
+      /\b(how\s+many|which|what|list|show)\b.*\b(of\s+those|parishes|churches|units)\b/i.test(text);
+
+    if (isVicariateQuery || isVicariateFollowUp) {
+      let vicName = null;
+      const canlaonMatch = text.match(/\b(canlaon)\b/i);
+      if (canlaonMatch) {
+        vicName = "Vicariate of Canlaon";
+      } else {
+        const vMatch = text.match(/\b(vicariate\s+of\s+[a-zA-Z\s]+|[a-zA-Z]+\s+vicariate)\b/i);
+        if (vMatch) {
+          vicName = vMatch[1].trim();
+        } else if (conversationContext?.lastVicariateName) {
+          vicName = conversationContext.lastVicariateName;
+        }
+      }
+
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_VICARIATE_DIRECTORY",
+        entities: {
+          parishName: null,
+          documentType: null,
+          scheduleEvent: null,
+          datePhrase: null,
+          timePhrase: null,
+          priestName: null,
+          vicariateName: vicName,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: Boolean(isVicariateFollowUp || (vicName && conversationContext?.lastVicariateName === vicName)),
+      };
+    }
+
+    // Active Parishes directory
+    if (
+      /\b(what\s+parishes|which\s+(parishes|churches)|list\s+of\s+parishes|show\s+(me\s+)?(all\s+|the\s+)?parishes|parishes\s+in\s+testimonium|parishes\s+present\s+in\s+testimonium|member\s+parishes|what\s+are\s+the\s+parishes|parishes\s+in\s+the\s+system)\b/i.test(
+        text
+      )
+    ) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_ACTIVE_PARISHES",
+        entities: {
+          parishName: null,
+          documentType: null,
+          scheduleEvent: null,
+          datePhrase: null,
+          timePhrase: null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: false,
+      };
+    }
+
+    // Specific Priest Availability (standalone or follow-up)
+    if (
+      /\b(is\s+(fr|father|rev|the\s+parish\s+priest|the\s+pastor)\b.*\b(free|available)\b|\bcan\s+(fr|father|rev)\b.*\b(celebrate|officiate|available)\b)/i.test(
+        text
+      ) ||
+      (/\b(free|available)\b/i.test(text) && priestName)
+    ) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "CHECK_PRIEST_AVAILABILITY",
+        entities: {
+          parishName: parishName || conversationContext?.lastParishName || null,
+          documentType: null,
+          scheduleEvent: scheduleEvent || conversationContext?.lastScheduleEvent || null,
+          datePhrase: datePhrase || conversationContext?.lastDatePhrase || null,
+          timePhrase: timePhrase || conversationContext?.lastTimePhrase || null,
+          priestName: priestName || conversationContext?.lastPriestName || null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: Boolean(conversationContext?.lastIntent),
+      };
+    }
+
+    // Available Priests for Slot
+    if (
+      /\b(which\s+priests\s+are\s+available|who\s+can\s+celebrate|which\s+priest\s+is\s+free|available\s+priests\s+for|priests\s+available\s+at)\b/i.test(
+        text
+      )
+    ) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_AVAILABLE_PRIESTS_FOR_SLOT",
+        entities: {
+          parishName: parishName || conversationContext?.lastParishName || null,
+          documentType: null,
+          scheduleEvent: scheduleEvent || conversationContext?.lastScheduleEvent || null,
+          datePhrase: datePhrase || conversationContext?.lastDatePhrase || null,
+          timePhrase: timePhrase || conversationContext?.lastTimePhrase || null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: Boolean(conversationContext?.lastIntent),
+      };
+    }
+
+    // Parish Events for Date
+    if (
+      /\b(what('s|\s+is)\s+happening\s+at\s+the\s+parish|parish\s+events|events\s+on|calendar\s+events|activities\s+on|mass\s+schedules?\s+on)\b/i.test(
+        text
+      )
+    ) {
+      return {
+        route: "LIVE_TOOL",
+        intent: "GET_PARISH_EVENTS_FOR_DATE",
+        entities: {
+          parishName: parishName || conversationContext?.lastParishName || null,
+          documentType: null,
+          scheduleEvent: null,
+          datePhrase: datePhrase || conversationContext?.lastDatePhrase || null,
+          timePhrase: null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: Boolean(conversationContext?.lastIntent),
+      };
+    }
+
+    // Explicit check: If question is a general procedure question (e.g. payment verification), route directly to RAG without inheriting previous context!
+    if (/\b(how\s+does\s+payment\s+verification\s+work|how\s+to\s+pay|how\s+does\s+ocr\s+work|payment\s+process|payment\s+verification\s+work)/i.test(text)) {
+      return {
+        route: "RAG",
+        intent: null,
+        entities: {
+          parishName: parishName || conversationContext?.lastParishName || null,
+          documentType: null,
+          scheduleEvent: null,
+          datePhrase: null,
+          timePhrase: null,
+          priestName: null,
+          trackingNumberPresent: false,
+        },
+        usesPreviousContext: false,
+      };
+    }
 
     // 4. Follow-up detection with conversationContext
     if (conversationContext?.lastIntent) {
@@ -126,6 +315,8 @@ export class FakeSemanticRouter {
             parishName: parishName || conversationContext.lastParishName || null,
             scheduleEvent: null,
             datePhrase: null,
+            timePhrase: null,
+            priestName: null,
             trackingNumberPresent: false,
           },
           usesPreviousContext: true,
@@ -141,6 +332,8 @@ export class FakeSemanticRouter {
             documentType: null,
             scheduleEvent: null,
             datePhrase: null,
+            timePhrase: null,
+            priestName: null,
             trackingNumberPresent: false,
           },
           usesPreviousContext: true,
@@ -156,6 +349,8 @@ export class FakeSemanticRouter {
             documentType: documentType || conversationContext.lastDocumentType || null,
             scheduleEvent: scheduleEvent || conversationContext.lastScheduleEvent || null,
             datePhrase: datePhrase || conversationContext.lastDatePhrase || null,
+            timePhrase: timePhrase || conversationContext.lastTimePhrase || null,
+            priestName: priestName || conversationContext.lastPriestName || null,
             trackingNumberPresent: false,
           },
           usesPreviousContext: true,
@@ -330,6 +525,8 @@ export class FakeSemanticRouter {
           documentType,
           scheduleEvent,
           datePhrase,
+          timePhrase,
+          priestName,
           trackingNumberPresent: false,
         },
         usesPreviousContext: false,
@@ -350,6 +547,8 @@ export class FakeSemanticRouter {
           documentType,
           scheduleEvent,
           datePhrase,
+          timePhrase: null,
+          priestName: null,
           trackingNumberPresent: false,
         },
         usesPreviousContext: false,
@@ -365,6 +564,8 @@ export class FakeSemanticRouter {
         documentType,
         scheduleEvent,
         datePhrase,
+        timePhrase: null,
+        priestName: null,
         trackingNumberPresent: false,
       },
       usesPreviousContext: false,

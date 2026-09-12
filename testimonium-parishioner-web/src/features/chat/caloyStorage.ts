@@ -87,6 +87,18 @@ export function isValidChatMessage(value: unknown): value is ChatMessage {
   return true;
 }
 
+/**
+ * Sanitizes assistant text by removing any internal machine citation markers.
+ */
+export function sanitizeCitationMarkers(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text.replace(/\s*\[CITATIONS?:\s*[0-9,\s]+\](?=[\s.,!?;:])/gi, '');
+  cleaned = cleaned.replace(/\s*\[CITATIONS?:\s*[0-9,\s]+\]/gi, '');
+  cleaned = cleaned.replace(/[ \t]{2,}/g, ' ');
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned.trim();
+}
+
 export function parseCaloyMessages(rawValue: string): ChatMessage[] | null {
   try {
     const parsed: unknown = JSON.parse(rawValue);
@@ -108,8 +120,12 @@ export function readCaloyMessages(storage: CaloyStorage | null = defaultStorage(
       storage.removeItem(CALOY_STORAGE_KEYS.messages);
       return null;
     }
-    // Mark restored messages so animation doesn't replay
-    return messages.map((m) => ({ ...m, isRestored: true }));
+    // Mark restored messages so animation doesn't replay, and ensure citation markers are cleanly stripped
+    return messages.map((m) => ({
+      ...m,
+      text: m.sender === 'caloy' ? sanitizeCitationMarkers(m.text) : m.text,
+      isRestored: true,
+    }));
   } catch {
     return null;
   }
@@ -118,7 +134,10 @@ export function readCaloyMessages(storage: CaloyStorage | null = defaultStorage(
 export function writeCaloyMessages(messages: ChatMessage[], storage: CaloyStorage | null = defaultStorage()): boolean {
   if (!storage || messages.length === 0 || !messages.every(isValidChatMessage)) return false;
   try {
-    storage.setItem(CALOY_STORAGE_KEYS.messages, JSON.stringify(messages));
+    const cleanMessages = messages.map((m) =>
+      m.sender === 'caloy' ? { ...m, text: sanitizeCitationMarkers(m.text) } : m
+    );
+    storage.setItem(CALOY_STORAGE_KEYS.messages, JSON.stringify(cleanMessages));
     return true;
   } catch {
     return false;

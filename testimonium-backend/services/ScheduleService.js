@@ -27,6 +27,8 @@ import {
   normalizePriestId,
 } from "./SchedulingAvailability.js";
 import {
+  evaluateCandidateSlot,
+  loadParishAvailabilitySnapshot,
   validateRequestedPriestEligibility,
   GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE,
 } from "./ScheduleAvailabilityDomainService.js";
@@ -733,9 +735,11 @@ export class ScheduleService {
   }
 
   /**
-   * Retrieves available time slots for a specific parish, date, and event type.
+   * Retrieves a classified availability result for a specific parish, date,
+   * and event type. This is the canonical implementation behind the public
+   * string[] contract and Caloy's safe reason-specific responses.
    */
-  async getAvailableSlots(parishId, date, eventType) {
+  async getAvailableSlotsDetailed(parishId, date, eventType) {
     const parsedParishId = parseInt(parishId, 10);
     if (isNaN(parsedParishId)) {
       const err = new Error("Invalid parishId.");
@@ -747,6 +751,21 @@ export class ScheduleService {
     const now = new Date();
     const horizon = validateDateHorizon(date, null, now);
     const canonicalEventType = validateCanonicalEventType(eventType);
+    const emptyResult = (reasonCode, overrides = {}) => ({
+      parishId: parsedParishId,
+      eventType: canonicalEventType,
+      date: horizon.dateStr,
+      serviceAvailable: !["EVENT_NOT_OFFERED", "SCHEDULING_CONFIGURATION_INCOMPLETE", "PARISH_INACTIVE", "PARISH_NOT_FOUND"].includes(reasonCode),
+      reasonCode,
+      candidateSlots: [],
+      slots: [],
+      exclusionCounts: {
+        past: 0,
+        outsideOfficeHours: 0,
+        atCapacity: 0,
+      },
+      ...overrides,
+    });
 
     const parish = await prisma.parish.findUnique({
       where: { id: parsedParishId },
@@ -764,28 +783,39 @@ export class ScheduleService {
     });
 
     if (!parish || !parish.isActive) {
-      return [];
+      return emptyResult("PARISH_INACTIVE");
     }
 
     let schedulingConfig;
     try {
       schedulingConfig = requireEnabledSchedulingService(parish, canonicalEventType);
-    } catch {
-      return [];
+    } catch (err) {
+      return emptyResult(
+        err?.code === "SERVICE_NOT_OFFERED" ? "EVENT_NOT_OFFERED" : "SCHEDULING_CONFIGURATION_INCOMPLETE"
+      );
+    }
+    if (!schedulingConfig.timeSlots.length) {
+      return emptyResult("NO_SCHEDULING_WINDOW", { serviceAvailable: true });
     }
     // 1. Office hours check
     try {
       validateParishAndOffice(parish, horizon.dayName);
-    } catch {
-      return [];
+    } catch (err) {
+      return emptyResult(err?.code === "OFFICE_CLOSED" ? "PARISH_CLOSED" : "NO_SCHEDULING_WINDOW", {
+        serviceAvailable: true,
+        candidateSlots: [...schedulingConfig.timeSlots],
+      });
     }
 
     // 2. Parish-wide availability check. ParishAvailability records are
     // parish-wide, so this applies to every enabled service.
     try {
       validateParishAvailability(parish.availabilities, horizon.dateStr);
-    } catch {
-      return [];
+    } catch (err) {
+      return emptyResult(err?.code || "PARISH_CLOSED", {
+        serviceAvailable: true,
+        candidateSlots: [...schedulingConfig.timeSlots],
+      });
     }
 
     try {
@@ -796,8 +826,16 @@ export class ScheduleService {
         serviceWeekdayRules: parish.serviceWeekdayRules,
         dateRule: parish.scheduleDateRules[0] || null,
       });
-    } catch {
-      return [];
+    } catch (err) {
+      return emptyResult(
+        ["SERVICE_UNAVAILABLE_ON_DAY", "DATE_UNAVAILABLE"].includes(err?.code)
+          ? "DATE_NOT_ALLOWED"
+          : err?.code || "DATE_NOT_ALLOWED",
+        {
+          serviceAvailable: true,
+          candidateSlots: [...schedulingConfig.timeSlots],
+        }
+      );
     }
 
     // 3. Fetch active bookings on that date
@@ -820,17 +858,43 @@ export class ScheduleService {
     });
 
     if (activeBookings.length >= schedulingConfig.dailyCapacity) {
-      return [];
+      return emptyResult("FULLY_BOOKED", {
+        serviceAvailable: true,
+        candidateSlots: [...schedulingConfig.timeSlots],
+        exclusionCounts: {
+          past: 0,
+          outsideOfficeHours: 0,
+          atCapacity: schedulingConfig.timeSlots.length,
+        },
+      });
     }
 
     const openSlots = [];
+    const exclusionCounts = {
+      past: 0,
+      outsideOfficeHours: 0,
+      atCapacity: 0,
+    };
     for (const slot of schedulingConfig.timeSlots) {
       // Same-day past-time check
       if (horizon.dateStr === horizon.todayStr) {
         const slotDt = parseManilaDateTime(horizon.dateStr, slot);
         if (slotDt && slotDt.getTime() <= now.getTime()) {
+          exclusionCounts.past += 1;
           continue;
         }
+      }
+
+      // A configured slot start must also fall inside the authoritative
+      // office window. No event duration is inferred here.
+      try {
+        validateParishAndOffice(parish, horizon.dayName, slot);
+      } catch (err) {
+        if (["OFFICE_CLOSED", "OUTSIDE_OFFICE_HOURS"].includes(err?.code)) {
+          exclusionCounts.outsideOfficeHours += 1;
+          continue;
+        }
+        throw err;
       }
 
       const normSlot = normalizeTimeSlotString(slot);
@@ -841,10 +905,122 @@ export class ScheduleService {
 
       if (slotCount < schedulingConfig.slotCapacity) {
         openSlots.push(slot);
+      } else {
+        exclusionCounts.atCapacity += 1;
       }
     }
 
-    return openSlots;
+    let reasonCode = null;
+    if (!openSlots.length) {
+      const excludedCount = exclusionCounts.atCapacity + exclusionCounts.past + exclusionCounts.outsideOfficeHours;
+      if (exclusionCounts.atCapacity > 0 && excludedCount === schedulingConfig.timeSlots.length) {
+        reasonCode = "FULLY_BOOKED";
+      } else if (exclusionCounts.outsideOfficeHours > 0 || exclusionCounts.past > 0) {
+        reasonCode = "NO_ELIGIBLE_SLOTS";
+      } else {
+        reasonCode = "NO_AVAILABLE_SLOTS";
+      }
+    }
+
+    return {
+      parishId: parsedParishId,
+      eventType: canonicalEventType,
+      date: horizon.dateStr,
+      serviceAvailable: true,
+      reasonCode,
+      candidateSlots: [...schedulingConfig.timeSlots],
+      slots: openSlots,
+      exclusionCounts,
+    };
+  }
+
+  /**
+   * Public and long-standing contract: arguments are
+   * (parishId, date, eventType), return value is string[].
+   */
+  async getAvailableSlots(parishId, date, eventType) {
+    const result = await this.getAvailableSlotsDetailed(parishId, date, eventType);
+    return result.slots;
+  }
+
+  /**
+   * Bounded upcoming-date search backed by the same batched domain snapshot
+   * and candidate evaluator used for canonical schedule recommendations.
+   */
+  async getAvailableDatesInRange(parishId, eventType, startDate = null, rangeDays = 14) {
+    const parsedParishId = parseInt(parishId, 10);
+    if (isNaN(parsedParishId)) {
+      const err = new Error("Invalid parishId.");
+      err.statusCode = 400;
+      err.code = "INVALID_PARISH_ID";
+      throw err;
+    }
+
+    const canonicalEventType = validateCanonicalEventType(eventType);
+    const boundedRangeDays = Number(rangeDays);
+    if (!Number.isInteger(boundedRangeDays) || boundedRangeDays < 1 || boundedRangeDays > 31) {
+      const err = new Error("rangeDays must be a whole number from 1 to 31.");
+      err.statusCode = 400;
+      err.code = "INVALID_AVAILABILITY_RANGE";
+      throw err;
+    }
+
+    const now = new Date();
+    const effectiveStart = startDate || getManilaDateString(now);
+    const startHorizon = validateDateHorizon(effectiveStart, null, now);
+    const startUtc = Date.UTC(startHorizon.parsed.year, startHorizon.parsed.month - 1, startHorizon.parsed.day);
+    const requestedEnd = getManilaDateString(new Date(startUtc + (boundedRangeDays - 1) * 24 * 60 * 60 * 1000));
+    const maxDate = getManilaHorizonMaxDate(now, MAX_HORIZON_DAYS);
+    const effectiveEnd = requestedEnd > maxDate ? maxDate : requestedEnd;
+
+    let snapshot;
+    try {
+      snapshot = await loadParishAvailabilitySnapshot(
+        parsedParishId,
+        startHorizon.dateStr,
+        effectiveEnd,
+        canonicalEventType,
+        prisma
+      );
+    } catch (err) {
+      if (["SERVICE_NOT_OFFERED", "SCHEDULING_CONFIGURATION_INCOMPLETE", "PARISH_INACTIVE", "PARISH_NOT_FOUND"].includes(err?.code)) {
+        return {
+          parishId: parsedParishId,
+          eventType: canonicalEventType,
+          serviceAvailable: false,
+          reasonCode: err.code === "SERVICE_NOT_OFFERED" ? "EVENT_NOT_OFFERED" : err.code,
+          startDate: startHorizon.dateStr,
+          endDate: effectiveEnd,
+          rangeDays: Math.floor((Date.parse(`${effectiveEnd}T00:00:00Z`) - startUtc) / (24 * 60 * 60 * 1000)) + 1,
+          dates: [],
+        };
+      }
+      throw err;
+    }
+
+    const availableDates = [];
+    const endParsed = parseManilaDateOnly(effectiveEnd);
+    const endUtc = Date.UTC(endParsed.year, endParsed.month - 1, endParsed.day);
+    for (let cursor = startUtc; cursor <= endUtc; cursor += 24 * 60 * 60 * 1000) {
+      const dateStr = getManilaDateString(new Date(cursor));
+      const slots = snapshot.schedulingConfig.timeSlots.filter((slot) =>
+        evaluateCandidateSlot(snapshot, dateStr, slot, canonicalEventType, now)
+      );
+      if (slots.length > 0) {
+        availableDates.push({ date: dateStr, slots });
+      }
+    }
+
+    return {
+      parishId: parsedParishId,
+      eventType: canonicalEventType,
+      serviceAvailable: true,
+      reasonCode: availableDates.length ? null : "NO_AVAILABLE_DATES",
+      startDate: startHorizon.dateStr,
+      endDate: effectiveEnd,
+      rangeDays: Math.floor((endUtc - startUtc) / (24 * 60 * 60 * 1000)) + 1,
+      dates: availableDates,
+    };
   }
 
   /**

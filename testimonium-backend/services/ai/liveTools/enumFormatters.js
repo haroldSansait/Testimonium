@@ -111,3 +111,56 @@ export function humanizeScheduleStatus(status) {
   if (!status) return "Pending";
   return SCHEDULE_STATUS_LABELS[status] || formatFallback(status);
 }
+
+export const PARISH_TYPE_LABELS = {
+  PARISH: "Parish",
+  QUASI_PARISH: "Quasi-Parish",
+  MISSION_STATION: "Mission Station",
+};
+
+export function humanizeParishType(type) {
+  if (!type) return "Parish";
+  return PARISH_TYPE_LABELS[type] || formatFallback(type);
+}
+
+/**
+ * Canonical Clergy Name Formatter
+ * Prevents duplicate prefixes like "Fr. Rev. Fr." or "Fr. Fr."
+ * Produces exactly one correct honorific/title.
+ */
+export function formatClergyName(name, defaultTitle = "Fr.") {
+  if (!name || typeof name !== "string") {
+    return "Father";
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) return "Father";
+
+  let cleanName = trimmed;
+  let detectedTitle = null;
+
+  const titlePattern = /^(?:(?:most\s+rev\.?|rev\.?\s*fr\.?|rev\.?\s*monsignor|msgr\.?|monsignor|rev\.?|fr\.?|father)\s*)+/i;
+  const match = cleanName.match(titlePattern);
+
+  if (match) {
+    const matchedPrefix = match[0].trim();
+    cleanName = cleanName.slice(match[0].length).trim();
+
+    const lowerPrefix = matchedPrefix.toLowerCase();
+    if (lowerPrefix.includes("most rev")) {
+      detectedTitle = "Most Rev.";
+    } else if (lowerPrefix.includes("msgr") || lowerPrefix.includes("monsignor")) {
+      detectedTitle = "Msgr.";
+    } else if (lowerPrefix.includes("rev") && (lowerPrefix.includes("fr") || lowerPrefix.includes("father"))) {
+      detectedTitle = "Rev. Fr.";
+    } else if (lowerPrefix.includes("rev")) {
+      detectedTitle = "Rev.";
+    } else {
+      detectedTitle = "Fr.";
+    }
+  } else {
+    detectedTitle = defaultTitle || "Fr.";
+  }
+
+  return cleanName ? `${detectedTitle} ${cleanName}` : detectedTitle;
+}

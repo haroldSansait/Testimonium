@@ -7,13 +7,28 @@ import {
   humanizeVerificationStatus,
   humanizeEventType,
   humanizeScheduleStatus,
+  humanizeParishType,
+  formatClergyName,
 } from "./enumFormatters.js";
 import { getEffectiveOfferedDocuments } from "../../../config/documents.js";
 import { DocumentRequirementService } from "../../DocumentRequirementService.js";
-import { getEligiblePriestsForParish } from "../../ScheduleAvailabilityDomainService.js";
+import {
+  getEligiblePriestsForParish,
+  validateRequestedPriestEligibility,
+  loadPriestConflictSnapshot,
+} from "../../ScheduleAvailabilityDomainService.js";
 import { ScheduleService } from "../../ScheduleService.js";
 import { ParishionerRequestRepository } from "../../../repositories/ParishionerRequestRepository.js";
-import { getManilaDateString, parseStrictManilaDateOnly } from "../../ConflictHelper.js";
+import {
+  getManilaDateString,
+  parseStrictManilaDateOnly,
+  parseManilaDateOnly,
+  parseManilaDateTime,
+  computeOperationalEndDatetime,
+  evaluatePriestConflictFromSnapshot,
+} from "../../ConflictHelper.js";
+import { normalizeTimeSlotString } from "../../BookingValidator.js";
+import { ParishEventService } from "../../ParishEventService.js";
 
 export class LiveToolRegistry {
   constructor({
@@ -24,6 +39,45 @@ export class LiveToolRegistry {
     this.prisma = prismaClient;
     this.scheduleService = scheduleService;
     this.requestRepository = requestRepository;
+  }
+
+  async getClassifiedSlotAvailability(parishId, date, eventType) {
+    if (typeof this.scheduleService.getAvailableSlotsDetailed === "function") {
+      return this.scheduleService.getAvailableSlotsDetailed(parishId, date, eventType);
+    }
+
+    const slots = await this.scheduleService.getAvailableSlots(parishId, date, eventType);
+    return {
+      parishId: Number(parishId),
+      eventType,
+      date,
+      serviceAvailable: true,
+      reasonCode: Array.isArray(slots) && slots.length ? null : "NO_AVAILABLE_SLOTS",
+      candidateSlots: Array.isArray(slots) ? [...slots] : [],
+      slots: Array.isArray(slots) ? slots : [],
+      exclusionCounts: null,
+    };
+  }
+
+  formatAvailabilityReason(reasonCode, { parishName, eventType, date }) {
+    const eventName = humanizeEventType(eventType);
+    switch (reasonCode) {
+      case "EVENT_NOT_OFFERED":
+        return `**${parishName}** does not currently offer **${eventName}** scheduling. Please choose one of the services enabled by the parish or contact the parish office.`;
+      case "SCHEDULING_CONFIGURATION_INCOMPLETE":
+      case "NO_SCHEDULING_WINDOW":
+        return `**${parishName}** does not currently have valid **${eventName}** scheduling slots configured for **${date}**.`;
+      case "PARISH_CLOSED":
+        return `**${parishName}** is closed for scheduling on **${date}**.`;
+      case "DATE_NOT_ALLOWED":
+        return `**${eventName}** scheduling is not offered by **${parishName}** on **${date}**.`;
+      case "NO_ELIGIBLE_SLOTS":
+        return `None of the configured **${eventName}** slot starts fall within the valid scheduling window at **${parishName}** on **${date}**.`;
+      case "FULLY_BOOKED":
+        return `All configured **${eventName}** slots at **${parishName}** on **${date}** have reached capacity.`;
+      default:
+        return `There are no available slots for **${eventName}** at **${parishName}** on **${date}**.`;
+    }
   }
 
   /**
@@ -70,7 +124,7 @@ export class LiveToolRegistry {
 
     const priestLines = priests.map((p) => {
       const roleSuffix = p.isAssistant ? " *(Parochial Vicar / Assistant Priest)*" : " *(Parish Priest)*";
-      const displayName = p.name ? (p.name.startsWith("Fr.") || p.name.startsWith("Rev.") ? p.name : `Fr. ${p.name}`) : "Father";
+      const displayName = formatClergyName(p.name);
       return `- **${displayName}**${roleSuffix}`;
     });
 
@@ -135,29 +189,54 @@ export class LiveToolRegistry {
     if (pId) {
       parish = await this.prisma.parish.findUnique({
         where: { id: pId },
-        select: { id: true, parishName: true, isActive: true },
+        select: { id: true, parishName: true, isActive: true, availableDocuments: true, contactNumber: true, email: true },
       });
     }
 
-    const config = await DocumentRequirementService.getRequirements(documentType, pId);
+    if (parish && !parish.isActive) {
+      return {
+        answer: "The requested parish could not be found or is currently inactive.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
 
-    const docTitle = config.title || humanizeDocumentType(documentType);
+    const docTitle = humanizeDocumentType(documentType);
+
+    // State A: DOCUMENT_NOT_OFFERED
+    if (parish) {
+      const offeredTypes = getEffectiveOfferedDocuments(parish.availableDocuments);
+      if (!offeredTypes.includes(documentType)) {
+        const contactStr = this.formatParishContact(parish);
+        return {
+          answer: `**${parish.parishName}** does not currently offer **${docTitle}** for online requests in TESTIMONIUM. Please contact their parish office directly.${contactStr ? `\n\n${contactStr}` : ""}`,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, state: "DOCUMENT_NOT_OFFERED" },
+        };
+      }
+    }
+
+    const config = await DocumentRequirementService.getRequirements(documentType, pId, this.prisma);
     const parishHeader = parish ? ` at **${parish.parishName}**` : "";
 
     const reqDocs = config.requiredDocuments || [];
     const primaryDocs = reqDocs.filter((d) => d.category === "primary");
     const supportingDocs = reqDocs.filter((d) => d.category === "supporting");
 
+    // State B: DOCUMENT_OFFERED_BUT_NO_REQUIREMENTS_CONFIGURED
+    if (primaryDocs.length === 0 && supportingDocs.length === 0) {
+      const contactStr = parish ? this.formatParishContact(parish) : "";
+      return {
+        answer: `**${docTitle}**${parishHeader} currently does not have any specific upload requirements configured in TESTIMONIUM. Please contact the parish office for further instructions.${contactStr ? `\n\n${contactStr}` : ""}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, state: "DOCUMENT_OFFERED_BUT_NO_REQUIREMENTS_CONFIGURED" },
+      };
+    }
+
+    // State D: DOCUMENT_OFFERED_WITH_DATA
     let requirementsText = "";
     if (primaryDocs.length > 0) {
       requirementsText += `**Primary Requirements:**\n` + primaryDocs.map((d) => `- **${d.label}**${d.description ? `: ${d.description}` : ""}`).join("\n") + "\n\n";
     }
     if (supportingDocs.length > 0) {
       requirementsText += `**Supporting Documents:**\n` + supportingDocs.map((d) => `- **${d.label}**${d.description ? `: ${d.description}` : ""}`).join("\n") + "\n\n";
-    }
-
-    if (!requirementsText) {
-      requirementsText = "No specific uploaded documents are required for this request.\n\n";
     }
 
     const feeText = config.baseFee !== undefined && config.baseFee !== null ? `\n- **Standard Fee:** ₱${Number(config.baseFee).toFixed(2)}` : "";
@@ -167,7 +246,7 @@ export class LiveToolRegistry {
 
     return {
       answer,
-      liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, state: "DOCUMENT_OFFERED_WITH_DATA" },
     };
   }
 
@@ -182,7 +261,7 @@ export class LiveToolRegistry {
 
     const parish = await this.prisma.parish.findUnique({
       where: { id: pId },
-      select: { id: true, parishName: true, isActive: true, contactNumber: true, email: true, documentSettings: true },
+      select: { id: true, parishName: true, isActive: true, contactNumber: true, email: true, documentSettings: true, availableDocuments: true },
     });
 
     if (!parish || !parish.isActive) {
@@ -192,17 +271,29 @@ export class LiveToolRegistry {
       };
     }
 
-    const config = await DocumentRequirementService.getRequirements(documentType, pId);
     const docName = humanizeDocumentType(documentType);
+    const contactStr = this.formatParishContact(parish);
 
-    if (config.baseFee === undefined || config.baseFee === null || isNaN(Number(config.baseFee))) {
-      const contactStr = this.formatParishContact(parish);
+    // State A: DOCUMENT_NOT_OFFERED
+    const offeredTypes = getEffectiveOfferedDocuments(parish.availableDocuments);
+    if (!offeredTypes.includes(documentType)) {
       return {
-        answer: `I don't have a current **${docName}** fee recorded for **${parish.parishName}** in TESTIMONIUM. Please contact the parish office to confirm the current fee.${contactStr ? `\n\n${contactStr}` : ""}`,
-        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+        answer: `**${parish.parishName}** does not currently offer **${docName}** for online requests in TESTIMONIUM. Please contact their parish office directly.${contactStr ? `\n\n${contactStr}` : ""}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, state: "DOCUMENT_NOT_OFFERED" },
       };
     }
 
+    const config = await DocumentRequirementService.getRequirements(documentType, pId, this.prisma);
+
+    // State C: DOCUMENT_OFFERED_BUT_NO_FEE_CONFIGURED
+    if (config.baseFee === undefined || config.baseFee === null || isNaN(Number(config.baseFee))) {
+      return {
+        answer: `I don't have a current **${docName}** fee recorded for **${parish.parishName}** in TESTIMONIUM. Please contact the parish office to confirm the current fee.${contactStr ? `\n\n${contactStr}` : ""}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, state: "DOCUMENT_OFFERED_BUT_NO_FEE_CONFIGURED" },
+      };
+    }
+
+    // State D: DOCUMENT_OFFERED_WITH_DATA
     const feeAmount = Number(config.baseFee).toFixed(2);
     const processingDays = config.estimatedProcessingDays || 3;
 
@@ -210,7 +301,7 @@ export class LiveToolRegistry {
 
     return {
       answer,
-      liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, state: "DOCUMENT_OFFERED_WITH_DATA" },
     };
   }
 
@@ -284,7 +375,7 @@ export class LiveToolRegistry {
   /**
    * Tool 6: GET_CALENDAR_SLOT_AVAILABILITY
    */
-  async getCalendarSlotAvailability({ parishId, eventType, date }) {
+  async getCalendarSlotAvailability({ parishId, eventType, date, timeSlot = null }) {
     const pId = Number(parishId);
     if (!pId || !eventType || !date) {
       throw new Error("parishId, eventType, and date are required.");
@@ -302,9 +393,9 @@ export class LiveToolRegistry {
       };
     }
 
-    let slots = [];
+    let availability;
     try {
-      slots = await this.scheduleService.getAvailableSlots(pId, date, eventType);
+      availability = await this.getClassifiedSlotAvailability(pId, date, eventType);
     } catch (err) {
       return {
         answer: `I could not check availability for **${humanizeEventType(eventType)}** on **${date}** at **${parish.parishName}**: ${err.message}`,
@@ -312,22 +403,171 @@ export class LiveToolRegistry {
       };
     }
 
-    const availableSlots = Array.isArray(slots) ? slots.filter((s) => s.available) : [];
+    // slots from ScheduleService.getAvailableSlots is an array of strings like ["08:00 AM", "09:30 AM"]
+    const availableSlots = Array.isArray(availability?.slots)
+      ? availability.slots
+          .map((s) => (typeof s === "string" ? s : s.timeSlot || (s.available ? s.slot : null)))
+          .filter(Boolean)
+      : [];
 
-    if (availableSlots.length === 0) {
+    if (!availability?.serviceAvailable || availability?.reasonCode === "EVENT_NOT_OFFERED") {
       return {
-        answer: `There are no available slots for **${humanizeEventType(eventType)}** at **${parish.parishName}** on **${date}**.\n\nPlease check another date or contact the parish office for special arrangements.\n\n${this.formatParishContact(parish)}`,
-        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+        answer: `${this.formatAvailabilityReason(availability?.reasonCode, { parishName: parish.parishName, eventType, date })}\n\n${this.formatParishContact(parish)}`,
+        liveData: {
+          label: "Current TESTIMONIUM Data",
+          asOf: new Date().toISOString(),
+          parishId: pId,
+          reasonCode: availability?.reasonCode,
+          candidateCount: availability?.candidateSlots?.length || 0,
+          totalAvailable: 0,
+          slots: [],
+        },
       };
     }
 
-    const slotLines = availableSlots.map((s) => `- ⏰ **${s.timeSlot}**`);
+    // Specific time check
+    if (timeSlot) {
+      const targetNorm = normalizeTimeSlotString(timeSlot);
+      const isSlotAvailable = availableSlots.some((s) => normalizeTimeSlotString(s) === targetNorm);
+
+      if (isSlotAvailable) {
+        return {
+          answer: `✅ **${timeSlot}** is currently **available** for **${humanizeEventType(eventType)}** at **${parish.parishName}** on **${date}**.\n\nYou can book this appointment slot anytime through the Sacramental Scheduling module.`,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, isAvailable: true, timeSlot, reasonCode: null },
+        };
+      } else {
+        const altLines = availableSlots.length > 0
+          ? availableSlots.map((s) => `- ⏰ **${s}**`).join("\n")
+          : "There are no alternative slots open on this date.";
+
+        const answer = `**${timeSlot}** is currently **unavailable** for **${humanizeEventType(eventType)}** at **${parish.parishName}** on **${date}**.\n\n` +
+          (availableSlots.length > 0 ? `Available alternative times on this date include:\n\n${altLines}\n\n` : `${altLines}\n\n`) +
+          this.formatParishContact(parish);
+
+        return {
+          answer,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, isAvailable: false, timeSlot, reasonCode: availability?.reasonCode || "SLOT_UNAVAILABLE" },
+        };
+      }
+    }
+
+    if (availableSlots.length === 0) {
+      return {
+        answer: `${this.formatAvailabilityReason(availability?.reasonCode, { parishName: parish.parishName, eventType, date })}\n\nPlease check another date or contact the parish office for special arrangements.\n\n${this.formatParishContact(parish)}`,
+        liveData: {
+          label: "Current TESTIMONIUM Data",
+          asOf: new Date().toISOString(),
+          parishId: pId,
+          reasonCode: availability?.reasonCode || "NO_AVAILABLE_SLOTS",
+          candidateCount: availability?.candidateSlots?.length || 0,
+          totalAvailable: 0,
+          slots: [],
+        },
+      };
+    }
+
+    const slotLines = availableSlots.map((s) => `- ⏰ **${s}**`);
 
     const answer = `Here are the available appointment slots for **${humanizeEventType(eventType)}** at **${parish.parishName}** on **${date}**:\n\n${slotLines.join("\n")}\n\nYou can book any of these slots through the Sacramental Scheduling module.`;
 
     return {
       answer,
-      liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      liveData: {
+        label: "Current TESTIMONIUM Data",
+        asOf: new Date().toISOString(),
+        parishId: pId,
+        slots: availableSlots,
+        totalAvailable: availableSlots.length,
+        candidateCount: availability?.candidateSlots?.length || availableSlots.length,
+        reasonCode: null,
+      },
+    };
+  }
+
+  /**
+   * Tool 6B: GET_AVAILABLE_DATES
+   */
+  async getAvailableDates({ parishId, eventType, startDate = null, rangeDays = null }) {
+    const pId = Number(parishId);
+    if (!pId || !eventType) {
+      throw new Error("parishId and eventType are required.");
+    }
+
+    const parish = await this.prisma.parish.findUnique({
+      where: { id: pId },
+      select: { id: true, parishName: true, isActive: true, contactNumber: true, email: true },
+    });
+    if (!parish || !parish.isActive) {
+      return {
+        answer: "The requested parish could not be found or is currently inactive.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, dates: [] },
+      };
+    }
+
+    if (typeof this.scheduleService.getAvailableDatesInRange !== "function") {
+      throw new Error("The canonical range availability service is unavailable.");
+    }
+
+    const result = await this.scheduleService.getAvailableDatesInRange(
+      pId,
+      eventType,
+      startDate,
+      rangeDays || 14
+    );
+
+    if (!result.serviceAvailable || result.reasonCode === "EVENT_NOT_OFFERED") {
+      return {
+        answer: `${this.formatAvailabilityReason(result.reasonCode, { parishName: parish.parishName, eventType, date: `${result.startDate} through ${result.endDate}` })}\n\n${this.formatParishContact(parish)}`,
+        liveData: {
+          label: "Current TESTIMONIUM Data",
+          asOf: new Date().toISOString(),
+          parishId: pId,
+          startDate: result.startDate,
+          endDate: result.endDate,
+          rangeDays: result.rangeDays,
+          reasonCode: result.reasonCode,
+          dates: [],
+        },
+      };
+    }
+
+    if (!result.dates.length) {
+      return {
+        answer: `There are no **${humanizeEventType(eventType)}** dates with an available slot at **${parish.parishName}** from **${result.startDate}** through **${result.endDate}**.`,
+        liveData: {
+          label: "Current TESTIMONIUM Data",
+          asOf: new Date().toISOString(),
+          parishId: pId,
+          startDate: result.startDate,
+          endDate: result.endDate,
+          rangeDays: result.rangeDays,
+          reasonCode: result.reasonCode,
+          dates: [],
+        },
+      };
+    }
+
+    const formatter = new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+    const lines = result.dates.map(({ date, slots }) =>
+      `- **${formatter.format(new Date(`${date}T00:00:00+08:00`))}** (${slots.length} ${slots.length === 1 ? "slot" : "slots"})`
+    );
+    return {
+      answer: `**${parish.parishName}** currently has **${humanizeEventType(eventType)}** availability on:\n\n${lines.join("\n")}\n\nWould you like the available times for one of those dates?`,
+      liveData: {
+        label: "Current TESTIMONIUM Data",
+        asOf: new Date().toISOString(),
+        parishId: pId,
+        startDate: result.startDate,
+        endDate: result.endDate,
+        rangeDays: result.rangeDays,
+        reasonCode: null,
+        dates: result.dates,
+      },
     };
   }
 
@@ -592,7 +832,9 @@ export class LiveToolRegistry {
       const dateStr = s.requestedDate
         ? new Date(s.requestedDate).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
         : "Pending Date";
-      const celebrant = s.assignedPriest?.fullName ? ` (Celebrant: Fr. ${s.assignedPriest.fullName})` : "";
+      const celebrant = s.assignedPriest?.fullName
+        ? ` (Celebrant: ${formatClergyName(s.assignedPriest.fullName)})`
+        : "";
 
       return `- 📅 **${eventTitle}** at **${parishName}**\n  - Date: ${dateStr}\n  - Status: **${statusLabel}**${celebrant}`;
     });
@@ -606,6 +848,565 @@ export class LiveToolRegistry {
   }
 
   /**
+   * Tool 10: GET_ACTIVE_PARISHES
+   */
+  async getActiveParishes() {
+    const parishes = await this.prisma.parish.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        parishName: true,
+        type: true,
+        municipalityCity: true,
+        province: true,
+        contactNumber: true,
+        email: true,
+      },
+      orderBy: [{ type: "asc" }, { parishName: "asc" }],
+    });
+
+    if (!parishes || parishes.length === 0) {
+      return {
+        answer: "There are currently no active parishes registered in TESTIMONIUM.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString() },
+      };
+    }
+
+    const lines = parishes.map((p) => {
+      const typeLabel = humanizeParishType(p.type);
+      const loc = [p.municipalityCity, p.province].filter(Boolean).join(", ");
+      const locText = loc ? ` — ${loc}` : "";
+      return `- **${p.parishName}** *(${typeLabel})*${locText}`;
+    });
+
+    const answer = `Here are the active parishes, quasi-parishes, and mission stations in TESTIMONIUM:\n\n${lines.join("\n")}\n\n*This list comes directly from the current verified parish directory.*`;
+
+    return {
+      answer,
+      liveData: {
+        label: "Current TESTIMONIUM Data",
+        asOf: new Date().toISOString(),
+        parishes: parishes.map((p) => ({ id: p.id, name: p.parishName, type: p.type })),
+      },
+    };
+  }
+
+  /**
+   * Tool: GET_VICARIATE_DIRECTORY
+   * Returns active church units belonging to a specific Vicariate,
+   * including counts by organizational type.
+   */
+  async getVicariateDirectory({ vicariateName = null, conversationContext = null } = {}) {
+    const parishes = await this.prisma.parish.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        parishName: true,
+        type: true,
+        municipalityCity: true,
+        province: true,
+        contactNumber: true,
+        email: true,
+      },
+      orderBy: [{ type: "asc" }, { parishName: "asc" }],
+    });
+
+    const activeUnits = (parishes || []).filter((p) => p.isActive !== false);
+
+    if (activeUnits.length === 0) {
+      return {
+        answer: "There are currently no active church units registered in TESTIMONIUM.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString() },
+      };
+    }
+
+    // Discover registered vicariates dynamically from active units
+    const registeredVicariates = Array.from(
+      new Set(activeUnits.map((p) => p.vicariate || "Vicariate of Canlaon"))
+    );
+
+    const candidateName =
+      (typeof vicariateName === "string" && vicariateName.trim()) ||
+      conversationContext?.lastVicariateName ||
+      null;
+
+    const matchedVicariate = resolveVicariateName(candidateName, registeredVicariates);
+
+    if (!matchedVicariate) {
+      const knownList = registeredVicariates.join(", ");
+      return {
+        answer: candidateName
+          ? `I couldn't find a Vicariate matching "${candidateName}" in TESTIMONIUM. Currently registered vicariates include: ${knownList}.`
+          : `Please specify which Vicariate directory you'd like to view (${knownList}).`,
+        fallback: true,
+        fallbackReason: "INVALID_VICARIATE",
+        responseType: "FALLBACK",
+        category: "LIVE_DATA",
+        sources: [],
+        liveData: {
+          label: "Current TESTIMONIUM Data",
+          asOf: new Date().toISOString(),
+          registeredVicariates,
+        },
+      };
+    }
+
+    const memberUnits = activeUnits.filter(
+      (p) => (p.vicariate || "Vicariate of Canlaon").toLowerCase() === matchedVicariate.toLowerCase()
+    );
+
+    const counts = {
+      PARISH: 0,
+      QUASI_PARISH: 0,
+      MISSION_STATION: 0,
+    };
+
+    for (const unit of memberUnits) {
+      const typeKey = String(unit.type).toUpperCase();
+      if (counts[typeKey] !== undefined) {
+        counts[typeKey]++;
+      } else {
+        counts[typeKey] = 1;
+      }
+    }
+
+    const total = memberUnits.length;
+
+    const breakdownParts = [];
+    if (counts.PARISH > 0) {
+      breakdownParts.push(`${counts.PARISH} ${counts.PARISH === 1 ? "Parish" : "Parishes"}`);
+    }
+    if (counts.QUASI_PARISH > 0) {
+      breakdownParts.push(`${counts.QUASI_PARISH} ${counts.QUASI_PARISH === 1 ? "Quasi-Parish" : "Quasi-Parishes"}`);
+    }
+    if (counts.MISSION_STATION > 0) {
+      breakdownParts.push(`${counts.MISSION_STATION} ${counts.MISSION_STATION === 1 ? "Mission Station" : "Mission Stations"}`);
+    }
+
+    let breakdownText = "";
+    if (breakdownParts.length === 0) {
+      breakdownText = "0 active church units";
+    } else if (breakdownParts.length === 1) {
+      breakdownText = breakdownParts[0];
+    } else if (breakdownParts.length === 2) {
+      breakdownText = `${breakdownParts[0]} and ${breakdownParts[1]}`;
+    } else {
+      breakdownText = `${breakdownParts.slice(0, -1).join(", ")}, and ${breakdownParts[breakdownParts.length - 1]}`;
+    }
+
+    const unitNoun = total === 1 ? "active church unit" : "active church units";
+    const header = `The **${matchedVicariate}** currently has ${total} ${unitNoun} in TESTIMONIUM: **${breakdownText}**.\n\n`;
+
+    const lines = memberUnits.map((p) => {
+      const typeLabel = humanizeParishType(p.type);
+      const loc = [p.municipalityCity, p.province].filter(Boolean).join(", ");
+      const locText = loc ? ` — ${loc}` : "";
+      return `- **${p.parishName}** *(${typeLabel})*${locText}`;
+    });
+
+    const answer = `${header}${lines.join("\n")}\n\n*This list comes directly from the current verified diocesan hierarchy.*`;
+
+    return {
+      answer,
+      liveData: {
+        label: "Current TESTIMONIUM Data",
+        asOf: new Date().toISOString(),
+        vicariate: matchedVicariate,
+        total,
+        counts,
+        units: memberUnits.map((u) => ({
+          name: u.parishName,
+          type: u.type,
+          municipalityCity: u.municipalityCity,
+          province: u.province,
+        })),
+      },
+    };
+  }
+
+  /**
+   * Tool 11: CHECK_PRIEST_AVAILABILITY
+   */
+  async checkPriestAvailability({ parishId, priestId = null, priestName = null, date, timeSlot = null, eventType = null }) {
+    const pId = Number(parishId);
+    if (!pId || !date) {
+      throw new Error("parishId and date are required.");
+    }
+
+    const parish = await this.prisma.parish.findUnique({
+      where: { id: pId },
+      select: { id: true, parishName: true, isActive: true, contactNumber: true, email: true },
+    });
+
+    if (!parish || !parish.isActive) {
+      return {
+        answer: "The requested parish could not be found or is currently inactive.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    const eligiblePriests = await getEligiblePriestsForParish(pId, null, this.prisma);
+    let targetPriest = null;
+
+    if (priestId) {
+      const parsedPriestId = Number(priestId);
+      targetPriest = eligiblePriests.find((p) => p.id === parsedPriestId) || null;
+    } else if (priestName && typeof priestName === "string") {
+      const cleanTarget = priestName.toLowerCase().replace(/^(rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").trim();
+      if (cleanTarget === "parish priest" || cleanTarget === "pastor") {
+        targetPriest = eligiblePriests.find((p) => !p.isAssistant) || eligiblePriests[0] || null;
+      } else {
+        targetPriest = eligiblePriests.find((p) => {
+          const pClean = (p.name || "").toLowerCase().replace(/^(rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").trim();
+          return pClean.includes(cleanTarget) || cleanTarget.includes(pClean);
+        }) || null;
+      }
+    }
+
+    if (!targetPriest) {
+      const priestDisplay = priestName ? `"${priestName}"` : "The requested priest";
+      const availablePriestNames = eligiblePriests.map((p) => formatClergyName(p.name)).join(", ");
+      return {
+        answer: `${priestDisplay} was not found among the active assigned clergy for **${parish.parishName}**.\n\nCurrently assigned clergy: ${availablePriestNames || "None listed"}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    const formattedPriest = formatClergyName(targetPriest.name);
+    const effectiveEvent = eventType || "WEDDING";
+    let parishAvailability;
+    try {
+      parishAvailability = await this.getClassifiedSlotAvailability(pId, date, effectiveEvent);
+    } catch (err) {
+      return {
+        answer: `I could not check parish scheduling availability: ${err.message}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, isAvailable: false },
+      };
+    }
+    const parishSlots = Array.isArray(parishAvailability?.slots)
+      ? parishAvailability.slots.map((s) => (typeof s === "string" ? s : s.timeSlot)).filter(Boolean)
+      : [];
+    if (!parishAvailability?.serviceAvailable || parishAvailability?.reasonCode === "EVENT_NOT_OFFERED") {
+      return {
+        answer: `${this.formatAvailabilityReason(parishAvailability?.reasonCode, { parishName: parish.parishName, eventType: effectiveEvent, date })}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, isAvailable: false, priestId: targetPriest.id, reasonCode: parishAvailability?.reasonCode },
+      };
+    }
+
+    const priestSnapshot = await loadPriestConflictSnapshot(targetPriest.id, date, date, this.prisma);
+
+    if (timeSlot) {
+      const candidateStart = parseManilaDateTime(date, timeSlot);
+      if (!candidateStart) {
+        return {
+          answer: `Could not parse the requested time "${timeSlot}". Please provide a time like "2:00 PM" or "10:00 AM".`,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+        };
+      }
+
+      const candidateEnd = computeOperationalEndDatetime(candidateStart);
+      const conflict = evaluatePriestConflictFromSnapshot(priestSnapshot, candidateStart, candidateEnd);
+
+      const targetNorm = normalizeTimeSlotString(timeSlot);
+      const parishSlotAvailable = parishSlots.some((s) => normalizeTimeSlotString(s) === targetNorm);
+
+      if (conflict.available && parishSlotAvailable) {
+        return {
+          answer: `✅ **${formattedPriest}** is currently **available** for **${humanizeEventType(effectiveEvent)}** at **${parish.parishName}** on **${date}** at **${timeSlot}**.\n\nYou can select this clergy assignment when completing your schedule booking.`,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, isAvailable: true, priestId: targetPriest.id, timeSlot },
+        };
+      } else {
+        const safeAlternatives = [];
+        for (const slot of parishSlots) {
+          const sStart = parseManilaDateTime(date, slot);
+          if (sStart) {
+            const sEnd = computeOperationalEndDatetime(sStart);
+            const slotConflict = evaluatePriestConflictFromSnapshot(priestSnapshot, sStart, sEnd);
+            if (slotConflict.available) {
+              safeAlternatives.push(slot);
+            }
+          }
+        }
+
+        const altText = safeAlternatives.length > 0
+          ? `Available alternative times with **${formattedPriest}** on this date include:\n\n${safeAlternatives.map((s) => `- ⏰ **${s}**`).join("\n")}\n\n`
+          : `There are no alternative slots open for **${formattedPriest}** on this date.\n\n`;
+
+        return {
+          answer: `**${formattedPriest}** is currently **not available** at **${timeSlot}** on **${date}**.\n\n${altText}*Confidential scheduling details are never disclosed.*`,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, isAvailable: false, priestId: targetPriest.id, timeSlot },
+        };
+      }
+    }
+
+    // General day query
+    const freeSlots = [];
+    for (const slot of parishSlots) {
+      const sStart = parseManilaDateTime(date, slot);
+      if (sStart) {
+        const sEnd = computeOperationalEndDatetime(sStart);
+        const slotConflict = evaluatePriestConflictFromSnapshot(priestSnapshot, sStart, sEnd);
+        if (slotConflict.available) {
+          freeSlots.push(slot);
+        }
+      }
+    }
+
+    if (freeSlots.length > 0) {
+      const slotLines = freeSlots.map((s) => `- ⏰ **${s}**`).join("\n");
+      return {
+        answer: `**${formattedPriest}** currently has the following available times at **${parish.parishName}** on **${date}**:\n\n${slotLines}\n\nYou can book any of these slots through the Sacramental Scheduling module.`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, priestId: targetPriest.id },
+      };
+    } else {
+      return {
+        answer: `**${formattedPriest}** does not have any available appointment slots at **${parish.parishName}** on **${date}**.\n\nPlease choose another date or select another celebrant.\n\n${this.formatParishContact(parish)}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, priestId: targetPriest.id },
+      };
+    }
+  }
+
+  /**
+   * Tool 12: GET_AVAILABLE_PRIESTS_FOR_SLOT
+   */
+  async getAvailablePriestsForSlot({ parishId, date, timeSlot = null, eventType = null }) {
+    const pId = Number(parishId);
+    if (!pId || !date) {
+      throw new Error("parishId and date are required.");
+    }
+
+    const parish = await this.prisma.parish.findUnique({
+      where: { id: pId },
+      select: { id: true, parishName: true, isActive: true, contactNumber: true, email: true },
+    });
+
+    if (!parish || !parish.isActive) {
+      return {
+        answer: "The requested parish could not be found or is currently inactive.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    const effectiveEvent = eventType || "WEDDING";
+    const parishAvailability = await this.getClassifiedSlotAvailability(pId, date, effectiveEvent);
+    const parishSlots = Array.isArray(parishAvailability?.slots)
+      ? parishAvailability.slots.map((s) => (typeof s === "string" ? s : s.timeSlot)).filter(Boolean)
+      : [];
+    if (!parishAvailability?.serviceAvailable || parishAvailability?.reasonCode === "EVENT_NOT_OFFERED") {
+      return {
+        answer: this.formatAvailabilityReason(parishAvailability?.reasonCode, { parishName: parish.parishName, eventType: effectiveEvent, date }),
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, availablePriests: [], reasonCode: parishAvailability?.reasonCode },
+      };
+    }
+
+    let candidateSlots = parishSlots;
+    if (timeSlot) {
+      const normalizedRequested = normalizeTimeSlotString(timeSlot);
+      candidateSlots = parishSlots.filter((slot) => normalizeTimeSlotString(slot) === normalizedRequested);
+      if (!candidateSlots.length) {
+        return {
+          answer: `**${timeSlot}** is not an available **${humanizeEventType(effectiveEvent)}** slot at **${parish.parishName}** on **${date}**.`,
+          liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, availablePriests: [], reasonCode: "SLOT_UNAVAILABLE" },
+        };
+      }
+    }
+
+    const eligiblePriests = await getEligiblePriestsForParish(pId, null, this.prisma);
+    if (!eligiblePriests || eligiblePriests.length === 0) {
+      return {
+        answer: `There are currently no active priests listed for **${parish.parishName}**.`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    const availablePriests = [];
+    for (const priest of eligiblePriests) {
+      const priestSnapshot = await loadPriestConflictSnapshot(priest.id, date, date, this.prisma);
+
+      const hasAvailableSlot = candidateSlots.some((slot) => {
+        const candidateStart = parseManilaDateTime(date, slot);
+        if (!candidateStart) return false;
+        const candidateEnd = computeOperationalEndDatetime(candidateStart);
+        return evaluatePriestConflictFromSnapshot(priestSnapshot, candidateStart, candidateEnd).available;
+      });
+      if (hasAvailableSlot) {
+        availablePriests.push(priest);
+      }
+    }
+
+    const timeText = timeSlot ? ` at **${timeSlot}**` : "";
+    if (availablePriests.length === 0) {
+      return {
+        answer: `There are no clergy available for **${parish.parishName}** on **${date}**${timeText}.\n\nPlease check another time or contact the parish office.\n\n${this.formatParishContact(parish)}`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    const priestLines = availablePriests.map((p) => {
+      const roleSuffix = p.isAssistant ? " *(Assistant Priest)*" : " *(Parish Priest)*";
+      return `- **${formatClergyName(p.name)}**${roleSuffix}`;
+    });
+
+    const answer = `The following clergy are currently available at **${parish.parishName}** on **${date}**${timeText}:\n\n${priestLines.join("\n")}\n\nYou can request any of these priests during schedule booking.`;
+
+    return {
+      answer,
+      liveData: {
+        label: "Current TESTIMONIUM Data",
+        asOf: new Date().toISOString(),
+        parishId: pId,
+        availablePriests: availablePriests.map((p) => ({
+          id: p.id,
+          name: formatClergyName(p.name),
+          isAssistant: p.isAssistant,
+        })),
+      },
+    };
+  }
+
+  /**
+   * Tool 13: GET_PARISH_EVENTS_FOR_DATE
+   */
+  async getParishEventsForDate({ parishId, date }) {
+    const pId = Number(parishId);
+    if (!pId || !date) {
+      throw new Error("parishId and date are required.");
+    }
+
+    const parish = await this.prisma.parish.findUnique({
+      where: { id: pId },
+      select: { id: true, parishName: true, isActive: true },
+    });
+
+    if (!parish || !parish.isActive) {
+      return {
+        answer: "The requested parish could not be found or is currently inactive.",
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    const parsedDate = parseStrictManilaDateOnly(date);
+    if (!parsedDate) {
+      return {
+        answer: `Invalid date format "${date}". Please provide a date in YYYY-MM-DD format.`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId },
+      };
+    }
+
+    let events = [];
+    try {
+      if (this.prisma?.parishEvent?.findMany) {
+        const dayStart = parsedDate.databaseDate;
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        events = await this.prisma.parishEvent.findMany({
+          where: {
+            parishId: pId,
+            isActive: true,
+            visibility: "PUBLIC",
+            eventDate: { gte: dayStart, lt: dayEnd },
+          },
+          select: {
+            id: true,
+            parishId: true,
+            title: true,
+            eventType: true,
+            description: true,
+            location: true,
+            eventDate: true,
+            startTime: true,
+            endTime: true,
+            visibility: true,
+          },
+          orderBy: [{ eventDate: "asc" }, { startTime: "asc" }],
+        });
+      } else {
+        const eventService = new ParishEventService();
+        events = await eventService.getEvents(pId, parsedDate.year, parsedDate.month, { publicOnly: true });
+      }
+    } catch {
+      events = [];
+    }
+
+    const dateEvents = (events || []).filter((e) => {
+      const rawDate = e.eventDate;
+      if (!rawDate) return false;
+      const eDateStr = typeof rawDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+        ? rawDate
+        : getManilaDateString(new Date(rawDate));
+      return eDateStr === parsedDate.dateStr && e.visibility !== "PARISH_PRIVATE";
+    });
+
+    let massSchedules = [];
+    try {
+      const templateDelegate = this.prisma?.massScheduleTemplate || this.prisma?.parishMassScheduleTemplate;
+      if (templateDelegate?.findMany) {
+        const pDate = parseManilaDateOnly(parsedDate.dateStr);
+        const dayOfWeek = pDate ? new Date(Date.UTC(pDate.year, pDate.month - 1, pDate.day)).getUTCDay() : new Date(parsedDate.dateStr).getDay();
+        const targetDayType = dayOfWeek === 0 ? "SUNDAY" : "WEEKDAY";
+        const templates = await templateDelegate.findMany({
+          where: { parishId: pId, isActive: true },
+          select: {
+            id: true,
+            dayType: true,
+            timeSlot: true,
+            label: true,
+          },
+        });
+        massSchedules = (templates || []).filter((t) => {
+          if (t.dayOfWeek !== undefined) {
+            return Number(t.dayOfWeek) === Number(dayOfWeek);
+          }
+          return t.dayType === targetDayType || !t.dayType;
+        });
+      }
+    } catch {
+      massSchedules = [];
+    }
+
+    if (dateEvents.length === 0 && massSchedules.length === 0) {
+      return {
+        answer: `There are no public calendar events scheduled at **${parish.parishName}** on **${date}**.\n\nRegular appointments and sacramental services may still be booked through the scheduling system.`,
+        liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, publicEvents: [], massSchedules: [] },
+      };
+    }
+
+    const eventLines = dateEvents.map((e) => {
+      const timeSpan = e.startTime ? ` (${e.startTime}${e.endTime ? ` - ${e.endTime}` : ""})` : "";
+      const loc = e.location ? ` — *${e.location}*` : "";
+      return `- 📅 **${e.title}**${timeSpan}${loc}`;
+    });
+
+    const massLines = massSchedules.map((m) => {
+      const timeDisplay = m.timeSlot || m.time || "Regular Time";
+      const labelDisplay = m.label || "Holy Mass";
+      const lang = m.language ? ` (${m.language})` : "";
+      const loc = m.location ? ` — *${m.location}*` : "";
+      return `- ⛪ **${labelDisplay}**: ${timeDisplay}${lang}${loc}`;
+    });
+
+    const combinedSections = [];
+    if (eventLines.length > 0) {
+      combinedSections.push(eventLines.join("\n"));
+    }
+    if (massLines.length > 0) {
+      combinedSections.push(`**Scheduled Masses:**\n${massLines.join("\n")}`);
+    }
+
+    const answer = `Public parish events and services at **${parish.parishName}** on **${date}**:\n\n${combinedSections.join("\n\n")}\n\n*Only public diocesan and parish-approved activities are listed.*`;
+
+    return {
+      answer,
+      liveData: {
+        label: "Current TESTIMONIUM Data",
+        asOf: new Date().toISOString(),
+        parishId: pId,
+        publicEvents: dateEvents,
+        massSchedules,
+      },
+    };
+  }
+
+  /**
    * Universal executor for any tool in the registry
    */
   async execute(toolId, params = {}, user = null) {
@@ -613,6 +1414,13 @@ export class LiveToolRegistry {
     const mergedParams = { ...params, userId: contextUser?.id || null };
 
     switch (toolId) {
+      case TOOL_IDS.GET_ACTIVE_PARISHES:
+        return this.getActiveParishes();
+      case TOOL_IDS.GET_VICARIATE_DIRECTORY:
+        return this.getVicariateDirectory({
+          vicariateName: mergedParams.vicariateName,
+          conversationContext: mergedParams.conversationContext,
+        });
       case TOOL_IDS.GET_ACTIVE_PARISH_PRIESTS:
         return this.getActiveParishPriests({ parishId: mergedParams.parishId });
       case TOOL_IDS.GET_PARISH_DOCUMENTS:
@@ -633,6 +1441,35 @@ export class LiveToolRegistry {
         return this.getCalendarSlotAvailability({
           parishId: mergedParams.parishId,
           eventType: mergedParams.eventType,
+          date: mergedParams.date,
+          timeSlot: mergedParams.timeSlot,
+        });
+      case TOOL_IDS.GET_AVAILABLE_DATES:
+        return this.getAvailableDates({
+          parishId: mergedParams.parishId,
+          eventType: mergedParams.eventType,
+          startDate: mergedParams.startDate,
+          rangeDays: mergedParams.rangeDays,
+        });
+      case TOOL_IDS.CHECK_PRIEST_AVAILABILITY:
+        return this.checkPriestAvailability({
+          parishId: mergedParams.parishId,
+          priestId: mergedParams.priestId,
+          priestName: mergedParams.priestName,
+          date: mergedParams.date,
+          timeSlot: mergedParams.timeSlot,
+          eventType: mergedParams.eventType,
+        });
+      case TOOL_IDS.GET_AVAILABLE_PRIESTS_FOR_SLOT:
+        return this.getAvailablePriestsForSlot({
+          parishId: mergedParams.parishId,
+          date: mergedParams.date,
+          timeSlot: mergedParams.timeSlot,
+          eventType: mergedParams.eventType,
+        });
+      case TOOL_IDS.GET_PARISH_EVENTS_FOR_DATE:
+        return this.getParishEventsForDate({
+          parishId: mergedParams.parishId,
           date: mergedParams.date,
         });
       case TOOL_IDS.CHECK_MY_REQUEST_STATUS:
@@ -657,3 +1494,52 @@ export class LiveToolRegistry {
   }
 }
 
+/**
+ * Resolves a user or model-provided Vicariate name against known registered records.
+ * Supports exact case-insensitive match, normalized match ("Canlaon" -> "Vicariate of Canlaon"),
+ * and substring match. Returns canonical registered name, or null if no match found.
+ */
+export function resolveVicariateName(candidateName, availableVicariates = []) {
+  if (!availableVicariates || availableVicariates.length === 0) return null;
+  if (!candidateName || typeof candidateName !== "string") {
+    return availableVicariates.length === 1 ? availableVicariates[0] : null;
+  }
+
+  const clean = candidateName.trim().toLowerCase();
+  if (!clean) {
+    return availableVicariates.length === 1 ? availableVicariates[0] : null;
+  }
+
+  const normalize = (str) =>
+    String(str)
+      .toLowerCase()
+      .replace(/\bvicariate\s+of\b/gi, "")
+      .replace(/\bvicariate\b/gi, "")
+      .replace(/[^\w\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const normCandidate = normalize(clean);
+
+  // 1. Exact case-insensitive match
+  for (const v of availableVicariates) {
+    if (v.toLowerCase() === clean) return v;
+  }
+
+  // 2. Normalized match (e.g. "Canlaon" matches "Vicariate of Canlaon")
+  if (normCandidate) {
+    for (const v of availableVicariates) {
+      if (normalize(v) === normCandidate) return v;
+    }
+  }
+
+  // 3. Substring match
+  if (normCandidate) {
+    for (const v of availableVicariates) {
+      const normV = normalize(v);
+      if (normV.includes(normCandidate) || normCandidate.includes(normV)) return v;
+    }
+  }
+
+  return null;
+}

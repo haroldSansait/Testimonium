@@ -25,7 +25,7 @@ ALLOWED ROUTES:
 
 3. "LIVE_TOOL":
    Inquiries requesting CURRENT live operational data, specific parish records, or personal account state.
-   Must be mapped to one of the 9 ALLOWED INTENTS below.
+   Must be mapped to one of the ALLOWED INTENTS below.
 
 4. "RAG":
    Inquiries about GENERAL procedures, rules, platform policies, guidelines, requirements in general, or system how-tos
@@ -53,7 +53,29 @@ ALLOWED LIVE TOOL INTENTS & THEIR MEANING:
   Inquiries about parish office hours, telephone numbers, email address, physical location, or contact info.
 
 - "GET_CALENDAR_SLOT_AVAILABILITY":
-  Inquiries about available calendar appointment slots or schedules for a sacramental event (e.g. Wedding, Baptism) on a date.
+  Inquiries about available calendar appointment slots or schedules for a sacramental event (e.g. Wedding, Baptism) on a date, or checking a specific time.
+
+  scheduleEvent must normalize to one of these exact backend enum values when present:
+  WEDDING, MARRIAGE_SPECIAL, BAPTISM, CONFIRMATION, FIRST_COMMUNION, CONFESSION, ANOINTING_OF_THE_SICK, PRIVATE_MASS, MASS_INTENTION, WAKE_MASS, FUNERAL, MASS_OF_HOLY_SPIRIT, FIESTA, THANKSGIVING, BLESSING, DELIVERANCE.
+  Generic wedding or marriage wording maps to WEDDING. Explicit Marriage Special or special wedding wording maps to MARRIAGE_SPECIAL; these are distinct services and must never be collapsed into each other.
+
+- "GET_AVAILABLE_DATES":
+  Inquiries asking which upcoming dates have at least one available slot, including broad requests such as "what days are available?", "any openings this week?", or "find the next available date". This changes a prior exact-date inquiry into a bounded date-range search; do not reuse the previous exact date as the intent.
+
+- "GET_ACTIVE_PARISHES":
+  Inquiries asking for the general active parish directory, list of all member parishes, churches, quasi-parishes, or mission stations in TESTIMONIUM as a whole.
+
+- "GET_VICARIATE_DIRECTORY":
+  Inquiries asking for the active parish or church directory, member church units, or counts belonging to a specific Vicariate (e.g. "Vicariate of Canlaon", "Canlaon vicariate", "how many parishes in the vicariate of Canlaon?").
+
+- "CHECK_PRIEST_AVAILABILITY":
+  Inquiries asking if a specific priest (or parish priest/pastor) is available or free on a date, specific time, or for an event.
+
+- "GET_AVAILABLE_PRIESTS_FOR_SLOT":
+  Inquiries asking which priests or clergy are available or free on a specific date and time for an event at a parish.
+
+- "GET_PARISH_EVENTS_FOR_DATE":
+  Inquiries asking about public parish calendar events, activities, or Mass schedules occurring on a specific date.
 
 - "CHECK_MY_REQUEST_STATUS":
   Inquiries asking about the status, progress, or readiness of the user's own certificate request (or referring to <TRACKING_NUMBER>).
@@ -89,6 +111,9 @@ When safe conversation context is provided:
   Example: User asked about St. Joseph. Next asks "Who serves there?"
   -> Intent: GET_ACTIVE_PARISH_PRIESTS, parish: St. Joseph. Set usesPreviousContext = true.
 
+- Correct minor spelling mistakes in relative date wording semantically. Emit a canonical datePhrase such as "tomorrow" even when the user misspells that word. Do not copy a misspelled relative-date token into datePhrase.
+- For a range-availability follow-up, inherit the prior parish and schedule event, choose GET_AVAILABLE_DATES, and leave datePhrase null unless the current message explicitly supplies a new range start.
+
 - If the user changes to a completely new topic (e.g. was discussing baptism fees, now asks "How does OCR work?"):
   Do NOT inherit the previous intent or document. Route the new message independently! Set usesPreviousContext = false.
 
@@ -103,6 +128,9 @@ OUTPUT SCHEMA (STRICT JSON ONLY):
     "documentType": string | null,
     "scheduleEvent": string | null,
     "datePhrase": string | null,
+    "timePhrase": string | null,
+    "priestName": string | null,
+    "vicariateName": string | null,
     "trackingNumberPresent": boolean
   },
   "usesPreviousContext": boolean
@@ -139,6 +167,9 @@ export class SemanticIntentRouter {
       if (conversationContext.lastDocumentType) parts.push(`Previous Document Type: ${conversationContext.lastDocumentType}`);
       if (conversationContext.lastScheduleEvent) parts.push(`Previous Schedule Event: ${conversationContext.lastScheduleEvent}`);
       if (conversationContext.lastDatePhrase) parts.push(`Previous Date Phrase: ${conversationContext.lastDatePhrase}`);
+      if (conversationContext.lastTimePhrase) parts.push(`Previous Time Phrase: ${conversationContext.lastTimePhrase}`);
+      if (conversationContext.lastPriestName) parts.push(`Previous Priest: ${conversationContext.lastPriestName}`);
+      if (conversationContext.lastVicariateName) parts.push(`Previous Vicariate: ${conversationContext.lastVicariateName}`);
       if (conversationContext.lastResponseType) parts.push(`Previous Response Type: ${conversationContext.lastResponseType}`);
       if (parts.length > 0) {
         contextSection = parts.join("\n");
@@ -206,6 +237,12 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
       datePhrase: typeof parsed.entities?.datePhrase === "string" && parsed.entities.datePhrase.trim()
         ? parsed.entities.datePhrase.trim()
         : null,
+      timePhrase: typeof parsed.entities?.timePhrase === "string" && parsed.entities.timePhrase.trim()
+        ? parsed.entities.timePhrase.trim()
+        : null,
+      priestName: typeof parsed.entities?.priestName === "string" && parsed.entities.priestName.trim()
+        ? parsed.entities.priestName.trim()
+        : null,
       trackingNumberPresent: Boolean(parsed.entities?.trackingNumberPresent),
     };
 
@@ -236,6 +273,8 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
           documentType: null,
           scheduleEvent: null,
           datePhrase: null,
+          timePhrase: null,
+          priestName: null,
           trackingNumberPresent: false,
         },
         usesPreviousContext: false,
@@ -331,6 +370,8 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
         documentType: null,
         scheduleEvent: null,
         datePhrase: null,
+        timePhrase: null,
+        priestName: null,
         trackingNumberPresent: false,
       },
       usesPreviousContext: false,

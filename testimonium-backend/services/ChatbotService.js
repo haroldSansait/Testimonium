@@ -10,6 +10,7 @@ import { LiveToolRegistry } from "./ai/liveTools/LiveToolRegistry.js";
 import { defaultAiQuotaTracker } from "./ai/aiQuotaTracker.js";
 import { defaultContextManager } from "./ai/ConversationContextManager.js";
 import { sanitizeQuestionForModel } from "./ai/semanticValidationHelper.js";
+import { sanitizeCitationMarkers } from "./ai/citationUtils.js";
 
 const DEFAULT_FALLBACK_TEXT =
   "I don't have enough verified TESTIMONIUM information to confirm that. Please contact your parish office for assistance.";
@@ -181,6 +182,10 @@ export class ChatbotService {
           lastDocumentType: liveResult.executedParams?.documentType || null,
           lastScheduleEvent: liveResult.executedParams?.eventType || null,
           lastDatePhrase: liveResult.executedParams?.date || null,
+          lastTimePhrase: liveResult.executedParams?.timeSlot || null,
+          lastPriestName: liveResult.executedParams?.priestName || null,
+          lastPriestId: liveResult.executedParams?.priestId || null,
+          lastVicariateName: liveResult.liveData?.vicariate || safeContext.lastVicariateName || null,
           lastResponseType: liveResult.responseType,
         });
 
@@ -367,6 +372,10 @@ export class ChatbotService {
             lastDocumentType: liveResult.executedParams?.documentType || null,
             lastScheduleEvent: liveResult.executedParams?.eventType || null,
             lastDatePhrase: liveResult.executedParams?.date || null,
+            lastTimePhrase: liveResult.executedParams?.timeSlot || null,
+            lastPriestName: liveResult.executedParams?.priestName || null,
+            lastPriestId: liveResult.executedParams?.priestId || null,
+            lastVicariateName: liveResult.liveData?.vicariate || safeContext.lastVicariateName || null,
             lastResponseType: "LIVE_DATA",
           });
         } else if (liveResult.responseType === "CLARIFICATION") {
@@ -400,9 +409,14 @@ export class ChatbotService {
     }
 
     // 10E. RAG Pipeline (Procedural and general platform knowledge)
-    // Explicit topic change: previous intent is cleared
+    // Explicit topic change: previous scheduling/document intent is cleared
     const updatedCtx = this.contextManager.updateContext(sessionId, {
       lastIntent: null,
+      lastScheduleEvent: null,
+      lastDatePhrase: null,
+      lastTimePhrase: null,
+      lastPriestName: null,
+      lastPriestId: null,
       lastResponseType: "RAG",
     });
 
@@ -492,6 +506,13 @@ export class ChatbotService {
         category: null,
         sources: [],
         conversationContext: updatedCtx,
+        diagnostics: {
+          route: "RAG",
+          retrievedChunkIds,
+          retrievalScores,
+          hasSufficientEvidence,
+          fallbackReason: "INSUFFICIENT_EVIDENCE",
+        },
       };
     }
 
@@ -572,6 +593,13 @@ export class ChatbotService {
         category: null,
         sources: [],
         conversationContext: updatedCtx,
+        diagnostics: {
+          route: "RAG",
+          retrievedChunkIds,
+          retrievalScores,
+          hasSufficientEvidence,
+          fallbackReason: reason,
+        },
       };
     };
 
@@ -651,13 +679,15 @@ export class ChatbotService {
       }
     }
 
+    const cleanAnswer = sanitizeCitationMarkers(generationResult.answer);
+
     // Log successful query
     await this.logRepository.logQuery({
       userId,
       sessionId,
       selectedParishId: effectiveParishId,
       question: normalizedQuestion,
-      response: generationResult.answer,
+      response: cleanAnswer,
       retrievedChunkIds,
       retrievalScores,
       fallback: false,
@@ -670,7 +700,7 @@ export class ChatbotService {
 
     // Return safe public DTO
     return {
-      answer: generationResult.answer,
+      answer: cleanAnswer,
       fallback: false,
       fallbackReason: null,
       responseType: "RAG",
@@ -678,6 +708,13 @@ export class ChatbotService {
       category,
       sources: citedSources,
       conversationContext: updatedCtx,
+      diagnostics: {
+        route: "RAG",
+        retrievedChunkIds,
+        retrievalScores,
+        hasSufficientEvidence,
+        fallbackReason: null,
+      },
     };
   }
 }

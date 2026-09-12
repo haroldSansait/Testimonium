@@ -22,6 +22,13 @@ const CANONICAL_TERMS = [
   "parish",
   "office hours",
   "fee",
+  "payment",
+  "verification",
+  "verify",
+  "receipt",
+  "proof",
+  "gcash",
+  "ocr",
 ];
 
 /**

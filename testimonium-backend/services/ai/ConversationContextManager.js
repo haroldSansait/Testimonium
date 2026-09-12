@@ -25,6 +25,11 @@ export class ConversationContextManager {
       lastDocumentType: null,
       lastScheduleEvent: null,
       lastDatePhrase: null,
+      lastTimePhrase: null,
+      lastPriestName: null,
+      lastPriestId: null,
+      lastVicariateId: null,
+      lastVicariateName: null,
       lastResponseType: null,
     };
   }
@@ -38,6 +43,7 @@ export class ConversationContextManager {
     }
 
     const parishId = Number(raw.lastParishId);
+    const priestId = Number(raw.lastPriestId);
 
     return {
       lastIntent: typeof raw.lastIntent === "string" && raw.lastIntent.trim() ? raw.lastIntent.trim() : null,
@@ -46,6 +52,11 @@ export class ConversationContextManager {
       lastDocumentType: typeof raw.lastDocumentType === "string" && raw.lastDocumentType.trim() ? raw.lastDocumentType.trim() : null,
       lastScheduleEvent: typeof raw.lastScheduleEvent === "string" && raw.lastScheduleEvent.trim() ? raw.lastScheduleEvent.trim() : null,
       lastDatePhrase: typeof raw.lastDatePhrase === "string" && raw.lastDatePhrase.trim() ? raw.lastDatePhrase.trim() : null,
+      lastTimePhrase: typeof raw.lastTimePhrase === "string" && raw.lastTimePhrase.trim() ? raw.lastTimePhrase.trim() : null,
+      lastPriestName: typeof raw.lastPriestName === "string" && raw.lastPriestName.trim() ? raw.lastPriestName.trim() : null,
+      lastPriestId: Number.isInteger(priestId) && priestId > 0 ? priestId : null,
+      lastVicariateId: raw.lastVicariateId !== undefined && raw.lastVicariateId !== null ? String(raw.lastVicariateId).trim() || null : null,
+      lastVicariateName: typeof raw.lastVicariateName === "string" && raw.lastVicariateName.trim() ? raw.lastVicariateName.trim() : null,
       lastResponseType: typeof raw.lastResponseType === "string" && raw.lastResponseType.trim() ? raw.lastResponseType.trim() : null,
     };
   }

@@ -8,6 +8,9 @@ import {
   resolveDocumentType,
   resolveScheduleEventType,
   resolveManilaDate,
+  resolveManilaTimeSlot,
+  extractTimeSlotFromText,
+  extractPriestReference,
 } from "../semanticValidationHelper.js";
 
 // Canonical schedule events for clarification dropdowns
@@ -88,6 +91,18 @@ export class LiveToolRouter {
   }
 
   /**
+   * Helper: extract vicariate name reference from text
+   */
+  extractVicariateName(text) {
+    if (!text || typeof text !== "string") return null;
+    const match = text.match(/\b(vicariate\s+of\s+[a-zA-Z\s]+|[a-zA-Z]+\s+vicariate|canlaon)\b/i);
+    if (match) {
+      return match[1].trim();
+    }
+    return null;
+  }
+
+  /**
    * Deterministic identifier-based fallback classification.
    * Only used if no semantic proposal is supplied (e.g. in direct unit tests).
    */
@@ -95,6 +110,11 @@ export class LiveToolRouter {
     if (!normalizedText || typeof normalizedText !== "string") return null;
     const text = normalizedText.trim();
     const lower = text.toLowerCase();
+
+    const isAvailableDateRange = /\b(what|which)\s+(days|dates)\s+are\s+available\b|\bwhat\s+dates\s+have\b.*\bopenings?\b|\bavailable\s+(days|dates)\b|\bopenings?\s+(this|next)\s+week\b|\bnext\s+available\b.*\b(day|date)\b/i.test(lower);
+    if (isAvailableDateRange) {
+      return { toolId: TOOL_IDS.GET_AVAILABLE_DATES };
+    }
 
     // 1. Specific tracking number
     const tracking = this.extractTrackingNumber(text);
@@ -172,9 +192,61 @@ export class LiveToolRouter {
     }
 
     // 10. Calendar Slot Availability
-    const isSlotAvailability = /\b(what\s+slots\s+are\s+available|available\s+slots|open\s+slots|available\s+schedules|available\s+schedule|slots\s+tomorrow|slots\s+on|can\s+i\s+book\s+at)\b/i.test(lower);
+    const isSlotAvailability = /\b(what\s+slots\s+are\s+available|available\s+slots|open\s+slots|available\s+schedules|available\s+schedule|slots\s+tomorrow|slots\s+on|can\s+i\s+book\s+at|is\s+.*(open|available)\s+for\s+(a\s+)?(wedding|baptism|funeral)|wedding\s+times|baptism\s+times)\b/i.test(lower);
     if (isSlotAvailability) {
-      return { toolId: TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY };
+      return {
+        toolId: TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY,
+        timeSlot: extractTimeSlotFromText(text),
+        eventType: this.extractEventType(text),
+        date: this.extractDate(text),
+      };
+    }
+
+    // 10.5 Vicariate Directory
+    const isVicariateDirectory = /\bvicariate\b/i.test(lower);
+    if (isVicariateDirectory) {
+      return {
+        toolId: TOOL_IDS.GET_VICARIATE_DIRECTORY,
+        vicariateName: this.extractVicariateName(text),
+      };
+    }
+
+    // 11. Active Parish Directory
+    const isParishDirectory = /\b(what\s+parishes|which\s+(parishes|churches)|list\s+of\s+parishes|show\s+(me\s+)?(all\s+)?parishes|parishes\s+in\s+testimonium|parishes\s+present\s+in\s+testimonium|member\s+parishes|what\s+are\s+the\s+parishes)\b/i.test(lower);
+    if (isParishDirectory) {
+      return { toolId: TOOL_IDS.GET_ACTIVE_PARISHES };
+    }
+
+    // 12. Priest Availability
+    const isPriestAvailability = /\b(is\s+(fr\.?|father|rev\.?\s*fr\.?|the\s+parish\s+priest|the\s+pastor)\b.*\b(free|available)\b|\bcan\s+(fr\.?|father|rev\.?\s*fr\.?)\b.*\b(celebrate|officiate|available)\b)/i.test(lower);
+    if (isPriestAvailability) {
+      return {
+        toolId: TOOL_IDS.CHECK_PRIEST_AVAILABILITY,
+        priestName: extractPriestReference(text),
+        timeSlot: extractTimeSlotFromText(text),
+        eventType: this.extractEventType(text),
+        date: this.extractDate(text),
+      };
+    }
+
+    // 13. Available Priests for Slot
+    const isAvailablePriests = /\b(which\s+priests\s+are\s+available|who\s+can\s+celebrate|which\s+priest\s+is\s+free|available\s+priests\s+for|priests\s+available\s+at)\b/i.test(lower);
+    if (isAvailablePriests) {
+      return {
+        toolId: TOOL_IDS.GET_AVAILABLE_PRIESTS_FOR_SLOT,
+        timeSlot: extractTimeSlotFromText(text),
+        eventType: this.extractEventType(text),
+        date: this.extractDate(text),
+      };
+    }
+
+    // 14. Parish Events on Date
+    const isParishEvents = /\b(what('s|\s+is)\s+happening\s+at\s+the\s+parish|parish\s+events|events\s+on|calendar\s+events|activities\s+on|mass\s+schedules?\s+on)\b/i.test(lower);
+    if (isParishEvents) {
+      return {
+        toolId: TOOL_IDS.GET_PARISH_EVENTS_FOR_DATE,
+        date: this.extractDate(text),
+      };
     }
 
     return null;
@@ -215,6 +287,9 @@ export class LiveToolRouter {
       documentType: intent.documentType || collected.documentType || this.extractDocumentType(text),
       eventType: intent.eventType || collected.eventType || this.extractEventType(text),
       date: intent.date || collected.date || this.extractDate(text),
+      timeSlot: intent.timeSlot || collected.timeSlot || resolveManilaTimeSlot(text) || extractTimeSlotFromText(text) || null,
+      priestName: intent.priestName || collected.priestName || extractPriestReference(text) || null,
+      priestId: intent.priestId || collected.priestId || null,
       trackingNumber: intent.trackingNumber || collected.trackingNumber || this.extractTrackingNumber(text),
       userId: userId || null,
     };
@@ -377,12 +452,40 @@ export class LiveToolRouter {
       const dateInText = this.extractDate(normalizedQuestion);
       if (dateInText) {
         resolvedDate = dateInText;
-      } else if (conversationContext?.lastDatePhrase) {
+      } else if (intentId !== TOOL_IDS.GET_AVAILABLE_DATES && conversationContext?.lastDatePhrase) {
         resolvedDate = resolveManilaDate(conversationContext.lastDatePhrase);
       }
     }
 
-    // 7. Tracking Number & Identity
+    // 7. Resolve Time Slot
+    let resolvedTimeSlot = collected.timeSlot || null;
+    if (semanticProposal?.entities?.timePhrase) {
+      resolvedTimeSlot = resolveManilaTimeSlot(semanticProposal.entities.timePhrase) || extractTimeSlotFromText(semanticProposal.entities.timePhrase);
+    } else if (!resolvedTimeSlot) {
+      const timeInText = extractTimeSlotFromText(normalizedQuestion) || resolveManilaTimeSlot(normalizedQuestion);
+      if (timeInText) {
+        resolvedTimeSlot = timeInText;
+      } else if (conversationContext?.lastTimePhrase) {
+        resolvedTimeSlot = resolveManilaTimeSlot(conversationContext.lastTimePhrase) || conversationContext.lastTimePhrase;
+      }
+    }
+
+    // 8. Resolve Priest Name / ID
+    let resolvedPriestName = collected.priestName || null;
+    let resolvedPriestId = collected.priestId || null;
+    if (semanticProposal?.entities?.priestName) {
+      resolvedPriestName = semanticProposal.entities.priestName;
+    } else if (!resolvedPriestName) {
+      const priestInText = extractPriestReference(normalizedQuestion);
+      if (priestInText) {
+        resolvedPriestName = priestInText;
+      } else if (conversationContext?.lastPriestName) {
+        resolvedPriestName = conversationContext.lastPriestName;
+        resolvedPriestId = conversationContext.lastPriestId || null;
+      }
+    }
+
+    // 9. Tracking Number & Identity
     // NEVER allow model or client body to authorize userId
     const effectiveUserId = userId || null;
     const resolvedTracking =
@@ -390,17 +493,34 @@ export class LiveToolRouter {
       extractTrackingNumber(normalizedQuestion) ||
       null;
 
+    // 10. Resolve Vicariate Name
+    let resolvedVicariateName =
+      semanticProposal?.entities?.vicariateName ||
+      collected.vicariateName ||
+      conversationContext?.lastVicariateName ||
+      null;
+
+    if (!resolvedVicariateName && intentId === TOOL_IDS.GET_VICARIATE_DIRECTORY) {
+      resolvedVicariateName = this.extractVicariateName(normalizedQuestion);
+    }
+
     const params = {
       parishId: resolvedParishId,
       parishName: resolvedParishName,
       documentType: resolvedDocType,
       eventType: resolvedEventType,
       date: resolvedDate,
+      startDate: intentId === TOOL_IDS.GET_AVAILABLE_DATES ? resolvedDate : null,
+      rangeDays: collected.rangeDays || null,
+      timeSlot: resolvedTimeSlot,
+      priestName: resolvedPriestName,
+      priestId: resolvedPriestId,
+      vicariateName: resolvedVicariateName,
       trackingNumber: resolvedTracking,
       userId: effectiveUserId,
     };
 
-    // 8. Required Parameter Check
+    // 10. Required Parameter Check
     for (const reqParam of toolDef.requiredParameters) {
       if (params[reqParam] === null || params[reqParam] === undefined || params[reqParam] === "") {
         const clarifyType = toolDef.clarificationTypeIfMissing?.[reqParam] || "PARISH";
@@ -424,6 +544,10 @@ export class LiveToolRouter {
           }));
         } else if (clarifyType === "DATE") {
           clarifyPrompt = "Which date would you like to check availability for (e.g. tomorrow or YYYY-MM-DD)?";
+        } else if (clarifyType === "TIME") {
+          clarifyPrompt = "What time would you like to check (e.g. 10:00 AM or 2:00 PM)?";
+        } else if (clarifyType === "PRIEST") {
+          clarifyPrompt = "Which priest would you like to check availability for?";
         }
 
         return {
@@ -472,11 +596,53 @@ export class LiveToolRouter {
         case TOOL_IDS.GET_PARISH_OFFICE_INFO:
           executionResult = await this.registry.getParishOfficeInfo({ parishId: params.parishId });
           break;
+        case TOOL_IDS.GET_ACTIVE_PARISHES:
+          executionResult = await this.registry.getActiveParishes();
+          break;
+        case TOOL_IDS.GET_VICARIATE_DIRECTORY:
+          executionResult = await this.registry.getVicariateDirectory({
+            vicariateName: params.vicariateName,
+            conversationContext,
+          });
+          break;
+        case TOOL_IDS.CHECK_PRIEST_AVAILABILITY:
+          executionResult = await this.registry.checkPriestAvailability({
+            parishId: params.parishId,
+            priestId: params.priestId,
+            priestName: params.priestName,
+            date: params.date,
+            timeSlot: params.timeSlot,
+            eventType: params.eventType,
+          });
+          break;
+        case TOOL_IDS.GET_AVAILABLE_PRIESTS_FOR_SLOT:
+          executionResult = await this.registry.getAvailablePriestsForSlot({
+            parishId: params.parishId,
+            date: params.date,
+            timeSlot: params.timeSlot,
+            eventType: params.eventType,
+          });
+          break;
+        case TOOL_IDS.GET_PARISH_EVENTS_FOR_DATE:
+          executionResult = await this.registry.getParishEventsForDate({
+            parishId: params.parishId,
+            date: params.date,
+          });
+          break;
         case TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY:
           executionResult = await this.registry.getCalendarSlotAvailability({
             parishId: params.parishId,
             eventType: params.eventType,
             date: params.date,
+            timeSlot: params.timeSlot,
+          });
+          break;
+        case TOOL_IDS.GET_AVAILABLE_DATES:
+          executionResult = await this.registry.getAvailableDates({
+            parishId: params.parishId,
+            eventType: params.eventType,
+            startDate: params.startDate,
+            rangeDays: params.rangeDays,
           });
           break;
         case TOOL_IDS.CHECK_MY_REQUEST_STATUS:

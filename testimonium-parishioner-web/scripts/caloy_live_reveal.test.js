@@ -9,6 +9,7 @@ import {
   getStructuredClarification,
   setStructuredClarification,
   clearStructuredClarification,
+  readCaloyMessages,
   isValidChatMessage,
 } from "../src/features/chat/caloyStorage.ts";
 
@@ -135,5 +136,31 @@ test("Caloy Fast Response Reveal & Live Tools UX Suite", async (t) => {
   await t.test("7. CaloyDrawer preserves SafeMarkdown rendering directly without dangerouslySetInnerHTML", () => {
     assert.match(drawerSource, /<SafeMarkdown text=\{msg\.text\} \/>/, "CaloyDrawer must render assistant text directly using SafeMarkdown");
     assert.doesNotMatch(drawerSource, /dangerouslySetInnerHTML/, "CaloyDrawer must never use dangerouslySetInnerHTML");
+  });
+
+  // -------------------------------------------------------------
+  // 8. Citation Sanitization & Restored Session Marker Invariant (Section 28)
+  // -------------------------------------------------------------
+  await t.test("8. Storage and SafeMarkdown ensure clean assistant answer with zero visible citation syntax", () => {
+    assert.match(caloyStorageSource, /sanitizeCitationMarkers/, "caloyStorage must sanitize citation markers on restored messages");
+
+    const storage = new MemoryStorage();
+    const rawLegacyMessage = [
+      {
+        id: "msg-legacy",
+        sender: "caloy",
+        text: "Upload your proof [CITATIONS: 50]. Contact office [CITATIONS: 19, 20].",
+        timestamp: new Date().toISOString(),
+        sources: [{ id: 1, title: "Policy", sourceType: "GUIDE", authority: "DIOCESE", scope: "DIOCESE" }],
+      },
+    ];
+
+    storage.setItem(CALOY_STORAGE_KEYS.messages, JSON.stringify(rawLegacyMessage));
+    const restored = readCaloyMessages(storage);
+    assert.ok(restored && restored.length === 1);
+    assert.equal(restored[0].text, "Upload your proof. Contact office.");
+    assert.doesNotMatch(restored[0].text, /\[CITATIONS?:/i);
+    assert.equal(restored[0].isRestored, true);
+    assert.equal(restored[0].sources.length, 1);
   });
 });

@@ -179,6 +179,8 @@ export interface ChatResponse {
     lastDocumentType?: string | null;
     lastScheduleEvent?: string | null;
     lastDatePhrase?: string | null;
+    lastVicariateId?: number | string | null;
+    lastVicariateName?: string | null;
     lastResponseType?: string | null;
   } | null;
 }

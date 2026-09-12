@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { ChatCompletionProvider } from "./ChatCompletionProvider.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
+import { extractCitationsAndSanitize } from "./citationUtils.js";
 
 const DEFAULT_SYSTEM_INSTRUCTIONS = `You are Caloy, the virtual parish assistant for TESTIMONIUM, a Catholic diocesan sacramental record and scheduling platform.
 
@@ -144,21 +145,8 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
           };
         }
 
-        // Parse citation tag: [CITATIONS: 1, 2]
-        const citationRegex = /\[CITATIONS:\s*([0-9,\s]+)\]/i;
-        const match = rawText.match(citationRegex);
-        const citedChunkIds = [];
-
-        let cleanedAnswer = rawText;
-        if (match) {
-          cleanedAnswer = rawText.replace(citationRegex, "").trim();
-          const rawIds = match[1].split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
-          for (const id of rawIds) {
-            if (validEvidenceIds.has(id)) {
-              citedChunkIds.push(id);
-            }
-          }
-        }
+        // Parse citation tags and sanitize visible answer text
+        const { cleanedAnswer, citedChunkIds } = extractCitationsAndSanitize(rawText, validEvidenceIds);
 
         // ZERO synthetic citation fallback: if citedChunkIds is empty, we do NOT fabricate evidence[0].id
 

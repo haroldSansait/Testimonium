@@ -1,5 +1,6 @@
 import { CANONICAL_DOCUMENT_TYPES, normalizeDocumentType } from "../../config/documents.js";
 import { getManilaDateString, isValidStrictManilaDate } from "../ConflictHelper.js";
+import { normalizeTimeSlotString } from "../BookingValidator.js";
 
 export const TRACKING_NUMBER_REGEX = /\b(SR[-_ ]?\d{4}[-_ ]?\d{6})\b/i;
 
@@ -203,14 +204,64 @@ export function resolveScheduleEventType(rawEventType) {
 
   const lower = rawEventType.toLowerCase().trim();
   for (const [event, synonyms] of Object.entries(SCHEDULE_EVENT_SYNONYMS)) {
-    for (const syn of synonyms) {
-      if (lower.includes(syn)) {
-        return event;
-      }
+    if (synonyms.some((syn) => lower === syn)) {
+      return event;
+    }
+  }
+
+  const orderedAliases = Object.entries(SCHEDULE_EVENT_SYNONYMS)
+    .flatMap(([event, synonyms]) => synonyms.map((synonym) => ({ event, synonym })))
+    .sort((a, b) => b.synonym.length - a.synonym.length);
+  for (const { event, synonym } of orderedAliases) {
+    if (lower.includes(synonym)) {
+      return event;
     }
   }
 
   return null;
+}
+
+function isMinorRelativeDateMisspelling(token, canonical) {
+  if (token === canonical) return true;
+  const maxEdits = canonical.length >= 7 ? 2 : 1;
+  if (Math.abs(token.length - canonical.length) > maxEdits) return false;
+
+  let left = 0;
+  let right = 0;
+  let edits = 0;
+  while (left < token.length && right < canonical.length) {
+    if (token[left] === canonical[right]) {
+      left += 1;
+      right += 1;
+      continue;
+    }
+
+    if (
+      token.length === canonical.length &&
+      left + 1 < token.length &&
+      token[left] === canonical[right + 1] &&
+      token[left + 1] === canonical[right]
+    ) {
+      edits += 1;
+      left += 2;
+      right += 2;
+    } else if (token.length > canonical.length) {
+      edits += 1;
+      left += 1;
+    } else if (token.length < canonical.length) {
+      edits += 1;
+      right += 1;
+    } else {
+      edits += 1;
+      left += 1;
+      right += 1;
+    }
+
+    if (edits > maxEdits) return false;
+  }
+
+  if (left < token.length || right < canonical.length) edits += 1;
+  return edits <= maxEdits;
 }
 
 /**
@@ -227,6 +278,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
 
   const text = datePhrase.trim();
   const lower = text.toLowerCase();
+  const dateWords = lower.match(/[a-z]+/g) || [];
 
   // 1. Direct ISO match: YYYY-MM-DD
   const isoMatch = text.match(/\b(202\d-[01]\d-[0-3]\d)\b/);
@@ -240,12 +292,12 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
   const now = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime()) ? referenceDate : new Date();
 
   // 2. "today"
-  if (/\btoday\b/i.test(lower)) {
+  if (dateWords.some((word) => isMinorRelativeDateMisspelling(word, "today"))) {
     return getManilaDateString(now);
   }
 
   // 3. "tomorrow"
-  if (/\btomorrow\b/i.test(lower)) {
+  if (dateWords.some((word) => isMinorRelativeDateMisspelling(word, "tomorrow"))) {
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     return getManilaDateString(tomorrow);
   }
@@ -274,6 +326,116 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
       const targetDate = new Date(manilaToday.getTime() + diffDays * 24 * 60 * 60 * 1000);
       return targetDate.toISOString().slice(0, 10);
     }
+  }
+
+  return null;
+}
+
+/**
+ * Resolves natural language time slot phrase into normalized "HH:MM AM/PM".
+ * e.g. "2 PM" -> "02:00 PM", "2:00 PM" -> "02:00 PM", "10 in the morning" -> "10:00 AM", "at 2" -> "02:00 PM"
+ */
+export function resolveManilaTimeSlot(timePhrase) {
+  if (!timePhrase || typeof timePhrase !== "string") return null;
+  const text = timePhrase.trim();
+
+  // 1. Direct standard format (e.g. "02:00 PM", "2:00 PM", "10:30 AM")
+  const standard = normalizeTimeSlotString(text);
+  if (standard) return standard;
+
+  const lower = text.toLowerCase();
+
+  // 2. Hour with AM/PM (e.g. "2 PM", "2pm", "10am", "10 AM")
+  const hourAmPm = lower.match(/\b(\d{1,2})\s*(am|pm)\b/i);
+  if (hourAmPm) {
+    const hour = Number(hourAmPm[1]);
+    const period = hourAmPm[2].toUpperCase();
+    if (hour >= 1 && hour <= 12) {
+      return `${String(hour).padStart(2, "0")}:00 ${period}`;
+    }
+  }
+
+  // 3. 24-hour time (e.g. "14:00", "09:30")
+  const milTime = lower.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (milTime) {
+    let hour = Number(milTime[1]);
+    const minute = milTime[2];
+    if (hour >= 0 && hour <= 23) {
+      const period = hour >= 12 ? "PM" : "AM";
+      if (hour > 12) hour -= 12;
+      if (hour === 0) hour = 12;
+      return `${String(hour).padStart(2, "0")}:${minute} ${period}`;
+    }
+  }
+
+  // 4. Natural language: "2 in the afternoon", "10 in the morning", "at 2"
+  const naturalHour = lower.match(/\b(?:at|around|for)?\s*(\d{1,2})\s*(?:o'clock)?\s*(in\s+the\s+(morning|afternoon|evening))?\b/i);
+  if (naturalHour && naturalHour[1]) {
+    const hour = Number(naturalHour[1]);
+    const tod = naturalHour[3];
+    if (hour >= 1 && hour <= 12) {
+      let period = "AM";
+      if (tod === "afternoon" || tod === "evening") {
+        period = "PM";
+      } else if (!tod) {
+        // Standard church scheduling: 1, 2, 3, 4, 5 default to afternoon PM
+        if (hour >= 1 && hour <= 5) period = "PM";
+        else period = "AM";
+      }
+      return `${String(hour).padStart(2, "0")}:00 ${period}`;
+    }
+  }
+
+  // 5. Broad periods of the day: "morning" -> "09:00 AM", "afternoon" -> "02:00 PM"
+  if (/\bafternoon\b/i.test(lower)) {
+    return "02:00 PM";
+  }
+  if (/\bmorning\b/i.test(lower)) {
+    return "09:00 AM";
+  }
+
+  return null;
+}
+
+/**
+ * Extracts a time slot from natural language text if present.
+ * e.g. "Can I book at 2 PM?" -> "02:00 PM"
+ * e.g. "Is Fr. Julius free at 2?" -> "02:00 PM"
+ */
+export function extractTimeSlotFromText(text) {
+  if (!text || typeof text !== "string") return null;
+
+  // Check for explicit time with AM/PM (e.g. "at 2:00 PM", "2 PM", "10:30am")
+  const amPmMatch = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i);
+  if (amPmMatch) {
+    return resolveManilaTimeSlot(amPmMatch[1]);
+  }
+
+  // Check for "at 2", "at 10", "around 2"
+  const atMatch = text.match(/\b(?:at|around|for)\s+(\d{1,2}(?::\d{2})?)\s*(?:o'clock)?(?:\s*in\s+the\s+(morning|afternoon|evening))?\b/i);
+  if (atMatch) {
+    const combined = atMatch[2] ? `${atMatch[1]} in the ${atMatch[2]}` : atMatch[1];
+    return resolveManilaTimeSlot(combined);
+  }
+
+  return null;
+}
+
+/**
+ * Extracts priest name or clergy title reference from natural language text.
+ * e.g. "Is Fr. Julius free?" -> "Julius" or "Fr. Julius"
+ * e.g. "Can Rev. Fr. Julius L. Montaño celebrate our wedding?" -> "Julius L. Montaño"
+ */
+export function extractPriestReference(text) {
+  if (!text || typeof text !== "string") return null;
+
+  const match = text.match(/\b(?:Rev\.?\s*Fr\.?|Fr\.?|Father)\s+([A-Za-z]+(?:\s+[A-Za-z]\.?)?(?:\s+[A-Za-z]+)?)\b/i);
+  if (match) {
+    return match[1].trim();
+  }
+
+  if (/\b(parish\s+priest|pastor)\b/i.test(text)) {
+    return "parish priest";
   }
 
   return null;

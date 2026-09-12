@@ -127,11 +127,12 @@ export class DocumentRequirementService {
    * @param {string} [documentType]
    * @param {string|number} [parishId]
    */
-  static async getRequirements(documentType, parishId) {
+  static async getRequirements(documentType, parishId, prismaClient = prisma) {
     let matrix = JSON.parse(JSON.stringify(DOCUMENT_REQUIREMENTS_MATRIX));
 
     if (parishId) {
-      const parish = await prisma.parish.findUnique({
+      const client = prismaClient || prisma;
+      const parish = await client.parish.findUnique({
         where: { id: parseInt(parishId, 10) }
       });
       if (parish && parish.documentSettings) {
@@ -140,7 +141,10 @@ export class DocumentRequirementService {
           for (const [docType, config] of Object.entries(settings)) {
             if (matrix[docType]) {
               if (config.price !== undefined) {
-                matrix[docType].baseFee = parseFloat(config.price);
+                matrix[docType].baseFee =
+                  config.price === null || isNaN(Number(config.price))
+                    ? null
+                    : parseFloat(config.price);
               }
               if (config.requirements) {
                 matrix[docType].requiredDocuments = matrix[docType].requiredDocuments.map(doc => {
