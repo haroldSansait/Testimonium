@@ -7,11 +7,15 @@ import { SemanticIntentRouter } from "./SemanticIntentRouter.js";
 import { FakeSemanticRouter } from "./FakeSemanticRouter.js";
 import { CaloyResponseComposer } from "./CaloyResponseComposer.js";
 import { FakeCaloyResponseComposer } from "./FakeCaloyResponseComposer.js";
+import { isApprovedGenerationModel } from "../../config/caloyModelCatalog.js";
 
 let customEmbeddingProvider = null;
 let customChatProvider = null;
 let customSemanticRouter = null;
 let customCaloyResponseComposer = null;
+
+const chatAdapterCache = new Map();
+const composerCache = new Map();
 
 export const setCustomEmbeddingProvider = (provider) => {
   customEmbeddingProvider = provider;
@@ -34,6 +38,8 @@ export const resetCustomProviders = () => {
   customChatProvider = null;
   customSemanticRouter = null;
   customCaloyResponseComposer = null;
+  chatAdapterCache.clear();
+  composerCache.clear();
 };
 
 export const getEmbeddingProvider = () => {
@@ -78,7 +84,7 @@ export const getEmbeddingProvider = () => {
   throw new Error(`Unsupported embedding provider: ${providerType}`);
 };
 
-export const getChatCompletionProvider = () => {
+export const getChatCompletionProvider = (modelOverride = null) => {
   if (customChatProvider) {
     return customChatProvider;
   }
@@ -96,25 +102,38 @@ export const getChatCompletionProvider = () => {
   }
 
   if (providerType === "gemini") {
+    const model = modelOverride || env.chatbot?.generationModel || "gemini-3.5-flash-lite";
+    if (!isApprovedGenerationModel(model)) {
+      throw new Error(`Generation model "${model}" is not in the known-compatible deployment allowlist`);
+    }
+
     if (env.chatbot?.enabled) {
       if (!env.chatbot?.geminiApiKey) {
         throw new Error("GEMINI_API_KEY is required when chatbot is enabled with Gemini generation provider");
       }
-      if (!env.chatbot?.generationModel) {
+      if (!model) {
         throw new Error("AI_GENERATION_MODEL is required when chatbot is enabled with Gemini generation provider");
       }
     }
 
-    return new GeminiChatAdapter({
+    if (chatAdapterCache.has(model)) {
+      return chatAdapterCache.get(model);
+    }
+
+    const adapter = new GeminiChatAdapter({
       apiKey: env.chatbot?.geminiApiKey,
-      model: env.chatbot?.generationModel,
+      model,
       timeoutMs: env.chatbot?.generationTimeoutMs,
       maxRetries: env.chatbot?.maxRetries,
     });
+    chatAdapterCache.set(model, adapter);
+    return adapter;
   }
 
   throw new Error(`Unsupported chat generation provider: ${providerType}`);
 };
+
+export const getGeminiChatAdapter = getChatCompletionProvider;
 
 export const getSemanticRouter = () => {
   if (customSemanticRouter) {
@@ -140,7 +159,7 @@ export const getSemanticRouter = () => {
   });
 };
 
-export const getCaloyResponseComposer = () => {
+export const getCaloyResponseComposer = (modelOverride = null) => {
   if (customCaloyResponseComposer) {
     return customCaloyResponseComposer;
   }
@@ -156,9 +175,20 @@ export const getCaloyResponseComposer = () => {
     return new FakeCaloyResponseComposer();
   }
 
-  return new CaloyResponseComposer({
+  const model = modelOverride || env.chatbot?.generationModel || "gemini-3.5-flash-lite";
+  if (!isApprovedGenerationModel(model)) {
+    throw new Error(`Composer model "${model}" is not in the known-compatible deployment allowlist`);
+  }
+
+  if (composerCache.has(model)) {
+    return composerCache.get(model);
+  }
+
+  const composer = new CaloyResponseComposer({
     apiKey: env.chatbot?.geminiApiKey,
-    model: env.chatbot?.generationModel || "gemini-3.5-flash-lite",
+    model,
     timeoutMs: 12000,
   });
+  composerCache.set(model, composer);
+  return composer;
 };

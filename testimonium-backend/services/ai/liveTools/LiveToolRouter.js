@@ -36,10 +36,11 @@ export const EFFECTIVE_CAPABILITY_HINTS = {
 };
 
 export class LiveToolRouter {
-  constructor({ registry = null, prismaClient = null, responseComposer = null } = {}) {
+  constructor({ registry = null, prismaClient = null, responseComposer = null, responseComposerFactory = getCaloyResponseComposer } = {}) {
     this.registry = registry || new LiveToolRegistry({ prismaClient });
     this.prisma = prismaClient || this.registry.prisma;
     this.responseComposer = responseComposer;
+    this.responseComposerFactory = responseComposerFactory;
     this.cachedParishes = null;
     this.cachedParishesAt = 0;
   }
@@ -382,6 +383,9 @@ export class LiveToolRouter {
     conversationContext = null,
     activeParishes = null,
     deadline = null,
+    generationModel = null,
+    traceId = null,
+    signal = null,
   }) {
     let intentId = null;
     let collected = {};
@@ -817,7 +821,7 @@ export class LiveToolRouter {
     const remainingBudget = deadline ? deadline - Date.now() : 12000;
     const MIN_COMPOSER_BUDGET_MS = 3000;
 
-    const composer = this.responseComposer || getCaloyResponseComposer();
+    const composer = this.responseComposer || (generationModel ? this.responseComposerFactory(generationModel) : null);
     const isComposeEligible = !executionResult.deterministicOnly && Boolean(executionResult.structuredFacts);
 
     if (composer && isComposeEligible) {
@@ -833,6 +837,8 @@ export class LiveToolRouter {
             capabilityHints: effectiveHints,
             userMessage: normalizedQuestion,
             fallbackAnswer,
+            traceId,
+            signal,
           });
           if (composition && composition.answer) {
             finalAnswer = composition.answer;
@@ -867,6 +873,9 @@ export class LiveToolRouter {
     semanticProposal = null,
     conversationContext = null,
     deadline = null,
+    generationModel = null,
+    traceId = null,
+    signal = null,
   }) {
     return this.validateAndExecute({
       semanticProposal,
@@ -876,6 +885,9 @@ export class LiveToolRouter {
       structuredClarification,
       conversationContext,
       deadline,
+      generationModel,
+      traceId,
+      signal,
     });
   }
 }

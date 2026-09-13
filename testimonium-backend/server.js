@@ -37,8 +37,10 @@ import scheduleAvailabilityRoutes from "./routes/scheduleAvailabilityRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import priestPersonalScheduleRoutes from "./routes/priestPersonalScheduleRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
+import caloyAdminRoutes from "./routes/caloyAdminRoutes.js";
 import { EmailOutboxWorker } from "./services/EmailOutboxWorker.js";
 import { knowledgeEmbeddingWorker } from "./services/KnowledgeEmbeddingWorker.js";
+import { caloyTelemetryRetentionWorker } from "./services/CaloyTelemetryRetentionWorker.js";
 
 const app = express();
 app.set("etag", false);
@@ -116,6 +118,7 @@ app.use(`${apiVersion}/analytics`, analyticsRoutes);
 app.use(`${apiVersion}/mass-schedules`, massScheduleRoutes);
 app.use(`${apiVersion}/parish-events`, parishEventRoutes);
 app.use(`${apiVersion}/priest/personal-schedules`, priestPersonalScheduleRoutes);
+app.use(`${apiVersion}/chatbot/admin`, caloyAdminRoutes);
 app.use(`${apiVersion}/chatbot`, chatbotRoutes);
 
 app.use(notFoundHandler);
@@ -251,6 +254,7 @@ const server = app.listen(env.port, () => {
   validateParishesOnStartup();
   EmailOutboxWorker.start();
   knowledgeEmbeddingWorker.start();
+  caloyTelemetryRetentionWorker.start();
 });
 
 // Graceful Shutdown Management
@@ -267,6 +271,7 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
     try {
       await EmailOutboxWorker.stop();
       await knowledgeEmbeddingWorker.stop();
+      await caloyTelemetryRetentionWorker.stop();
       await prisma.$disconnect();
       logger.info("[TESTIMONIUM] Prisma DB connection closed.");
     } catch (err) {

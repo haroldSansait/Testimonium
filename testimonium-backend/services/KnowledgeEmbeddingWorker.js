@@ -139,13 +139,17 @@ export class KnowledgeEmbeddingWorker {
 
     try {
       // 1. Generate document embedding
-      const embedResults = await provider.embedDocuments([
-        {
-          id: job.chunkId,
-          title: job.sourceTitle,
-          content: job.content,
-        },
-      ]);
+      const traceId = randomUUID();
+      const embedResults = await provider.embedDocuments(
+        [
+          {
+            id: job.chunkId,
+            title: job.sourceTitle,
+            content: job.content,
+          },
+        ],
+        { traceId }
+      );
 
       const embeddingResult = embedResults[0];
       if (!embeddingResult || !embeddingResult.vector) {

@@ -11,6 +11,7 @@ import {
   Clock,
   Trash2,
   X,
+  Database,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -24,14 +25,22 @@ import {
   type KnowledgeSourceStatus,
   type KnowledgeSourceType,
 } from '@/api/knowledgeApi';
+import { caloyAdminApi, type CaloyKnowledgeStatsResponse } from '@/api/caloyAdminApi';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import type { Parish } from '@/types';
 
-export function KnowledgeBasePage() {
+export function KnowledgeBasePage({
+  initialKnowledgeStats = null,
+  initialSources = null,
+}: {
+  initialKnowledgeStats?: CaloyKnowledgeStatsResponse | null;
+  initialSources?: KnowledgeSource[] | null;
+} = {}) {
   const navigate = useNavigate();
 
-  const [sources, setSources] = useState<KnowledgeSource[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sources, setSources] = useState<KnowledgeSource[]>(initialSources ?? []);
+  const [knowledgeStats, setKnowledgeStats] = useState<CaloyKnowledgeStatsResponse | null>(initialKnowledgeStats);
+  const [loading, setLoading] = useState(!initialKnowledgeStats && !initialSources);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -78,6 +87,13 @@ export function KnowledgeBasePage() {
       setSources(res.data || []);
       setTotal(res.total);
       setTotalPages(res.totalPages);
+
+      try {
+        const stats = await caloyAdminApi.getKnowledgeStats();
+        setKnowledgeStats(stats);
+      } catch (statsErr) {
+        console.warn('Knowledge stats fetch non-fatal error:', statsErr);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load knowledge sources';
       setError(msg);
@@ -87,8 +103,8 @@ export function KnowledgeBasePage() {
   }, [page, search, scopeFilter, statusFilter, authorityFilter]);
 
   useEffect(() => {
-    loadSources();
-  }, [loadSources]);
+    if (!initialKnowledgeStats && !initialSources) loadSources();
+  }, [loadSources, initialKnowledgeStats, initialSources]);
 
   useEffect(() => {
     ParishManagementService.getParishes()
@@ -193,6 +209,68 @@ export function KnowledgeBasePage() {
           </div>
         }
       />
+
+      {/* Embedding Engine Read-Only Banner */}
+      {knowledgeStats && (
+        <div className="p-3.5 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span className="font-bold text-gray-800">Embedding Engine:</span>
+            <span className="font-mono text-gray-900 font-semibold">{knowledgeStats.embeddingConfig.model}</span>
+            <span className="text-gray-500">
+              ({knowledgeStats.embeddingConfig.dimensions} dimensions · {knowledgeStats.embeddingConfig.provider})
+            </span>
+          </div>
+          <span className="text-gray-400 text-[11px]">Fixed vector architecture [read only]</span>
+        </div>
+      )}
+
+      {/* Diagnostic Summary Cards */}
+      {knowledgeStats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase">Knowledge Sources</span>
+            <div className="text-xl font-bold text-gray-900 mt-1">
+              {knowledgeStats.sourceCounts.active} <span className="text-xs font-normal text-gray-400">/ {knowledgeStats.sourceCounts.total} Active</span>
+            </div>
+            <span className="text-[10px] text-gray-400">
+              {knowledgeStats.sourceCounts.draft} Drafts · {knowledgeStats.sourceCounts.retired} Retired
+            </span>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase">Chunk Status</span>
+            <div className="text-xl font-bold text-emerald-700 mt-1">
+              {knowledgeStats.chunkCounts.ready} <span className="text-xs font-normal text-gray-400">Ready</span>
+            </div>
+            <span className="text-[10px] text-gray-400">
+              {knowledgeStats.chunkCounts.pending} Pending · {knowledgeStats.chunkCounts.failed} Failed
+            </span>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase">RAG Queries</span>
+            <div className="text-xl font-bold text-purple-700 mt-1">{knowledgeStats.ragQueryCount}</div>
+            <span className="text-[10px] text-gray-400">
+              {knowledgeStats.insufficientEvidenceCount} Insufficient Evidence
+            </span>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase">Avg Top Retrieval Score</span>
+            <div className="text-xl font-bold text-indigo-700 mt-1">
+              {knowledgeStats.averageRetrievalScore !== null
+                ? `${(knowledgeStats.averageRetrievalScore * 100).toFixed(1)}%`
+                : 'No activity'}
+            </div>
+            <span className="text-[10px] text-gray-400">
+              {knowledgeStats.averageRetrievalScore !== null
+                ? 'Cosine similarity score'
+                : 'No retrieval activity for this period.'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-4">
@@ -303,7 +381,7 @@ export function KnowledgeBasePage() {
                     <tr
                       key={source.id}
                       className="hover:bg-gray-50/70 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/knowledge-base/${source.id}`)}
+                      onClick={() => navigate(`/caloy/knowledge-base/${source.id}`)}
                     >
                       <td className="px-5 py-4">
                         <div className="font-medium text-gray-900 line-clamp-1">{source.title}</div>
@@ -366,7 +444,7 @@ export function KnowledgeBasePage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/knowledge-base/${source.id}`);
+                            navigate(`/caloy/knowledge-base/${source.id}`);
                           }}
                           className="text-xs font-medium text-brand-600 hover:text-brand-800 hover:underline"
                         >

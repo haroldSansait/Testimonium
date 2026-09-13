@@ -22,7 +22,11 @@ export type Permission =
   | 'MANAGE_MY_AVAILABILITY'
   | 'MANAGE_PARISH_SETTINGS'
   | 'MANAGE_MAP_CONFIG'
-  | 'MANAGE_KNOWLEDGE_BASE';
+  | 'MANAGE_KNOWLEDGE_BASE'
+  | 'VIEW_CALOY'
+  | 'MANAGE_CALOY_SETTINGS'
+  | 'VIEW_CALOY_LOGS'
+  | 'MANAGE_CALOY_LOGS';
 
 // ─── Convenience constants ────────────────────────────────────────────────────
 // Re-export each permission as a constant so callers can write
@@ -45,4 +49,8 @@ export const PERMISSIONS = {
   MANAGE_PARISH_SETTINGS: 'MANAGE_PARISH_SETTINGS' as const,
   MANAGE_MAP_CONFIG: 'MANAGE_MAP_CONFIG' as const,
   MANAGE_KNOWLEDGE_BASE: 'MANAGE_KNOWLEDGE_BASE' as const,
+  VIEW_CALOY: 'VIEW_CALOY' as const,
+  MANAGE_CALOY_SETTINGS: 'MANAGE_CALOY_SETTINGS' as const,
+  VIEW_CALOY_LOGS: 'VIEW_CALOY_LOGS' as const,
+  MANAGE_CALOY_LOGS: 'MANAGE_CALOY_LOGS' as const,
 } satisfies Record<Permission, Permission>;

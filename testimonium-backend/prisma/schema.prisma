@@ -317,6 +317,7 @@ model User {
   scheduleHistoryActor      ScheduleHistory[]        @relation("ScheduleHistoryActor")
   approvedKnowledgeSources  KnowledgeSource[]        @relation("KnowledgeSourceApprovedBy")
   updatedKnowledgeSources   KnowledgeSource[]        @relation("KnowledgeSourceUpdatedBy")
+  updatedCaloyConfigs       CaloyRuntimeConfig[]     @relation("CaloyRuntimeConfigUpdater")
 
   @@index([roleId])
   @@index([parishId])
@@ -735,9 +736,11 @@ model ChatbotLog {
   id                 Int       @id @default(autoincrement()) @map("chatbot_log_id")
   userId             Int?      @map("user_id")
   sessionId          String?   @map("session_id") @db.VarChar(100)
+  traceId            String?   @map("trace_id") @db.VarChar(100)
   selectedParishId   Int?      @map("selected_parish_id")
   question           String?   @db.Text
   response           String?   @db.Text
+  responseType       String?   @map("response_type") @db.VarChar(50)
   retrievedChunkIds  Int[]     @default([]) @map("retrieved_chunk_ids")
   retrievalScores    Float[]   @default([]) @map("retrieval_scores")
   fallback           Boolean   @default(false)
@@ -754,8 +757,69 @@ model ChatbotLog {
   @@index([userId])
   @@index([sessionId])
   @@index([createdAt])
+  @@index([responseType, createdAt])
+  @@index([generationModel, createdAt])
+  @@index([errorCategory, createdAt])
+  @@index([selectedParishId, createdAt])
+  @@index([fallback, createdAt])
+  @@index([traceId])
   @@map("chatbot_logs")
 }
+
+model CaloyRuntimeConfig {
+  id                        Int       @id @default(1) @map("config_id")
+  enabled                   Boolean   @default(true)
+  generationProvider        String    @default("gemini") @map("generation_provider") @db.VarChar(50)
+  generationModel           String    @default("gemini-3.5-flash-lite") @map("generation_model") @db.VarChar(100)
+  aiTenMinuteMax            Int       @default(20) @map("ai_ten_minute_max")
+  aiDailyMax                Int       @default(50) @map("ai_daily_max")
+  chatbotRequestDeadlineMs  Int       @default(25000) @map("chatbot_request_deadline_ms")
+  automaticRetentionEnabled Boolean   @default(false) @map("automatic_retention_enabled")
+  logRetentionDays          Int       @default(90) @map("log_retention_days")
+  version                   Int       @default(1)
+  updatedById               Int?      @map("updated_by_id")
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy                 User?     @relation("CaloyRuntimeConfigUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("caloy_runtime_config")
+}
+
+model SystemLease {
+  leaseKey       String   @id @map("lease_key") @db.VarChar(100)
+  ownerToken     String   @map("owner_token") @db.VarChar(100)
+  leaseExpiresAt DateTime @map("lease_expires_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_leases")
+}
+
+model AiUsageEvent {
+  id            Int      @id @default(autoincrement()) @map("event_id")
+  traceId       String?  @map("trace_id") @db.VarChar(100)
+  provider      String   @db.VarChar(50)
+  model         String   @db.VarChar(100)
+  operation     String   @db.VarChar(50) // "GENERATE_CONTENT" | "EMBED_CONTENT"
+  purpose       String   @db.VarChar(50) // "SEMANTIC_ROUTING" | "RAG_GENERATION" | "RESPONSE_COMPOSER" | "QUERY_EMBEDDING" | "DOCUMENT_EMBEDDING"
+  attemptNumber Int      @default(1) @map("attempt_number")
+  success       Boolean
+  statusCode    Int?     @map("status_code")
+  errorCategory String?  @map("error_category") @db.VarChar(100)
+  latencyMs     Int      @map("latency_ms")
+  inputTokens   Int?     @map("input_tokens")
+  outputTokens  Int?     @map("output_tokens")
+  totalTokens   Int?     @map("total_tokens")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@index([operation, createdAt])
+  @@index([purpose, createdAt])
+  @@index([model, createdAt])
+  @@index([success, createdAt])
+  @@index([traceId])
+  @@map("ai_usage_events")
+}
+
 
 model ActivityLog {
   id               Int       @id @default(autoincrement()) @map("log_id")

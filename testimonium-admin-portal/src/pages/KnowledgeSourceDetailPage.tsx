@@ -227,7 +227,7 @@ export function KnowledgeSourceDetailPage() {
       <div className="p-6 bg-rose-50 rounded-xl border border-rose-200 text-rose-700 space-y-3">
         <p className="text-sm font-semibold">{error}</p>
         <button
-          onClick={() => navigate('/knowledge-base')}
+          onClick={() => navigate('/caloy/knowledge-base')}
           className="text-xs font-medium underline"
         >
           &larr; Back to Knowledge Base
@@ -258,10 +258,30 @@ export function KnowledgeSourceDetailPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Back Button & Navigation */}
-      <div>
+      {/* Breadcrumbs & Back Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <nav className="flex items-center gap-2 text-xs text-gray-500 font-medium">
+          <button
+            type="button"
+            onClick={() => navigate('/caloy')}
+            className="hover:text-crimson-700"
+          >
+            Caloy
+          </button>
+          <span>/</span>
+          <button
+            type="button"
+            onClick={() => navigate('/caloy/knowledge-base')}
+            className="hover:text-crimson-700"
+          >
+            Knowledge Base
+          </button>
+          <span>/</span>
+          <span className="text-gray-900 font-semibold truncate max-w-xs">{source.title}</span>
+        </nav>
+
         <button
-          onClick={() => navigate('/knowledge-base')}
+          onClick={() => navigate('/caloy/knowledge-base')}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />

@@ -3,6 +3,8 @@ import { ChatCompletionProvider } from "./ChatCompletionProvider.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
 import { extractCitationsAndSanitize } from "./citationUtils.js";
 import { buildRagSystemInstruction } from "./CaloyPolicy.js";
+import { defaultAiUsageTelemetry, noOpAiUsageTelemetry, isAiUnitTestRuntime } from "../AiUsageTelemetryService.js";
+import { buildGeminiGenerationConfig } from "./geminiConfigHelper.js";
 
 const DEFAULT_SYSTEM_INSTRUCTIONS = buildRagSystemInstruction();
 
@@ -34,6 +36,7 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
    * @param {number} [config.timeoutMs]
    * @param {number} [config.maxRetries]
    * @param {number} [config.retryBaseDelayMs]
+   * @param {object} [config.telemetryRecorder]
    */
   constructor(config = {}) {
     const model = config.model || "gemini-3.8-flash";
@@ -48,6 +51,7 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
     this.maxRetries = config.maxRetries ?? 2;
     this.retryBaseDelayMs = config.retryBaseDelayMs ?? 1000;
     this.client = config.client || (config.apiKey ? new GoogleGenAI({ apiKey: config.apiKey }) : null);
+    this.telemetryRecorder = config.telemetryRecorder || (isAiUnitTestRuntime() ? noOpAiUsageTelemetry : defaultAiUsageTelemetry);
   }
 
   /**
@@ -69,7 +73,7 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
   /**
    * Generates a grounded response.
    */
-  async generateGroundedAnswer({ question, evidence = [], instructions, maxOutputTokens = 700, signal }) {
+  async generateGroundedAnswer({ question, evidence = [], instructions, maxOutputTokens = 700, signal, traceId = null }) {
     if (!this.client) {
       throw new Error("Gemini client is not initialized (missing API key)");
     }
@@ -87,6 +91,7 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
       throwIfCallerAborted(signal);
       let timerId = null;
       const timeoutController = new AbortController();
+      const attemptStartTime = Date.now();
 
       try {
         let combinedSignal;
@@ -113,18 +118,45 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
           }, this.timeoutMs);
         });
 
+        const baseConfig = {
+          systemInstruction,
+          maxOutputTokens,
+          temperature: 0.2,
+          abortSignal: combinedSignal,
+        };
+
+        const generationConfig = buildGeminiGenerationConfig({
+          model: this.modelName,
+          baseConfig,
+          purpose: "RAG_GENERATION",
+        });
+
         const callPromise = this.client.models.generateContent({
           model: this.modelName,
           contents: prompt,
-          config: {
-            systemInstruction,
-            maxOutputTokens,
-            temperature: 0.2,
-            abortSignal: combinedSignal,
-          },
+          config: generationConfig,
         });
 
         const response = await Promise.race([callPromise, timeoutPromise]);
+        const attemptLatencyMs = Date.now() - attemptStartTime;
+
+        // Record successful attempt telemetry
+        const usage = response?.usageMetadata;
+        this.telemetryRecorder?.recordAttemptSafe({
+          traceId,
+          provider: this.providerName,
+          model: this.modelName,
+          operation: "GENERATE_CONTENT",
+          purpose: "RAG_GENERATION",
+          attemptNumber: attempt + 1,
+          success: true,
+          statusCode: 200,
+          latencyMs: attemptLatencyMs,
+          inputTokens: usage?.promptTokenCount !== undefined && usage?.promptTokenCount !== null ? Number(usage.promptTokenCount) : null,
+          outputTokens: usage?.candidatesTokenCount !== undefined && usage?.candidatesTokenCount !== null ? Number(usage.candidatesTokenCount) : null,
+          totalTokens: usage?.totalTokenCount !== undefined && usage?.totalTokenCount !== null ? Number(usage.totalTokenCount) : null,
+        });
+
         const textContent = typeof response?.text === "function" ? response.text() : response?.text;
         const rawText = typeof textContent === "string" ? textContent.trim() : "";
 
@@ -139,14 +171,41 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
         // Parse citation tags and sanitize visible answer text
         const { cleanedAnswer, citedChunkIds } = extractCitationsAndSanitize(rawText, validEvidenceIds);
 
-        // ZERO synthetic citation fallback: if citedChunkIds is empty, we do NOT fabricate evidence[0].id
-
         return {
           answer: cleanedAnswer,
           citedChunkIds,
         };
       } catch (err) {
         lastError = err;
+        const attemptLatencyMs = Date.now() - attemptStartTime;
+
+        let errCategory = "UNKNOWN_PROVIDER_ERROR";
+        const status = err.status || err.statusCode || err.response?.status;
+        if (Number(status) === 429 || String(err.message || "").toLowerCase().includes("rate limit") || String(err.message || "").toLowerCase().includes("resource exhausted")) {
+          errCategory = "AI_PROVIDER_RATE_LIMITED";
+        } else if (err.code === "CHATBOT_TIMEOUT" || String(err.message || "").toLowerCase().includes("timeout")) {
+          errCategory = "PROVIDER_TIMEOUT";
+        } else if (status && Number(status) >= 500) {
+          errCategory = "PROVIDER_5XX";
+        } else if (["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND"].includes(String(err.code || "").toUpperCase())) {
+          errCategory = "NETWORK_ERROR";
+        }
+
+        this.telemetryRecorder?.recordAttemptSafe({
+          traceId,
+          provider: this.providerName,
+          model: this.modelName,
+          operation: "GENERATE_CONTENT",
+          purpose: "RAG_GENERATION",
+          attemptNumber: attempt + 1,
+          success: false,
+          statusCode: status ? Number(status) : null,
+          errorCategory: errCategory,
+          latencyMs: attemptLatencyMs,
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+        });
 
         if (signal?.aborted) {
           throw createCallerAbortError();

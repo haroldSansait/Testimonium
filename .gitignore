@@ -24,7 +24,6 @@
 !testimonium-backend/.env.example
 
 # Prisma Client Database Specific Exclusions (Fixed subfolder tracking)
-**/prisma/migrations/**/*.sql
 !testimonium-backend/prisma/migrations/20260704123959_init_testimonium_relational_schema/migration.sql
 !testimonium-backend/prisma/migrations/20260704140000_rename_vicariate_admin_to_diocese_coordinator/migration.sql
 !testimonium-backend/prisma/migrations/20260705113749_make_firebase_uid_optional/migration.sql

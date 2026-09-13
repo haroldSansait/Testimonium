@@ -1,7 +1,8 @@
+import crypto from "crypto";
 import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
 import { RetrievalService } from "./RetrievalService.js";
-import { ChatbotLogRepository } from "../repositories/ChatbotLogRepository.js";
+import { ChatbotLogRepository, noOpChatbotLogRepository } from "../repositories/ChatbotLogRepository.js";
 import { getChatCompletionProvider, getSemanticRouter, getCaloyResponseComposer } from "./ai/providerFactory.js";
 import { FakeSemanticRouter } from "./ai/FakeSemanticRouter.js";
 import { detectTrivialSocial, detectSocialIntent, SOCIAL_RESPONSES } from "./ai/socialIntentClassifier.js";
@@ -12,6 +13,8 @@ import { defaultAiQuotaTracker } from "./ai/aiQuotaTracker.js";
 import { defaultContextManager } from "./ai/ConversationContextManager.js";
 import { sanitizeQuestionForModel } from "./ai/semanticValidationHelper.js";
 import { sanitizeCitationMarkers } from "./ai/citationUtils.js";
+import { defaultCaloyRuntimeConfig } from "./CaloyRuntimeConfigService.js";
+import { isAiUnitTestRuntime } from "./AiUsageTelemetryService.js";
 
 const DEFAULT_FALLBACK_TEXT =
   "I don't have enough verified TESTIMONIUM information to confirm that. Please contact your parish office for assistance.";
@@ -30,20 +33,40 @@ export class ChatbotService {
     aiQuotaTracker = defaultAiQuotaTracker,
     contextManager = defaultContextManager,
     responseComposer = null,
+    responseComposerFactory = getCaloyResponseComposer,
+    setTimeoutFn = setTimeout,
+    runtimeConfigService = defaultCaloyRuntimeConfig,
   } = {}) {
     this.prisma = prismaClient;
     this.retrievalService = retrievalService;
-    this.logRepository = logRepository || new ChatbotLogRepository(prismaClient);
+    this.logRepository = logRepository
+      || (isAiUnitTestRuntime() ? noOpChatbotLogRepository : new ChatbotLogRepository(prismaClient));
     this.getChatProvider = chatProvider ? () => chatProvider : getChatCompletionProvider;
     this.isEnabled = isEnabled !== null ? Boolean(isEnabled) : Boolean(env.chatbot?.enabled);
+    this.runtimeConfigService = runtimeConfigService === defaultCaloyRuntimeConfig && isAiUnitTestRuntime()
+      ? {
+          getEffectiveConfigSnapshot: async () => ({
+            effectiveEnabled: this.isEnabled,
+            runtimeOverridePresent: false,
+            generationProvider: env.chatbot?.generationProvider || "gemini",
+            generationModel: env.chatbot?.generationModel || "gemini-3.5-flash-lite",
+            effectiveGenerationModel: env.chatbot?.generationModel || "gemini-3.5-flash-lite",
+            aiTenMinuteMax: 20,
+            aiDailyMax: 50,
+            chatbotRequestDeadlineMs: CHATBOT_REQUEST_DEADLINE_MS,
+          }),
+        }
+      : runtimeConfigService;
     this.liveToolRouter =
-      liveToolRouter || new LiveToolRouter({ registry: new LiveToolRegistry({ prismaClient }), prismaClient, responseComposer });
+      liveToolRouter || new LiveToolRouter({ registry: new LiveToolRegistry({ prismaClient }), prismaClient, responseComposer, responseComposerFactory });
     this.semanticRouter =
       semanticRouter ||
       (chatProvider?.providerName === "fake" ? new FakeSemanticRouter() : getSemanticRouter());
     this.aiQuotaTracker = aiQuotaTracker;
     this.contextManager = contextManager;
-    this.responseComposer = responseComposer || getCaloyResponseComposer();
+    this.responseComposer = responseComposer;
+    this.getResponseComposer = responseComposerFactory;
+    this.setTimeoutFn = setTimeoutFn;
   }
 
   /**
@@ -110,15 +133,45 @@ export class ChatbotService {
     conversationContext = null,
   }) {
     const startTime = Date.now();
-    const requestDeadline = startTime + CHATBOT_REQUEST_DEADLINE_MS;
 
-    // 1. Feature flag guard
-    if (!this.isEnabled) {
+    // Section 16 & 21: Resolve ONE immutable effective runtime configuration snapshot at request start
+    const configSnapshot = this.runtimeConfigService
+      ? await this.runtimeConfigService.getEffectiveConfigSnapshot()
+      : {
+          configVersion: 0,
+          effectiveEnabled: this.isEnabled,
+          generationProvider: env.chatbot?.generationProvider || "gemini",
+          generationModel: env.chatbot?.generationModel || "gemini-3.5-flash-lite",
+          aiTenMinuteMax: env.chatbot?.aiTenMinuteMax || 20,
+          aiDailyMax: env.chatbot?.aiDailyMax || 50,
+          chatbotRequestDeadlineMs: CHATBOT_REQUEST_DEADLINE_MS,
+        };
+
+    // Section 18: Master deployment gate + Section 17 runtime disable
+    const effectiveEnabled = this.isEnabled && configSnapshot.effectiveEnabled;
+    if (!effectiveEnabled) {
       const err = new Error("Caloy is currently unavailable. Please check back later.");
       err.statusCode = 503;
       err.code = "CHATBOT_UNAVAILABLE";
       throw err;
     }
+
+    // Section 36: Generate traceId once for accepted request
+    const traceId = crypto.randomUUID();
+    const chatbotRequestDeadlineMs = configSnapshot.chatbotRequestDeadlineMs || CHATBOT_REQUEST_DEADLINE_MS;
+    const acceptedAt = Date.now();
+    const requestDeadline = acceptedAt + chatbotRequestDeadlineMs;
+    const requestGenerationModel = configSnapshot.effectiveGenerationModel || configSnapshot.generationModel;
+    const rootAbortController = new AbortController();
+    const deadlineTimer = this.setTimeoutFn(() => {
+      const err = new Error("Caloy request deadline exhausted");
+      err.code = "DEADLINE_EXHAUSTED";
+      rootAbortController.abort(err);
+    }, chatbotRequestDeadlineMs);
+    deadlineTimer.unref?.();
+    const rootSignal = rootAbortController.signal;
+
+    try {
 
     // 2. Normalize question
     const normalizedQuestion = this.normalizeQuestion(question);
@@ -145,6 +198,8 @@ export class ChatbotService {
         response: trivialSocial.answer,
         fallback: false,
         category: "SOCIAL",
+        responseType: "SOCIAL",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -163,6 +218,40 @@ export class ChatbotService {
     // 4. Validate optional parish for operational routes
     const parish = await this.validateParish(selectedParishId);
     const effectiveParishId = parish ? parish.id : null;
+    const buildDeadlineFallbackResponse = async (fallbackContext = null) => {
+      const resolvedContext = fallbackContext || this.contextManager.getContext(sessionId, conversationContext);
+      const payload = {
+        answer: DEFAULT_FALLBACK_TEXT,
+        fallback: true,
+        fallbackReason: "DEADLINE_EXHAUSTED",
+        responseType: "FALLBACK",
+        sessionId,
+        category: null,
+        sources: [],
+        conversationContext: resolvedContext,
+        diagnostics: {
+          route: "RAG",
+          retrievedChunkIds: [],
+          retrievalScores: [],
+          hasSufficientEvidence: false,
+          fallbackReason: "DEADLINE_EXHAUSTED",
+        },
+      };
+      await this.logRepository.logQuery({
+        userId,
+        sessionId,
+        selectedParishId: effectiveParishId,
+        question: normalizedQuestion,
+        response: payload.answer,
+        fallback: true,
+        fallbackReason: "DEADLINE_EXHAUSTED",
+        responseType: "FALLBACK",
+        traceId,
+        latencyMs: Date.now() - startTime,
+        errorCategory: "DEADLINE_EXHAUSTED",
+      });
+      return payload;
+    };
 
     // 5. UI Continuation Fast Path (0 Gemini calls, 0 AI Quota)
     // Structured inline selector button submissions are protocol actions, NOT natural language.
@@ -188,9 +277,13 @@ export class ChatbotService {
         userId,
         conversationContext: safeContext,
         deadline: requestDeadline,
+        generationModel: requestGenerationModel,
+        traceId,
+        signal: rootSignal,
       });
 
       if (liveResult) {
+        if (rootSignal.aborted) return buildDeadlineFallbackResponse(safeContext);
         let updatedCtx = safeContext;
         if (liveResult.responseType === "LIVE_DATA") {
           updatedCtx = this.contextManager.updateContext(sessionId, {
@@ -251,6 +344,8 @@ export class ChatbotService {
           fallback: Boolean(liveResult.fallback),
           fallbackReason: liveResult.fallbackReason || null,
           category: liveResult.category || "LIVE_DATA",
+          responseType: liveResult.responseType || "LIVE_DATA",
+          traceId,
           latencyMs: Date.now() - startTime,
           errorCategory: liveResult.fallbackReason || null,
         });
@@ -277,7 +372,11 @@ export class ChatbotService {
     // 8. AI Quota Check (Semantic Router Gemini call IS an AI call!)
     if (this.aiQuotaTracker) {
       const quotaKey = userId || sessionId || "anonymous";
-      const quotaCheck = this.aiQuotaTracker.consume(quotaKey);
+      const quotaLimits = configSnapshot.runtimeOverridePresent ? {
+        tenMinuteMax: configSnapshot.aiTenMinuteMax,
+        dailyMax: configSnapshot.aiDailyMax,
+      } : {};
+      const quotaCheck = this.aiQuotaTracker.consume(quotaKey, quotaLimits);
       if (!quotaCheck.allowed) {
         const safeErr = new Error(quotaCheck.message);
         safeErr.statusCode = 429;
@@ -291,6 +390,8 @@ export class ChatbotService {
           question: normalizedQuestion,
           fallback: true,
           fallbackReason: safeErr.code,
+          responseType: "FALLBACK",
+          traceId,
           latencyMs: Date.now() - startTime,
           errorCategory: safeErr.code,
         });
@@ -306,6 +407,8 @@ export class ChatbotService {
         sanitizedQuestion,
         conversationContext: safeContext,
         selectedParishName: parish ? parish.parishName : null,
+        traceId,
+        signal: rootSignal,
       });
     } catch (err) {
       console.error(`[ChatbotService] Semantic routing error: ${err.message}`);
@@ -341,7 +444,7 @@ export class ChatbotService {
           ? SOCIAL_RESPONSES.WHO_ARE_YOU
           : SOCIAL_RESPONSES.HOW_ARE_YOU;
 
-        const composer = this.responseComposer || getCaloyResponseComposer();
+        const composer = this.responseComposer || this.getResponseComposer(requestGenerationModel);
         const hasComposerBudget = Date.now() + 3000 <= requestDeadline;
         if (composer && hasComposerBudget) {
           try {
@@ -356,6 +459,8 @@ export class ChatbotService {
               ],
               userMessage: normalizedQuestion,
               fallbackAnswer: defaultAnswer,
+              traceId,
+              signal: rootSignal,
             });
             answer = compResult.answer || defaultAnswer;
           } catch (compErr) {
@@ -366,6 +471,8 @@ export class ChatbotService {
           answer = defaultAnswer;
         }
       }
+
+      if (rootSignal.aborted) return buildDeadlineFallbackResponse(safeContext);
 
       const updatedCtx = this.contextManager.updateContext(sessionId, {
         lastResponseType: "SOCIAL",
@@ -379,6 +486,8 @@ export class ChatbotService {
         response: answer,
         fallback: false,
         category: "SOCIAL",
+        responseType: "SOCIAL",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -409,6 +518,8 @@ export class ChatbotService {
         response: answer,
         fallback: false,
         category: "SOCIAL",
+        responseType: "SOCIAL",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -439,6 +550,8 @@ export class ChatbotService {
         response: answer,
         fallback: false,
         category: "SOCIAL",
+        responseType: "SOCIAL",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -493,9 +606,13 @@ export class ChatbotService {
         conversationContext: safeContext,
         structuredClarification: structuredClarification || (safeContext.pendingClarificationIntent ? { toolId: safeContext.pendingClarificationIntent, collected: safeContext.pendingCollected } : null),
         deadline: requestDeadline,
+        generationModel: requestGenerationModel,
+        traceId,
+        signal: rootSignal,
       });
 
       if (liveResult) {
+        if (rootSignal.aborted) return buildDeadlineFallbackResponse(safeContext);
         let updatedCtx = safeContext;
         if (liveResult.responseType === "LIVE_DATA") {
           updatedCtx = this.contextManager.updateContext(sessionId, {
@@ -542,6 +659,8 @@ export class ChatbotService {
           fallback: Boolean(liveResult.fallback),
           fallbackReason: liveResult.fallbackReason || null,
           category: liveResult.category || "LIVE_DATA",
+          responseType: liveResult.responseType || "LIVE_DATA",
+          traceId,
           latencyMs: Date.now() - startTime,
           errorCategory: liveResult.fallbackReason || null,
         });
@@ -567,8 +686,8 @@ export class ChatbotService {
     });
 
     // Check remaining deadline budget before RAG retrieval
-    if (Date.now() + 3000 > requestDeadline) {
-      return buildFallbackResponse("DEADLINE_EXHAUSTED");
+    if (rootSignal.aborted || Date.now() + 3000 > requestDeadline) {
+      return buildDeadlineFallbackResponse(updatedCtx);
     }
 
     let retrievalResult;
@@ -576,9 +695,12 @@ export class ChatbotService {
       retrievalResult = await this.retrievalService.retrieveKnowledge({
         normalizedQuestion,
         selectedParishId: effectiveParishId,
+        traceId,
+        signal: rootSignal,
       });
     } catch (err) {
       console.error(`[ChatbotService] Retrieval error: ${err.message}`);
+      if (rootSignal.aborted) return buildDeadlineFallbackResponse(updatedCtx);
       const isProvider429 =
         err.status === 429 ||
         err.statusCode === 429 ||
@@ -602,6 +724,8 @@ export class ChatbotService {
         question: normalizedQuestion,
         fallback: true,
         fallbackReason: safeErr.code,
+        responseType: "FALLBACK",
+        traceId,
         latencyMs: Date.now() - startTime,
         errorCategory: safeErr.code,
       });
@@ -645,6 +769,8 @@ export class ChatbotService {
         fallbackReason: "INSUFFICIENT_EVIDENCE",
         category,
         embeddingProvider,
+        responseType: "FALLBACK",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -668,7 +794,7 @@ export class ChatbotService {
     }
 
     // Grounded Generation
-    const chatProvider = this.getChatProvider();
+    const chatProvider = this.getChatProvider(requestGenerationModel);
     const evidencePayload = candidates.map((c) => ({
       id: c.chunkId ?? c.id,
       title: c.title,
@@ -684,9 +810,12 @@ export class ChatbotService {
         question: normalizedQuestion,
         evidence: evidencePayload,
         maxOutputTokens: env.chatbot?.maxOutputTokens || 700,
+        traceId,
+        signal: rootSignal,
       });
     } catch (err) {
       console.error(`[ChatbotService] Generation error: ${err.code || "UNKNOWN"}`);
+      if (rootSignal.aborted) return buildDeadlineFallbackResponse(updatedCtx);
       const isProvider429 =
         err.status === 429 ||
         err.statusCode === 429 ||
@@ -716,6 +845,8 @@ export class ChatbotService {
         embeddingProvider,
         generationProvider: chatProvider.providerName,
         generationModel: chatProvider.modelName,
+        responseType: "FALLBACK",
+        traceId,
         latencyMs: Date.now() - startTime,
         errorCategory: safeErr.code,
       });
@@ -772,6 +903,8 @@ export class ChatbotService {
         embeddingProvider,
         generationProvider: chatProvider.providerName,
         generationModel: chatProvider.modelName,
+        responseType: "FALLBACK",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -803,6 +936,8 @@ export class ChatbotService {
         embeddingProvider,
         generationProvider: chatProvider.providerName,
         generationModel: chatProvider.modelName,
+        responseType: "FALLBACK",
+        traceId,
         latencyMs: Date.now() - startTime,
       });
 
@@ -846,6 +981,8 @@ export class ChatbotService {
       embeddingProvider,
       generationProvider: chatProvider.providerName,
       generationModel: chatProvider.modelName,
+      responseType: "RAG",
+      traceId,
       latencyMs: Date.now() - startTime,
     });
 
@@ -867,5 +1004,8 @@ export class ChatbotService {
         fallbackReason: null,
       },
     };
+    } finally {
+      clearTimeout(deadlineTimer);
+    }
   }
 }

@@ -192,6 +192,7 @@ export async function sendCaloyQuery(
       auth: true,
       signal,
       timeout: 32_000,
+      timeoutMs: 32_000,
     });
 
     return normalizeCaloyResponse(rawResponse);

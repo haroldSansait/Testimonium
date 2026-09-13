@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { EmbeddingProvider } from "./EmbeddingProvider.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
+import { defaultAiUsageTelemetry, noOpAiUsageTelemetry, isAiUnitTestRuntime } from "../AiUsageTelemetryService.js";
 
 function isTransientError(err) {
   if (!err) return false;
@@ -31,6 +32,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
    * @param {number} [config.timeoutMs]
    * @param {number} [config.maxRetries]
    * @param {number} [config.retryBaseDelayMs]
+   * @param {object} [config.telemetryRecorder]
    */
   constructor(config = {}) {
     const model = config.model || "gemini-embedding-2";
@@ -46,6 +48,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
     this.maxRetries = config.maxRetries ?? 2;
     this.retryBaseDelayMs = config.retryBaseDelayMs ?? 1000;
     this.client = config.client || (config.apiKey ? new GoogleGenAI({ apiKey: config.apiKey }) : null);
+    this.telemetryRecorder = config.telemetryRecorder || (isAiUnitTestRuntime() ? noOpAiUsageTelemetry : defaultAiUsageTelemetry);
   }
 
   /**
@@ -68,7 +71,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
   /**
    * Internal retry wrapper with abort-aware timeout and transient error classification.
    */
-  async _executeWithRetry(operationFn, callerSignal = null) {
+  async _executeWithRetry(operationFn, callerSignal = null, { purpose = "QUERY_EMBEDDING", traceId = null } = {}) {
     let attempt = 0;
     let lastError = null;
 
@@ -78,6 +81,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
       throwIfCallerAborted(callerSignal);
       let timerId = null;
       const timeoutController = new AbortController();
+      const attemptStartTime = Date.now();
 
       try {
         let combinedSignal;
@@ -105,9 +109,55 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
         });
 
         const opPromise = operationFn(combinedSignal);
-        return await Promise.race([opPromise, timeoutPromise]);
+        const res = await Promise.race([opPromise, timeoutPromise]);
+        const attemptLatencyMs = Date.now() - attemptStartTime;
+
+        this.telemetryRecorder?.recordAttemptSafe({
+          traceId,
+          provider: this.providerName,
+          model: this.modelName,
+          operation: "EMBED_CONTENT",
+          purpose,
+          attemptNumber: attempt + 1,
+          success: true,
+          statusCode: 200,
+          latencyMs: attemptLatencyMs,
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+        });
+
+        return res;
       } catch (err) {
         lastError = err;
+        const attemptLatencyMs = Date.now() - attemptStartTime;
+
+        let errCategory = "UNKNOWN_PROVIDER_ERROR";
+        const status = err.status || err.statusCode || err.response?.status;
+        if (Number(status) === 429 || String(err.message || "").toLowerCase().includes("rate limit") || String(err.message || "").toLowerCase().includes("resource exhausted")) {
+          errCategory = "AI_PROVIDER_RATE_LIMITED";
+        } else if (err.code === "CHATBOT_TIMEOUT" || String(err.message || "").toLowerCase().includes("timeout")) {
+          errCategory = "PROVIDER_TIMEOUT";
+        } else if (status && Number(status) >= 500) {
+          errCategory = "PROVIDER_5XX";
+        } else if (status && (Number(status) === 401 || Number(status) === 403)) {
+          errCategory = "PROVIDER_AUTH";
+        } else if (["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(String(err.code || "").toUpperCase())) {
+          errCategory = "NETWORK_ERROR";
+        }
+
+        this.telemetryRecorder?.recordAttemptSafe({
+          traceId,
+          provider: this.providerName,
+          model: this.modelName,
+          operation: "EMBED_CONTENT",
+          purpose,
+          attemptNumber: attempt + 1,
+          success: false,
+          statusCode: status ? Number(status) : null,
+          errorCategory: errCategory,
+          latencyMs: attemptLatencyMs,
+        });
 
         if (callerSignal?.aborted) {
           throw createCallerAbortError();
@@ -152,6 +202,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
 
     const formatted = this.formatQuery(text);
     const callerSignal = options.signal || null;
+    const traceId = options.traceId || null;
 
     const res = await this._executeWithRetry(async (abortSignal) => {
       return await this.client.models.embedContent({
@@ -162,7 +213,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
           abortSignal,
         },
       });
-    }, callerSignal);
+    }, callerSignal, { purpose: "QUERY_EMBEDDING", traceId });
 
     // Installed @google/genai contract: response.embeddings[0].values
     if (!res || !Array.isArray(res.embeddings) || res.embeddings.length !== 1) {
@@ -197,6 +248,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
     }
 
     const callerSignal = options.signal || null;
+    const traceId = options.traceId || null;
     const results = [];
 
     // Process documents individually to guarantee exact 1-to-1 vector mapping
@@ -212,7 +264,7 @@ export class GeminiEmbeddingAdapter extends EmbeddingProvider {
             abortSignal,
           },
         });
-      }, callerSignal);
+      }, callerSignal, { purpose: "DOCUMENT_EMBEDDING", traceId });
 
       if (!res || !Array.isArray(res.embeddings) || res.embeddings.length !== 1) {
         const err = new Error(`Invalid document embedding response for document ${doc.id}`);

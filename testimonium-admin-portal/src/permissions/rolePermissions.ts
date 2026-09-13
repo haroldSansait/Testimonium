@@ -51,6 +51,10 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.MANAGE_PARISH_SETTINGS,
     PERMISSIONS.MANAGE_MAP_CONFIG,
     PERMISSIONS.MANAGE_KNOWLEDGE_BASE,
+    PERMISSIONS.VIEW_CALOY,
+    PERMISSIONS.MANAGE_CALOY_SETTINGS,
+    PERMISSIONS.VIEW_CALOY_LOGS,
+    PERMISSIONS.MANAGE_CALOY_LOGS,
   ],
 
   // Parishioners do not have access to the admin portal.
@@ -113,6 +117,26 @@ export function canManageParishSettings(role: UserRole | null | undefined): bool
 /** True when the role may manage map configurations. */
 export function canManageMapConfig(role: UserRole | null | undefined): boolean {
   return hasPermission(role, PERMISSIONS.MANAGE_MAP_CONFIG);
+}
+
+/** True when the role may view Caloy Control Center. */
+export function canViewCaloy(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.VIEW_CALOY);
+}
+
+/** True when the role may manage Caloy runtime settings. */
+export function canManageCaloySettings(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.MANAGE_CALOY_SETTINGS);
+}
+
+/** True when the role may view Caloy operational logs. */
+export function canViewCaloyLogs(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.VIEW_CALOY_LOGS);
+}
+
+/** True when the role may manage/purge Caloy operational logs. */
+export function canManageCaloyLogs(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.MANAGE_CALOY_LOGS);
 }
 
 // Re-export Permission type for convenient single-import by consumers.

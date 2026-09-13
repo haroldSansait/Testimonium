@@ -1,5 +1,6 @@
 import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
+import { isAiUnitTestRuntime } from "../services/AiUsageTelemetryService.js";
 
 export class ChatbotLogRepository {
   constructor(prismaClient = prisma) {
@@ -13,6 +14,11 @@ export class ChatbotLogRepository {
    * @param {object} logData
    */
   async logQuery(logData) {
+    if (isAiUnitTestRuntime() && this.prisma === prisma) {
+      const err = new Error("Focused AI tests must inject a fake/no-op ChatbotLogRepository; operational Prisma access is blocked");
+      err.code = "TEST_ISOLATION_VIOLATION";
+      throw err;
+    }
     try {
       const logRaw = Boolean(env.chatbot?.logRawText);
 
@@ -45,6 +51,12 @@ export class ChatbotLogRepository {
           errorCategory: logData.errorCategory
             ? String(logData.errorCategory).slice(0, 100)
             : null,
+          responseType: logData.responseType
+            ? String(logData.responseType).slice(0, 50)
+            : null,
+          traceId: logData.traceId
+            ? String(logData.traceId).slice(0, 100)
+            : null,
         },
       });
     } catch (err) {
@@ -53,3 +65,7 @@ export class ChatbotLogRepository {
     }
   }
 }
+
+export const noOpChatbotLogRepository = Object.freeze({
+  logQuery: async () => undefined,
+});

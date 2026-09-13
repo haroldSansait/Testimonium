@@ -41,13 +41,30 @@ export class AiQuotaTracker {
   /**
    * Checks whether the user's limit is currently exceeded without consuming quota.
    */
-  isLimitExceeded(identifier, now = Date.now()) {
+  isLimitExceeded(identifier, limitsOrNow = null, explicitNow = null) {
+    let limits = {};
+    let now = Date.now();
+
+    if (typeof limitsOrNow === "number") {
+      now = limitsOrNow;
+    } else if (limitsOrNow && typeof limitsOrNow === "object") {
+      limits = limitsOrNow;
+      if (typeof explicitNow === "number") {
+        now = explicitNow;
+      }
+    } else if (typeof explicitNow === "number") {
+      now = explicitNow;
+    }
+
+    const effectiveTenMin = limits.tenMinuteMax ?? this.tenMinuteMax;
+    const effectiveDaily = limits.dailyMax ?? this.dailyMax;
+
     const key = String(identifier || "anonymous");
     const history = this.prune(key, now);
     const tenMinStart = now - this.tenMinuteWindowMs;
     const hits10m = history.filter((t) => t > tenMinStart);
-    if (hits10m.length >= this.tenMinuteMax) return true;
-    if (history.length >= this.dailyMax) return true;
+    if (hits10m.length >= effectiveTenMin) return true;
+    if (history.length >= effectiveDaily) return true;
     return false;
   }
 
@@ -55,10 +72,28 @@ export class AiQuotaTracker {
    * Checks whether the user can make an AI request and consumes 1 quota token if allowed.
    *
    * @param {string|number} identifier User ID or IP
-   * @param {number} [now] Optional timestamp for deterministic testing
+   * @param {object|number} [limitsOrNow] Limits object { tenMinuteMax, dailyMax } or test timestamp
+   * @param {number} [explicitNow] Optional timestamp if limits was passed as first arg
    * @returns {{ allowed: boolean, retryAfter?: number, code?: string, message?: string }}
    */
-  consume(identifier, now = Date.now()) {
+  consume(identifier, limitsOrNow = null, explicitNow = null) {
+    let limits = {};
+    let now = Date.now();
+
+    if (typeof limitsOrNow === "number") {
+      now = limitsOrNow;
+    } else if (limitsOrNow && typeof limitsOrNow === "object") {
+      limits = limitsOrNow;
+      if (typeof explicitNow === "number") {
+        now = explicitNow;
+      }
+    } else if (typeof explicitNow === "number") {
+      now = explicitNow;
+    }
+
+    const effectiveTenMin = limits.tenMinuteMax ?? this.tenMinuteMax;
+    const effectiveDaily = limits.dailyMax ?? this.dailyMax;
+
     const key = String(identifier || "anonymous");
     const history = this.prune(key, now);
 
@@ -66,7 +101,7 @@ export class AiQuotaTracker {
     const tenMinStart = now - this.tenMinuteWindowMs;
     const hits10m = history.filter((t) => t > tenMinStart);
 
-    if (hits10m.length >= this.tenMinuteMax) {
+    if (hits10m.length >= effectiveTenMin) {
       const oldest10m = hits10m[0];
       const resetTime = oldest10m + this.tenMinuteWindowMs;
       const retryAfter = Math.max(1, Math.ceil((resetTime - now) / 1000));
@@ -80,7 +115,7 @@ export class AiQuotaTracker {
     }
 
     // 2. Check 24-hour daily window
-    if (history.length >= this.dailyMax) {
+    if (history.length >= effectiveDaily) {
       const oldestDaily = history[0];
       const resetTime = oldestDaily + this.dailyWindowMs;
       const retryAfter = Math.max(1, Math.ceil((resetTime - now) / 1000));

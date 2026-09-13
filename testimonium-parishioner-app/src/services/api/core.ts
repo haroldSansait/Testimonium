@@ -12,6 +12,7 @@ export interface ApiRequestOptions {
   auth?: boolean;
   isMultipart?: boolean;
   timeout?: number;
+  timeoutMs?: number;
   headers?: HeadersInit;
 }
 
@@ -53,6 +54,43 @@ const combineSignals = (external: AbortSignal | undefined, timeout: number) => {
       external?.removeEventListener("abort", onAbort);
     },
   };
+};
+
+const monotonicNow = () => globalThis.performance?.now?.() ?? Date.now();
+
+const requestTimeoutError = () => new AppError({
+  kind: "TIMEOUT",
+  code: "API_REQUEST_TIMEOUT",
+  message: "The TESTIMONIUM backend did not respond in time. Please try again.",
+  retryable: true,
+});
+
+const awaitWithinDeadline = async <T>(
+  promise: Promise<T>,
+  deadlineAt: number,
+  externalSignal?: AbortSignal
+): Promise<T> => {
+  const remainingMs = deadlineAt - monotonicNow();
+  if (remainingMs <= 0) throw requestTimeoutError();
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new AppError({ kind: "CANCELLED", message: "Request cancelled." }));
+    const timer = setTimeout(() => reject(requestTimeoutError()), remainingMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener("abort", onAbort);
+    };
+    if (externalSignal?.aborted) {
+      cleanup();
+      onAbort();
+      return;
+    }
+    externalSignal?.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => { cleanup(); resolve(value); },
+      (error) => { cleanup(); reject(error); }
+    );
+  });
 };
 
 const responseData = async <T>(response: Response): Promise<T> => {
@@ -117,7 +155,8 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
   async request<T>(options: ApiRequestOptions): Promise<T> {
     const method = options.method ?? "GET";
     const needsAuth = options.auth ?? true;
-    const timeout = options.timeout ?? 30_000;
+    const timeout = options.timeoutMs ?? options.timeout ?? 15_000;
+    const deadlineAt = monotonicNow() + timeout;
     // Expo SDK 57 installs expo/fetch globally. expo/fetch cannot serialize React Native's
     // proprietary { uri, name, type } FormData file parts, while RN's fetch polyfill can.
     const fetchImpl =
@@ -138,8 +177,10 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
 
     const path = options.path.startsWith("/") ? options.path : `/${options.path}`;
 
-    const execute = async (forcedToken?: string) => {
-      const combined = combineSignals(options.signal, timeout);
+    const execute = async (forceRefresh = false) => {
+      const remainingAtAttemptStart = deadlineAt - monotonicNow();
+      if (remainingAtAttemptStart <= 0) throw requestTimeoutError();
+      const combined = combineSignals(options.signal, remainingAtAttemptStart);
       try {
         const requestBody = options.createBody ? options.createBody() : options.body;
         const requestHeaders: Record<string, string> = {};
@@ -166,12 +207,16 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
 
         if (needsAuth) {
           devDiagnostic("API", "Firebase ID token acquisition started", {
-            forceRefresh: Boolean(forcedToken),
+            forceRefresh,
           });
           try {
-            requestHeaders["Authorization"] = `Bearer ${forcedToken ?? (await user!.getIdToken(false))}`;
+            const tokenPromise = forceRefresh
+              ? refreshTokenSingleFlight(user!)
+              : user!.getIdToken(false);
+            const token = await awaitWithinDeadline(tokenPromise, deadlineAt, options.signal);
+            requestHeaders["Authorization"] = `Bearer ${token}`;
             devDiagnostic("API", "Firebase ID token acquisition succeeded", {
-              forceRefresh: Boolean(forcedToken),
+              forceRefresh,
             });
           } catch (error) {
             devDiagnostic("API", "Firebase ID token acquisition failed", safeErrorDetails(error));
@@ -232,13 +277,13 @@ export const createApiClient = (dependencies: ApiClientDependencies) => ({
       }
     };
 
-    let response = await execute();
+    let response = await execute(false);
     if (needsAuth && response.status === 401) {
       devDiagnostic("API", "HTTP 401 received; refreshing Firebase ID token once", {
         method,
         path,
       });
-      response = await execute(await refreshTokenSingleFlight(user!));
+      response = await execute(true);
       if (response.status === 401) dependencies.onSessionExpired?.();
     }
     if (!response.ok) {

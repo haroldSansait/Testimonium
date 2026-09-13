@@ -4,7 +4,11 @@ import { AppError } from "@/services/api/errors";
 
 const getIdToken = jest.fn(async (forceRefresh: boolean) => forceRefresh ? "fresh-token" : "cached-token");
 const user = { getIdToken } as unknown as User;
-beforeEach(() => { __resetTokenRefreshForTests(); jest.clearAllMocks(); });
+beforeEach(() => {
+  __resetTokenRefreshForTests();
+  jest.clearAllMocks();
+  getIdToken.mockImplementation(async (forceRefresh: boolean) => forceRefresh ? "fresh-token" : "cached-token");
+});
 
 describe("API 401 handling", () => {
   it("refreshes once and retries exactly once", async () => {
@@ -155,6 +159,7 @@ describe("API multipart handling", () => {
       jest.useRealTimers();
     }
   });
+
   it("cleans up its timeout after a completed request", async () => {
     jest.useFakeTimers();
     try {
@@ -166,6 +171,87 @@ describe("API multipart handling", () => {
       });
       await client.request({ path: "/requests/31", timeout: 45_000 });
       expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("uses 15000ms default timeout for generic requests and supports Caloy 32000ms override", async () => {
+    jest.useFakeTimers();
+    try {
+      const setTimeoutSpy = jest.spyOn(globalThis, "setTimeout");
+      const fetchImpl = jest.fn().mockReturnValue(new Promise(() => {}));
+      const client = createApiClient({
+        getCurrentUser: () => user,
+        getBaseUrl: () => "https://api.test/api/v1",
+        fetchImpl,
+      });
+
+      void client.request({ path: "/requests" });
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
+
+      void client.request({ path: "/chatbot/query", timeoutMs: 32_000 });
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 32_000);
+
+      void client.request({ path: "/chatbot/query", timeout: 32_000 });
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 32_000);
+
+      setTimeoutSpy.mockRestore();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not begin a second HTTP attempt when token refresh consumes the remaining total budget", async () => {
+    jest.useFakeTimers();
+    try {
+      getIdToken.mockImplementation((forceRefresh: boolean): Promise<"fresh-token" | "cached-token"> => forceRefresh
+        ? new Promise<"fresh-token">(() => {})
+        : Promise.resolve("cached-token"));
+      const fetchImpl = jest.fn().mockResolvedValueOnce(new Response("", { status: 401 }));
+      const client = createApiClient({ getCurrentUser: () => user, getBaseUrl: () => "https://api.test/api/v1", fetchImpl });
+      const request = client.request({ path: "/chatbot/query", timeoutMs: 32_000 });
+      const rejection = expect(request).rejects.toMatchObject({
+        kind: "TIMEOUT",
+        code: "API_REQUEST_TIMEOUT",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(32_000);
+      await rejection;
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("gives a 401 retry only the remaining portion of one 32000ms deadline", async () => {
+    jest.useFakeTimers();
+    try {
+      const observedSignals: AbortSignal[] = [];
+      const fetchImpl = jest.fn()
+        .mockImplementationOnce((_url: string, init: RequestInit) => new Promise<Response>((resolve) => {
+          observedSignals.push(init.signal as AbortSignal);
+          setTimeout(() => resolve(new Response("", { status: 401 })), 30_000);
+        }))
+        .mockImplementationOnce((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+          const signal = init.signal as AbortSignal;
+          observedSignals.push(signal);
+          signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }));
+      const client = createApiClient({ getCurrentUser: () => user, getBaseUrl: () => "https://api.test/api/v1", fetchImpl });
+      const request = client.request({ path: "/chatbot/query", timeoutMs: 32_000 });
+      const rejection = expect(request).rejects.toMatchObject({
+        kind: "TIMEOUT",
+        code: "API_REQUEST_TIMEOUT",
+      });
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(30_000);
+      await Promise.resolve();
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(2_000);
+      await rejection;
+      expect(observedSignals).toHaveLength(2);
     } finally {
       jest.useRealTimers();
     }

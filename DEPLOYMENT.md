@@ -59,10 +59,11 @@ Client variables are public configuration. Never put service-account keys, R2 se
    npm ci --prefix testimonium-parishioner-app
    ```
 
-2. Apply database migrations before starting code that depends on them:
+2. Apply database migrations before starting code that depends on them using the direct PostgreSQL migration connection (normally port 5432 via direct `DATABASE_URL`, not through transaction poolers on port 6543):
 
    ```bash
    cd testimonium-backend
+   npx prisma migrate status
    npx prisma migrate deploy
    npx prisma generate
    ```
@@ -101,24 +102,29 @@ Client variables are public configuration. Never put service-account keys, R2 se
 - Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads and council officer portrait uploads are limited to 2 MB.
 - Enable `TRUST_PROXY=1` only when the proxy correctly supplies forwarding headers.
 
-## Background workers (Email Outbox & Knowledge Embedding)
+## Background workers (Email Outbox, Knowledge Embedding & Caloy Telemetry Retention)
 
-The API process starts two dedicated background workers after initializing the HTTP listener, and stops both gracefully before disconnecting Prisma on server shutdown (`SIGINT`, `SIGTERM`):
+The API process starts three dedicated background workers after initializing the HTTP listener, and stops all gracefully before disconnecting Prisma on server shutdown (`SIGINT`, `SIGTERM`):
 1. **`EmailOutboxWorker`**: Processes the PostgreSQL transactional email outbox. Multiple API replicas are supported: workers claim due rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the active lease. The worker processes all seven `EmailType` notification triggers across document and scheduling workflows while honoring recipient user preferences (`email_notifications_enabled`). Configure bounded SMTP timeouts and credentials in the deployment secret manager.
 2. **`knowledgeEmbeddingWorker`**: Periodically polls for `CONFIRMED` knowledge sources with chunks in `PENDING` status (`CHATBOT_WORKER_POLL_MS`, default 10s). Uses `FOR UPDATE SKIP LOCKED` with unique processing tokens and expiring leases (`CHATBOT_WORKER_LEASE_SECONDS`) to safely calculate 768-dimensional embeddings via Gemini `gemini-embedding-2` without race conditions across clustered instances. Transitions chunks to `READY` or `FAILED` with retry backoff.
+3. **`CaloyTelemetryRetentionWorker`**: Startup starts a one-minute scheduler; it does not schedule an unconditional startup purge. Automatic deletion is eligible only during 03:00-03:59 Asia/Manila and at most once per Manila calendar day. Instances claim `CALOY_TELEMETRY_RETENTION:YYYY-MM-DD` for the daily decision, then both automatic and manual callers must claim and renew the global `CALOY_TELEMETRY_PURGE` lease while deleting in 5,000-row batches. Lease expiry uses the PostgreSQL clock, and loss of ownership stops future batches. Successful daily markers remain claimed; failed attempts release the marker for retry. Runtime-config database uncertainty always skips destructive retention. Retention is disabled by default (`automaticRetentionEnabled=false`) and accepts 14-365 days.
 
 ## AI / RAG Chatbot deployment and worker sequence
 
 The Caloy chatbot and Knowledge Base follow a strictly additive, phased rollout order:
 1. **Additive Migration**: Apply migration `20260910120000_add_rag_chatbot` to enable the `pgvector` extension, add `vector(768)` columns, knowledge tables, and enums.
-2. **Backend Deployment**: Deploy the API with `CHATBOT_ENABLED=false` (safe default). In this state, the server starts normally without requiring Gemini credentials, and public queries return safe unavailable responses.
-3. **Admin Portal Deployment**: Deploy the Admin Portal with the Knowledge Base governance interface (`MANAGE_KNOWLEDGE_BASE` permission for Diocese Coordinator).
-4. **Secret Configuration**: Configure `GEMINI_API_KEY` in the backend environment/secret manager for controlled development/staging.
-5. **Corpus Ingestion**: Ingest reviewed knowledge procedures via `node scripts/import_knowledge.js --file corpus/initial_corpus.json` (always imported as `DRAFT` + `PROVISIONAL`).
-6. **Governance Lifecycle**: In the Admin Portal, the Diocese Coordinator reviews and confirms sources (`CONFIRMED`). The background embedding worker embeds current-version chunks into `READY` status. Once all chunks are ready, the Coordinator publishes the source (`ACTIVE`).
-7. **Calibration and Evaluation**: Calibrate retrieval thresholds and run the Golden Question evaluation fixture (`tests/fixtures/chatbot_eval.json`).
-8. **Web Client Integration**: Deploy Parishioner Web with live API chat provider and parish context selector.
-9. **Public Enablement**: Switch `CHATBOT_ENABLED=true` in production only after owner sign-off.
+2. **Caloy Control Center Migration**: Apply migration `20260913150000_add_caloy_control_center` to create `caloy_runtime_config` (unseeded, empty table), `system_leases`, `ai_usage_events`, and add `response_type` and `trace_id` to `chatbot_logs`.
+3. **Backend Deployment**: Deploy the API with `CHATBOT_ENABLED=false` (safe default). In this state, the server starts normally without requiring Gemini credentials, and public queries return safe unavailable responses. Admin endpoints under `/api/v1/chatbot/admin/*` remain fully accessible to Diocese Coordinators.
+4. **Admin Portal Deployment**: Deploy the Admin Portal with the centralized Caloy Control Center (`/caloy`, Overview, Analytics, Knowledge Base, AI Settings, Logs). Legacy `/knowledge-base` and `/knowledge-base/:id` routes automatically redirect via client-side replace navigation to `/caloy/knowledge-base` and `/caloy/knowledge-base/:id`. Conversation Review is completely excluded.
+5. **Secret Configuration**: Configure `GEMINI_API_KEY` in the backend environment/secret manager for controlled development/staging.
+6. **Corpus Ingestion**: Ingest reviewed knowledge procedures via `node scripts/import_knowledge.js --file corpus/initial_corpus.json` (always imported as `DRAFT` + `PROVISIONAL`).
+7. **Governance Lifecycle**: In the Admin Portal, the Diocese Coordinator reviews and confirms sources (`CONFIRMED`). The background embedding worker embeds current-version chunks into `READY` status. Once all chunks are ready, the Coordinator publishes the source (`ACTIVE`).
+8. **Runtime Configuration Semantics**: A successful database read returning no row resolves settings from validated environment values (`runtimeOverridePresent: false`, `version: 0`). A later read failure uses the immutable last-known-good snapshot and exposes degraded status; a cold read failure disables Caloy and automatic retention. Environment values must not masquerade as a verified database fallback. The first coordinator save atomically creates singleton row `id=1` with `expectedVersion=0`; later saves use optimistic concurrency. Settings mutation and its required audit are one transaction.
+9. **Model Switching, Readiness & Concurrency**: The response generation model can be switched only within the deliberate known-compatible server catalog; neither `CHATBOT_GENERATION_MODEL` nor `CALOY_ALLOWED_GENERATION_MODELS` can introduce an unknown model. Runtime fallbacks are also catalog-validated, and missing Gemini credentials keep Caloy unavailable. Per-model immutable adapter/composer factories isolate concurrent requests. Semantic routing and embeddings remain fixed/read-only. The configured 5-28 second chatbot deadline is one monotonic budget shared by all AI work and retries.
+10. **Telemetry & Privacy**: All provider calls (including retry attempts) record privacy-safe telemetry in `ai_usage_events`. Admin logs API returns metadata only and never exposes raw questions, responses, user IDs, session IDs, or API secrets.
+11. **Public Enablement**: Switch `CHATBOT_ENABLED=true` in production only after owner sign-off.
+
+The additive migration `20260913150000_add_caloy_control_center` must be applied by the deployment owner before real Control Center QA. Source validation does not prove PostgreSQL lease concurrency, migration application, live HTTP behavior, real Gemini calls, or browser/device behavior.
 
 ## Operational checks and rollback
 

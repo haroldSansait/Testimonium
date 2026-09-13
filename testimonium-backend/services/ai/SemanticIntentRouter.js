@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
 import { TOOL_IDS } from "./liveTools/liveToolSchemas.js";
 import { getManilaDateString } from "../ConflictHelper.js";
+import { defaultAiUsageTelemetry, noOpAiUsageTelemetry, isAiUnitTestRuntime } from "../AiUsageTelemetryService.js";
 
 const ALLOWED_ROUTES = ["SOCIAL", "CAPABILITIES", "LIVE_TOOL", "RAG", "OUT_OF_SCOPE"];
 
@@ -163,12 +164,14 @@ export class SemanticIntentRouter {
     timeoutMs = null,
     maxRetries = null,
     client = null,
+    telemetryRecorder = null,
   } = {}) {
     this.modelName = model || env.chatbot?.semanticRouterModel || "gemini-3.5-flash-lite";
     this.apiKey = apiKey || env.chatbot?.geminiApiKey;
     this.timeoutMs = timeoutMs ?? (env.chatbot?.generationTimeoutMs || 30000);
     this.maxRetries = maxRetries ?? 2;
     this.client = client || (this.apiKey ? new GoogleGenAI({ apiKey: this.apiKey }) : null);
+    this.telemetryRecorder = telemetryRecorder || (isAiUnitTestRuntime() ? noOpAiUsageTelemetry : defaultAiUsageTelemetry);
   }
 
   /**
@@ -257,21 +260,29 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
       };
     }
 
-    const route = ALLOWED_ROUTES.includes(parsed.route) ? parsed.route : "RAG";
+    const rawRoute = String(parsed.route || "").trim().toUpperCase();
+    const route = ALLOWED_ROUTES.includes(rawRoute) ? rawRoute : "RAG";
+
     let intent = null;
-    if (route === "LIVE_TOOL" && ALLOWED_INTENTS.includes(parsed.intent)) {
-      intent = parsed.intent;
-    } else if (route === "SOCIAL" && ["WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", "DECLINE_OR_CLOSE"].includes(parsed.intent)) {
-      intent = parsed.intent;
+    if (route === "LIVE_TOOL") {
+      const rawIntent = String(parsed.intent || "").trim().toUpperCase();
+      intent = ALLOWED_INTENTS.includes(rawIntent) ? rawIntent : null;
+    } else if (route === "SOCIAL") {
+      const allowedSocialIntents = ["WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", "DECLINE_OR_CLOSE"];
+      const rawIntent = String(parsed.intent || "").trim().toUpperCase();
+      intent = allowedSocialIntents.includes(rawIntent) ? rawIntent : "GREETING";
     }
 
-    const pendingRelation = ["ANSWER_PENDING", "NEW_TOPIC"].includes(parsed.pendingRelation)
-      ? parsed.pendingRelation
-      : null;
+    const allowedPendingRelations = ["NEW_INQUIRY", "PROVIDING_CLARIFICATION", "FOLLOW_UP", "CLOSING_DECLINE", "NONE"];
+    const rawPendingRel = String(parsed.pendingRelation || "").trim().toUpperCase();
+    const pendingRelation = allowedPendingRelations.includes(rawPendingRel) ? rawPendingRel : null;
 
     const entities = {
       parishName: typeof parsed.entities?.parishName === "string" && parsed.entities.parishName.trim()
         ? parsed.entities.parishName.trim()
+        : null,
+      vicariateName: typeof parsed.entities?.vicariateName === "string" && parsed.entities.vicariateName.trim()
+        ? parsed.entities.vicariateName.trim()
         : null,
       documentType: typeof parsed.entities?.documentType === "string" && parsed.entities.documentType.trim()
         ? parsed.entities.documentType.trim()
@@ -308,6 +319,7 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
     conversationContext = null,
     selectedParishName = null,
     signal,
+    traceId = null,
   }) {
     if (!this.client) {
       // In test mode or when uninitialized, default to safe RAG fallback
@@ -338,6 +350,7 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
       throwIfCallerAborted(signal);
       let timerId = null;
       const timeoutController = new AbortController();
+      const attemptStartTime = Date.now();
 
       try {
         let combinedSignal;
@@ -377,11 +390,58 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
         });
 
         const response = await Promise.race([callPromise, timeoutPromise]);
+        const attemptLatencyMs = Date.now() - attemptStartTime;
+        const usage = response?.usageMetadata;
+
+        this.telemetryRecorder?.recordAttemptSafe({
+          traceId,
+          provider: "gemini",
+          model: this.modelName,
+          operation: "GENERATE_CONTENT",
+          purpose: "SEMANTIC_ROUTING",
+          attemptNumber: attempt + 1,
+          success: true,
+          statusCode: 200,
+          latencyMs: attemptLatencyMs,
+          inputTokens: usage?.promptTokenCount !== undefined && usage?.promptTokenCount !== null ? Number(usage.promptTokenCount) : null,
+          outputTokens: usage?.candidatesTokenCount !== undefined && usage?.candidatesTokenCount !== null ? Number(usage.candidatesTokenCount) : null,
+          totalTokens: usage?.totalTokenCount !== undefined && usage?.totalTokenCount !== null ? Number(usage.totalTokenCount) : null,
+        });
+
         const textContent = typeof response?.text === "function" ? response.text() : response?.text;
         const rawText = typeof textContent === "string" ? textContent.trim() : "";
 
         return this._parseAndValidate(rawText);
       } catch (err) {
+        const attemptLatencyMs = Date.now() - attemptStartTime;
+
+        let errCategory = "UNKNOWN_PROVIDER_ERROR";
+        const status = err.status || err.statusCode || err.response?.status;
+        if (Number(status) === 429 || String(err.message || "").toLowerCase().includes("rate limit") || String(err.message || "").toLowerCase().includes("resource exhausted")) {
+          errCategory = "AI_PROVIDER_RATE_LIMITED";
+        } else if (err.code === "CHATBOT_TIMEOUT" || String(err.message || "").toLowerCase().includes("timeout")) {
+          errCategory = "PROVIDER_TIMEOUT";
+        } else if (status && Number(status) >= 500) {
+          errCategory = "PROVIDER_5XX";
+        } else if (status && (Number(status) === 401 || Number(status) === 403)) {
+          errCategory = "PROVIDER_AUTH";
+        } else if (["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(String(err.code || "").toUpperCase())) {
+          errCategory = "NETWORK_ERROR";
+        }
+
+        this.telemetryRecorder?.recordAttemptSafe({
+          traceId,
+          provider: "gemini",
+          model: this.modelName,
+          operation: "GENERATE_CONTENT",
+          purpose: "SEMANTIC_ROUTING",
+          attemptNumber: attempt + 1,
+          success: false,
+          statusCode: status ? Number(status) : null,
+          errorCategory: errCategory,
+          latencyMs: attemptLatencyMs,
+        });
+
         if (signal?.aborted) throw createCallerAbortError();
         if (err.code === "CHATBOT_ABORTED") throw err;
 

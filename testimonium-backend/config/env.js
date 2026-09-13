@@ -166,6 +166,9 @@ export const env = {
     logRawText: parseBoolean(process.env.CHATBOT_LOG_RAW_TEXT, false, "CHATBOT_LOG_RAW_TEXT"),
     generationProvider: (process.env.AI_GENERATION_PROVIDER || "gemini").toLowerCase().trim(),
     generationModel: (process.env.AI_GENERATION_MODEL || "gemini-3.5-flash-lite").trim(),
+    allowedGenerationModels: process.env.CALOY_ALLOWED_GENERATION_MODELS
+      ? process.env.CALOY_ALLOWED_GENERATION_MODELS.split(",").map((s) => s.trim()).filter(Boolean)
+      : [],
     semanticRouterModel: (process.env.AI_SEMANTIC_ROUTER_MODEL || "gemini-3.5-flash-lite").trim(),
     embeddingProvider: (process.env.AI_EMBEDDING_PROVIDER || "gemini").toLowerCase().trim(),
     embeddingModel: (process.env.AI_EMBEDDING_MODEL || "gemini-embedding-2").trim(),

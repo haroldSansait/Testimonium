@@ -2,6 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { buildComposerSystemInstruction } from "./CaloyPolicy.js";
 import { TOOL_IDS } from "./liveTools/liveToolSchemas.js";
 import { validateFactPreservation } from "./canonicalFactValidator.js";
+import { defaultAiUsageTelemetry, noOpAiUsageTelemetry, isAiUnitTestRuntime } from "../AiUsageTelemetryService.js";
+import { buildGeminiGenerationConfig } from "./geminiConfigHelper.js";
 
 export { validateFactPreservation };
 
@@ -107,6 +109,7 @@ export class CaloyResponseComposer {
    * @param {string} [config.model]
    * @param {number} [config.timeoutMs]
    * @param {object} [config.client]
+   * @param {object} [config.telemetryRecorder]
    */
   constructor(config = {}) {
     this.apiKey = config.apiKey || null;
@@ -114,6 +117,7 @@ export class CaloyResponseComposer {
     this.timeoutMs = config.timeoutMs ?? 12000; // 12-second maximum composer timeout
     this.maxRetries = 0; // Prefer 0 retries
     this.client = config.client || config.geminiClient || (this.apiKey ? new GoogleGenAI({ apiKey: this.apiKey }) : null);
+    this.telemetryRecorder = config.telemetryRecorder || (isAiUnitTestRuntime() ? noOpAiUsageTelemetry : defaultAiUsageTelemetry);
     this.allowedCapabilities = new Set(Object.values(TOOL_IDS));
   }
 
@@ -138,7 +142,14 @@ export class CaloyResponseComposer {
     userMessage = "",
     fallbackAnswer = "",
     signal = null,
+    traceId = null,
   }) {
+    if (signal?.aborted) {
+      const err = new Error("Caloy response composition was aborted before provider execution");
+      err.name = "AbortError";
+      err.code = "CHATBOT_ABORTED";
+      throw err;
+    }
     if (!fallbackAnswer) {
       fallbackAnswer = "I can help you with parish document requests, scheduling, and office information.";
     }
@@ -193,6 +204,7 @@ ${JSON.stringify(promptPayload, null, 2)}
 
     let timerId = null;
     const timeoutController = new AbortController();
+    const attemptStartTime = Date.now();
 
     try {
       let combinedSignal;
@@ -219,19 +231,45 @@ ${JSON.stringify(promptPayload, null, 2)}
         }, this.timeoutMs);
       });
 
+      const baseConfig = {
+        systemInstruction,
+        responseMimeType: "application/json",
+        temperature: 0.2,
+        maxOutputTokens: 600,
+        abortSignal: combinedSignal,
+      };
+
+      const generationConfig = buildGeminiGenerationConfig({
+        model: this.modelName,
+        baseConfig,
+        purpose: "RESPONSE_COMPOSER",
+      });
+
       const callPromise = this.client.models.generateContent({
         model: this.modelName,
         contents: promptText,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          temperature: 0.2,
-          maxOutputTokens: 600,
-          abortSignal: combinedSignal,
-        },
+        config: generationConfig,
       });
 
       const response = await Promise.race([callPromise, timeoutPromise]);
+      const attemptLatencyMs = Date.now() - attemptStartTime;
+      const usage = response?.usageMetadata;
+
+      this.telemetryRecorder?.recordAttemptSafe({
+        traceId,
+        provider: "gemini",
+        model: this.modelName,
+        operation: "GENERATE_CONTENT",
+        purpose: "RESPONSE_COMPOSER",
+        attemptNumber: 1,
+        success: true,
+        statusCode: 200,
+        latencyMs: attemptLatencyMs,
+        inputTokens: usage?.promptTokenCount !== undefined && usage?.promptTokenCount !== null ? Number(usage.promptTokenCount) : null,
+        outputTokens: usage?.candidatesTokenCount !== undefined && usage?.candidatesTokenCount !== null ? Number(usage.candidatesTokenCount) : null,
+        totalTokens: usage?.totalTokenCount !== undefined && usage?.totalTokenCount !== null ? Number(usage.totalTokenCount) : null,
+      });
+
       const textContent = typeof response?.text === "function" ? response.text() : response?.text;
       const rawText = typeof textContent === "string" ? textContent.trim() : "";
 
@@ -352,6 +390,7 @@ ${JSON.stringify(promptPayload, null, 2)}
         followUpCapability: approvedFollowUpCapability,
       };
     } catch (err) {
+      const attemptLatencyMs = Date.now() - attemptStartTime;
       const is429 =
         err.status === 429 ||
         err.statusCode === 429 ||
@@ -361,6 +400,33 @@ ${JSON.stringify(promptPayload, null, 2)}
         String(err.message || "").toLowerCase().includes("rate limit");
 
       const isTimeout = err.code === "COMPOSER_TIMEOUT" || err.message?.includes("TIMEOUT");
+
+      let errCategory = "UNKNOWN_PROVIDER_ERROR";
+      const status = err.status || err.statusCode || err.response?.status;
+      if (Number(status) === 429 || is429) {
+        errCategory = "AI_PROVIDER_RATE_LIMITED";
+      } else if (isTimeout) {
+        errCategory = "PROVIDER_TIMEOUT";
+      } else if (status && Number(status) >= 500) {
+        errCategory = "PROVIDER_5XX";
+      } else if (status && (Number(status) === 401 || Number(status) === 403)) {
+        errCategory = "PROVIDER_AUTH";
+      } else if (["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(String(err.code || "").toUpperCase())) {
+        errCategory = "NETWORK_ERROR";
+      }
+
+      this.telemetryRecorder?.recordAttemptSafe({
+        traceId,
+        provider: "gemini",
+        model: this.modelName,
+        operation: "GENERATE_CONTENT",
+        purpose: "RESPONSE_COMPOSER",
+        attemptNumber: 1,
+        success: false,
+        statusCode: status ? Number(status) : null,
+        errorCategory: errCategory,
+        latencyMs: attemptLatencyMs,
+      });
 
       console.warn(`[CaloyResponseComposer] Composer error (${err.code || "COMPOSER_ERROR"}), safely falling back to deterministic answer.`);
 

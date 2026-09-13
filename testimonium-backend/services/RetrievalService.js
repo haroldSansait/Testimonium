@@ -159,7 +159,7 @@ export class RetrievalService {
    *   embeddingModel: string
    * }>}
    */
-  async retrieveKnowledge({ normalizedQuestion, selectedParishId = null }) {
+  async retrieveKnowledge({ normalizedQuestion, selectedParishId = null, traceId = null, signal = null }) {
     const provider = this.getEmbeddingProvider();
     const minSimilarity = env.chatbot?.minSimilarity ?? 0.65;
     const topK = env.chatbot?.topK ?? 8;
@@ -167,7 +167,7 @@ export class RetrievalService {
     const maxContextTokens = env.chatbot?.maxContextTokens ?? 3500;
 
     // 1. Embed query
-    const { vector, provider: pName, model: mName } = await provider.embedQuery(normalizedQuestion);
+    const { vector, provider: pName, model: mName } = await provider.embedQuery(normalizedQuestion, { traceId, signal });
 
     // 2. Vector retrieval from PostgreSQL with strict SQL-level tenancy
     const rawCandidates = await this.knowledgeRepository.findSimilarChunks({

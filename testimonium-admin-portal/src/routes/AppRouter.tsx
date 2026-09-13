@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
+import { CaloyLayout } from '@/layouts/CaloyLayout';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -22,6 +23,15 @@ import { MapConfigurationPage } from '@/pages/MapConfigurationPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
 import { KnowledgeSourceDetailPage } from '@/pages/KnowledgeSourceDetailPage';
+import { CaloyOverviewPage } from '@/pages/caloy/CaloyOverviewPage';
+import { CaloyAnalyticsPage } from '@/pages/caloy/CaloyAnalyticsPage';
+import { CaloySettingsPage } from '@/pages/caloy/CaloySettingsPage';
+import { CaloyLogsPage } from '@/pages/caloy/CaloyLogsPage';
+
+function LegacyKnowledgeDetailRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/caloy/knowledge-base/${id}`} replace />;
+}
 
 
 export function AppRouter() {
@@ -108,10 +118,31 @@ export function AppRouter() {
         </Route>
       </Route>
 
+      {/* ── Caloy Control Center ── */}
+      <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.VIEW_CALOY} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/caloy" element={<CaloyLayout />}>
+            <Route index element={<CaloyOverviewPage />} />
+            <Route path="analytics" element={<CaloyAnalyticsPage />} />
+            <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_KNOWLEDGE_BASE} />}>
+              <Route path="knowledge-base" element={<KnowledgeBasePage />} />
+              <Route path="knowledge-base/:id" element={<KnowledgeSourceDetailPage />} />
+            </Route>
+            <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_CALOY_SETTINGS} />}>
+              <Route path="settings" element={<CaloySettingsPage />} />
+            </Route>
+            <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.VIEW_CALOY_LOGS} />}>
+              <Route path="logs" element={<CaloyLogsPage />} />
+            </Route>
+          </Route>
+        </Route>
+      </Route>
+
+      {/* ── Legacy Knowledge Base Redirects ── */}
       <Route element={<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_KNOWLEDGE_BASE} />}>
         <Route element={<AdminLayout />}>
-          <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
-          <Route path="/knowledge-base/:id" element={<KnowledgeSourceDetailPage />} />
+          <Route path="/knowledge-base" element={<Navigate to="/caloy/knowledge-base" replace />} />
+          <Route path="/knowledge-base/:id" element={<LegacyKnowledgeDetailRedirect />} />
         </Route>
       </Route>
 
