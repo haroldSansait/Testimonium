@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Search,
@@ -28,6 +29,7 @@ import {
 import { caloyAdminApi, type CaloyKnowledgeStatsResponse } from '@/api/caloyAdminApi';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import type { Parish } from '@/types';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 
 export function KnowledgeBasePage({
   initialKnowledgeStats = null,
@@ -71,6 +73,52 @@ export function KnowledgeBasePage({
   const [formChunks, setFormChunks] = useState<Array<{ content: string }>>([
     { content: '' },
   ]);
+
+  const isFormDirty = Boolean(
+    formTitle.trim() ||
+    formSourceText.trim() ||
+    formCategory.trim() ||
+    formSourceReference.trim() ||
+    formChunks.some((c) => c.content.trim().length > 0)
+  );
+
+  const resetForm = useCallback(() => {
+    setFormTitle('');
+    setFormSourceText('');
+    setFormCategory('');
+    setFormSourceType('SYSTEM_GUIDE');
+    setFormScope('DIOCESE');
+    setFormParishId(null);
+    setFormSourceReference('');
+    setFormChunks([{ content: '' }]);
+    setCreateError(null);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setIsCreateOpen(false);
+    resetForm();
+  }, [resetForm]);
+
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!isFormDirty) {
+          handleCloseModal();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCreateOpen, isFormDirty, handleCloseModal]);
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      if (!isFormDirty) {
+        handleCloseModal();
+      }
+    }
+  };
 
   const loadSources = useCallback(async () => {
     try {
@@ -169,18 +217,6 @@ export function KnowledgeBasePage({
     }
   };
 
-  const resetForm = () => {
-    setFormTitle('');
-    setFormSourceText('');
-    setFormCategory('');
-    setFormSourceType('SYSTEM_GUIDE');
-    setFormScope('DIOCESE');
-    setFormParishId(null);
-    setFormSourceReference('');
-    setFormChunks([{ content: '' }]);
-    setCreateError(null);
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -191,7 +227,7 @@ export function KnowledgeBasePage({
             <button
               onClick={() => loadSources()}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson-700/30 shadow-sm transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -201,7 +237,7 @@ export function KnowledgeBasePage({
                 resetForm();
                 setIsCreateOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-crimson-700 rounded-lg hover:bg-crimson-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson-700/30 shadow-sm transition-colors"
             >
               <Plus className="w-4 h-4" />
               New Source
@@ -210,64 +246,70 @@ export function KnowledgeBasePage({
         }
       />
 
-      {/* Embedding Engine Read-Only Banner */}
+      {/* Unified Panel: Vector Engine & Knowledge Base Telemetry */}
       {knowledgeStats && (
-        <div className="p-3.5 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2">
-            <Database className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span className="font-bold text-gray-800">Embedding Engine:</span>
-            <span className="font-mono text-gray-900 font-semibold">{knowledgeStats.embeddingConfig.model}</span>
-            <span className="text-gray-500">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Panel Header */}
+          <div className="px-5 py-3.5 border-b border-gray-200 bg-gray-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
+              <Database className="w-4 h-4 text-crimson-700" />
+              Vector Engine &amp; Knowledge Base Telemetry
+            </h3>
+            <span className="text-xs text-gray-500 font-medium">Fixed vector architecture [read only]</span>
+          </div>
+
+          {/* Engine Spec Sub-bar */}
+          <div className="px-5 py-2.5 bg-gray-50/40 border-b border-gray-200 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-bold text-gray-800 uppercase tracking-wider">Embedding Engine:</span>
+            <span className="font-mono text-gray-900 font-bold text-sm">{knowledgeStats.embeddingConfig.model}</span>
+            <span className="text-gray-600 font-medium">
               ({knowledgeStats.embeddingConfig.dimensions} dimensions · {knowledgeStats.embeddingConfig.provider})
             </span>
           </div>
-          <span className="text-gray-400 text-[11px]">Fixed vector architecture [read only]</span>
-        </div>
-      )}
 
-      {/* Diagnostic Summary Cards */}
-      {knowledgeStats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase">Knowledge Sources</span>
-            <div className="text-xl font-bold text-gray-900 mt-1">
-              {knowledgeStats.sourceCounts.active} <span className="text-xs font-normal text-gray-400">/ {knowledgeStats.sourceCounts.total} Active</span>
+          {/* 4 Core Telemetry Metrics in Responsive Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-200">
+            <div className="bg-white p-4 flex flex-col justify-between">
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Knowledge Sources</span>
+              <div className="text-2xl font-bold text-gray-900 mt-1">
+                {knowledgeStats.sourceCounts.active} <span className="text-xs font-normal text-gray-500">/ {knowledgeStats.sourceCounts.total} Active</span>
+              </div>
+              <span className="text-xs text-gray-600 mt-1 font-medium">
+                {knowledgeStats.sourceCounts.draft} Drafts · {knowledgeStats.sourceCounts.retired} Retired
+              </span>
             </div>
-            <span className="text-[10px] text-gray-400">
-              {knowledgeStats.sourceCounts.draft} Drafts · {knowledgeStats.sourceCounts.retired} Retired
-            </span>
-          </div>
 
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase">Chunk Status</span>
-            <div className="text-xl font-bold text-emerald-700 mt-1">
-              {knowledgeStats.chunkCounts.ready} <span className="text-xs font-normal text-gray-400">Ready</span>
+            <div className="bg-white p-4 flex flex-col justify-between">
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Chunk Status</span>
+              <div className="text-2xl font-bold text-emerald-700 mt-1">
+                {knowledgeStats.chunkCounts.ready} <span className="text-xs font-normal text-gray-500">Ready</span>
+              </div>
+              <span className="text-xs text-gray-600 mt-1 font-medium">
+                {knowledgeStats.chunkCounts.pending} Pending · {knowledgeStats.chunkCounts.failed} Failed
+              </span>
             </div>
-            <span className="text-[10px] text-gray-400">
-              {knowledgeStats.chunkCounts.pending} Pending · {knowledgeStats.chunkCounts.failed} Failed
-            </span>
-          </div>
 
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase">RAG Queries</span>
-            <div className="text-xl font-bold text-purple-700 mt-1">{knowledgeStats.ragQueryCount}</div>
-            <span className="text-[10px] text-gray-400">
-              {knowledgeStats.insufficientEvidenceCount} Insufficient Evidence
-            </span>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase">Avg Top Retrieval Score</span>
-            <div className="text-xl font-bold text-indigo-700 mt-1">
-              {knowledgeStats.averageRetrievalScore !== null
-                ? `${(knowledgeStats.averageRetrievalScore * 100).toFixed(1)}%`
-                : 'No activity'}
+            <div className="bg-white p-4 flex flex-col justify-between">
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">RAG Queries</span>
+              <div className="text-2xl font-bold text-purple-700 mt-1">{knowledgeStats.ragQueryCount}</div>
+              <span className="text-xs text-gray-600 mt-1 font-medium">
+                {knowledgeStats.insufficientEvidenceCount} Insufficient Evidence
+              </span>
             </div>
-            <span className="text-[10px] text-gray-400">
-              {knowledgeStats.averageRetrievalScore !== null
-                ? 'Cosine similarity score'
-                : 'No retrieval activity for this period.'}
-            </span>
+
+            <div className="bg-white p-4 flex flex-col justify-between">
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Avg Top Retrieval Score</span>
+              <div className="text-2xl font-bold text-indigo-700 mt-1">
+                {knowledgeStats.averageRetrievalScore !== null
+                  ? `${(knowledgeStats.averageRetrievalScore * 100).toFixed(1)}%`
+                  : 'No activity'}
+              </div>
+              <span className="text-xs text-gray-600 mt-1 font-medium">
+                {knowledgeStats.averageRetrievalScore !== null
+                  ? 'Cosine similarity score'
+                  : 'No retrieval activity for this period.'}
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -284,66 +326,75 @@ export function KnowledgeBasePage({
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+          <div className="flex items-center gap-1.5 text-xs text-gray-700 font-semibold whitespace-nowrap">
             <Filter className="w-3.5 h-3.5" />
             Filters:
           </div>
 
-          <select
-            value={scopeFilter}
-            onChange={(e) => {
-              setScopeFilter(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Filter by Scope"
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="ALL">All Scopes</option>
-            <option value="DIOCESE">Diocese</option>
-            <option value="PARISH">Parish</option>
-          </select>
+          <div className="w-36">
+            <CustomSelect
+              value={scopeFilter}
+              onChange={(val) => {
+                setScopeFilter(String(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 'ALL', label: 'All Scopes' },
+                { value: 'DIOCESE', label: 'Diocese' },
+                { value: 'PARISH', label: 'Parish' },
+              ]}
+              size="sm"
+              aria-label="Filter by Scope"
+            />
+          </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Filter by Status"
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="ACTIVE">Active</option>
-            <option value="RETIRED">Retired</option>
-          </select>
+          <div className="w-36">
+            <CustomSelect
+              value={statusFilter}
+              onChange={(val) => {
+                setStatusFilter(String(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 'ALL', label: 'All Statuses' },
+                { value: 'DRAFT', label: 'Draft' },
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'RETIRED', label: 'Retired' },
+              ]}
+              size="sm"
+              aria-label="Filter by Status"
+            />
+          </div>
 
-          <select
-            value={authorityFilter}
-            onChange={(e) => {
-              setAuthorityFilter(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Filter by Authority"
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="ALL">All Authorities</option>
-            <option value="PROVISIONAL">Provisional</option>
-            <option value="CONFIRMED">Confirmed</option>
-          </select>
+          <div className="w-40">
+            <CustomSelect
+              value={authorityFilter}
+              onChange={(val) => {
+                setAuthorityFilter(String(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 'ALL', label: 'All Authorities' },
+                { value: 'PROVISIONAL', label: 'Provisional' },
+                { value: 'CONFIRMED', label: 'Confirmed' },
+              ]}
+              size="sm"
+              aria-label="Filter by Authority"
+            />
+          </div>
         </div>
       </div>
 
       {/* Content Table / Cards */}
       {loading ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center shadow-sm">
-          <Loader2 className="w-8 h-8 text-brand-600 animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Loading knowledge base records...</p>
+          <Loader2 className="w-8 h-8 text-crimson-700 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-600 font-medium">Loading knowledge base records...</p>
         </div>
       ) : error ? (
         <ErrorState message={error} onRetry={() => loadSources()} />
@@ -360,9 +411,9 @@ export function KnowledgeBasePage({
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50/80 text-gray-600 text-xs font-semibold uppercase tracking-wider border-b border-gray-200">
+              <thead className="bg-gray-50/90 text-gray-700 text-xs font-bold uppercase tracking-wider border-b border-gray-200">
                 <tr>
-                  <th className="px-5 py-3.5">Title & Category</th>
+                  <th className="px-5 py-3.5">Title &amp; Category</th>
                   <th className="px-5 py-3.5">Scope</th>
                   <th className="px-5 py-3.5">Type</th>
                   <th className="px-5 py-3.5">Authority</th>
@@ -384,9 +435,9 @@ export function KnowledgeBasePage({
                       onClick={() => navigate(`/caloy/knowledge-base/${source.id}`)}
                     >
                       <td className="px-5 py-4">
-                        <div className="font-medium text-gray-900 line-clamp-1">{source.title}</div>
+                        <div className="font-semibold text-gray-900 line-clamp-1">{source.title}</div>
                         {source.category && (
-                          <div className="text-xs text-gray-500 mt-0.5">{source.category}</div>
+                          <div className="text-xs text-gray-600 font-medium mt-0.5">{source.category}</div>
                         )}
                       </td>
 
@@ -402,7 +453,7 @@ export function KnowledgeBasePage({
                         )}
                       </td>
 
-                      <td className="px-5 py-4 text-xs text-gray-600">
+                      <td className="px-5 py-4 text-xs text-gray-700 font-medium">
                         {source.sourceType.replaceAll('_', ' ')}
                       </td>
 
@@ -436,7 +487,7 @@ export function KnowledgeBasePage({
                         )}
                       </td>
 
-                      <td className="px-5 py-4 text-xs text-gray-500 font-mono">
+                      <td className="px-5 py-4 text-xs text-gray-600 font-mono font-medium">
                         v{source.version}
                       </td>
 
@@ -446,9 +497,9 @@ export function KnowledgeBasePage({
                             e.stopPropagation();
                             navigate(`/caloy/knowledge-base/${source.id}`);
                           }}
-                          className="text-xs font-medium text-brand-600 hover:text-brand-800 hover:underline"
+                          className="text-xs font-semibold text-crimson-700 hover:text-crimson-900 hover:underline"
                         >
-                          View & Govern &rarr;
+                          View &amp; Govern &rarr;
                         </button>
                       </td>
                     </tr>
@@ -457,7 +508,7 @@ export function KnowledgeBasePage({
               </tbody>
             </table>
           </div>
-          <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50/60 px-5 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50/60 px-5 py-3 text-sm text-gray-700 font-medium sm:flex-row sm:items-center sm:justify-between">
             <span>
               {total === 0
                 ? '0 sources'
@@ -468,18 +519,18 @@ export function KnowledgeBasePage({
                 type="button"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={page <= 1 || loading}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Previous
               </button>
-              <span className="text-xs font-medium">
+              <span className="text-xs font-semibold text-gray-700">
                 Page {page} of {Math.max(totalPages, 1)}
               </span>
               <button
                 type="button"
                 onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                 disabled={page >= totalPages || loading}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
               </button>
@@ -488,20 +539,31 @@ export function KnowledgeBasePage({
         </div>
       )}
 
-      {/* Create Modal */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      {/* Create Modal - Portal to document.body */}
+      {isCreateOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={handleBackdropClick}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-knowledge-source-title"
+        >
+          <div
+            className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">New Knowledge Source</h3>
-                <p className="text-xs text-gray-500">
+                <h3 id="new-knowledge-source-title" className="text-lg font-bold text-gray-900">New Knowledge Source</h3>
+                <p className="text-xs text-gray-600 font-medium mt-0.5">
                   Creates a new entry in DRAFT and PROVISIONAL status.
                 </p>
               </div>
               <button
-                onClick={() => setIsCreateOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+                type="button"
+                onClick={handleCloseModal}
+                aria-label="Close dialog"
+                className="text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -511,13 +573,13 @@ export function KnowledgeBasePage({
               {createError && (
                 <div className="p-3 text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-lg flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{createError}</span>
+                  <span className="font-medium">{createError}</span>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Title <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-gray-800 mb-1">
+                  Title <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="text"
@@ -525,88 +587,88 @@ export function KnowledgeBasePage({
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="e.g. Baptismal Certificate Guidelines"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Scope</label>
-                  <select
+                  <label className="block text-xs font-semibold text-gray-800 mb-1">Scope</label>
+                  <CustomSelect
                     value={formScope}
-                    onChange={(e) => {
-                      const newScope = e.target.value as KnowledgeScope;
+                    onChange={(val) => {
+                      const newScope = String(val) as KnowledgeScope;
                       setFormScope(newScope);
                       if (newScope === 'DIOCESE') setFormParishId(null);
                     }}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500 bg-white"
-                  >
-                    <option value="DIOCESE">Diocese (All Parishes)</option>
-                    <option value="PARISH">Specific Parish</option>
-                  </select>
+                    options={[
+                      { value: 'DIOCESE', label: 'Diocese (All Parishes)' },
+                      { value: 'PARISH', label: 'Specific Parish' },
+                    ]}
+                    aria-label="Scope"
+                  />
                 </div>
 
                 {formScope === 'PARISH' && (
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Parish</label>
-                    <select
+                    <label className="block text-xs font-semibold text-gray-800 mb-1">Parish</label>
+                    <CustomSelect
                       value={formParishId || ''}
-                      onChange={(e) => setFormParishId(Number(e.target.value) || null)}
+                      onChange={(val) => setFormParishId(Number(val) || null)}
+                      options={[
+                        { value: '', label: 'Select parish...' },
+                        ...parishes.map((p) => ({ value: p.id, label: p.name })),
+                      ]}
+                      placeholder="Select parish..."
                       required
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500 bg-white"
-                    >
-                      <option value="">Select parish...</option>
-                      {parishes.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                      aria-label="Parish"
+                    />
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Source Type</label>
-                  <select
+                  <label className="block text-xs font-semibold text-gray-800 mb-1">Source Type</label>
+                  <CustomSelect
                     value={formSourceType}
-                    onChange={(e) => setFormSourceType(e.target.value as KnowledgeSourceType)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500 bg-white"
-                  >
-                    <option value="SYSTEM_GUIDE">System Guide</option>
-                    <option value="PARISH_PROCEDURE">Parish Procedure</option>
-                    <option value="DIOCESE_PROCEDURE">Diocese Procedure</option>
-                    <option value="CLERGY_INTERVIEW">Clergy Interview</option>
-                    <option value="OFFICIAL_SOURCE">Official Source</option>
-                    <option value="ADMIN_ENTRY">Admin Entry</option>
-                  </select>
+                    onChange={(val) => setFormSourceType(String(val) as KnowledgeSourceType)}
+                    options={[
+                      { value: 'SYSTEM_GUIDE', label: 'System Guide' },
+                      { value: 'PARISH_PROCEDURE', label: 'Parish Procedure' },
+                      { value: 'DIOCESE_PROCEDURE', label: 'Diocese Procedure' },
+                      { value: 'CLERGY_INTERVIEW', label: 'Clergy Interview' },
+                      { value: 'OFFICIAL_SOURCE', label: 'Official Source' },
+                      { value: 'ADMIN_ENTRY', label: 'Admin Entry' },
+                    ]}
+                    aria-label="Source Type"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Category</label>
+                  <label className="block text-xs font-semibold text-gray-800 mb-1">Category</label>
                   <input
                     type="text"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
                     placeholder="e.g. SACRAMENT, GUIDELINES"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Source Reference (HTTPS URL or note)</label>
+                <label className="block text-xs font-semibold text-gray-800 mb-1">Source Reference (HTTPS URL or note)</label>
                 <input
                   type="text"
                   value={formSourceReference}
                   onChange={(e) => setFormSourceReference(e.target.value)}
                   placeholder="https://testimonium.sanctuary/guides/..."
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Full Source Text <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-gray-800 mb-1">
+                  Full Source Text <span className="text-rose-600">*</span>
                 </label>
                 <textarea
                   rows={4}
@@ -614,25 +676,25 @@ export function KnowledgeBasePage({
                   value={formSourceText}
                   onChange={(e) => setFormSourceText(e.target.value)}
                   placeholder="Paste the full authoritative text here..."
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
                 />
               </div>
 
               {/* Chunks Section */}
-              <div className="border-t border-gray-100 pt-4 space-y-3">
+              <div className="border-t border-gray-200 pt-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
                       Knowledge Chunks (Retrieval Passages)
                     </h4>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-xs text-gray-600 mt-0.5">
                       Break the text into focused passages (typically 1-3 paragraphs each).
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleAddChunk}
-                    className="text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                    className="text-xs font-semibold text-crimson-700 hover:text-crimson-800 flex items-center gap-1 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add Chunk
@@ -640,14 +702,15 @@ export function KnowledgeBasePage({
                 </div>
 
                 {formChunks.map((chunk, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                  <div key={idx} className="p-3 bg-gray-50/80 rounded-xl border border-gray-200 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-semibold text-gray-700">
                       <span>Chunk #{idx + 1}</span>
                       {formChunks.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveChunk(idx)}
-                          className="text-rose-500 hover:text-rose-700"
+                          className="text-rose-600 hover:text-rose-800 p-0.5 rounded transition-colors"
+                          aria-label={`Remove chunk ${idx + 1}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -659,32 +722,34 @@ export function KnowledgeBasePage({
                       value={chunk.content}
                       onChange={(e) => handleChunkChange(idx, e.target.value)}
                       placeholder="Chunk passage text..."
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-brand-500"
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
                     />
                   </div>
                 ))}
               </div>
 
-              <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
+              {/* Modal Footer: Cancel (secondary ghost) + Create Knowledge Source (dominant primary) */}
+              <div className="pt-4 border-t border-gray-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+                  onClick={handleCloseModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50 shadow-sm"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-crimson-700 rounded-xl hover:bg-crimson-800 disabled:opacity-50 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson-700/30 transition-colors"
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Create Source
+                  Create Knowledge Source
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

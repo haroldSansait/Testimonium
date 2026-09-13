@@ -19,6 +19,7 @@ import type { Parish } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { hasPermission } from '@/permissions/rolePermissions';
 import { PERMISSIONS } from '@/permissions/permissions';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 
 export function shouldAcceptPurgePreview(
   preview: PurgePreviewResponse,
@@ -207,109 +208,125 @@ export function CaloyLogsPage({ initialData = null }: { initialData?: CaloyLogsR
       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-wrap items-center gap-3">
         {/* Response Type Filter */}
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-gray-500 font-medium">Type:</span>
-          <select
-            value={responseTypeFilter}
-            onChange={(e) => {
-              setResponseTypeFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-crimson-700"
-          >
-            <option value="all">All Types</option>
-            <option value="SOCIAL">SOCIAL</option>
-            <option value="CLARIFICATION">CLARIFICATION</option>
-            <option value="LIVE_DATA">LIVE_DATA</option>
-            <option value="RAG">RAG</option>
-            <option value="FALLBACK">FALLBACK</option>
-          </select>
+          <span className="text-gray-500 font-medium whitespace-nowrap">Type:</span>
+          <div className="w-36">
+            <CustomSelect
+              value={responseTypeFilter}
+              onChange={(val) => {
+                setResponseTypeFilter(String(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 'all', label: 'All Types' },
+                { value: 'SOCIAL', label: 'SOCIAL' },
+                { value: 'CLARIFICATION', label: 'CLARIFICATION' },
+                { value: 'LIVE_DATA', label: 'LIVE_DATA' },
+                { value: 'RAG', label: 'RAG' },
+                { value: 'FALLBACK', label: 'FALLBACK' },
+              ]}
+              size="sm"
+              aria-label="Filter by response type"
+            />
+          </div>
         </div>
 
         {/* Outcome Filter */}
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-gray-500 font-medium">Outcome:</span>
-          <select
-            value={outcomeFilter}
-            onChange={(e) => {
-              setOutcomeFilter(e.target.value as any);
-              setPage(1);
-            }}
-            className="px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-crimson-700"
-          >
-            <option value="all">All Outcomes</option>
-            <option value="success">Success Only</option>
-            <option value="fallback">Fallback / Error Only</option>
-          </select>
+          <span className="text-gray-500 font-medium whitespace-nowrap">Outcome:</span>
+          <div className="w-40">
+            <CustomSelect
+              value={outcomeFilter}
+              onChange={(val) => {
+                setOutcomeFilter(String(val) as any);
+                setPage(1);
+              }}
+              options={[
+                { value: 'all', label: 'All Outcomes' },
+                { value: 'success', label: 'Success Only' },
+                { value: 'fallback', label: 'Fallback / Error Only' },
+              ]}
+              size="sm"
+              aria-label="Filter by outcome"
+            />
+          </div>
         </div>
 
         {/* Category Filter */}
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-gray-500 font-medium">Category:</span>
-          <select
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-crimson-700"
-          >
-            <option value="all">All Categories</option>
-            <option value="PROCEDURE">PROCEDURE</option>
-            <option value="REQUIREMENTS">REQUIREMENTS</option>
-            <option value="SCHEDULE">SCHEDULE</option>
-            <option value="FEES">FEES</option>
-            <option value="MINISTRY">MINISTRY</option>
-            <option value="PARISH_INFO">PARISH_INFO</option>
-            <option value="STATUS_CHECK">STATUS_CHECK</option>
-            <option value="GENERAL">GENERAL</option>
-          </select>
+          <span className="text-gray-500 font-medium whitespace-nowrap">Category:</span>
+          <div className="w-40">
+            <CustomSelect
+              value={categoryFilter}
+              onChange={(val) => {
+                setCategoryFilter(String(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 'all', label: 'All Categories' },
+                { value: 'PROCEDURE', label: 'PROCEDURE' },
+                { value: 'REQUIREMENTS', label: 'REQUIREMENTS' },
+                { value: 'SCHEDULE', label: 'SCHEDULE' },
+                { value: 'FEES', label: 'FEES' },
+                { value: 'MINISTRY', label: 'MINISTRY' },
+                { value: 'PARISH_INFO', label: 'PARISH_INFO' },
+                { value: 'STATUS_CHECK', label: 'STATUS_CHECK' },
+                { value: 'GENERAL', label: 'GENERAL' },
+              ]}
+              size="sm"
+              aria-label="Filter by category"
+            />
+          </div>
         </div>
 
         {/* Parish Filter */}
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-gray-500 font-medium">Parish:</span>
-          <select
-            value={parishIdFilter}
-            onChange={(e) => {
-              setParishIdFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-crimson-700 max-w-[200px]"
-          >
-            <option value="all">All Parishes</option>
-            {parishes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          <span className="text-gray-500 font-medium whitespace-nowrap">Parish:</span>
+          <div className="w-48">
+            <CustomSelect
+              value={parishIdFilter}
+              onChange={(val) => {
+                setParishIdFilter(String(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 'all', label: 'All Parishes' },
+                ...parishes.map((p) => ({ value: String(p.id), label: p.name })),
+              ]}
+              size="sm"
+              aria-label="Filter by parish"
+            />
+          </div>
         </div>
 
         {/* Page Size */}
         <div className="flex items-center gap-1.5 text-xs ml-auto">
-          <span className="text-gray-500 font-medium">Per Page:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-            className="px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-crimson-700"
-          >
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
-
-          <button
-            onClick={loadLogs}
-            disabled={loading}
-            className="p-1.5 text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors ml-2"
-            title="Refresh Logs"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <span className="text-gray-500 font-medium whitespace-nowrap">Per Page:</span>
+          <div className="w-24">
+            <CustomSelect
+              value={pageSize}
+              onChange={(val) => {
+                setPageSize(Number(val));
+                setPage(1);
+              }}
+              options={[
+                { value: 25, label: '25' },
+                { value: 50, label: '50' },
+                { value: 100, label: '100' },
+              ]}
+              size="sm"
+              aria-label="Items per page"
+            />
+          </div>
         </div>
+
+        <button
+          onClick={loadLogs}
+          disabled={loading}
+          className="p-1.5 text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors ml-2"
+          title="Refresh Logs"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {/* Error state */}

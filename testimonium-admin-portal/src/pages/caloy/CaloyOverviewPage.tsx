@@ -11,7 +11,6 @@ import {
   Layers,
   MessageSquare,
   RefreshCw,
-  Server,
   ShieldAlert,
   Zap,
 } from 'lucide-react';
@@ -72,58 +71,58 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
     switch (status) {
       case 'ACTIVE':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-            <CheckCircle className="w-3.5 h-3.5" />
-            Active & Available
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-gray-700">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+            <span>Active &amp; Available</span>
+          </div>
         );
       case 'DISABLED_BY_COORDINATOR':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Disabled by Coordinator
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-800">
+            <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+            <span>Disabled by Coordinator</span>
+          </div>
         );
       case 'DISABLED_BY_DEPLOYMENT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-300">
-            <ShieldAlert className="w-3.5 h-3.5" />
-            Disabled by Deployment
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-gray-700">
+            <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+            <span>Disabled by Deployment</span>
+          </div>
         );
       case 'CONFIGURATION_WARNING':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Configuration Warning
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-800">
+            <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+            <span>Configuration Warning</span>
+          </div>
         );
       case 'CONFIGURATION_DEGRADED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Using Last-Known-Good Config
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-800">
+            <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+            <span>Using Last-Known-Good Config</span>
+          </div>
         );
       case 'CONFIGURATION_ERROR':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
-            <ShieldAlert className="w-3.5 h-3.5" />
-            Configuration Error
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-red-700">
+            <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+            <span>Configuration Error</span>
+          </div>
         );
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header Refresh Bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="space-y-4">
+      {/* Header Status / Utility Row */}
+      <div className="flex items-center justify-between px-1 text-xs">
+        <div className="flex items-center gap-3">
           {renderStatusBadge(data.status)}
           {!data.runtimeModelValid && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
               Fallback model active
             </span>
           )}
@@ -131,10 +130,11 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
         <button
           onClick={fetchOverview}
           disabled={loading}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 shadow-sm transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-50 py-1 px-2 rounded-md hover:bg-gray-100"
+          title="Refresh overview telemetry"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
         </button>
       </div>
 
@@ -151,129 +151,152 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
         </div>
       )}
 
-      {/* Top Architecture Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Response Generation Model */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Response Generation Model</span>
+      {/* Unified Panel: Model Architecture & Runtime */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-200 bg-gray-50/70 flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
             <Cpu className="w-4 h-4 text-crimson-700" />
-          </div>
-          <div>
-            <div className="text-lg font-bold text-gray-900 font-mono">{data.responseGenerationModel}</div>
-            <p className="text-xs text-gray-500 mt-1">Provider: Gemini (Google GenAI)</p>
-          </div>
-          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <span>Configured: {data.configuredGenerationModel || 'Environment Default'}</span>
-            <Link to="/caloy/settings" className="text-crimson-700 hover:underline inline-flex items-center gap-1 font-medium">
-              Change
-              <ExternalLink className="w-3 h-3" />
-            </Link>
-          </div>
+            Model Architecture & Runtime
+          </h3>
+          <span className="text-xs text-gray-500 font-medium hidden sm:inline">Fixed &amp; Managed Infrastructure</span>
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-200">
+          {/* Response Generation Model */}
+          <div className="p-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-700">Response Generation</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-crimson-50 text-crimson-700 border border-crimson-200">
+                  Configurable
+                </span>
+              </div>
+              <div className="text-lg font-bold text-gray-900 font-mono">{data.responseGenerationModel}</div>
+              <p className="text-xs text-gray-600 mt-1">Provider: Gemini (Google GenAI)</p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+              <span>Configured: <strong className="text-gray-800 font-mono font-medium">{data.configuredGenerationModel || 'Environment Default'}</strong></span>
+              <Link to="/caloy/settings" className="text-crimson-700 hover:text-crimson-800 hover:underline inline-flex items-center gap-1 font-semibold">
+                Change
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            </div>
+          </div>
 
-        {/* Semantic Router Model */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Semantic Router Model</span>
-            <Server className="w-4 h-4 text-indigo-600" />
+          {/* Semantic Router Model */}
+          <div className="p-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-700">Semantic Router</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Read Only
+                </span>
+              </div>
+              <div className="text-lg font-bold text-gray-900 font-mono">{data.semanticRouterModel}</div>
+              <p className="text-xs text-gray-600 mt-1">Dedicated intent classification &amp; tool router</p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 font-medium">
+              Fixed architecture [read only]
+            </div>
           </div>
-          <div>
-            <div className="text-lg font-bold text-gray-900 font-mono">{data.semanticRouterModel}</div>
-            <p className="text-xs text-gray-500 mt-1">Dedicated intent classification & tool router</p>
-          </div>
-          <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
-            Fixed architecture [read only]
-          </div>
-        </div>
 
-        {/* Embedding Model */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Embedding Model</span>
-            <Database className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div>
-            <div className="text-lg font-bold text-gray-900 font-mono">{data.embeddingModel}</div>
-            <p className="text-xs text-gray-500 mt-1">{data.embeddingDimensions} dimensions (Gemini Embeddings)</p>
-          </div>
-          <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
-            Fixed knowledge vectors [read only]
+          {/* Embedding Model */}
+          <div className="p-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-700">Embedding Engine</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Read Only
+                </span>
+              </div>
+              <div className="text-lg font-bold text-gray-900 font-mono">{data.embeddingModel}</div>
+              <p className="text-xs text-gray-600 mt-1">{data.embeddingDimensions} dimensions (Gemini Embeddings)</p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 font-medium">
+              Fixed knowledge vectors [read only]
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Primary Telemetry Metrics Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-        {/* Queries Today */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Queries Today</span>
-            <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
-          </div>
-          <div className="text-2xl font-bold text-gray-900">{data.metrics.queriesToday}</div>
-          <div className="text-[11px] text-gray-400 mt-1">Accepted chats</div>
+      {/* Unified Panel: Operational Telemetry — Today */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50/70 flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-crimson-700" />
+            Operational Telemetry — Today
+          </h3>
+          <span className="text-xs text-gray-500 font-medium hidden sm:inline">Live operational execution metrics</span>
         </div>
-
-        {/* Generation Requests Today */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Gen. Requests</span>
-            <Cpu className="w-3.5 h-3.5 text-purple-500" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-px bg-gray-200">
+          {/* Queries Today */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Queries Today</span>
+              <MessageSquare className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.queriesToday}</div>
+            <div className="text-xs text-gray-500 leading-snug">Accepted chats</div>
           </div>
-          <div className="text-2xl font-bold text-gray-900">{data.metrics.generationRequestsToday}</div>
-          <div className="text-[11px] text-gray-400 mt-1">Measured provider calls</div>
-        </div>
 
-        {/* Embedding Requests Today */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Embeddings</span>
-            <Layers className="w-3.5 h-3.5 text-emerald-500" />
+          {/* Generation Requests Today */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Gen. Requests</span>
+              <Cpu className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.generationRequestsToday}</div>
+            <div className="text-xs text-gray-500 leading-snug">Measured provider calls</div>
           </div>
-          <div className="text-2xl font-bold text-gray-900">{data.metrics.embeddingRequestsToday}</div>
-          <div className="text-[11px] text-gray-400 mt-1">Query + Doc calls</div>
-        </div>
 
-        {/* Measured RPM */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Measured RPM</span>
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
+          {/* Embedding Requests Today */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Embeddings</span>
+              <Layers className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.embeddingRequestsToday}</div>
+            <div className="text-xs text-gray-500 leading-snug">Query + Doc calls</div>
           </div>
-          <div className="text-2xl font-bold text-gray-900">{data.metrics.measuredRpm}</div>
-          <div className="text-[11px] text-gray-400 mt-1">Last 60s attempts</div>
-        </div>
 
-        {/* Fallback Rate */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Fallback Rate</span>
-            <HelpCircle className="w-3.5 h-3.5 text-orange-500" />
+          {/* Measured RPM */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Measured RPM</span>
+              <Zap className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.measuredRpm}</div>
+            <div className="text-xs text-gray-500 leading-snug">Last 60s attempts</div>
           </div>
-          <div className="text-2xl font-bold text-gray-900">{data.metrics.fallbackRate.toFixed(1)}%</div>
-          <div className="text-[11px] text-gray-400 mt-1">RAG / Tool fallbacks</div>
-        </div>
 
-        {/* Average Latency */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Avg Latency</span>
-            <Clock className="w-3.5 h-3.5 text-cyan-500" />
+          {/* Fallback Rate */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Fallback Rate</span>
+              <HelpCircle className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.fallbackRate.toFixed(1)}%</div>
+            <div className="text-xs text-gray-500 leading-snug">RAG / Tool fallbacks</div>
           </div>
-          <div className="text-2xl font-bold text-gray-900">{data.metrics.averageResponseTimeMs}ms</div>
-          <div className="text-[11px] text-gray-400 mt-1">End-to-end response</div>
-        </div>
 
-        {/* Errors Today */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-gray-400 mb-1">
-            <span className="text-xs font-semibold uppercase">Errors Today</span>
-            <ShieldAlert className="w-3.5 h-3.5 text-red-500" />
+          {/* Average Latency */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Avg Latency</span>
+              <Clock className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.averageResponseTimeMs}ms</div>
+            <div className="text-xs text-gray-500 leading-snug">End-to-end response</div>
           </div>
-          <div className="text-2xl font-bold text-red-600">{data.metrics.failedInteractionsToday}</div>
-          <div className="text-[10px] text-gray-400 mt-1">{data.metrics.failedProviderAttemptsToday} failed provider attempts</div>
-          <div className="text-[11px] text-gray-400 mt-1">Provider & system errors</div>
+
+          {/* Errors Today */}
+          <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Errors Today</span>
+              <ShieldAlert className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+            </div>
+            <div className="text-2xl sm:text-[26px] font-bold text-red-600 tracking-tight leading-none my-1.5">{data.metrics.failedInteractionsToday}</div>
+            <div className="text-xs text-gray-500 leading-snug">{data.metrics.failedProviderAttemptsToday} failed provider attempts</div>
+          </div>
         </div>
       </div>
 
@@ -289,33 +312,33 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
               </h3>
               <Link
                 to="/caloy/knowledge-base"
-                className="text-xs font-medium text-crimson-700 hover:text-crimson-800 hover:underline inline-flex items-center gap-1"
+                className="text-xs font-semibold text-crimson-700 hover:text-crimson-800 hover:underline inline-flex items-center gap-1"
               >
                 Manage Knowledge Base
                 <ExternalLink className="w-3 h-3" />
               </Link>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-200 rounded-lg overflow-hidden mb-4 border border-gray-200">
+              <div className="p-3 bg-white text-center">
                 <div className="text-xl font-bold text-gray-900">{data.knowledgeHealth.totalSources}</div>
-                <div className="text-xs text-gray-500 mt-0.5">Total Sources</div>
+                <div className="text-xs text-gray-600 font-medium mt-0.5">Total Sources</div>
               </div>
-              <div className="p-3 bg-emerald-50 rounded-lg text-center">
+              <div className="p-3 bg-white text-center">
                 <div className="text-xl font-bold text-emerald-700">{data.knowledgeHealth.activeSources}</div>
-                <div className="text-xs text-emerald-600 mt-0.5">Active Sources</div>
+                <div className="text-xs text-emerald-700 font-medium mt-0.5">Active Sources</div>
               </div>
-              <div className="p-3 bg-blue-50 rounded-lg text-center">
+              <div className="p-3 bg-white text-center">
                 <div className="text-xl font-bold text-blue-700">{data.knowledgeHealth.readyChunks}</div>
-                <div className="text-xs text-blue-600 mt-0.5">Ready Chunks</div>
+                <div className="text-xs text-blue-700 font-medium mt-0.5">Ready Chunks</div>
               </div>
-              <div className="p-3 bg-red-50 rounded-lg text-center">
+              <div className="p-3 bg-white text-center">
                 <div className="text-xl font-bold text-red-600">{data.knowledgeHealth.failedChunks}</div>
-                <div className="text-xs text-red-600 mt-0.5">Failed Chunks</div>
+                <div className="text-xs text-red-600 font-medium mt-0.5">Failed Chunks</div>
               </div>
             </div>
 
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-600 leading-relaxed">
               Chunks with status READY provide grounded vector embeddings for procedural diocesan knowledge. Failed chunks can be retried individually in the Knowledge Base tab.
             </p>
           </div>
@@ -331,7 +354,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
               </h3>
               <Link
                 to="/caloy/logs"
-                className="text-xs font-medium text-crimson-700 hover:text-crimson-800 hover:underline inline-flex items-center gap-1"
+                className="text-xs font-semibold text-crimson-700 hover:text-crimson-800 hover:underline inline-flex items-center gap-1"
               >
                 View Operational Logs
                 <ExternalLink className="w-3 h-3" />
@@ -340,32 +363,32 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
 
             {data.recentErrors.length === 0 ? (
               <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                <p className="text-sm font-medium text-gray-700">No operational errors recorded today</p>
-                <p className="text-xs text-gray-400 mt-1">Provider calls and semantic routes are healthy.</p>
+                <CheckCircle className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-gray-800">No operational errors recorded today</p>
+                <p className="text-xs text-gray-500 mt-1 font-medium">Provider calls and semantic routes are healthy.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50 text-gray-500 border-b border-gray-200">
+                  <thead className="bg-gray-50 text-gray-700 border-b border-gray-200">
                     <tr>
-                      <th className="py-2 px-3 font-semibold">Time</th>
-                      <th className="py-2 px-3 font-semibold">Category</th>
-                      <th className="py-2 px-3 font-semibold">Error / Fallback</th>
-                      <th className="py-2 px-3 font-semibold">Latency</th>
+                      <th className="py-2.5 px-3 font-semibold">Time</th>
+                      <th className="py-2.5 px-3 font-semibold">Category</th>
+                      <th className="py-2.5 px-3 font-semibold">Error / Fallback</th>
+                      <th className="py-2.5 px-3 font-semibold">Latency</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {data.recentErrors.slice(0, 5).map((err) => (
                       <tr key={err.id} className="hover:bg-gray-50/60">
-                        <td className="py-2 px-3 text-gray-600 whitespace-nowrap">
+                        <td className="py-2 px-3 text-gray-700 whitespace-nowrap">
                           {new Date(err.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </td>
-                        <td className="py-2 px-3 text-gray-900 font-medium">{err.category}</td>
-                        <td className="py-2 px-3 text-red-600 font-mono">
+                        <td className="py-2 px-3 text-gray-900 font-semibold">{err.category}</td>
+                        <td className="py-2 px-3 text-red-600 font-mono font-medium">
                           {err.errorCategory || err.fallbackReason || 'ERROR'}
                         </td>
-                        <td className="py-2 px-3 text-gray-500">{err.latencyMs}ms</td>
+                        <td className="py-2 px-3 text-gray-700 font-medium">{err.latencyMs}ms</td>
                       </tr>
                     ))}
                   </tbody>
@@ -374,7 +397,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
             )}
           </div>
 
-          <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-400">
+          <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500 font-medium">
             Privacy Safe: Error entries display operational error categories and latencies only. No parishioner message text is exposed.
           </div>
         </div>

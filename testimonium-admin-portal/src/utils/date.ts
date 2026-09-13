@@ -129,3 +129,115 @@ export function getManilaDefaultDateRange(now: Date = new Date()): { from: strin
   };
 }
 
+export type DatePresetKey = '7d' | '1m' | '6m' | '1y';
+
+export const DATE_PRESET_LABELS: Record<DatePresetKey, string> = {
+  '7d': '7 Days',
+  '1m': '1 Month',
+  '6m': '6 Months',
+  '1y': '1 Year',
+};
+
+/**
+ * Derives Asia/Manila calendar date ranges for quick presets:
+ * - 7 Days: today inclusive + previous 6 calendar days (7 total days)
+ * - 1 Month: today inclusive + previous 1 calendar month
+ * - 6 Months: today inclusive + previous 6 calendar months
+ * - 1 Year: canonical 365-day range (today inclusive + previous 364 calendar days)
+ */
+export function getManilaPresetRange(
+  preset: DatePresetKey,
+  now: Date = new Date()
+): { from: string; to: string } {
+  const to = getManilaTodayDateString(now);
+  if (!to) {
+    return getManilaDefaultDateRange(now);
+  }
+  const [y, m, d] = to.split('-').map(Number);
+
+  if (preset === '7d') {
+    const fromDate = new Date(Date.UTC(y, m - 1, d - 6));
+    const fromY = fromDate.getUTCFullYear();
+    const fromM = String(fromDate.getUTCMonth() + 1).padStart(2, '0');
+    const fromD = String(fromDate.getUTCDate()).padStart(2, '0');
+    return { from: `${fromY}-${fromM}-${fromD}`, to };
+  }
+
+  if (preset === '1m') {
+    let targetYear = y;
+    let targetMonth = m - 1;
+    if (targetMonth < 1) {
+      targetMonth += 12;
+      targetYear -= 1;
+    }
+    const maxDays = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+    const targetDay = Math.min(d, maxDays);
+    const fromM = String(targetMonth).padStart(2, '0');
+    const fromD = String(targetDay).padStart(2, '0');
+    return { from: `${targetYear}-${fromM}-${fromD}`, to };
+  }
+
+  if (preset === '6m') {
+    let targetYear = y;
+    let targetMonth = m - 6;
+    if (targetMonth < 1) {
+      targetMonth += 12;
+      targetYear -= 1;
+    }
+    const maxDays = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+    const targetDay = Math.min(d, maxDays);
+    const fromM = String(targetMonth).padStart(2, '0');
+    const fromD = String(targetDay).padStart(2, '0');
+    return { from: `${targetYear}-${fromM}-${fromD}`, to };
+  }
+
+  return getManilaDefaultDateRange(now);
+}
+
+/**
+ * Checks if the current from/to range matches one of the canonical presets.
+ * Returns the matching DatePresetKey, or 'custom' if manually changed.
+ */
+export function getActiveDatePreset(
+  from: string,
+  to: string,
+  now: Date = new Date()
+): DatePresetKey | 'custom' {
+  const presets: DatePresetKey[] = ['7d', '1m', '6m', '1y'];
+  for (const p of presets) {
+    const range = getManilaPresetRange(p, now);
+    if (range.from === from && range.to === to) {
+      return p;
+    }
+  }
+  return 'custom';
+}
+
+/**
+ * Formats daily average without rounding small non-zero values to 0.0/day.
+ * - >= 10: 1 decimal where useful (or integer)
+ * - 1–9.99: 1 decimal
+ * - 0.1–0.99: 2 decimals
+ * - 0.01–0.099: 2 or 3 meaningful decimals (e.g. 11 / 365 = 0.03/day)
+ * - < 0.01: 3 decimals
+ */
+export function formatDailyAverage(total: number, days: number): string {
+  if (days <= 0 || total <= 0) return '0.0';
+  const val = total / days;
+  if (val >= 10) {
+    return Number.isInteger(val) ? String(val) : val.toFixed(1);
+  }
+  if (val >= 1) {
+    return val.toFixed(1);
+  }
+  if (val >= 0.1) {
+    return val.toFixed(2);
+  }
+  if (val >= 0.01) {
+    const s2 = val.toFixed(2);
+    return Number(s2) > 0 ? s2 : val.toFixed(3);
+  }
+  return val.toFixed(3);
+}
+
+

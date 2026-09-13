@@ -21,6 +21,7 @@ import {
 } from '@/api/knowledgeApi';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import type { Parish } from '@/types';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 
 export function KnowledgeSourceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -216,8 +217,8 @@ export function KnowledgeSourceDetailPage() {
   if (loading) {
     return (
       <div className="p-12 text-center">
-        <Loader2 className="w-8 h-8 text-brand-600 animate-spin mx-auto mb-3" />
-        <p className="text-sm text-gray-500">Loading source details...</p>
+        <Loader2 className="w-8 h-8 text-crimson-700 animate-spin mx-auto mb-3" />
+        <p className="text-sm text-gray-600 font-medium">Loading source details...</p>
       </div>
     );
   }
@@ -464,116 +465,116 @@ export function KnowledgeSourceDetailPage() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Title</label>
+              <label className="block text-xs font-semibold text-gray-800 mb-1">Title</label>
               <input
                 type="text"
                 required
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Scope</label>
-                <select
+                <label className="block text-xs font-semibold text-gray-800 mb-1">Scope</label>
+                <CustomSelect
                   value={editScope}
-                  onChange={(e) => {
-                    const sc = e.target.value as KnowledgeScope;
+                  onChange={(val) => {
+                    const sc = String(val) as KnowledgeScope;
                     setEditScope(sc);
                     if (sc === 'DIOCESE') setEditParishId(null);
                   }}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
-                >
-                  <option value="DIOCESE">Diocese (All Parishes)</option>
-                  <option value="PARISH">Specific Parish</option>
-                </select>
+                  options={[
+                    { value: 'DIOCESE', label: 'Diocese (All Parishes)' },
+                    { value: 'PARISH', label: 'Specific Parish' },
+                  ]}
+                  aria-label="Scope"
+                />
               </div>
 
               {editScope === 'PARISH' && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Parish</label>
-                  <select
+                  <label className="block text-xs font-semibold text-gray-800 mb-1">Parish</label>
+                  <CustomSelect
                     value={editParishId || ''}
-                    onChange={(e) => setEditParishId(Number(e.target.value) || null)}
+                    onChange={(val) => setEditParishId(Number(val) || null)}
+                    options={[
+                      { value: '', label: 'Select parish...' },
+                      ...parishes.map((p) => ({ value: p.id, label: p.name })),
+                    ]}
+                    placeholder="Select parish..."
                     required
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
-                  >
-                    <option value="">Select parish...</option>
-                    {parishes.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    aria-label="Parish"
+                  />
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Source Type</label>
-                <select
+                <label className="block text-xs font-semibold text-gray-800 mb-1">Source Type</label>
+                <CustomSelect
                   value={editSourceType}
-                  onChange={(e) => setEditSourceType(e.target.value as KnowledgeSourceType)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
-                >
-                  <option value="SYSTEM_GUIDE">System Guide</option>
-                  <option value="PARISH_PROCEDURE">Parish Procedure</option>
-                  <option value="DIOCESE_PROCEDURE">Diocese Procedure</option>
-                  <option value="CLERGY_INTERVIEW">Clergy Interview</option>
-                  <option value="OFFICIAL_SOURCE">Official Source</option>
-                  <option value="ADMIN_ENTRY">Admin Entry</option>
-                </select>
+                  onChange={(val) => setEditSourceType(String(val) as KnowledgeSourceType)}
+                  options={[
+                    { value: 'SYSTEM_GUIDE', label: 'System Guide' },
+                    { value: 'PARISH_PROCEDURE', label: 'Parish Procedure' },
+                    { value: 'DIOCESE_PROCEDURE', label: 'Diocese Procedure' },
+                    { value: 'CLERGY_INTERVIEW', label: 'Clergy Interview' },
+                    { value: 'OFFICIAL_SOURCE', label: 'Official Source' },
+                    { value: 'ADMIN_ENTRY', label: 'Admin Entry' },
+                  ]}
+                  aria-label="Source Type"
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Category</label>
+                <label className="block text-xs font-semibold text-gray-800 mb-1">Category</label>
                 <input
                   type="text"
                   value={editCategory}
                   onChange={(e) => setEditCategory(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Source Reference URL (HTTPS only)</label>
+              <label className="block text-xs font-semibold text-gray-800 mb-1">Source Reference URL (HTTPS only)</label>
               <input
                 type="text"
                 value={editSourceReference}
                 onChange={(e) => setEditSourceReference(e.target.value)}
                 placeholder="https://testimonium.sanctuary/guides/..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Full Source Text</label>
+              <label className="block text-xs font-semibold text-gray-800 mb-1">Full Source Text</label>
               <textarea
                 rows={5}
                 required
                 value={editSourceText}
                 onChange={(e) => setEditSourceText(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
               />
             </div>
 
             {/* Chunks Editor */}
-            <div className="border-t border-gray-100 pt-4 space-y-3">
+            <div className="border-t border-gray-200 pt-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
                     Passage Chunks (for v{source.version + 1})
                   </h4>
-                  <p className="text-[11px] text-gray-500">
+                  <p className="text-xs text-gray-600 mt-0.5">
                     Modifying chunks creates a fresh current-version set in PENDING state.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setEditChunks([...editChunks, { content: '' }])}
-                  className="text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                  className="text-xs font-semibold text-crimson-700 hover:text-crimson-800 flex items-center gap-1 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add Chunk
@@ -581,14 +582,15 @@ export function KnowledgeSourceDetailPage() {
               </div>
 
               {editChunks.map((chunk, idx) => (
-                <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-medium text-gray-600">
+                <div key={idx} className="p-3 bg-gray-50/80 rounded-xl border border-gray-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700">
                     <span>Chunk #{idx + 1}</span>
                     {editChunks.length > 1 && (
                       <button
                         type="button"
                         onClick={() => setEditChunks(editChunks.filter((_, i) => i !== idx))}
-                        className="text-rose-500 hover:text-rose-700"
+                        className="text-rose-600 hover:text-rose-800 p-0.5 rounded transition-colors"
+                        aria-label={`Remove chunk ${idx + 1}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -603,28 +605,28 @@ export function KnowledgeSourceDetailPage() {
                       updated[idx].content = e.target.value;
                       setEditChunks(updated);
                     }}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 bg-white"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
                   />
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
+          <div className="pt-4 border-t border-gray-200 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={() => setIsEditing(false)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={actionLoading}
-              className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50 shadow-sm"
+              className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-crimson-700 rounded-lg hover:bg-crimson-800 disabled:opacity-50 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson-700/30 transition-colors"
             >
               {actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-              Save & Create v{source.version + 1}
+              Save &amp; Create v{source.version + 1}
             </button>
           </div>
         </form>
@@ -636,19 +638,19 @@ export function KnowledgeSourceDetailPage() {
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
               Full Source Text
             </h2>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-100 font-sans">
+            <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-200 font-sans">
               {source.sourceText}
             </div>
 
             {source.sourceReference && (
-              <div className="pt-2 flex items-center gap-2 text-xs text-gray-500">
-                <span className="font-semibold">Reference:</span>
+              <div className="pt-2 flex items-center gap-2 text-xs text-gray-600 font-medium">
+                <span className="font-semibold text-gray-800">Reference:</span>
                 {source.sourceReference.startsWith('https://') ? (
                   <a
                     href={source.sourceReference}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-brand-600 hover:underline inline-flex items-center gap-1"
+                    className="text-crimson-700 hover:text-crimson-900 hover:underline inline-flex items-center gap-1 font-semibold"
                   >
                     {source.sourceReference}
                     <ExternalLink className="w-3 h-3" />

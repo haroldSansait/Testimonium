@@ -51,7 +51,7 @@ export const Dropdown: React.FC<DropdownProps> = ({ trigger, items, align = 'rig
             <button
               key={`${item.value}-${idx}`}
               onClick={() => handleItemClick(item)}
-              className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-app-page hover:text-crimson flex items-center transition-colors focus-ring"
+              className="w-full text-left px-4 py-2.5 min-h-[38px] text-sm text-text-primary hover:bg-app-page hover:text-crimson flex items-center transition-colors focus-ring cursor-pointer"
               role="menuitem"
             >
               {item.icon && <span className="mr-2 text-text-muted">{item.icon}</span>}

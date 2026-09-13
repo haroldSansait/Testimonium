@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
+  Check,
   CheckCircle,
   Clock,
   Cpu,
   Database,
   Lock,
   RefreshCw,
+  RotateCcw,
   Save,
   Server,
   Shield,
@@ -15,6 +17,8 @@ import {
   Sliders,
 } from 'lucide-react';
 import { caloyAdminApi, type CaloySettingsResponse, type PatchCaloySettingsPayload } from '@/api/caloyAdminApi';
+import { CustomSelect } from '@/components/ui/CustomSelect';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 
 export function CaloySettingsPage({ initialData = null }: { initialData?: CaloySettingsResponse | null } = {}) {
   const [data, setData] = useState<CaloySettingsResponse | null>(initialData);
@@ -36,6 +40,55 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
   // Form Validation Errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Determine dirty state by comparing with loaded effectiveValues
+  const isDirty = useMemo(() => {
+    if (!data) return false;
+    return (
+      enabled !== data.effectiveValues.enabled ||
+      generationModel !== data.effectiveValues.generationModel ||
+      Number(aiTenMinuteMax) !== Number(data.effectiveValues.aiTenMinuteMax) ||
+      Number(aiDailyMax) !== Number(data.effectiveValues.aiDailyMax) ||
+      Number(chatbotRequestDeadlineMs) !== Number(data.effectiveValues.chatbotRequestDeadlineMs) ||
+      automaticRetentionEnabled !== data.effectiveValues.automaticRetentionEnabled ||
+      Number(logRetentionDays) !== Number(data.effectiveValues.logRetentionDays)
+    );
+  }, [
+    data,
+    enabled,
+    generationModel,
+    aiTenMinuteMax,
+    aiDailyMax,
+    chatbotRequestDeadlineMs,
+    automaticRetentionEnabled,
+    logRetentionDays,
+  ]);
+
+  // Synchronize unsaved changes protection across window, beforeunload, and layout guards
+  useUnsavedChanges({
+    isDirty,
+    message: 'You have unsaved changes in Caloy settings. Are you sure you want to leave without saving?',
+  });
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined') {
+        (window as any).hasUnsavedSettingsChanges = false;
+      }
+    };
+  }, []);
+
+  const handleDiscard = () => {
+    if (!data) return;
+    setEnabled(data.effectiveValues.enabled);
+    setGenerationModel(data.effectiveValues.generationModel);
+    setAiTenMinuteMax(data.effectiveValues.aiTenMinuteMax);
+    setAiDailyMax(data.effectiveValues.aiDailyMax);
+    setChatbotRequestDeadlineMs(data.effectiveValues.chatbotRequestDeadlineMs);
+    setAutomaticRetentionEnabled(data.effectiveValues.automaticRetentionEnabled);
+    setLogRetentionDays(data.effectiveValues.logRetentionDays);
+    setFormErrors({});
+  };
+
   const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
@@ -54,6 +107,9 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
       setChatbotRequestDeadlineMs(res.effectiveValues.chatbotRequestDeadlineMs);
       setAutomaticRetentionEnabled(res.effectiveValues.automaticRetentionEnabled);
       setLogRetentionDays(res.effectiveValues.logRetentionDays);
+      if (typeof window !== 'undefined') {
+        (window as any).hasUnsavedSettingsChanges = false;
+      }
     } catch (err: any) {
       console.error('Failed to load settings:', err);
       setError(err?.response?.data?.error?.message || err?.message || 'Failed to load Caloy settings.');
@@ -119,6 +175,9 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
       const updated = await caloyAdminApi.updateSettings(payload);
       setData(updated);
       setSuccessMessage('Caloy settings updated successfully.');
+      if (typeof window !== 'undefined') {
+        (window as any).hasUnsavedSettingsChanges = false;
+      }
 
       // Update form state with server-authoritative response
       setEnabled(updated.effectiveValues.enabled);
@@ -216,6 +275,40 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
         </div>
       )}
 
+      {/* Unsaved Changes Banner */}
+      {isDirty && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-amber-900">You have unsaved changes</p>
+              <p className="text-xs text-amber-700">
+                Changes made to Caloy settings have not been saved yet.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDiscard}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Discard
+            </button>
+            <button
+              type="button"
+              onClick={(e) => handleSave(e as any)}
+              disabled={saving || !data.runtimeConfigDatabaseAvailable}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {saving ? 'Saving...' : 'Save Now'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Form */}
       <form onSubmit={handleSave} className="space-y-6">
         {/* 1. Caloy Availability Section */}
@@ -276,21 +369,16 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 Active Generation Model (Server-Approved Catalog)
               </label>
-              <select
+              <CustomSelect
                 value={generationModel}
-                onChange={(e) => setGenerationModel(e.target.value)}
-                className={`w-full text-sm px-3 py-2 border rounded-lg bg-white focus:outline-none focus:ring-1 ${
-                  formErrors.generationModel
-                    ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-crimson-700'
-                }`}
-              >
-                {data.approvedModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.displayName} ({m.id}) - {m.description}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setGenerationModel(String(val))}
+                options={data.approvedModels.map((m) => ({
+                  value: m.id,
+                  label: `${m.displayName} (${m.id}) - ${m.description}`,
+                }))}
+                aria-label="Active Generation Model"
+                triggerClassName={formErrors.generationModel ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : undefined}
+              />
               {formErrors.generationModel && (
                 <p className="text-xs text-red-600 mt-1">{formErrors.generationModel}</p>
               )}
@@ -530,16 +618,16 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={loadSettings}
+              onClick={isDirty ? handleDiscard : loadSettings}
               disabled={saving}
-              className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
             >
-              Reset
+              {isDirty ? 'Discard Changes' : 'Reset'}
             </button>
             <button
               type="submit"
               disabled={saving || !data.runtimeConfigDatabaseAvailable}
-              className="px-5 py-2 bg-crimson-700 text-white text-sm font-semibold rounded-lg hover:bg-crimson-800 transition-colors shadow-sm inline-flex items-center gap-2 disabled:opacity-50"
+              className="px-5 py-2 bg-crimson-700 text-white text-sm font-semibold rounded-lg hover:bg-crimson-800 transition-colors shadow-sm inline-flex items-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Save Caloy Settings

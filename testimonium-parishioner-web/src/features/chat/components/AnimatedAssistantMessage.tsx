@@ -4,6 +4,7 @@ import { SourcesAccordion } from './SourcesAccordion';
 import { useProgressiveReveal } from '../hooks/useProgressiveReveal';
 import type { ChatMessage } from '../caloyStorage';
 import type { Parish } from '../../../types';
+import { CustomSelect } from '../../../components/ui/CustomSelect';
 
 export interface AnimatedAssistantMessageHandle {
   completeImmediately: () => void;
@@ -18,6 +19,16 @@ interface AnimatedAssistantMessageProps {
   onInlineDocTypeSelect: (docType: string) => void;
   onInlineEventTypeSelect: (eventType: string) => void;
 }
+
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
+  { value: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
+  { value: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
+  { value: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
+  { value: 'MARRIAGE_BANNS', label: 'Marriage Banns' },
+  { value: 'PERMIT_TO_MARRY', label: 'Permit to Marry' },
+  { value: 'STATUS_OF_LIBERTY', label: 'Status of Liberty Certificate' },
+];
 
 export const AnimatedAssistantMessage = forwardRef<
   AnimatedAssistantMessageHandle,
@@ -69,28 +80,21 @@ export const AnimatedAssistantMessage = forwardRef<
               >
                 Select your parish to continue:
               </label>
-              <select
+              <CustomSelect
                 id={`parish-clarify-${msg.id}`}
                 disabled={isTyping}
-                defaultValue=""
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  if (val && Number.isInteger(val) && val > 0) {
-                    onInlineParishSelect(val);
+                value=""
+                placeholder="Choose a parish..."
+                options={parishes.map((p) => ({ value: p.id, label: p.name }))}
+                onChange={(val) => {
+                  const num = Number(val);
+                  if (num && Number.isInteger(num) && num > 0) {
+                    onInlineParishSelect(num);
                   }
                 }}
-                className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                size="sm"
                 aria-label="Select parish for clarification"
-              >
-                <option value="" disabled>
-                  Choose a parish...
-                </option>
-                {parishes.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           )}
 
@@ -102,30 +106,20 @@ export const AnimatedAssistantMessage = forwardRef<
               >
                 Select a document type to check:
               </label>
-              <select
+              <CustomSelect
                 id={`doc-clarify-${msg.id}`}
                 disabled={isTyping}
-                defaultValue=""
-                onChange={(e) => {
-                  const val = e.target.value;
+                value=""
+                placeholder="Choose a document..."
+                options={DOCUMENT_TYPE_OPTIONS}
+                onChange={(val) => {
                   if (val) {
-                    onInlineDocTypeSelect(val);
+                    onInlineDocTypeSelect(String(val));
                   }
                 }}
-                className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                size="sm"
                 aria-label="Select document type for clarification"
-              >
-                <option value="" disabled>
-                  Choose a document...
-                </option>
-                <option value="BAPTISMAL_CERTIFICATE">Baptismal Certificate</option>
-                <option value="CONFIRMATION_CERTIFICATE">Confirmation Certificate</option>
-                <option value="MARRIAGE_CERTIFICATE">Marriage Certificate</option>
-                <option value="FIRST_COMMUNION_CERTIFICATE">First Communion Certificate</option>
-                <option value="MARRIAGE_BANNS">Marriage Banns</option>
-                <option value="PERMIT_TO_MARRY">Permit to Marry</option>
-                <option value="STATUS_OF_LIBERTY">Status of Liberty Certificate</option>
-              </select>
+              />
             </div>
           )}
 
@@ -137,28 +131,23 @@ export const AnimatedAssistantMessage = forwardRef<
               >
                 Select an event or service:
               </label>
-              <select
+              <CustomSelect
                 id={`event-clarify-${msg.id}`}
                 disabled={isTyping}
-                defaultValue=""
-                onChange={(e) => {
-                  const val = e.target.value;
+                value=""
+                placeholder="Choose an event or service..."
+                options={(msg.clarificationOptions || []).map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                }))}
+                onChange={(val) => {
                   if (val) {
-                    onInlineEventTypeSelect(val);
+                    onInlineEventTypeSelect(String(val));
                   }
                 }}
-                className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                size="sm"
                 aria-label="Select event type for clarification"
-              >
-                <option value="" disabled>
-                  Choose an event or service...
-                </option>
-                {(msg.clarificationOptions || []).map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           )}
         </>

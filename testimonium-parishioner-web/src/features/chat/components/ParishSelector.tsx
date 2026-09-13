@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Church, X } from 'lucide-react';
 import services from '../../../providers/factory';
 import type { Parish } from '../../../types';
+import { CustomSelect, type CustomSelectOptionItem } from '../../../components/ui/CustomSelect';
 
 interface ParishSelectorProps {
   selectedParishId: number | null;
@@ -38,8 +39,7 @@ export const ParishSelector: React.FC<ParishSelectorProps> = ({
     };
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+  const handleChange = (val: string | number) => {
     if (!val) {
       onSelectParish(null);
     } else {
@@ -55,6 +55,14 @@ export const ParishSelector: React.FC<ParishSelectorProps> = ({
 
   const selectedParish = parishes.find((p) => String(p.id) === String(selectedParishId));
 
+  const parishOptions: CustomSelectOptionItem[] = [
+    { value: '', label: 'Diocese-wide (All Parishes)' },
+    ...parishes.map((p) => ({
+      value: String(p.id),
+      label: p.name,
+    })),
+  ];
+
   return (
     <div className="bg-app-page/70 border-b border-border px-3 py-2 text-xs flex items-center gap-2">
       <Church className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
@@ -62,21 +70,19 @@ export const ParishSelector: React.FC<ParishSelectorProps> = ({
         <label htmlFor="caloy-parish-select" className="sr-only">
           Select Parish Context
         </label>
-        <select
+        <CustomSelect
           id="caloy-parish-select"
           value={selectedParishId ? String(selectedParishId) : ''}
           onChange={handleChange}
+          options={parishOptions}
           disabled={disabled || loading}
-          className="w-full truncate text-xs bg-white border border-border rounded px-2 py-1 text-text-primary focus-ring disabled:opacity-50"
+          loading={loading}
+          placeholder="Diocese-wide (All Parishes)"
+          size="sm"
+          allowClear={Boolean(selectedParishId)}
           aria-label="Filter answers by parish"
-        >
-          <option value="">Diocese-wide (All Parishes)</option>
-          {parishes.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          triggerClassName="bg-white border-border text-xs"
+        />
       </div>
 
       {selectedParishId && (

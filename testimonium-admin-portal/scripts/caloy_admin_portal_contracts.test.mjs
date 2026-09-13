@@ -146,10 +146,18 @@ test('Caloy Admin Portal Contract & Governance Invariant Suite', async (t) => {
       });
 
       assert.match(overviewHtml, /Active &amp; Available/);
+      assert.match(overviewHtml, /Model Architecture &amp; Runtime/);
+      assert.match(overviewHtml, /Operational Telemetry — Today/);
       assert.match(analyticsHtml, /GLOBAL_DATE_AND_MODEL_FILTERED|global date\/model-filtered/i);
+      assert.match(analyticsHtml, /Performance &amp; Volume Telemetry/);
       assert.match(settingsHtml, /gemini-3\.5-flash-lite/);
       assert.match(logsHtml, /St\. Joseph Parish/);
       assert.match(knowledgeHtml, /82\.0%/);
+      assert.match(knowledgeHtml, /Vector Engine &amp; Knowledge Base Telemetry/);
+      assert.match(knowledgeHtml, /bg-crimson-700/);
+      assert.doesNotMatch(knowledgeHtml, /bg-brand-/);
+      assert.doesNotMatch(overviewHtml, /bg-brand-/);
+      assert.doesNotMatch(analyticsHtml, /bg-brand-/);
 
       assert.equal(logsModule.shouldAcceptPurgePreview(
         { ...caloyAdminContractFixtures.purgePreview, daysOlderThan: 90 },
@@ -162,5 +170,59 @@ test('Caloy Admin Portal Contract & Governance Invariant Suite', async (t) => {
     } finally {
       await vite.close();
     }
+  });
+
+  await t.test('7. Redesign Invariants: Knowledge Base modal portal, dirty-form protection, and absence of brand-*', async () => {
+    const kbPagePath = path.join(srcDir, 'pages/KnowledgeBasePage.tsx');
+    const kbContent = fs.readFileSync(kbPagePath, 'utf8');
+
+    // Uses createPortal directly to document.body
+    assert.ok(kbContent.includes("createPortal("));
+    assert.ok(kbContent.includes("document.body"));
+
+    // Modal footer contains Cancel and Create Knowledge Source
+    assert.ok(/Cancel\s*<\/button>/.test(kbContent), 'Modal footer must contain Cancel button');
+    assert.ok(kbContent.includes("Create Knowledge Source"));
+
+    // Dirty form protection and Escape dismissal
+    assert.ok(kbContent.includes("isFormDirty"));
+    assert.ok(kbContent.includes("handleBackdropClick"));
+    assert.ok(kbContent.includes("Escape"));
+
+    // No unresolved brand-* classes in Caloy/KB pages
+    const detailPagePath = path.join(srcDir, 'pages/KnowledgeSourceDetailPage.tsx');
+    const detailContent = fs.readFileSync(detailPagePath, 'utf8');
+    assert.ok(!kbContent.includes('brand-'), 'KnowledgeBasePage must not contain unresolved brand-* classes');
+    assert.ok(!detailContent.includes('brand-'), 'KnowledgeSourceDetailPage must not contain unresolved brand-* classes');
+  });
+
+  await t.test('8. Header Invariant & AI Settings Navigation Guard: Robot icon removed and unsaved protection active', async () => {
+    // 1. CaloyLayout header: robot Bot icon is removed
+    const layoutPath = path.join(srcDir, 'layouts/CaloyLayout.tsx');
+    const layoutContent = fs.readFileSync(layoutPath, 'utf8');
+    assert.ok(!layoutContent.includes('<Bot'), 'Robot Bot icon must be removed from CaloyLayout');
+    assert.ok(!layoutContent.includes("from 'lucide-react'"), 'Unused lucide Bot import must be removed');
+    assert.ok(layoutContent.includes('Caloy Control Center'), 'Caloy Control Center title must remain');
+
+    // 2. CaloySettingsPage: dirty detection, unsaved changes banner, and global guard flag
+    const settingsPath = path.join(srcDir, 'pages/caloy/CaloySettingsPage.tsx');
+    const settingsContent = fs.readFileSync(settingsPath, 'utf8');
+    assert.ok(settingsContent.includes('useUnsavedChanges'), 'CaloySettingsPage must invoke useUnsavedChanges');
+    assert.ok(settingsContent.includes('isDirty'), 'CaloySettingsPage must compute isDirty state');
+    assert.ok(settingsContent.includes('hasUnsavedSettingsChanges'), 'CaloySettingsPage must manage hasUnsavedSettingsChanges window flag');
+    assert.ok(settingsContent.includes('handleDiscard'), 'CaloySettingsPage must provide handleDiscard');
+    assert.ok(settingsContent.includes('You have unsaved changes'), 'CaloySettingsPage must render unsaved changes banner');
+    assert.ok(settingsContent.includes('Discard'), 'CaloySettingsPage must provide Discard button');
+    assert.ok(settingsContent.includes('Save Now'), 'CaloySettingsPage must provide Save Now button');
+
+    // 3. CaloySubNav: guards tab navigation when hasUnsavedSettingsChanges is active
+    const subNavPath = path.join(srcDir, 'components/caloy/CaloySubNav.tsx');
+    const subNavContent = fs.readFileSync(subNavPath, 'utf8');
+    assert.ok(subNavContent.includes('hasUnsavedSettingsChanges'), 'CaloySubNav must check hasUnsavedSettingsChanges');
+    assert.ok(subNavContent.includes('ConfirmNavigationModal'), 'CaloySubNav must render ConfirmNavigationModal');
+
+    // 4. ConfirmNavigationModal: shared component exists
+    const modalPath = path.join(srcDir, 'components/modals/ConfirmNavigationModal.tsx');
+    assert.ok(fs.existsSync(modalPath), 'ConfirmNavigationModal component must exist');
   });
 });

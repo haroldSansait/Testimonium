@@ -7,6 +7,7 @@ import type { Parish } from '../../../types';
 import { ParishSelector } from './ParishSelector';
 import { SourcesAccordion } from './SourcesAccordion';
 import { SafeMarkdown } from './SafeMarkdown';
+import { CustomSelect } from '../../../components/ui/CustomSelect';
 import {
   CALOY_STORAGE_KEYS,
   readCaloyMessages,
@@ -700,28 +701,21 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                     >
                       Select your parish to continue:
                     </label>
-                    <select
+                    <CustomSelect
                       id={`parish-clarify-${msg.id}`}
                       disabled={isTyping}
-                      defaultValue=""
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        if (val && Number.isInteger(val) && val > 0) {
-                          handleInlineParishSelect(val);
+                      value=""
+                      placeholder="Choose a parish..."
+                      options={parishes.map((p) => ({ value: p.id, label: p.name }))}
+                      onChange={(val) => {
+                        const num = Number(val);
+                        if (num && Number.isInteger(num) && num > 0) {
+                          handleInlineParishSelect(num);
                         }
                       }}
-                      className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                      size="sm"
                       aria-label="Select parish for clarification"
-                    >
-                      <option value="" disabled>
-                        Choose a parish...
-                      </option>
-                      {parishes.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 )}
 
@@ -734,28 +728,26 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                     >
                       Select document type to continue:
                     </label>
-                    <select
+                    <CustomSelect
                       id={`doc-clarify-${msg.id}`}
                       disabled={isTyping}
-                      defaultValue=""
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      value=""
+                      placeholder="Choose a document type..."
+                      options={[
+                        { value: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
+                        { value: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
+                        { value: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
+                        { value: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
+                        { value: 'DEATH_CERTIFICATE', label: 'Death Certificate' },
+                      ]}
+                      onChange={(val) => {
                         if (val) {
-                          handleInlineDocTypeSelect(val);
+                          handleInlineDocTypeSelect(String(val));
                         }
                       }}
-                      className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                      size="sm"
                       aria-label="Select document type for clarification"
-                    >
-                      <option value="" disabled>
-                        Choose a document type...
-                      </option>
-                      <option value="BAPTISMAL_CERTIFICATE">Baptismal Certificate</option>
-                      <option value="CONFIRMATION_CERTIFICATE">Confirmation Certificate</option>
-                      <option value="FIRST_COMMUNION_CERTIFICATE">First Communion Certificate</option>
-                      <option value="MARRIAGE_CERTIFICATE">Marriage Certificate</option>
-                      <option value="DEATH_CERTIFICATE">Death Certificate</option>
-                    </select>
+                    />
                   </div>
                 )}
 
@@ -768,28 +760,23 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                     >
                       Select an event or service:
                     </label>
-                    <select
+                    <CustomSelect
                       id={`event-clarify-${msg.id}`}
                       disabled={isTyping}
-                      defaultValue=""
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      value=""
+                      placeholder="Choose an event or service..."
+                      options={(msg.clarificationOptions || []).map((opt) => ({
+                        value: opt.value,
+                        label: opt.label,
+                      }))}
+                      onChange={(val) => {
                         if (val) {
-                          handleInlineEventTypeSelect(val);
+                          handleInlineEventTypeSelect(String(val));
                         }
                       }}
-                      className="w-full text-xs bg-app-page border border-crimson/40 rounded px-2.5 py-1.5 text-text-primary focus-ring font-medium cursor-pointer"
+                      size="sm"
                       aria-label="Select schedule event for clarification"
-                    >
-                      <option value="" disabled>
-                        Choose an event or service...
-                      </option>
-                      {(msg.clarificationOptions || []).map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 )}
 

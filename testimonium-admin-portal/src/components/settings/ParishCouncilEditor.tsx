@@ -23,6 +23,7 @@ import type {
 import { useAuth } from '@/hooks/useAuth';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { cn } from '@/utils/cn';
+import { CustomSelect } from '@/components/ui/CustomSelect';
 
 import {
   type CouncilStateSnapshot,
@@ -592,20 +593,21 @@ export const ParishCouncilEditor: React.FC = () => {
             <label htmlFor="parish-council-selector" className="text-xs font-semibold text-slate-600 flex-shrink-0">
               Parish:
             </label>
-            <select
-              id="parish-council-selector"
-              value={selectedParishId}
-              onChange={(e) => handleParishChange(e.target.value)}
-              disabled={loadingParishes || saving || role === 'SECRETARY'}
-              className="w-full px-3 py-2 text-sm font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-crimson-600/20 focus:border-crimson-600 transition-colors disabled:opacity-60 cursor-pointer"
-            >
-              <option value="">-- Select Parish --</option>
-              {parishes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="w-full">
+              <CustomSelect
+                id="parish-council-selector"
+                value={selectedParishId}
+                onChange={(val) => handleParishChange(String(val))}
+                options={[
+                  { value: '', label: '-- Select Parish --' },
+                  ...parishes.map((p) => ({ value: String(p.id), label: p.name })),
+                ]}
+                placeholder="-- Select Parish --"
+                disabled={loadingParishes || saving || role === 'SECRETARY'}
+                size="sm"
+                aria-label="Select Parish"
+              />
+            </div>
           </div>
         </div>
 

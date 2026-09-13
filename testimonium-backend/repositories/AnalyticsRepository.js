@@ -17,6 +17,24 @@ export function buildVerifiedPaymentWhere({ from, toExclusive, parishId, documen
   return where;
 }
 
+export function deriveMonthlyFromDaily(dailyRows = []) {
+  if (!Array.isArray(dailyRows) || dailyRows.length === 0) return [];
+  const monthMap = new Map();
+  for (const row of dailyRows) {
+    if (!row || !row.date) continue;
+    const month = String(row.date).slice(0, 7);
+    const existing = monthMap.get(month) || { month, count: 0 };
+    existing.count += Number(row.count || 0);
+    if (row.amount !== undefined) {
+      const currentAmt = parseFloat(existing.amount || "0");
+      const rowAmt = parseFloat(row.amount || "0");
+      existing.amount = (currentAmt + rowAmt).toFixed(2);
+    }
+    monthMap.set(month, existing);
+  }
+  return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
 export class AnalyticsRepository {
   constructor(client = prisma) {
     this.prisma = client;
@@ -170,6 +188,7 @@ export class AnalyticsRepository {
   }
 
   async getDescriptiveAnalytics(filters) {
+    const db = this.prisma || prisma;
     const {
       from,
       toExclusive,
@@ -239,53 +258,53 @@ export class AnalyticsRepository {
       documentTotal,
       documentsByType,
       documentsByStatus,
-      documentMonthly,
+      documentDaily,
       processingAverage,
       paymentTotal,
       paymentByStatus,
       verifiedAmount,
       receiptsSubmitted,
       paymentCorrections,
-      paymentMonthly,
+      paymentDaily,
       scheduleTotal,
       schedulesByType,
       schedulesByStatus,
-      scheduleMonthly,
+      scheduleDaily,
       busiestWeekdays,
       eventTotal,
       eventsByVisibility,
       eventsByType,
-      eventMonthly,
+      eventDaily,
       reportTotal,
       reportsByCategory,
-      reportMonthly,
+      reportDaily,
       userRoleDistribution,
-      userMonthly,
+      userDaily,
       documentByParish,
       scheduleByParish,
     ] = await Promise.all([
-      prisma.documentRequest.count({ where: documentWhere }),
-      prisma.documentRequest.groupBy({ by: ["documentType"], where: documentWhere, _count: true }),
-      prisma.documentRequest.groupBy({ by: ["status"], where: documentWhere, _count: true }),
-      prisma.$queryRaw`
-        SELECT to_char(date_trunc('month', dr."date_requested"), 'YYYY-MM') AS month,
+      db.documentRequest.count({ where: documentWhere }),
+      db.documentRequest.groupBy({ by: ["documentType"], where: documentWhere, _count: true }),
+      db.documentRequest.groupBy({ by: ["status"], where: documentWhere, _count: true }),
+      db.$queryRaw`
+        SELECT to_char(date_trunc('day', (dr."date_requested" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Manila'), 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS count
         FROM "document_requests" dr
         WHERE dr."date_requested" >= ${from} AND dr."date_requested" < ${toExclusive}
           ${docParishSql} ${documentTypeSql} ${documentStatusSql}
         GROUP BY 1 ORDER BY 1`,
-      prisma.$queryRaw`
+      db.$queryRaw`
         SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (dr."date_processed" - dr."date_requested")) / 3600.0), 0)::float8 AS hours
         FROM "document_requests" dr
         WHERE dr."date_requested" >= ${from} AND dr."date_requested" < ${toExclusive}
           AND dr."date_processed" IS NOT NULL ${docParishSql} ${documentTypeSql} ${documentStatusSql}`,
-      prisma.paymentTransaction.count({ where: paymentWhere }),
-      prisma.paymentTransaction.groupBy({ by: ["status"], where: paymentWhere, _count: true }),
-      prisma.paymentTransaction.aggregate({
+      db.paymentTransaction.count({ where: paymentWhere }),
+      db.paymentTransaction.groupBy({ by: ["status"], where: paymentWhere, _count: true }),
+      db.paymentTransaction.aggregate({
         where: { ...paymentWhere, status: "VERIFIED" },
         _sum: { amount: true },
       }),
-      prisma.receiptUpload.count({
+      db.receiptUpload.count({
         where: {
           uploadedAt: { gte: pFrom, lt: pToExclusive },
           ...((parishId || documentType)
@@ -300,7 +319,7 @@ export class AnalyticsRepository {
             : {}),
         },
       }),
-      prisma.requestHistory.count({
+      db.requestHistory.count({
         where: {
           createdAt: { gte: pFrom, lt: pToExclusive },
           newStatus: "PAYMENT_NEEDS_CORRECTION",
@@ -314,8 +333,8 @@ export class AnalyticsRepository {
             : {}),
         },
       }),
-      prisma.$queryRaw`
-        SELECT to_char(date_trunc('month', (pt."created_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Manila'), 'YYYY-MM') AS month,
+      db.$queryRaw`
+        SELECT to_char(date_trunc('day', (pt."created_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Manila'), 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS count,
                COALESCE(SUM(pt."amount"), 0)::text AS amount
         FROM "payment_transactions" pt
@@ -323,68 +342,107 @@ export class AnalyticsRepository {
         WHERE pt."created_at" >= ${pFrom} AND pt."created_at" < ${pToExclusive}
           AND pt."status" = 'VERIFIED' ${docParishSql} ${paymentDocTypeSql}
         GROUP BY 1 ORDER BY 1`,
-      prisma.schedule.count({ where: scheduleWhere }),
-      prisma.schedule.groupBy({ by: ["eventType"], where: scheduleWhere, _count: true }),
-      prisma.schedule.groupBy({ by: ["status"], where: scheduleWhere, _count: true }),
-      prisma.$queryRaw`
-        SELECT to_char(date_trunc('month', s."created_at"), 'YYYY-MM') AS month,
+      db.schedule.count({ where: scheduleWhere }),
+      db.schedule.groupBy({ by: ["eventType"], where: scheduleWhere, _count: true }),
+      db.schedule.groupBy({ by: ["status"], where: scheduleWhere, _count: true }),
+      db.$queryRaw`
+        SELECT to_char(date_trunc('day', (s."created_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Manila'), 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS count
         FROM "schedules" s
         WHERE s."created_at" >= ${from} AND s."created_at" < ${toExclusive}
           ${scheduleParishSql} ${eventTypeSql} ${scheduleStatusSql}
         GROUP BY 1 ORDER BY 1`,
-      prisma.$queryRaw`
+      db.$queryRaw`
         SELECT EXTRACT(ISODOW FROM s."requested_date")::int AS weekday,
                COUNT(*)::int AS count
         FROM "schedules" s
         WHERE s."requested_date" >= ${from} AND s."requested_date" < ${toExclusive}
           ${scheduleParishSql} ${eventTypeSql} ${scheduleStatusSql}
         GROUP BY 1 ORDER BY count DESC, weekday ASC`,
-      prisma.parishEvent.count({ where: eventWhere }),
-      prisma.parishEvent.groupBy({ by: ["visibility"], where: eventWhere, _count: true }),
-      prisma.parishEvent.groupBy({ by: ["eventType"], where: eventWhere, _count: true }),
-      prisma.$queryRaw`
-        SELECT to_char(date_trunc('month', pe."event_date"), 'YYYY-MM') AS month,
+      db.parishEvent.count({ where: eventWhere }),
+      db.parishEvent.groupBy({ by: ["visibility"], where: eventWhere, _count: true }),
+      db.parishEvent.groupBy({ by: ["eventType"], where: eventWhere, _count: true }),
+      db.$queryRaw`
+        SELECT to_char(pe."event_date", 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS count
         FROM "parish_events" pe
         WHERE pe."event_date" >= ${from} AND pe."event_date" < ${toExclusive}
           AND pe."is_active" = true ${eventParishSql} ${parishEventTypeSql}
         GROUP BY 1 ORDER BY 1`,
-      prisma.dailyReport.count({ where: reportWhere }),
-      prisma.dailyReport.groupBy({ by: ["category"], where: reportWhere, _count: true }),
-      prisma.$queryRaw`
-        SELECT to_char(date_trunc('month', r."report_date"), 'YYYY-MM') AS month,
+      db.dailyReport.count({ where: reportWhere }),
+      db.dailyReport.groupBy({ by: ["category"], where: reportWhere, _count: true }),
+      db.$queryRaw`
+        SELECT to_char(r."report_date", 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS count
         FROM "daily_reports" r
         WHERE r."report_date" >= ${from} AND r."report_date" < ${toExclusive}
           AND r."is_archived" = false ${reportParishSql} ${reportCategorySql}
         GROUP BY 1 ORDER BY 1`,
       includeUsers
-        ? prisma.user.groupBy({ by: ["roleId"], where: { createdAt: { lt: toExclusive } }, _count: true })
+        ? db.user.groupBy({ by: ["roleId"], where: { createdAt: { lt: toExclusive } }, _count: true })
         : Promise.resolve([]),
       includeUsers
-        ? prisma.$queryRaw`
-            SELECT to_char(date_trunc('month', u."created_at"), 'YYYY-MM') AS month,
+        ? db.$queryRaw`
+            SELECT to_char(date_trunc('day', (u."created_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Manila'), 'YYYY-MM-DD') AS date,
                    COUNT(*)::int AS count
             FROM "users" u
             WHERE u."created_at" >= ${from} AND u."created_at" < ${toExclusive}
             GROUP BY 1 ORDER BY 1`
         : Promise.resolve([]),
-      parishId ? Promise.resolve([]) : prisma.documentRequest.groupBy({ by: ["parishId"], where: documentWhere, _count: true }),
-      parishId ? Promise.resolve([]) : prisma.schedule.groupBy({ by: ["parishId"], where: scheduleWhere, _count: true }),
+      parishId ? Promise.resolve([]) : db.documentRequest.groupBy({ by: ["parishId"], where: documentWhere, _count: true }),
+      parishId ? Promise.resolve([]) : db.schedule.groupBy({ by: ["parishId"], where: scheduleWhere, _count: true }),
     ]);
 
     const roles = includeUsers
-      ? await prisma.role.findMany({ select: { id: true, roleName: true } })
+      ? await db.role.findMany({ select: { id: true, roleName: true } })
       : [];
     const roleNameById = new Map(roles.map((role) => [role.id, role.roleName]));
     return {
-      documents: { total: documentTotal, byType: documentsByType, byStatus: documentsByStatus, monthly: documentMonthly, averageProcessingHours: Number(processingAverage[0]?.hours || 0) },
-      payments: { totalTransactions: paymentTotal, receiptsSubmitted, corrections: paymentCorrections, byStatus: paymentByStatus, verifiedAmount: verifiedAmount._sum.amount?.toFixed(2) || "0.00", monthly: paymentMonthly },
-      scheduling: { total: scheduleTotal, byType: schedulesByType, byStatus: schedulesByStatus, monthlyBySubmissionDate: scheduleMonthly, busiestWeekdaysByRequestedDate: busiestWeekdays },
-      events: { total: eventTotal, byVisibility: eventsByVisibility, byType: eventsByType, monthlyByEventDate: eventMonthly },
-      reports: { total: reportTotal, byCategory: reportsByCategory, monthlyByReportDate: reportMonthly },
-      users: includeUsers ? { byRole: userRoleDistribution.map((row) => ({ role: roleNameById.get(row.roleId), count: row._count })), monthlyGrowth: userMonthly } : null,
+      documents: {
+        total: documentTotal,
+        byType: documentsByType,
+        byStatus: documentsByStatus,
+        daily: documentDaily,
+        monthly: deriveMonthlyFromDaily(documentDaily),
+        averageProcessingHours: Number(processingAverage[0]?.hours || 0),
+      },
+      payments: {
+        totalTransactions: paymentTotal,
+        receiptsSubmitted,
+        corrections: paymentCorrections,
+        byStatus: paymentByStatus,
+        verifiedAmount: verifiedAmount._sum.amount?.toFixed(2) || "0.00",
+        daily: paymentDaily,
+        monthly: deriveMonthlyFromDaily(paymentDaily),
+      },
+      scheduling: {
+        total: scheduleTotal,
+        byType: schedulesByType,
+        byStatus: schedulesByStatus,
+        dailyBySubmissionDate: scheduleDaily,
+        monthlyBySubmissionDate: deriveMonthlyFromDaily(scheduleDaily),
+        busiestWeekdaysByRequestedDate: busiestWeekdays,
+      },
+      events: {
+        total: eventTotal,
+        byVisibility: eventsByVisibility,
+        byType: eventsByType,
+        dailyByEventDate: eventDaily,
+        monthlyByEventDate: deriveMonthlyFromDaily(eventDaily),
+      },
+      reports: {
+        total: reportTotal,
+        byCategory: reportsByCategory,
+        dailyByReportDate: reportDaily,
+        monthlyByReportDate: deriveMonthlyFromDaily(reportDaily),
+      },
+      users: includeUsers
+        ? {
+            byRole: userRoleDistribution.map((row) => ({ role: roleNameById.get(row.roleId), count: row._count })),
+            dailyGrowth: userDaily,
+            monthlyGrowth: deriveMonthlyFromDaily(userDaily),
+          }
+        : null,
       parishComparisons: parishId ? null : { documents: documentByParish, schedules: scheduleByParish },
     };
   }

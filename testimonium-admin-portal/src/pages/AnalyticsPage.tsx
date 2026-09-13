@@ -4,6 +4,7 @@ import {
   BarChart3,
   CalendarDays,
   FileText,
+  Filter,
   Landmark,
   Loader2,
   RefreshCw,
@@ -18,12 +19,23 @@ import { ParishManagementService } from '@/services/ParishManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import { ErrorState } from '@/components/common/ErrorState';
 import { VerifiedPaymentsTable } from '@/components/analytics/VerifiedPaymentsTable';
-import { getManilaDefaultDateRange } from '@/utils/date';
+import { AnalyticsTelemetryDeck, type TelemetryMetric } from '@/components/analytics/AnalyticsTelemetryDeck';
+import { DailyTrendChart, type DailyDataPoint } from '@/components/analytics/DailyTrendChart';
+import { StatusDonutChart, type StatusDistributionRow } from '@/components/analytics/StatusDonutChart';
+import { RankedHorizontalBarChart, type CategoryCountRow } from '@/components/analytics/RankedHorizontalBarChart';
+import { WeekdayActivityChart, type WeekdayRow } from '@/components/analytics/WeekdayActivityChart';
+import {
+  type DatePresetKey,
+  DATE_PRESET_LABELS,
+  getActiveDatePreset,
+  getManilaDefaultDateRange,
+  getManilaPresetRange,
+} from '@/utils/date';
 import type { Parish } from '@/types';
-
 import type { ApiError, ApiResponseEnvelope } from '@/types/api';
 
 type CountRow = Record<string, unknown> & { _count?: number; count?: number };
+type DailyRow = DailyDataPoint;
 type MonthlyRow = { month: string; count: number; amount?: string };
 
 interface AnalyticsData {
@@ -31,7 +43,8 @@ interface AnalyticsData {
     total: number;
     byType: CountRow[];
     byStatus: CountRow[];
-    monthly: MonthlyRow[];
+    daily: DailyRow[];
+    monthly?: MonthlyRow[];
     averageProcessingHours: number;
   };
   payments: {
@@ -40,29 +53,34 @@ interface AnalyticsData {
     corrections: number;
     verifiedAmount: string;
     byStatus: CountRow[];
-    monthly: MonthlyRow[];
+    daily: DailyRow[];
+    monthly?: MonthlyRow[];
   };
   scheduling: {
     total: number;
     byType: CountRow[];
     byStatus: CountRow[];
-    monthlyBySubmissionDate: MonthlyRow[];
+    dailyBySubmissionDate: DailyRow[];
+    monthlyBySubmissionDate?: MonthlyRow[];
     busiestWeekdaysByRequestedDate: CountRow[];
   };
   events: {
     total: number;
     byVisibility: CountRow[];
     byType: CountRow[];
-    monthlyByEventDate: MonthlyRow[];
+    dailyByEventDate: DailyRow[];
+    monthlyByEventDate?: MonthlyRow[];
   };
   reports: {
     total: number;
     byCategory: CountRow[];
-    monthlyByReportDate: MonthlyRow[];
+    dailyByReportDate: DailyRow[];
+    monthlyByReportDate?: MonthlyRow[];
   };
   users: {
     byRole: Array<{ role: string; count: number }>;
-    monthlyGrowth: MonthlyRow[];
+    dailyGrowth: DailyRow[];
+    monthlyGrowth?: MonthlyRow[];
   } | null;
   parishComparisons: {
     documents: CountRow[];
@@ -106,136 +124,31 @@ const tabMeta: Record<Tab, { label: string; icon: React.ComponentType<{ classNam
   },
 };
 
-function labelFor(row: CountRow): string {
-  const entry = Object.entries(row).find(([key]) => !['_count', 'count'].includes(key));
-  return String(entry?.[1] ?? 'Unknown').replaceAll('_', ' ');
-}
-
-function CountBars({ rows, emptyMessage = 'No records in this period.' }: { rows: CountRow[]; emptyMessage?: string }) {
-  const maximum = Math.max(1, ...rows.map((row) => Number(row._count ?? row.count ?? 0)));
-
-  if (rows.length === 0) {
-    return (
-      <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-gray-200 p-4 text-center">
-        <p className="text-xs font-medium text-gray-400">{emptyMessage}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3.5">
-      {rows.map((row, index) => {
-        const value = Number(row._count ?? row.count ?? 0);
-        const percentage = Math.round((value / maximum) * 100);
-        const label = labelFor(row);
-
-        return (
-          <div key={`${label}-${index}`} className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs font-medium text-gray-700">
-              <span className="capitalize">{label.toLowerCase()}</span>
-              <span className="font-bold text-gray-900">{value.toLocaleString()}</span>
-            </div>
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
-              <div
-                className="h-full rounded-full bg-crimson-700 transition-all duration-300"
-                style={{ width: `${Math.max(3, percentage)}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function MonthlyChart({
-  rows,
-  label,
-  emptyMessage = 'No monthly activity recorded.',
-}: {
-  rows: MonthlyRow[];
-  label: string;
-  emptyMessage?: string;
-}) {
-  const maximum = Math.max(1, ...rows.map((row) => Number(row.count)));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</h3>
-        {rows.length > 0 && (
-          <span className="text-[11px] font-medium text-gray-400">
-            Peak: {maximum.toLocaleString()}
-          </span>
-        )}
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="flex h-44 items-center justify-center rounded-lg border border-dashed border-gray-200 p-4 text-center">
-          <p className="text-xs font-medium text-gray-400">{emptyMessage}</p>
-        </div>
-      ) : (
-        <div className="flex h-48 items-end gap-2 overflow-x-auto border-b border-gray-200 pb-2 pt-4">
-          {rows.map((row) => {
-            const count = Number(row.count);
-            const heightPercent = maximum > 0 ? Math.max(8, (count / maximum) * 130) : 8;
-
-            return (
-              <div
-                key={row.month}
-                className="group relative flex min-w-12 flex-1 flex-col items-center justify-end gap-1.5"
-              >
-                <span className="text-[10px] font-bold text-gray-700 transition-colors group-hover:text-crimson-700">
-                  {count.toLocaleString()}
-                </span>
-                <div
-                  className="w-full max-w-10 rounded-t-md bg-crimson-700/85 transition-all duration-200 group-hover:bg-crimson-700"
-                  style={{ height: `${heightPercent}px` }}
-                />
-                <span className="text-[10px] font-medium text-gray-500 whitespace-nowrap">
-                  {row.month}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6 animate-pulse">
-      {/* KPI Cards Skeleton */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-2">
-            <div className="h-3 w-20 rounded bg-gray-200" />
-            <div className="h-7 w-28 rounded bg-gray-200" />
-          </div>
-        ))}
+      {/* Telemetry Deck Skeleton */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-xs overflow-hidden">
+        <div className="h-10 border-b border-gray-100 bg-gray-50/70" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="p-5 space-y-2">
+              <div className="h-3 w-20 rounded bg-gray-200" />
+              <div className="h-8 w-28 rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Chart & Breakdowns Skeleton */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
-          <div className="h-4 w-40 rounded bg-gray-200" />
-          <div className="h-44 rounded bg-gray-100" />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs space-y-4">
+          <div className="h-4 w-48 rounded bg-gray-200" />
+          <div className="h-48 rounded bg-gray-50" />
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs space-y-4">
           <div className="h-4 w-36 rounded bg-gray-200" />
-          <div className="space-y-3 pt-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-1.5">
-                <div className="flex justify-between">
-                  <div className="h-3 w-24 rounded bg-gray-200" />
-                  <div className="h-3 w-8 rounded bg-gray-200" />
-                </div>
-                <div className="h-2.5 w-full rounded-full bg-gray-100" />
-              </div>
-            ))}
-          </div>
+          <div className="h-48 rounded bg-gray-50" />
         </div>
       </div>
     </div>
@@ -379,6 +292,18 @@ const reportCategoryGroups: SelectOptionGroup[] = [
   },
 ];
 
+interface ContentData {
+  telemetry: TelemetryMetric[];
+  daily: DailyRow[];
+  dailyTitle: string;
+  valueLabel: string;
+  statusRows: StatusDistributionRow[] | null;
+  typeRows: CategoryCountRow[] | null;
+  categoryRows: CategoryCountRow[] | null;
+  weekdays: WeekdayRow[] | null;
+  total: number;
+}
+
 export function AnalyticsPage() {
   const { role } = useAuth();
   const coordinator = role === 'DIOCESE_COORDINATOR';
@@ -396,6 +321,11 @@ export function AnalyticsPage() {
   const [to, setTo] = useState(() => getManilaDefaultDateRange().to);
   const [paymentRefreshTrigger, setPaymentRefreshTrigger] = useState(0);
   const [tab, setTab] = useState<Tab>('documents');
+  const [dataEpoch, setDataEpoch] = useState(0);
+
+  const activePreset = useMemo(() => {
+    return getActiveDatePreset(from, to);
+  }, [from, to]);
 
   // Sub-filter states
   const [documentType, setDocumentType] = useState('');
@@ -494,6 +424,7 @@ export function AnalyticsPage() {
           setData(response.data.data);
           dataRef.current = response.data.data;
           dataQueryKeyRef.current = targetKey;
+          setDataEpoch((prev) => prev + 1);
           setError('');
           setStaleError('');
         }
@@ -536,94 +467,168 @@ export function AnalyticsPage() {
     setStaleError('');
   };
 
-
-  const content = useMemo(() => {
+  const content = useMemo<ContentData | null>(() => {
     if (!data) return null;
 
     if (tab === 'documents') {
       return {
-        cards: [
-          { label: 'Total Requests', value: data.documents.total.toLocaleString() },
+        telemetry: [
+          {
+            label: 'Total Requests',
+            value: data.documents.total.toLocaleString(),
+            hint: 'Submitted requests in selected range',
+            icon: 'file',
+          },
           {
             label: 'Avg Processing Time',
             value: `${data.documents.averageProcessingHours.toFixed(1)} hrs`,
+            hint: 'From request to completion',
+            icon: 'clock',
           },
         ],
-        groups: [
-          { label: 'Requests by Document Type', rows: data.documents.byType },
-          { label: 'Requests by Status', rows: data.documents.byStatus },
-        ],
-        monthly: data.documents.monthly,
-        monthlyLabel: 'Document Requests by Submission Month',
+        daily: data.documents.daily || (data.documents.monthly as unknown as DailyRow[]) || [],
+        dailyTitle: 'Document Requests by Submission Date',
+        valueLabel: 'Requests',
+        statusRows: data.documents.byStatus,
+        typeRows: data.documents.byType,
+        categoryRows: null,
+        weekdays: null,
         total: data.documents.total,
       };
     }
 
     if (tab === 'payments') {
       return {
-        cards: [
-          { label: 'Total Transactions', value: data.payments.totalTransactions.toLocaleString() },
-          { label: 'Receipts Submitted', value: data.payments.receiptsSubmitted.toLocaleString() },
-          { label: 'Corrections', value: data.payments.corrections.toLocaleString() },
-          { label: 'Verified Amount', value: `₱${data.payments.verifiedAmount}` },
+        telemetry: [
+          {
+            label: 'Total Transactions',
+            value: data.payments.totalTransactions.toLocaleString(),
+            hint: 'All payment records',
+            icon: 'landmark',
+          },
+          {
+            label: 'Receipts Submitted',
+            value: data.payments.receiptsSubmitted.toLocaleString(),
+            hint: 'Uploaded by parishioners',
+            icon: 'receipt',
+          },
+          {
+            label: 'Corrections',
+            value: data.payments.corrections.toLocaleString(),
+            hint: 'Transactions needing correction',
+            icon: 'correction',
+          },
+          {
+            label: 'Verified Amount',
+            value: `₱${data.payments.verifiedAmount}`,
+            hint: 'Total verified revenue',
+            icon: 'verified',
+          },
         ],
-        groups: [{ label: 'Transactions by Status', rows: data.payments.byStatus }],
-        monthly: data.payments.monthly,
-        monthlyLabel: 'Verified Payments by Transaction Month',
+        daily: data.payments.daily || (data.payments.monthly as unknown as DailyRow[]) || [],
+        dailyTitle: 'Payment Transactions by Transaction Date',
+        valueLabel: 'Verified Transactions',
+        statusRows: data.payments.byStatus,
+        typeRows: null,
+        categoryRows: null,
+        weekdays: null,
         total: data.payments.totalTransactions,
       };
     }
 
     if (tab === 'scheduling') {
       return {
-        cards: [{ label: 'Total Scheduling Requests', value: data.scheduling.total.toLocaleString() }],
-        groups: [
-          { label: 'Requests by Service Type', rows: data.scheduling.byType },
-          { label: 'Requests by Status', rows: data.scheduling.byStatus },
+        telemetry: [
           {
-            label: 'Busiest Requested Weekdays',
-            rows: data.scheduling.busiestWeekdaysByRequestedDate,
+            label: 'Total Scheduling Requests',
+            value: data.scheduling.total.toLocaleString(),
+            hint: 'Parish sacrament bookings',
+            icon: 'schedule',
           },
         ],
-        monthly: data.scheduling.monthlyBySubmissionDate,
-        monthlyLabel: 'Scheduling Requests by Submission Month',
+        daily: data.scheduling.dailyBySubmissionDate || (data.scheduling.monthlyBySubmissionDate as unknown as DailyRow[]) || [],
+        dailyTitle: 'Schedule Requests by Submission Date',
+        valueLabel: 'Schedules',
+        statusRows: data.scheduling.byStatus,
+        typeRows: data.scheduling.byType,
+        categoryRows: null,
+        weekdays: data.scheduling.busiestWeekdaysByRequestedDate,
         total: data.scheduling.total,
       };
     }
 
     if (tab === 'events') {
       return {
-        cards: [{ label: 'Total Parish Events', value: data.events.total.toLocaleString() }],
-        groups: [
-          { label: 'Events by Visibility', rows: data.events.byVisibility },
-          { label: 'Events by Type', rows: data.events.byType },
+        telemetry: [
+          {
+            label: 'Total Parish Events',
+            value: data.events.total.toLocaleString(),
+            hint: 'Scheduled ceremonies & liturgies',
+            icon: 'calendar',
+          },
         ],
-        monthly: data.events.monthlyByEventDate,
-        monthlyLabel: 'Events by Event Month',
+        daily: data.events.dailyByEventDate || (data.events.monthlyByEventDate as unknown as DailyRow[]) || [],
+        dailyTitle: 'Parish Events by Event Date',
+        valueLabel: 'Events',
+        statusRows: data.events.byVisibility,
+        typeRows: data.events.byType,
+        categoryRows: null,
+        weekdays: null,
         total: data.events.total,
       };
     }
 
     if (tab === 'reports') {
       return {
-        cards: [{ label: 'Total Daily Reports', value: data.reports.total.toLocaleString() }],
-        groups: [{ label: 'Reports by Category', rows: data.reports.byCategory }],
-        monthly: data.reports.monthlyByReportDate,
-        monthlyLabel: 'Daily Reports by Report Month',
+        telemetry: [
+          {
+            label: 'Total Daily Reports',
+            value: data.reports.total.toLocaleString(),
+            hint: 'Logged operational reports',
+            icon: 'report',
+          },
+        ],
+        daily: data.reports.dailyByReportDate || (data.reports.monthlyByReportDate as unknown as DailyRow[]) || [],
+        dailyTitle: 'Daily Reports by Report Date',
+        valueLabel: 'Reports',
+        statusRows: null,
+        typeRows: null,
+        categoryRows: data.reports.byCategory,
+        weekdays: null,
         total: data.reports.total,
       };
     }
 
     // Users tab (coordinator only)
-    return data.users
-      ? {
-          cards: [{ label: 'Roles Represented', value: String(data.users.byRole.length) }],
-          groups: [{ label: 'Users by Role', rows: data.users.byRole as unknown as CountRow[] }],
-          monthly: data.users.monthlyGrowth,
-          monthlyLabel: 'New Registered Users by Month',
-          total: data.users.byRole.reduce((acc, curr) => acc + curr.count, 0),
-        }
-      : null;
+    if (data.users) {
+      const totalUsers = data.users.byRole.reduce((acc, curr) => acc + curr.count, 0);
+      return {
+        telemetry: [
+          {
+            label: 'Roles Represented',
+            value: String(data.users.byRole.length),
+            hint: 'Canonical user roles',
+            icon: 'shield',
+          },
+          {
+            label: 'Total Registered Users',
+            value: totalUsers.toLocaleString(),
+            hint: 'Diocese-wide accounts',
+            icon: 'users',
+          },
+        ],
+        daily: data.users.dailyGrowth || (data.users.monthlyGrowth as unknown as DailyRow[]) || [],
+        dailyTitle: 'User Registrations by Registration Date',
+        valueLabel: 'New Users',
+        statusRows: data.users.byRole as unknown as CountRow[],
+        typeRows: null,
+        categoryRows: null,
+        weekdays: null,
+        total: totalUsers,
+      };
+    }
+
+    return null;
   }, [data, tab]);
 
   const activeTabMeta = tabMeta[tab];
@@ -636,12 +641,18 @@ export function AnalyticsPage() {
     }
   };
 
+  const activeScopeName = parishId
+    ? parishes.find((p) => String(p.id) === String(parishId))?.name || 'Selected Parish'
+    : coordinator
+    ? 'All Parishes'
+    : 'Assigned Parish';
+
   return (
     <div className="space-y-6 pb-12">
       {/* Page Header */}
       <PageHeader
         title="Descriptive Analytics"
-        subtitle="Operational counts and trends with explicit date semantics."
+        subtitle="Operational telemetry and daily trends with explicit date semantics."
         actions={
           <button
             type="button"
@@ -656,7 +667,68 @@ export function AnalyticsPage() {
       />
 
       {/* Filter Toolbar */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-crimson-700" />
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-700">
+              Filter Parameters & Scope
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-600">
+              Scope: <strong className="font-bold text-gray-800">{activeScopeName}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-crimson-700 hover:text-crimson-800 hover:underline cursor-pointer"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset filters
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Date Range Presets */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100/80 pb-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 mr-1.5">
+              Quick Range:
+            </span>
+            {(['7d', '1m', '6m', '1y'] as DatePresetKey[]).map((preset) => {
+              const isSelected = activePreset === preset;
+              return (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    const range = getManilaPresetRange(preset);
+                    setFrom(range.from);
+                    setTo(range.to);
+                  }}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-crimson-700 text-white shadow-xs'
+                      : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+                  }`}
+                >
+                  {DATE_PRESET_LABELS[preset]}
+                </button>
+              );
+            })}
+            {activePreset === 'custom' && (
+              <span className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">
+                Custom
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] text-gray-400 font-medium hidden sm:inline">
+            Asia/Manila calendar window
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {/* From Date */}
           <div className="space-y-1">
@@ -761,29 +833,6 @@ export function AnalyticsPage() {
             />
           )}
         </div>
-
-        <div className="flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500">
-          <div className="flex items-center gap-2">
-            <span>
-              Scope:{' '}
-              <strong className="text-gray-700">
-                {parishId
-                  ? parishes.find((p) => String(p.id) === String(parishId))?.name || 'Selected Parish'
-                  : coordinator
-                  ? 'All Parishes'
-                  : 'Assigned Parish'}
-              </strong>
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-crimson-700 hover:text-crimson-800 hover:underline cursor-pointer"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Reset filters
-          </button>
-        </div>
       </div>
 
       {/* Tabs Navigation */}
@@ -862,37 +911,126 @@ export function AnalyticsPage() {
       {/* Analytics Content Area */}
       {content ? (
         <div className="space-y-6">
-          {/* KPI Cards Grid */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {content.cards.map(({ label, value }) => (
-              <div
-                key={label}
-                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:shadow"
-              >
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</p>
-                <p className="mt-2 text-2xl font-bold text-gray-900 tracking-tight">{value}</p>
-              </div>
-            ))}
-          </div>
+          {/* 1. Consolidated Summary Telemetry Panel */}
+          <AnalyticsTelemetryDeck
+            animationKey={dataEpoch}
+            metrics={content.telemetry}
+            domainTitle={`${tabMeta[tab].label} Telemetry`}
+            scopeLabel={activeScopeName}
+            dateRangeLabel={`${from} to ${to}`}
+          />
 
-          {/* Charts & Breakdown Rows */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Monthly Trend Card */}
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <MonthlyChart
-                rows={content.monthly}
-                label={content.monthlyLabel}
+          {/* 2. Visualizations Grid */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {/* Primary Time-Series Area Trend (Continuous Zero-Filled Daily Series) */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+              <DailyTrendChart
+                animationKey={dataEpoch}
+                from={from}
+                to={to}
+                rows={content.daily}
+                title={content.dailyTitle}
+                valueLabel={content.valueLabel}
                 emptyMessage={activeTabMeta.noDataMessage}
               />
             </div>
 
-            {/* Categorical Breakdown Groups */}
-            {content.groups.map(({ label, rows }) => (
-              <div key={label} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</h3>
-                <CountBars rows={[...rows]} emptyMessage={`No breakdown records for this period.`} />
+            {/* Categorical Breakdown: Status Donut or Category Chart */}
+            {content.statusRows ? (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+                <StatusDonutChart
+                  animationKey={dataEpoch}
+                  title={
+                    tab === 'documents'
+                      ? 'Requests by Status'
+                      : tab === 'payments'
+                      ? 'Transactions by Status'
+                      : tab === 'scheduling'
+                      ? 'Schedule Requests by Status'
+                      : tab === 'events'
+                      ? 'Events by Visibility'
+                      : 'Users by Role'
+                  }
+                  rows={content.statusRows}
+                  emptyMessage="No status distribution records for this period."
+                />
               </div>
-            ))}
+            ) : content.categoryRows ? (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+                <RankedHorizontalBarChart
+                  animationKey={dataEpoch}
+                  title="Reports by Category"
+                  rows={content.categoryRows}
+                  emptyMessage="No category records for this period."
+                />
+              </div>
+            ) : null}
+
+            {/* Secondary Category / Service Type Ranking */}
+            {content.typeRows && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs flex flex-col justify-between">
+                <RankedHorizontalBarChart
+                  animationKey={dataEpoch}
+                  title={
+                    tab === 'documents'
+                      ? 'Requests by Document Type'
+                      : tab === 'scheduling'
+                      ? 'Requests by Service Type'
+                      : 'Events by Type'
+                  }
+                  rows={content.typeRows}
+                  emptyMessage="No category breakdown records for this period."
+                />
+              </div>
+            )}
+
+            {/* Documents Tab: Row 2 - Right (Diocese-Wide Parish Comparison) */}
+            {tab === 'documents' && coordinator && !parishId && data?.parishComparisons?.documents && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs flex flex-col justify-between">
+                <RankedHorizontalBarChart
+                  animationKey={dataEpoch}
+                  title="Diocese-Wide Parish Comparison"
+                  badgeLabel="Coordinator View"
+                  rows={data.parishComparisons.documents.map((row) => ({
+                    parish:
+                      parishes.find((p) => Number(p.id) === Number(row.parishId))?.name ||
+                      `Parish ID ${row.parishId}`,
+                    _count: row._count,
+                  }))}
+                  emptyMessage="No comparative parish data available for this query."
+                />
+              </div>
+            )}
+
+            {/* Scheduling Tab: Weekday Heatmap */}
+            {content.weekdays && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+                <WeekdayActivityChart
+                  animationKey={dataEpoch}
+                  title="Busiest Requested Weekdays"
+                  rows={content.weekdays}
+                  emptyMessage="No weekday scheduling records for this period."
+                />
+              </div>
+            )}
+
+            {/* Scheduling Tab: Diocese-Wide Parish Comparison */}
+            {tab === 'scheduling' && coordinator && !parishId && data?.parishComparisons?.schedules && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs flex flex-col justify-between">
+                <RankedHorizontalBarChart
+                  animationKey={dataEpoch}
+                  title="Diocese-Wide Parish Comparison"
+                  badgeLabel="Coordinator View"
+                  rows={data.parishComparisons.schedules.map((row) => ({
+                    parish:
+                      parishes.find((p) => Number(p.id) === Number(row.parishId))?.name ||
+                      `Parish ID ${row.parishId}`,
+                    _count: row._count,
+                  }))}
+                  emptyMessage="No comparative parish data available for this query."
+                />
+              </div>
+            )}
           </div>
 
           {/* Payments Tab: Verified Payments Detail Table */}
@@ -906,36 +1044,10 @@ export function AnalyticsPage() {
               refreshTrigger={paymentRefreshTrigger}
             />
           )}
-
-          {/* Coordinator-Only Diocesan Parish Comparison */}
-          {coordinator && !parishId && data?.parishComparisons && (tab === 'documents' || tab === 'scheduling') && (
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
-                  Diocese-Wide Parish Comparison
-                </h3>
-                <span className="text-[11px] font-semibold text-crimson-700 uppercase">
-                  Coordinator View
-                </span>
-              </div>
-              <CountBars
-                rows={(tab === 'documents'
-                  ? data.parishComparisons.documents
-                  : data.parishComparisons.schedules
-                ).map((row) => ({
-                  parish:
-                    parishes.find((p) => Number(p.id) === Number(row.parishId))?.name ||
-                    `Parish ID ${row.parishId}`,
-                  _count: row._count,
-                }))}
-                emptyMessage="No comparative parish data available for this query."
-              />
-            </div>
-          )}
         </div>
       ) : (
         !loading && (
-          <div className="flex h-56 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center shadow-sm">
+          <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center shadow-xs">
             <Users className="h-8 w-8 text-gray-400" />
             <h4 className="mt-3 text-sm font-bold text-gray-900">
               {tab === 'users' && parishId
