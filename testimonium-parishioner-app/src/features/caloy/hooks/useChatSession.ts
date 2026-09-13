@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 import { sendCaloyQuery } from "../api/caloyApi";
-import { clearCaloyStorage, loadCaloyState, saveCaloyState } from "../caloyStorage";
+import {
+  clearCaloyStorage,
+  generateSessionId,
+  isValidUuid,
+  loadCaloyState,
+  saveCaloyState,
+} from "../caloyStorage";
 import type {
   CaloyClarificationData,
   CaloyClarificationOption,
@@ -16,10 +22,6 @@ const STATIC_WELCOME_MESSAGE: CaloyMessage = {
   responseType: "SOCIAL",
   isRevealing: false,
 };
-
-function generateSessionId(): string {
-  return `mob_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
 
 export function useChatSession() {
   const { user } = useAuth();
@@ -98,9 +100,15 @@ export function useChatSession() {
       const saved = await loadCaloyState(currentUid);
       if (isCancelled || activeUidRef.current !== currentUid) return;
 
-      if (saved) {
-        setSessionId(saved.sessionId || generateSessionId());
-        setSelectedParishId(saved.selectedParishId ?? null);
+      if (saved && isValidUuid(saved.sessionId)) {
+        setSessionId(saved.sessionId);
+        setSelectedParishId(
+          typeof saved.selectedParishId === "number" &&
+          Number.isInteger(saved.selectedParishId) &&
+          saved.selectedParishId > 0
+            ? saved.selectedParishId
+            : null
+        );
         setSelectedParishName(saved.selectedParishName ?? null);
         setConversationContext(saved.conversationContext ?? null);
         setStructuredClarification(saved.structuredClarification ?? null);
@@ -182,13 +190,26 @@ export function useChatSession() {
 
       setMessages((prev) => [...prev, userMessage]);
 
+      // Ensure active sessionId is a valid RFC 4122 UUID
+      const activeSessionId = isValidUuid(sessionId) ? sessionId : generateSessionId();
+      if (activeSessionId !== sessionId) {
+        setSessionId(activeSessionId);
+      }
+
+      // Normal fresh questions must NOT send stale structuredClarification.
+      // Only an explicit customClarification (e.g. from chip selection) is sent.
+      const clarificationToSend = customClarification !== undefined ? customClarification : null;
+      if (customClarification === undefined && structuredClarification) {
+        setStructuredClarification(null);
+      }
+
       try {
         const response = await sendCaloyQuery(
           {
             question: trimmed,
-            sessionId,
+            sessionId: activeSessionId,
             selectedParishId,
-            structuredClarification: customClarification !== undefined ? customClarification : structuredClarification,
+            structuredClarification: clarificationToSend,
             conversationContext,
           },
           controller.signal
@@ -217,7 +238,7 @@ export function useChatSession() {
           isRevealing: true,
         };
 
-        if (response.sessionId) {
+        if (response.sessionId && isValidUuid(response.sessionId)) {
           setSessionId(response.sessionId);
         }
 

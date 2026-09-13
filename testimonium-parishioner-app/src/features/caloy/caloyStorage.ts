@@ -16,6 +16,49 @@ export function getCaloyStorageKey(uid: string | null | undefined): string | nul
   return `${STORAGE_KEY_PREFIX_V2}${uid.trim()}`;
 }
 
+export const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Validates that an unknown value is a well-formed RFC 4122 UUID.
+ */
+export function isValidUuid(id: unknown): id is string {
+  return typeof id === "string" && UUID_REGEX.test(id.trim());
+}
+
+/**
+ * Generates an RFC 4122 v4 UUID without native module dependencies.
+ */
+export function generateSessionId(): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto) {
+    if (typeof globalThis.crypto.randomUUID === "function") {
+      try {
+        return globalThis.crypto.randomUUID();
+      } catch {
+        // Fallback to byte-level or pseudo-random generation
+      }
+    }
+    if (typeof globalThis.crypto.getRandomValues === "function") {
+      try {
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
+        bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10xx
+        const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+      } catch {
+        // Fallback to pseudo-random generation
+      }
+    }
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Validates the parsed storage object against the version 2 minimal safe schema.
  * Rejects malformed objects, unexpected types, or legacy v1 structures.
@@ -32,13 +75,18 @@ function isValidPersistedState(data: unknown): data is CaloyPersistedState {
     return false;
   }
 
-  // Session ID must be a non-empty string under 128 characters
-  if (typeof obj.sessionId !== "string" || !obj.sessionId.trim() || obj.sessionId.length > 128) {
+  // Session ID must be a valid RFC 4122 UUID matching backend schema
+  if (!isValidUuid(obj.sessionId)) {
     return false;
   }
 
-  // selectedParishId must be null or finite number
-  if (obj.selectedParishId !== null && (typeof obj.selectedParishId !== "number" || !Number.isFinite(obj.selectedParishId))) {
+  // selectedParishId must be null or positive integer
+  if (
+    obj.selectedParishId !== null &&
+    (typeof obj.selectedParishId !== "number" ||
+      !Number.isInteger(obj.selectedParishId) ||
+      obj.selectedParishId <= 0)
+  ) {
     return false;
   }
 
@@ -114,8 +162,13 @@ export async function saveCaloyState(
 
     const payload: CaloyPersistedState = {
       version: 2,
-      sessionId: state.sessionId || `mob_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      selectedParishId: typeof state.selectedParishId === "number" ? state.selectedParishId : null,
+      sessionId: isValidUuid(state.sessionId) ? state.sessionId : generateSessionId(),
+      selectedParishId:
+        typeof state.selectedParishId === "number" &&
+        Number.isInteger(state.selectedParishId) &&
+        state.selectedParishId > 0
+          ? state.selectedParishId
+          : null,
       selectedParishName: typeof state.selectedParishName === "string" ? state.selectedParishName : null,
       conversationContext: state.conversationContext && typeof state.conversationContext === "object" ? state.conversationContext : null,
       structuredClarification: state.structuredClarification && typeof state.structuredClarification === "object" ? state.structuredClarification : null,

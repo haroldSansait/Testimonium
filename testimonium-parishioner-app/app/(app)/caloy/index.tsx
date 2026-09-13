@@ -1,5 +1,6 @@
-import { CaloyScreen } from "@/features/caloy/CaloyScreen";
+import React from "react";
+import { Redirect } from "expo-router";
 
 export default function CaloyRoute() {
-  return <CaloyScreen />;
+  return <Redirect href={"/(app)/(tabs)/(caloy)" as any} />;
 }

@@ -26,7 +26,7 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
   const [revealedCharCount, setRevealedCharCount] = useState<number>(
     message.isRevealing ? 0 : message.text.length
   );
-  const [isDoneRevealing, setIsDoneRevealing] = useState<boolean>(!message.isRevealing);
+  const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Check reduced motion accessibility setting
   useEffect(() => {
@@ -34,7 +34,6 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
       .then((enabled) => {
         if (enabled) {
           setReduceMotion(true);
-          onRevealComplete?.(message.id);
         }
       })
       .catch(() => {});
@@ -46,45 +45,52 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
     return () => {
       sub?.remove?.();
     };
-  }, [message.id, onRevealComplete]);
+  }, []);
 
-  // Progressive reveal animation
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  // Progressive reveal animation - keep state updater pure
   useEffect(() => {
-    if (!message.isRevealing || reduceMotion || isDoneRevealing) {
+    if (isUser || !message.isRevealing || reduceMotion) {
       return;
     }
 
     const fullLength = message.text.length;
     // Reveal in increments of 3 characters every 18ms (~60fps)
     const step = Math.max(2, Math.floor(fullLength / 40));
-    intervalRef.current = setInterval(() => {
+    const interval = setInterval(() => {
       setRevealedCharCount((prev) => {
-        const next = prev + step;
-        if (next >= fullLength) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          setIsDoneRevealing(true);
-          onRevealComplete?.(message.id);
-          return fullLength;
-        }
-        return next;
+        if (prev >= fullLength) return prev;
+        return Math.min(fullLength, prev + step);
       });
     }, 18);
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      clearInterval(interval);
     };
-  }, [message.id, message.isRevealing, message.text.length, onRevealComplete, reduceMotion, isDoneRevealing]);
+  }, [isUser, message.id, message.isRevealing, message.text.length, reduceMotion]);
 
-  const isFinished = !message.isRevealing || reduceMotion || isDoneRevealing;
+  // Guarded post-commit completion notification: fires exactly once per assistant message
+  useEffect(() => {
+    if (isUser || !message.isRevealing) {
+      return;
+    }
+
+    const fullLength = message.text.length;
+    const isRevealComplete = reduceMotion || revealedCharCount >= fullLength;
+
+    if (isRevealComplete && !notifiedMessageIdsRef.current.has(message.id)) {
+      notifiedMessageIdsRef.current.add(message.id);
+      onRevealComplete?.(message.id);
+    }
+  }, [isUser, message.id, message.isRevealing, message.text.length, reduceMotion, revealedCharCount, onRevealComplete]);
+
+  const isFinished = isUser || !message.isRevealing || reduceMotion || revealedCharCount >= message.text.length;
 
   const displayedText = useMemo(() => {
-    if (isUser || isFinished) {
+    if (isFinished) {
       return message.text;
     }
     return message.text.slice(0, revealedCharCount);
-  }, [isUser, isFinished, message.text, revealedCharCount]);
+  }, [isFinished, message.text, revealedCharCount]);
 
   const formattedTime = useMemo(() => {
     try {

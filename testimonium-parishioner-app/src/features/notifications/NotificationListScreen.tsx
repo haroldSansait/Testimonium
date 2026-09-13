@@ -21,7 +21,13 @@ import {
 } from "./api";
 import type { NotificationItem } from "./types";
 
-export const NotificationListScreen: React.FC = () => {
+export interface NotificationListScreenProps {
+  showBackButton?: boolean;
+}
+
+export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
+  showBackButton = true,
+}) => {
   const router = useRouter();
 
   const {
@@ -142,7 +148,7 @@ export const NotificationListScreen: React.FC = () => {
             ? `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}`
             : undefined
         }
-        onBack={handleBack}
+        onBack={showBackButton ? handleBack : undefined}
         rightAction={
           unreadCount > 0 ? (
             <Button

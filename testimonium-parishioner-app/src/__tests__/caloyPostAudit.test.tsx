@@ -37,12 +37,14 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
   });
 
   // =========================================================================
+  const UUID_ALPHA = "11111111-1111-4111-8111-111111111111";
+
   // 1. PRIVACY & STORAGE MINIMAL SAFE STATE (M-04)
   // =========================================================================
   it("M-04: Full message history is NEVER stored in AsyncStorage (Privacy Guard)", async () => {
     // Save state through saveCaloyState
     await saveCaloyState("user_alpha", {
-      sessionId: "session_alpha_123",
+      sessionId: UUID_ALPHA,
       selectedParishId: 5,
       selectedParishName: "San Roque Parish",
       conversationContext: { lastIntent: "CHECK_MY_REQUEST_STATUS" },
@@ -56,7 +58,7 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
     // Absolute privacy assertion: no messages array in storage
     expect(parsed.messages).toBeUndefined();
     expect(parsed.version).toBe(2);
-    expect(parsed.sessionId).toBe("session_alpha_123");
+    expect(parsed.sessionId).toBe(UUID_ALPHA);
     expect(parsed.selectedParishId).toBe(5);
     expect(parsed.selectedParishName).toBe("San Roque Parish");
   });
@@ -182,9 +184,12 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
   // 4. ACCOUNT A -> B TRANSITION & UID ISOLATION (H-04)
   // =========================================================================
   it("H-04: Direct transition from Account A to Account B immediately resets state and blocks leakage", async () => {
+    const SESSION_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const SESSION_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
     // 1. Account A state in storage
     await saveCaloyState("user_A", {
-      sessionId: "session_A_secret",
+      sessionId: SESSION_A,
       selectedParishId: 10,
       selectedParishName: "Parish A",
       conversationContext: { accountSecret: "secret_A" },
@@ -192,7 +197,7 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
 
     // 2. Account B state in storage
     await saveCaloyState("user_B", {
-      sessionId: "session_B_normal",
+      sessionId: SESSION_B,
       selectedParishId: 20,
       selectedParishName: "Parish B",
       conversationContext: { accountSecret: "secret_B" },
@@ -206,7 +211,7 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
       expect(result.current.isRestored).toBe(true);
     });
 
-    expect(result.current.sessionId).toBe("session_A_secret");
+    expect(result.current.sessionId).toBe(SESSION_A);
     expect(result.current.selectedParishName).toBe("Parish A");
 
     // Transition directly to User B
@@ -215,14 +220,14 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
 
     await waitFor(() => {
       expect(result.current.isRestored).toBe(true);
-      expect(result.current.sessionId).toBe("session_B_normal");
+      expect(result.current.sessionId).toBe(SESSION_B);
     });
 
     expect(result.current.selectedParishName).toBe("Parish B");
 
     // Verify storage of User B was NOT overwritten with User A's data
     const userBStorage = await loadCaloyState("user_B");
-    expect(userBStorage?.sessionId).toBe("session_B_normal");
+    expect(userBStorage?.sessionId).toBe(SESSION_B);
     expect(userBStorage?.conversationContext).toEqual({ accountSecret: "secret_B" });
   });
 

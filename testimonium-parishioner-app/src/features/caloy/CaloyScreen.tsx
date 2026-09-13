@@ -1,9 +1,12 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { AppHeader, IconButton } from "@/components/ui";
@@ -22,11 +26,19 @@ import { CaloyTypingIndicator } from "./components/CaloyTypingIndicator";
 import { useChatSession } from "./hooks/useChatSession";
 import type { CaloyClarificationOption, CaloyMessage } from "./types";
 
-export const CaloyScreen: React.FC = () => {
+export interface CaloyScreenProps {
+  showBackButton?: boolean;
+}
+
+export const CaloyScreen: React.FC<CaloyScreenProps> = ({
+  showBackButton = true,
+}) => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [inputText, setInputText] = useState("");
   const [isParishModalVisible, setIsParishModalVisible] = useState(false);
   const flatListRef = useRef<FlatList<CaloyMessage>>(null);
+  const isNearBottomRef = useRef(true);
 
   const {
     messages,
@@ -43,11 +55,42 @@ export const CaloyScreen: React.FC = () => {
   const { data: parishesData } = useParishes({ limit: 100 });
   const parishes = useMemo(() => parishesData?.items || [], [parishesData?.items]);
 
+  // Track near-bottom distance to prevent force-scrolling if user is reading older messages
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+      const distanceFromEnd =
+        contentSize.height - layoutMeasurement.height - contentOffset.y;
+      isNearBottomRef.current = distanceFromEnd < 120;
+    },
+    []
+  );
+
+  // Auto-scroll on keyboard open if already near bottom
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => {
+        if (isNearBottomRef.current) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 80);
+        }
+      }
+    );
+    return () => {
+      showSub.remove();
+    };
+  }, []);
+
   const handleSend = useCallback(() => {
     const trimmed = inputText.trim();
     if (!trimmed || isTyping) return;
     setInputText("");
     void sendMessage(trimmed);
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
   }, [inputText, isTyping, sendMessage]);
 
   const handleSelectClarification = useCallback(
@@ -95,13 +138,19 @@ export const CaloyScreen: React.FC = () => {
     [handleSelectClarification, handleRevealComplete, isTyping]
   );
 
+  // When rendered standalone without bottom tabs, provide bottom safe area to clear 3-button system nav.
+  // When rendered inside bottom tabs, bottom tab bar handles system nav clearance.
+  const bottomPadding = showBackButton
+    ? Math.max(insets.bottom, 12) + spacing.xs
+    : spacing.sm;
+
   return (
     <Screen safeArea={true} keyboardAvoiding={false} style={styles.screen}>
       {/* Header */}
       <AppHeader
         title="Caloy"
         subtitle="TESTIMONIUM Virtual Assistant"
-        onBack={() => router.back()}
+        onBack={showBackButton ? () => router.back() : undefined}
         backAccessibilityLabel="Close Caloy"
         rightAction={
           <IconButton
@@ -136,10 +185,10 @@ export const CaloyScreen: React.FC = () => {
         </Pressable>
       </View>
 
-      {/* Main Chat Area */}
+      {/* Main Chat Area - Unified single KeyboardAvoidingView layout authority */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <FlatList
@@ -148,8 +197,12 @@ export const CaloyScreen: React.FC = () => {
           keyExtractor={(item) => item.id}
           renderItem={renderMessageItem}
           contentContainerStyle={styles.messagesList}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           onContentSizeChange={() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
+            if (isNearBottomRef.current) {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }
           }}
           onLayout={() => {
             flatListRef.current?.scrollToEnd({ animated: false });
@@ -159,7 +212,7 @@ export const CaloyScreen: React.FC = () => {
         />
 
         {/* Input Bar */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: bottomPadding }]}>
           <View style={styles.inputRow}>
             <TextInput
               style={styles.textInput}
@@ -184,10 +237,11 @@ export const CaloyScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Send message"
               accessibilityState={{ disabled: !inputText.trim() || isTyping }}
+              hitSlop={4}
             >
               <Ionicons
                 name="arrow-up"
-                size={18}
+                size={20}
                 color={!inputText.trim() || isTyping ? colors.disabled : colors.textInverse}
               />
             </Pressable>
@@ -346,9 +400,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   sendButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",

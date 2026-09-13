@@ -17,6 +17,7 @@ export class AppError extends Error {
   readonly status?: number;
   readonly code?: string;
   readonly fieldErrors?: Record<string, string[]>;
+  readonly validationErrors?: { field?: string; message?: string }[];
   readonly retryable: boolean;
   readonly retryAfterMs?: number;
 
@@ -26,6 +27,7 @@ export class AppError extends Error {
     status?: number;
     code?: string;
     fieldErrors?: Record<string, string[]>;
+    validationErrors?: { field?: string; message?: string }[];
     retryable?: boolean;
     retryAfterMs?: number;
   }) {
@@ -35,6 +37,7 @@ export class AppError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.fieldErrors = options.fieldErrors;
+    this.validationErrors = options.validationErrors;
     this.retryable = options.retryable ?? false;
     this.retryAfterMs = options.retryAfterMs;
   }
@@ -71,10 +74,20 @@ export const appErrorFromResponse = async (response: Response): Promise<AppError
   const data = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
   const backendMessage = typeof data?.message === "string" ? data.message : undefined;
   const code = typeof data?.code === "string" ? data.code : undefined;
-  const errors =
-    data?.errors && typeof data.errors === "object"
-      ? (data.errors as Record<string, string[]>)
-      : undefined;
+
+  let fieldErrors: Record<string, string[]> | undefined = undefined;
+  let validationErrors: { field?: string; message?: string }[] | undefined = undefined;
+
+  if (Array.isArray(data?.errors)) {
+    validationErrors = data.errors
+      .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+      .map((e) => ({
+        field: typeof e.field === "string" ? e.field : undefined,
+        message: typeof e.message === "string" ? e.message : undefined,
+      }));
+  } else if (data?.errors && typeof data.errors === "object") {
+    fieldErrors = data.errors as Record<string, string[]>;
+  }
 
   const kind: AppErrorKind =
     response.status === 401
@@ -98,7 +111,8 @@ export const appErrorFromResponse = async (response: Response): Promise<AppError
     kind,
     status: response.status,
     code,
-    fieldErrors: errors,
+    fieldErrors,
+    validationErrors,
     retryAfterMs,
     retryable: kind === "SERVER" || kind === "RATE_LIMIT",
     // Server-error payloads can contain infrastructure details when a backend

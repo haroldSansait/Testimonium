@@ -21,13 +21,22 @@ export const safeErrorDetails = (error: unknown): DiagnosticDetails => {
     kind?: string;
     code?: string;
     status?: number;
+    validationErrors?: { field?: string; message?: string }[];
   };
 
-  return {
+  const details: DiagnosticDetails = {
     name: appError.name,
     message: appError.message,
     kind: appError.kind,
     code: appError.code,
     status: appError.status,
   };
+
+  if (appError.validationErrors && appError.validationErrors.length > 0) {
+    details.validationDetails = appError.validationErrors
+      .map((e) => `${e.field || "field"}: ${e.message || "invalid"}`)
+      .join("; ");
+  }
+
+  return details;
 };

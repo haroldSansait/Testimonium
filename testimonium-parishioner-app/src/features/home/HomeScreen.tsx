@@ -183,10 +183,10 @@ export const HomeScreen: React.FC = () => {
 
         {/* Ask Caloy Entry Card */}
         <Pressable
-          onPress={() => router.push("/(app)/caloy" as any)}
+          onPress={() => router.push("/(app)/(tabs)/(caloy)" as any)}
           accessibilityRole="button"
           accessibilityLabel="Ask Caloy, TESTIMONIUM virtual assistant. Need help with requests, schedules, requirements, parish information, or other questions?"
-          accessibilityHint="Navigates to full-screen Caloy chat"
+          accessibilityHint="Navigates to the Caloy chat tab"
           style={({ pressed }) => [styles.caloyCard, pressed && styles.caloyCardPressed]}
         >
           <View style={styles.caloyCardContent}>
