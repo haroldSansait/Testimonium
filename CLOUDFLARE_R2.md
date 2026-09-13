@@ -1,7 +1,7 @@
 # Cloudflare R2 and OCR Pipeline
 
-**Last reconciled:** 9 September 2026
-**Source of truth:** `testimonium-backend/services/R2Service.js`, `ReceiptVerificationService.js`, `ParishCouncilService.js`, `ParishService.js`, and route controllers.
+**Last reconciled:** 13 September 2026
+**Source of truth:** `testimonium-backend/services/R2Service.js`, `ReceiptVerificationService.js`, `FileUploadService.js`, `ParishCouncilService.js`, `ParishService.js`, `utils/fileValidator.js`, and route controllers.
 
 TESTIMONIUM uses Cloudflare R2 through the S3-compatible AWS SDK. Browsers and mobile apps upload files directly to the Express API; the API validates the file format, magic bytes, and size, then streams or writes the file to R2. Storage credentials and access keys are never exposed to web or mobile clients.
 
@@ -23,7 +23,8 @@ The backend constructs its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflare
 
 | Key pattern | Producer | Stored database reference |
 | --- | --- | --- |
-| `documents/req_<requestId>/supporting/<timestamp>_<name>` | Supporting-file upload | `request_attachments.r2_object_key` |
+| `documents/req_<requestId>/supporting/<timestamp>_<name>` | Supporting-file upload | `request_attachments.r2_object_key` (category: `supporting`) |
+| `documents/req_<requestId>/authorization_letter/<timestamp>_<name>` | Authorization letter upload | `request_attachments.r2_object_key` (category: `authorization_letter`) |
 | `documents/req_<requestId>/receipts/<timestamp>_<name>` | Receipt upload | `receipt_uploads.r2_object_key`, `document_requests.payment_proof_object_key` |
 | `parishes/parish_<parishId>/cover/<uuid>_<name>` | Parish image service | `parishes.cover_image` |
 | `parishes/parish_<parishId>/logo/<uuid>_<name>` | Parish image service | `parishes.logo_image` |
@@ -34,9 +35,12 @@ Object filenames are sanitized to prevent directory traversal or malformed chara
 
 ## Upload controls and client handling
 
+All uploads pass through `FileValidator` which performs strict binary magic-byte inspection (not relying on client MIME extensions alone):
+
 | Flow | Accepted MIME types | Size limit | Multipart field | Client notes |
 | --- | --- | --- | --- | --- |
 | Supporting documents | PDF, PNG, JPEG, WebP | 5 MB per file, max 5 files | `files` | Document picker on web/mobile; multi-file validation. |
+| Authorization letters | PDF, JPEG, PNG (magic-byte verified) | 5 MB, 1 file | `files` / `authorizationLetter` | Enforced by `FileValidator.validateAuthorizationLetter`; WebP is explicitly rejected. |
 | Payment receipt | JPEG, PNG | 5 MB, 1 file | `receipt` | Rate-limited. Allocates atomic `attempt_version`; HEIC/HEIF rejected by backend (mobile converts HEIC to JPEG locally before upload). |
 | Parish cover/logo | JPEG, PNG, WebP (magic-byte checked) | 5 MB | `image` | Admin portal coordinator actions. |
 | Parish payment QR | JPEG, PNG, WebP (magic-byte checked) | 2 MB | `qrImage` | Admin portal staff settings. |

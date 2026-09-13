@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 9 September 2026
+**Last reconciled:** 13 September 2026
 
 Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -10,7 +10,7 @@ Deploy the backend, the two Vite web applications, and the Expo mobile applicati
 app.example.org   -> parishioner-web/dist (SPA)
 admin.example.org -> admin-portal/dist (SPA)
 api.example.org   -> reverse proxy -> Node/Express :5000
-                                   -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space, SMTP
+                                   -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space, SMTP, Gemini AI
 Mobile App        -> Expo Native / EAS -> api.example.org/api/v1
 ```
 
@@ -29,6 +29,7 @@ Create `testimonium-backend/.env` using its `.env.example`. The application requ
 | OCR | `OCR_ENABLED`, `OCR_PROVIDER`; when `ocrspace`, also `OCR_SPACE_API_KEY` and optional size/timeout/retry settings |
 | Transactional Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`, `SMTP_CONNECTION_TIMEOUT_MS`, `SMTP_GREETING_TIMEOUT_MS`, `SMTP_SOCKET_TIMEOUT_MS` |
 | Email Worker | `EMAIL_WORKER_POLL_MS`, `EMAIL_WORKER_BATCH_SIZE`, `EMAIL_WORKER_LEASE_SECONDS`, `EMAIL_MAX_ATTEMPTS` |
+| AI / RAG Chatbot | `CHATBOT_ENABLED` (boolean, default `false` until verified), `GEMINI_API_KEY`, `CHATBOT_MODEL` (`gemini-3.5-flash-lite`), `CHATBOT_EMBEDDING_MODEL` (`gemini-embedding-2`), `CHATBOT_MIN_SIMILARITY` (default `0.65`), `CHATBOT_MAX_CHUNKS` (`5`), `CHATBOT_WORKER_POLL_MS`, `CHATBOT_WORKER_BATCH_SIZE`, `CHATBOT_WORKER_LEASE_SECONDS`, `CHATBOT_LOG_RAW_TEXT` (`false` for privacy) |
 | Protection & Policy | `ADMIN_EMAIL_VERIFICATION_REQUIRED`, rate-limit maxima, and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
 | Maintenance | `ENABLE_ACTIVITY_PURGE=false`, `ACTIVITY_LOG_RETENTION_DAYS=365` |
 
@@ -100,9 +101,11 @@ Client variables are public configuration. Never put service-account keys, R2 se
 - Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads and council officer portrait uploads are limited to 2 MB.
 - Enable `TRUST_PROXY=1` only when the proxy correctly supplies forwarding headers.
 
-## Transactional email worker
+## Background workers (Email Outbox & Knowledge Embedding)
 
-The API process starts the PostgreSQL email-outbox worker after the HTTP listener and stops it gracefully before disconnecting Prisma. Multiple API replicas are supported: workers claim rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the lease. The worker processes all seven `EmailType` notification triggers across document and scheduling workflows while honoring recipient user preferences (`email_notifications_enabled`). Configure bounded SMTP timeouts and all SMTP secrets in the deployment secret manager.
+The API process starts two dedicated background workers after initializing the HTTP listener, and stops both gracefully before disconnecting Prisma on server shutdown (`SIGINT`, `SIGTERM`):
+1. **`EmailOutboxWorker`**: Processes the PostgreSQL transactional email outbox. Multiple API replicas are supported: workers claim due rows with `FOR UPDATE SKIP LOCKED` and complete them only when their processing token still owns the active lease. The worker processes all seven `EmailType` notification triggers across document and scheduling workflows while honoring recipient user preferences (`email_notifications_enabled`). Configure bounded SMTP timeouts and credentials in the deployment secret manager.
+2. **`knowledgeEmbeddingWorker`**: Periodically polls for `CONFIRMED` knowledge sources with chunks in `PENDING` status (`CHATBOT_WORKER_POLL_MS`, default 10s). Uses `FOR UPDATE SKIP LOCKED` with unique processing tokens and expiring leases (`CHATBOT_WORKER_LEASE_SECONDS`) to safely calculate 768-dimensional embeddings via Gemini `gemini-embedding-2` without race conditions across clustered instances. Transitions chunks to `READY` or `FAILED` with retry backoff.
 
 ## AI / RAG Chatbot deployment and worker sequence
 

@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 9 September 2026
+**Last reconciled:** 13 September 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.

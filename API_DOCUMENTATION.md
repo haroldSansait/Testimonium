@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 9 September 2026
+**Last reconciled:** 13 September 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -23,6 +23,10 @@ In local development only, `ENABLE_DEV_AUTH=true` enables the backend’s develo
 The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`. Staff access is parish-scoped where applicable; the coordinator is cross-parish. Parishioners are required to have a completed user profile (`fullName` and `contactNumber`) before creating document or schedule requests; incomplete profiles receive `403 PROFILE_INCOMPLETE`.
 
 A successful response is normally `{ "success": true, "data": ... }`; errors provide `success`, `message`, and optional `errors` or `code`. List endpoints return pagination metadata alongside items.
+
+### Registered Route Modules (22 Modules)
+All REST API endpoints are mounted under `/api/v1` across 22 functional modules:
+`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, and `chatbot`.
 
 ## Public and authentication routes
 
@@ -228,11 +232,12 @@ FINAL RESPONSE + EPHEMERAL SAFE CONTEXT
    - Safe ephemeral state (`lastIntent`, `lastParishId`, `lastParishName`, `lastVicariateId`, `lastVicariateName`, `lastDocumentType`, `lastScheduleEvent`, `lastDatePhrase`, `lastTimePhrase`, `lastPriestName`, `lastPriestId`, `lastResponseType`) is retained in session storage and backend session memory (30-minute TTL).
    - Zero database persistence; cleared immediately upon user sign-out.
    - Natural follow-ups (e.g. *"How about St. Joseph?"*, *"Is Fr. Julius free at 2?"*, *"How many of those are parishes?"*) inherit context seamlessly. Explicit topic changes (e.g. switching from scheduling to payment verification) immediately clear prior scheduling context.
-5. **Approved Live Tools (Current Operational State):**
+5. **Approved Live Tools (Current Operational State - 16 Registered Tools):**
    - `GET_ACTIVE_PARISHES`: Authoritative directory listing active parishes, quasi-parishes, and mission stations from database with type and location.
    - `GET_VICARIATE_DIRECTORY`: Authoritative directory listing active church units belonging to a requested Vicariate, with total counts and breakdowns by church unit type (Parish, Quasi-Parish, Mission Station).
    - `GET_ACTIVE_PARISH_PRIESTS`: Queries active clergy assigned to the requested parish, formatted with canonical single honorific.
    - `GET_PARISH_DOCUMENTS`: Queries document offerings configured for a parish.
+   - `GET_PARISH_SCHEDULABLE_EVENTS`: Queries schedulable sacramental event offerings configured for a parish (`ScheduleEventType`).
    - `GET_DOCUMENT_REQUIREMENTS`: Queries current document requirements checklist.
    - `GET_DOCUMENT_FEE`: Returns effective parish fee with fallback if no fee is configured.
    - `GET_PARISH_OFFICE_INFO`: Returns public office hours, contact numbers, email, and address.
@@ -256,7 +261,7 @@ FINAL RESPONSE + EPHEMERAL SAFE CONTEXT
    - **Follow-up Capability Validation:** Optional structured follow-ups are validated against registered whitelist capabilities; valid follow-up text is seamlessly appended to the final answer (zero new public API fields required).
    - **Native Multilingual Mirroring:** Uses Gemini's native multilingual ability to match the user's natural language and code-switching (English, Tagalog, Hiligaynon, Cebuano, Taglish) per turn without a rigid classifier, language enum, language persistence, or corpus duplication.
    - **Private Data Sanitization Boundary:** Authenticated private tools (`CHECK_MY_REQUEST_STATUS`, `CHECK_MY_PAYMENT_STATUS`, `GET_MY_UPCOMING_SCHEDULES`) send strictly authorized user-visible fields to Gemini. Raw staff notes, OCR confidence/text, Cloudflare R2 URLs, and private audit trails are strictly forbidden and filtered backend-side.
-   - **Mobile Caloy Architecture:** Mobile client (`testimonium-parishioner-app`) uses the same `/chatbot/query` endpoint with Firebase Bearer token authentication. Preserves 5-tab layout with prominent Home card navigating to full-screen Caloy chat. Local state is stored via AsyncStorage namespaced by Firebase UID (`testimonium_caloy_context_v1:<uid>`), capped at 50 messages, and cleared on logout and account change. Zero AI provider secrets exist on mobile or web.
+   - **Mobile Caloy Architecture:** Mobile client (`testimonium-parishioner-app`) uses the same `/chatbot/query` endpoint with Firebase Bearer token authentication. Features a dedicated `(caloy)` tab in the 5-tab navigation bar, alongside a prominent Home card navigating to the full-screen chat experience. Supports the central Quick Actions action sheet, animated message bubbles, progressive reveal, clarification selection pills, and sources accordion. Local chat state is stored via AsyncStorage namespaced by Firebase UID (`testimonium_caloy_context_v1:<uid>`), capped at 50 messages, and cleared on logout and account change. Zero AI provider secrets exist on mobile or web.
 
 #### Rate Limiting & Quota Management
 - **General Abuse Limiter:** HTTP layer (default 60 requests / 10 minutes) protecting against rapid messaging/spam. Returns `CHATBOT_RATE_LIMITED`.

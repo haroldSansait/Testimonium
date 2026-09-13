@@ -1,6 +1,6 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 9 September 2026
+**Last reconciled:** 13 September 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
@@ -57,7 +57,7 @@ This reference summarizes the 30 physical models and 26 enums implemented in the
 | Table | Primary key | Important columns | Relations/indexes |
 | --- | --- | --- | --- |
 | `document_requests` | `request_id` | owner/parish/processor IDs; unique tracking number; applicant, relationship, draft flag, document type, purpose; request and payment statuses; R2 proof key/QR reference; fee snapshot (`Decimal(10,2)`); remarks/correction fields (`correction_note`, `payment_correction_note`, `correction_requirement_ids`); processing dates | Required submitter and parish; optional processor. One-to-many attachments, transactions, history. Indexed by owner, parish, processor, type, status, payment status, date, composite `[parish_id, date_requested]`, tracking number. |
-| `request_attachments` | `attachment_id` | request ID, original name, R2 key, type, size, category (`primary`, `supporting`, `receipt`), upload time | Cascades when request is deleted; indexed by request. |
+| `request_attachments` | `attachment_id` | request ID, original name, R2 key, type, size, category (`primary`, `supporting`, `authorization_letter`, `receipt`), upload time | Cascades when request is deleted; indexed by request. |
 | `payment_transactions` | `payment_id` | request ID, amount (`Decimal(10,2)`), provider/reference, verification status, verifier/date, creation time | Cascades with request; one-to-many receipts; indexed by request, verifier, composite `[status, created_at]`. |
 | `receipt_uploads` | `receipt_id` | payment transaction ID, R2 key, name, MIME type, size, SHA-256 image hash, `attempt_version` (Int, default 1, CHECK > 0), `is_superseded` (Boolean, default false), upload time | Cascades with transaction; one-to-one OCR result; unique compound constraint on `[payment_transaction_id, attempt_version]`; unique partial index on `payment_transaction_id` WHERE `is_superseded = false`; indexed by transaction, image hash, upload time. |
 | `ocr_results` | `ocr_id` | unique receipt ID; parsed reference/amount/date/provider/merchant/account; raw text; status/confidences (`ocr_confidence`, `parser_confidence`, `final_confidence`); compression/engine metadata; duplicate flags (`is_duplicate`, `duplicate_request_id`, `duplicate_reason`) | Cascades with receipt; indexed by reference number. |
