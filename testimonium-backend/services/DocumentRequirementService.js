@@ -37,7 +37,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
   MARRIAGE_CERTIFICATE: {
     documentType: "MARRIAGE_CERTIFICATE",
     title: "Marriage Certificate",
-    description: "Official ecclesial record of Holy Matrimony.",
+    description: "Official sacramental record of Holy Matrimony.",
     estimatedProcessingDays: 5,
     baseFee: 150.00,
     requiredFields: [

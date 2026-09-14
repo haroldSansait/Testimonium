@@ -33,6 +33,17 @@ interface CaloyDrawerProps {
 
 const MAX_QUESTION_LENGTH = 1000;
 
+const DEFAULT_DOCUMENT_TYPE_OPTIONS = [
+  { value: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
+  { value: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
+  { value: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
+  { value: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
+  { value: 'MARRIAGE_BANNS', label: 'Marriage Banns' },
+  { value: 'PERMIT_TO_MARRY', label: 'Permit to Marry' },
+  { value: 'STATUS_OF_LIBERTY', label: 'Status of Liberty Certificate' },
+  { value: 'DEATH_CERTIFICATE', label: 'Death Certificate' },
+];
+
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isValidUuid(id: string): boolean {
@@ -453,8 +464,19 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
   };
 
   // Inline clarification selection handlers
-  const handleInlineParishSelect = async (parishId: number) => {
+  const handleInlineParishSelect = async (parishId: number, msgId?: string) => {
     handleSelectParish(parishId);
+    const chosenParish = parishes.find((p) => Number(p.id) === Number(parishId));
+    const parishLabel = chosenParish?.name || `Parish #${parishId}`;
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        (msgId ? m.id === msgId : (m.clarificationType === 'PARISH' && !m.selectedClarificationValue))
+          ? { ...m, selectedClarificationValue: parishId, selectedClarificationLabel: parishLabel }
+          : m
+      )
+    );
+
     const structured = getStructuredClarification();
     if (structured) {
       const updated = {
@@ -475,7 +497,18 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     }
   };
 
-  const handleInlineDocTypeSelect = async (docType: string) => {
+  const handleInlineDocTypeSelect = async (docType: string, msgId?: string, label?: string) => {
+    const docOption = DEFAULT_DOCUMENT_TYPE_OPTIONS.find((o) => o.value === docType);
+    const docLabel = label || docOption?.label || docType;
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        (msgId ? m.id === msgId : (m.clarificationType === 'DOCUMENT_TYPE' && !m.selectedClarificationValue))
+          ? { ...m, selectedClarificationValue: docType, selectedClarificationLabel: docLabel }
+          : m
+      )
+    );
+
     const structured = getStructuredClarification();
     const parishIdToUse = selectedParishId;
     if (structured) {
@@ -496,7 +529,15 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     }
   };
 
-  const handleInlineEventTypeSelect = async (eventType: string) => {
+  const handleInlineEventTypeSelect = async (eventType: string, msgId?: string, label?: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        (msgId ? m.id === msgId : (m.clarificationType === 'SCHEDULE_EVENT' && !m.selectedClarificationValue))
+          ? { ...m, selectedClarificationValue: eventType, selectedClarificationLabel: label || eventType }
+          : m
+      )
+    );
+
     const structured = getStructuredClarification();
     const parishIdToUse = selectedParishId;
     if (structured) {
@@ -693,92 +734,116 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
                 )}
 
                 {/* Inline Parish Clarification Selector */}
-                {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && idx === messages.length - 1 && (
-                  <div className="mt-3 pt-2.5 border-t border-border/70">
-                    <label
-                      htmlFor={`parish-clarify-${msg.id}`}
-                      className="block text-[11px] font-medium text-text-muted mb-1.5"
-                    >
-                      Select your parish to continue:
-                    </label>
-                    <CustomSelect
-                      id={`parish-clarify-${msg.id}`}
-                      disabled={isTyping}
-                      value=""
-                      placeholder="Choose a parish..."
-                      options={parishes.map((p) => ({ value: p.id, label: p.name }))}
-                      onChange={(val) => {
-                        const num = Number(val);
-                        if (num && Number.isInteger(num) && num > 0) {
-                          handleInlineParishSelect(num);
-                        }
-                      }}
-                      size="sm"
-                      aria-label="Select parish for clarification"
-                    />
-                  </div>
-                )}
+                {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? selectedParishId : null))) && (() => {
+                  const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? selectedParishId : null);
+                  const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
+                  const selectedParishObj = isSelected ? parishes.find((p) => String(p.id) === String(effectiveVal)) : null;
+                  const selectedLabel = msg.selectedClarificationLabel || selectedParishObj?.name;
+
+                  return (
+                    <div className="mt-3 pt-2.5 border-t border-border/70">
+                      <label
+                        htmlFor={`parish-clarify-${msg.id}`}
+                        className="block text-[11px] font-medium text-text-muted mb-1.5"
+                      >
+                        {isSelected ? 'Selected parish:' : 'Select your parish to continue:'}
+                      </label>
+                      <CustomSelect
+                        id={`parish-clarify-${msg.id}`}
+                        disabled={isTyping || isSelected}
+                        value={isSelected ? String(effectiveVal) : ''}
+                        selectedLabel={selectedLabel}
+                        placeholder="Choose a parish..."
+                        options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
+                        onChange={(val) => {
+                          const num = Number(val);
+                          if (num && Number.isInteger(num) && num > 0) {
+                            handleInlineParishSelect(num, msg.id);
+                          }
+                        }}
+                        size="sm"
+                        aria-label="Select parish for clarification"
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Inline Document Type Clarification Selector */}
-                {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && idx === messages.length - 1 && (
-                  <div className="mt-3 pt-2.5 border-t border-border/70">
-                    <label
-                      htmlFor={`doc-clarify-${msg.id}`}
-                      className="block text-[11px] font-medium text-text-muted mb-1.5"
-                    >
-                      Select document type to continue:
-                    </label>
-                    <CustomSelect
-                      id={`doc-clarify-${msg.id}`}
-                      disabled={isTyping}
-                      value=""
-                      placeholder="Choose a document type..."
-                      options={[
-                        { value: 'BAPTISMAL_CERTIFICATE', label: 'Baptismal Certificate' },
-                        { value: 'CONFIRMATION_CERTIFICATE', label: 'Confirmation Certificate' },
-                        { value: 'FIRST_COMMUNION_CERTIFICATE', label: 'First Communion Certificate' },
-                        { value: 'MARRIAGE_CERTIFICATE', label: 'Marriage Certificate' },
-                        { value: 'DEATH_CERTIFICATE', label: 'Death Certificate' },
-                      ]}
-                      onChange={(val) => {
-                        if (val) {
-                          handleInlineDocTypeSelect(String(val));
-                        }
-                      }}
-                      size="sm"
-                      aria-label="Select document type for clarification"
-                    />
-                  </div>
-                )}
+                {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastDocumentType : null))) && (() => {
+                  const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastDocumentType : null);
+                  const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
+                  const docOptions = msg.clarificationOptions && msg.clarificationOptions.length > 0
+                    ? msg.clarificationOptions.map((opt) => ({ value: String(opt.value), label: opt.label }))
+                    : DEFAULT_DOCUMENT_TYPE_OPTIONS;
+                  const selectedDocObj = isSelected ? docOptions.find((o) => String(o.value) === String(effectiveVal)) : null;
+                  const selectedLabel = msg.selectedClarificationLabel || selectedDocObj?.label || (isSelected ? String(effectiveVal) : undefined);
+
+                  return (
+                    <div className="mt-3 pt-2.5 border-t border-border/70">
+                      <label
+                        htmlFor={`doc-clarify-${msg.id}`}
+                        className="block text-[11px] font-medium text-text-muted mb-1.5"
+                      >
+                        {isSelected ? 'Selected document:' : 'Select document type to continue:'}
+                      </label>
+                      <CustomSelect
+                        id={`doc-clarify-${msg.id}`}
+                        disabled={isTyping || isSelected}
+                        value={isSelected ? String(effectiveVal) : ''}
+                        selectedLabel={selectedLabel}
+                        placeholder="Choose a document type..."
+                        options={docOptions}
+                        onChange={(val) => {
+                          if (val) {
+                            const found = docOptions.find((o) => String(o.value) === String(val));
+                            handleInlineDocTypeSelect(String(val), msg.id, found?.label);
+                          }
+                        }}
+                        size="sm"
+                        aria-label="Select document type for clarification"
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Inline Schedule Event Clarification Selector */}
-                {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && idx === messages.length - 1 && (
-                  <div className="mt-3 pt-2.5 border-t border-border/70">
-                    <label
-                      htmlFor={`event-clarify-${msg.id}`}
-                      className="block text-[11px] font-medium text-text-muted mb-1.5"
-                    >
-                      Select an event or service:
-                    </label>
-                    <CustomSelect
-                      id={`event-clarify-${msg.id}`}
-                      disabled={isTyping}
-                      value=""
-                      placeholder="Choose an event or service..."
-                      options={(msg.clarificationOptions || []).map((opt) => ({
-                        value: opt.value,
-                        label: opt.label,
-                      }))}
-                      onChange={(val) => {
-                        if (val) {
-                          handleInlineEventTypeSelect(String(val));
-                        }
-                      }}
-                      size="sm"
-                      aria-label="Select schedule event for clarification"
-                    />
-                  </div>
-                )}
+                {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastScheduleEvent : null))) && (() => {
+                  const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastScheduleEvent : null);
+                  const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
+                  const eventOptions = (msg.clarificationOptions || []).map((opt) => ({
+                    value: String(opt.value),
+                    label: opt.label,
+                  }));
+                  const selectedEventObj = isSelected ? eventOptions.find((o) => String(o.value) === String(effectiveVal)) : null;
+                  const selectedLabel = msg.selectedClarificationLabel || selectedEventObj?.label || (isSelected ? String(effectiveVal) : undefined);
+
+                  return (
+                    <div className="mt-3 pt-2.5 border-t border-border/70">
+                      <label
+                        htmlFor={`event-clarify-${msg.id}`}
+                        className="block text-[11px] font-medium text-text-muted mb-1.5"
+                      >
+                        {isSelected ? 'Selected event/service:' : 'Select an event or service:'}
+                      </label>
+                      <CustomSelect
+                        id={`event-clarify-${msg.id}`}
+                        disabled={isTyping || isSelected}
+                        value={isSelected ? String(effectiveVal) : ''}
+                        selectedLabel={selectedLabel}
+                        placeholder="Choose an event or service..."
+                        options={eventOptions}
+                        onChange={(val) => {
+                          if (val) {
+                            const found = eventOptions.find((o) => String(o.value) === String(val));
+                            handleInlineEventTypeSelect(String(val), msg.id, found?.label);
+                          }
+                        }}
+                        size="sm"
+                        aria-label="Select schedule event for clarification"
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Sources Section for verified answers (revealed after text completes) */}
                 {msg.sources && msg.sources.length > 0 && revealingMessageId !== msg.id && !msg.fallback && (

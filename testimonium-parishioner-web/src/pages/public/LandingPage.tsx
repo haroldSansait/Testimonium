@@ -68,8 +68,8 @@ export const LandingPage: React.FC = () => {
         }}
       >
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 space-y-6 relative z-10">
-          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 px-3.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider text-white/90 shadow-xs">
-            <span>Roman Catholic Diocese of San Carlos</span>
+          <div className="text-xs sm:text-sm font-semibold uppercase tracking-widest text-white/90">
+            Roman Catholic Diocese of San Carlos
           </div>
 
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-bold text-white tracking-tight leading-tight sm:leading-tight">
@@ -116,7 +116,7 @@ export const LandingPage: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         <div className="text-center space-y-2.5 max-w-2xl mx-auto">
           <span className="text-xs font-bold text-crimson uppercase tracking-widest">
-            Ecclesial Services
+            Sacramental Services
           </span>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-text-primary">
             Our Parishioner Services
@@ -167,7 +167,7 @@ export const LandingPage: React.FC = () => {
               About the Initiative
             </span>
             <h2 className="text-2xl sm:text-3xl font-serif font-bold text-text-primary leading-tight">
-              Modernizing Ecclesial Records Management
+              Modernizing Sacramental Records Management
             </h2>
             <p className="text-xs sm:text-sm text-text-muted leading-relaxed font-normal">
               TESTIMONIUM is an official diocesan framework designed to bridge the gap between parishioners and parish administrators. By standardizing registry tracking and scheduling, we strive to bring efficiency and reverence to parish services.
@@ -206,7 +206,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Staff & Administrators Gateway (Clearly Secondary) */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6">
-        <div className="border border-border/80 rounded-card bg-app-page p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border-l-4 border-l-crimson shadow-xs">
+        <div className="border border-border/80 rounded-card bg-app-page p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-xs">
           <div className="flex items-start gap-4">
             <div className="p-3 bg-white border border-border rounded-button shrink-0 text-text-muted mt-0.5">
               <ShieldCheck className="w-6 h-6" />

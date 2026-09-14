@@ -23,6 +23,8 @@ export interface ChatMessage {
     parishId?: number | null;
   };
   isRestored?: boolean;
+  selectedClarificationValue?: string | number | null;
+  selectedClarificationLabel?: string | null;
 }
 
 export const CALOY_STORAGE_KEYS = {
@@ -84,6 +86,8 @@ export function isValidChatMessage(value: unknown): value is ChatMessage {
   if (value.responseType !== undefined && !['RAG', 'FALLBACK', 'SOCIAL', 'CLARIFICATION', 'LIVE_DATA'].includes(value.responseType as string)) return false;
   if (value.clarificationType !== undefined && value.clarificationType !== null && !['PARISH', 'DOCUMENT_TYPE', 'SCHEDULE_EVENT', 'DATE'].includes(value.clarificationType as string)) return false;
   if (value.isRestored !== undefined && typeof value.isRestored !== 'boolean') return false;
+  if (value.selectedClarificationValue !== undefined && value.selectedClarificationValue !== null && typeof value.selectedClarificationValue !== 'string' && typeof value.selectedClarificationValue !== 'number') return false;
+  if (value.selectedClarificationLabel !== undefined && value.selectedClarificationLabel !== null && typeof value.selectedClarificationLabel !== 'string') return false;
   return true;
 }
 

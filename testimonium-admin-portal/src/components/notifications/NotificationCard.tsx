@@ -52,8 +52,7 @@ export function NotificationCard({ notification, onAction }: NotificationCardPro
   return (
     <div
       className={cn(
-        'flex gap-4 p-5 bg-white border border-gray-100 border-l-4 rounded-r-lg shadow-sm',
-        notification.leftBorderColor,
+        'flex gap-4 p-5 bg-white border border-gray-100 rounded-lg shadow-sm',
         !notification.isRead && 'bg-gray-50/40'
       )}
     >

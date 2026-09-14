@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 13 September 2026
+**Last reconciled:** 14 September 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -26,7 +26,7 @@ A successful response is normally `{ "success": true, "data": ... }`; errors pro
 
 ### Registered Route Modules (22 Modules)
 All REST API endpoints are mounted under `/api/v1` across 22 functional modules:
-`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, and `chatbot`.
+`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, and `chatbot` (including `/chatbot/admin/*` Caloy management and telemetry endpoints).
 
 ## Public and authentication routes
 

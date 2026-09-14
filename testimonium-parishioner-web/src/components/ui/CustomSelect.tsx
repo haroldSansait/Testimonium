@@ -36,6 +36,8 @@ export interface CustomSelectProps {
   className?: string;
   triggerClassName?: string;
   dropdownClassName?: string;
+  maxHeight?: string;
+  selectedLabel?: string;
   'aria-label'?: string;
 }
 
@@ -58,6 +60,8 @@ export function CustomSelect({
   className,
   triggerClassName,
   dropdownClassName,
+  maxHeight,
+  selectedLabel,
   'aria-label': ariaLabel,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -97,9 +101,11 @@ export function CustomSelect({
 
   // Selected option lookup
   const selectedOption = useMemo(() => {
-    if (value === null || value === undefined) return null;
+    if (value === null || value === undefined || value === '') return null;
     return allOptions.find((opt) => String(opt.value) === String(value)) || null;
   }, [allOptions, value]);
+
+  const displayLabel = selectedOption?.label || selectedLabel;
 
   // Determine if search should be enabled (threshold > 6 options or explicit prop)
   const shouldEnableSearch = searchable ?? allOptions.length > 6;
@@ -304,13 +310,13 @@ export function CustomSelect({
           className={cn(
             'w-full text-left rounded-button border transition-all bg-white flex items-center justify-between select-none shadow-xs font-sans',
             isCompact
-              ? 'min-h-[38px] py-1.5 text-xs'
+              ? 'min-h-[36px] py-1.5 text-xs'
               : 'min-h-[42px] py-2.5 text-sm',
             icon ? 'pl-9 pr-9' : isCompact ? 'pl-3 pr-8' : 'pl-3.5 pr-9',
             isOpen
               ? 'border-crimson ring-2 ring-crimson/20 outline-none'
               : 'border-border hover:border-gray-300 focus:border-crimson focus:ring-2 focus:ring-crimson/20',
-            isDropdownDisabled && 'bg-app-page border-border cursor-not-allowed opacity-60 text-text-muted',
+            isDropdownDisabled && (displayLabel ? 'bg-gray-50/90 border-border cursor-default text-text-primary' : 'bg-app-page border-border cursor-not-allowed opacity-60 text-text-muted'),
             triggerClassName
           )}
           aria-expanded={isOpen}
@@ -330,9 +336,9 @@ export function CustomSelect({
                 <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-crimson" />
                 Loading...
               </span>
-            ) : selectedOption ? (
-              <span className="font-medium text-text-primary">
-                {selectedOption.label}
+            ) : displayLabel ? (
+              <span className={cn('font-medium', disabled && !displayLabel ? 'text-text-muted' : 'text-text-primary')}>
+                {displayLabel}
               </span>
             ) : (
               <span className="text-text-muted font-normal">
@@ -364,7 +370,8 @@ export function CustomSelect({
             className={cn(
               'transition-transform duration-200 text-text-muted',
               isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-              isOpen && 'rotate-180 text-crimson'
+              isOpen && 'rotate-180 text-crimson',
+              disabled && 'opacity-50'
             )}
           />
         </div>
@@ -382,16 +389,19 @@ export function CustomSelect({
         >
           {/* In-dropdown Search Bar */}
           {shouldEnableSearch && (
-            <div className="p-2 border-b border-border bg-app-base">
+            <div className={cn('border-b border-border bg-app-base', isCompact ? 'p-1.5' : 'p-2')}>
               <div className="relative flex items-center">
-                <Search className="absolute left-2.5 h-3.5 w-3.5 text-text-muted pointer-events-none" />
+                <Search className={cn('absolute left-2.5 text-text-muted pointer-events-none', isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={searchPlaceholder}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-border rounded-button text-text-primary placeholder:text-text-muted outline-none focus:border-crimson focus:ring-1 focus:ring-crimson"
+                  className={cn(
+                    'w-full bg-white border border-border rounded-button text-text-primary placeholder:text-text-muted outline-none focus:border-crimson focus:ring-1 focus:ring-crimson',
+                    isCompact ? 'pl-7 pr-6 py-1 text-xs' : 'pl-8 pr-7 py-1.5 text-xs'
+                  )}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={handleKeyDown}
                 />
@@ -402,7 +412,7 @@ export function CustomSelect({
                     className="absolute right-2 p-0.5 text-text-muted hover:text-text-primary rounded"
                     aria-label="Clear search"
                   >
-                    <X className="h-3 w-3" />
+                    <X className={cn(isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3')} />
                   </button>
                 )}
               </div>
@@ -410,11 +420,17 @@ export function CustomSelect({
           )}
 
           {/* Options List */}
-          <div className="max-h-60 overflow-y-auto overscroll-contain focus:outline-none [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]">
+          <div className={cn(
+            'overflow-y-auto overscroll-contain focus:outline-none [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]',
+            maxHeight || (isCompact ? 'max-h-40' : 'max-h-52')
+          )}>
             {filteredGroups.map((group, groupIdx) => (
               <div key={group.groupName || `group-${groupIdx}`} className="w-full">
                 {group.groupName && (
-                  <div className="sticky top-0 z-10 w-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-muted bg-gray-50 border-t border-b border-border select-none first:border-t-0">
+                  <div className={cn(
+                    'sticky top-0 z-10 w-full font-bold uppercase tracking-wider text-text-muted bg-gray-50 border-t border-b border-border select-none first:border-t-0',
+                    isCompact ? 'px-2.5 py-1 text-[9px]' : 'px-3.5 py-1.5 text-[10px]'
+                  )}>
                     {group.groupName}
                   </div>
                 )}
@@ -449,7 +465,7 @@ export function CustomSelect({
                         }}
                         className={cn(
                           'w-full text-left rounded-button transition-colors flex items-center justify-between group',
-                          isCompact ? 'min-h-[36px] px-2.5 py-1.5 text-xs' : 'min-h-[38px] px-3 py-2 text-xs',
+                          isCompact ? 'min-h-[28px] px-2.5 py-1 text-xs' : 'min-h-[36px] px-3 py-1.5 text-xs',
                           isDisabled
                             ? 'opacity-60 bg-gray-50/50 text-text-muted cursor-not-allowed select-none'
                             : isSelected
@@ -460,11 +476,11 @@ export function CustomSelect({
                         )}
                       >
                         <div className="flex flex-col min-w-0 pr-2">
-                          <span className={cn('truncate', isDisabled && 'text-text-muted font-normal')}>
+                          <span className={cn('truncate leading-tight', isDisabled && 'text-text-muted font-normal')}>
                             {opt.label}
                           </span>
                           {opt.secondary && (
-                            <span className="text-[11px] text-text-muted truncate">
+                            <span className={cn('text-text-muted truncate', isCompact ? 'text-[10px]' : 'text-[11px]')}>
                               {opt.secondary}
                             </span>
                           )}
@@ -474,7 +490,8 @@ export function CustomSelect({
                           {opt.badge && (
                             <span
                               className={cn(
-                                'px-1.5 py-0.5 text-[10px] font-semibold rounded',
+                                'font-semibold rounded',
+                                isCompact ? 'px-1 py-0.5 text-[9px]' : 'px-1.5 py-0.5 text-[10px]',
                                 isDisabled
                                   ? 'bg-amber-50 text-amber-700 border border-amber-200/70'
                                   : 'bg-gray-100 text-text-muted'
@@ -484,7 +501,7 @@ export function CustomSelect({
                             </span>
                           )}
                           {isSelected && !isDisabled && (
-                            <Check className="h-3.5 w-3.5 text-crimson shrink-0" />
+                            <Check className={cn('text-crimson shrink-0', isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
                           )}
                         </div>
                       </button>

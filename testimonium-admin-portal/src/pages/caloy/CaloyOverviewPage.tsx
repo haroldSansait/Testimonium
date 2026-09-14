@@ -232,7 +232,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Queries Today</span>
-              <MessageSquare className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+              <MessageSquare className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.queriesToday}</div>
             <div className="text-xs text-gray-500 leading-snug">Accepted chats</div>
@@ -242,7 +242,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Gen. Requests</span>
-              <Cpu className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+              <Cpu className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.generationRequestsToday}</div>
             <div className="text-xs text-gray-500 leading-snug">Measured provider calls</div>
@@ -252,7 +252,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Embeddings</span>
-              <Layers className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+              <Layers className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.embeddingRequestsToday}</div>
             <div className="text-xs text-gray-500 leading-snug">Query + Doc calls</div>
@@ -262,7 +262,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Measured RPM</span>
-              <Zap className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+              <Zap className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.measuredRpm}</div>
             <div className="text-xs text-gray-500 leading-snug">Last 60s attempts</div>
@@ -272,7 +272,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Fallback Rate</span>
-              <HelpCircle className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
+              <HelpCircle className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.fallbackRate.toFixed(1)}%</div>
             <div className="text-xs text-gray-500 leading-snug">RAG / Tool fallbacks</div>
@@ -282,7 +282,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Avg Latency</span>
-              <Clock className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
+              <Clock className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-gray-900 tracking-tight leading-none my-1.5">{data.metrics.averageResponseTimeMs}ms</div>
             <div className="text-xs text-gray-500 leading-snug">End-to-end response</div>
@@ -292,7 +292,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div className="bg-white px-4 py-4 sm:py-4.5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-tight text-gray-600">Errors Today</span>
-              <ShieldAlert className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+              <ShieldAlert className="w-3.5 h-3.5 text-crimson-700 flex-shrink-0" />
             </div>
             <div className="text-2xl sm:text-[26px] font-bold text-red-600 tracking-tight leading-none my-1.5">{data.metrics.failedInteractionsToday}</div>
             <div className="text-xs text-gray-500 leading-snug">{data.metrics.failedProviderAttemptsToday} failed provider attempts</div>
@@ -349,7 +349,7 @@ export function CaloyOverviewPage({ initialData = null }: { initialData?: CaloyO
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-red-600" />
+                <ShieldAlert className="w-4 h-4 text-crimson-700" />
                 Recent Operational Errors
               </h3>
               <Link

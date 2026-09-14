@@ -34,7 +34,7 @@ export const CANONICAL_DOCUMENT_TYPES: CanonicalDocumentDefinition[] = [
     type: 'MARRIAGE_CERTIFICATE',
     title: 'Marriage Certificate',
     label: 'Marriage Certificate',
-    desc: 'Official ecclesial record of Holy Matrimony',
+    desc: 'Official sacramental record of Holy Matrimony',
     defaultPrice: 150,
   },
   {

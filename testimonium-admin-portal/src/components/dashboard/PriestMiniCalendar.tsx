@@ -217,19 +217,19 @@ export function PriestMiniCalendar() {
                 : 'All Day';
 
               const sourceColors = {
-                APPOINTMENT: 'border-l-blue-500 bg-blue-50/50',
-                PARISH_EVENT: 'border-l-purple-500 bg-purple-50/50',
-                MASS: 'border-l-amber-500 bg-amber-50/50',
-                PERSONAL: 'border-l-emerald-500 bg-emerald-50/50',
-                AVAILABILITY: 'border-l-rose-500 bg-rose-50/50',
+                APPOINTMENT: 'border-blue-200 bg-blue-50/50',
+                PARISH_EVENT: 'border-purple-200 bg-purple-50/50',
+                MASS: 'border-amber-200 bg-amber-50/50',
+                PERSONAL: 'border-emerald-200 bg-emerald-50/50',
+                AVAILABILITY: 'border-rose-200 bg-rose-50/50',
               };
 
               return (
                 <div
                   key={item.id}
                   className={cn(
-                    'p-2.5 rounded-r-lg border-l-4 text-xs transition-all',
-                    sourceColors[item.sourceType] || 'border-l-gray-400 bg-gray-50'
+                    'p-2.5 rounded-lg border text-xs transition-all',
+                    sourceColors[item.sourceType] || 'border-gray-200 bg-gray-50'
                   )}
                 >
                   <div className="flex items-center justify-between gap-1">

@@ -487,10 +487,10 @@ export function MapConfigurationPage() {
                         setIsSettingsCollapsed(false);
                       })}
                       className={cn(
-                        "w-full text-left p-3.5 flex items-start justify-between border-l-2 transition-all",
+                        "w-full text-left p-3.5 flex items-start justify-between transition-all",
                         isSelected
-                          ? "bg-red-50/40 border-crimson-700"
-                          : "border-transparent hover:bg-gray-50/40"
+                          ? "bg-red-50/40"
+                          : "hover:bg-gray-50/40"
                       )}
                     >
                       <div className="flex gap-2.5 min-w-0">

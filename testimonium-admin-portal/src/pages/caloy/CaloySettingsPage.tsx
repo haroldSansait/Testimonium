@@ -230,7 +230,7 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
   const isDeploymentDisabled = !data.masterDeploymentGate.deploymentEnabled;
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       {/* Top notices */}
       {successMessage && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-center gap-2">
@@ -277,7 +277,7 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
 
       {/* Unsaved Changes Banner */}
       {isDirty && (
-        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
@@ -355,7 +355,7 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-purple-700" />
+                <Cpu className="w-5 h-5 text-crimson-700" />
                 Response Generation Model
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
@@ -407,7 +407,7 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Semantic Intent Router</span>
-              <Server className="w-4 h-4 text-indigo-600" />
+              <Server className="w-4 h-4 text-crimson-700" />
             </div>
             <div className="font-mono text-sm font-bold text-gray-900 mt-1">
               {data.readOnlyComponents.semanticRouter.model}
@@ -423,7 +423,7 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Embedding Engine</span>
-              <Database className="w-4 h-4 text-emerald-600" />
+              <Database className="w-4 h-4 text-crimson-700" />
             </div>
             <div className="font-mono text-sm font-bold text-gray-900 mt-1">
               {data.readOnlyComponents.embedding.model}
@@ -441,7 +441,7 @@ export function CaloySettingsPage({ initialData = null }: { initialData?: CaloyS
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Gemini Credentials</span>
-              <Shield className="w-4 h-4 text-amber-600" />
+              <Shield className="w-4 h-4 text-crimson-700" />
             </div>
             <div className="mt-1 flex items-center gap-2">
               {data.masterDeploymentGate.credentialsConfigured ? (

@@ -659,7 +659,7 @@ export const RequestTrackingPage: React.FC = () => {
                         onClick={() => handleSelectRequest(req)}
                         className={`w-full p-3.5 rounded-button border text-left transition-all focus-ring relative group cursor-pointer ${
                           isSelected
-                            ? 'border-crimson bg-red-50/20 border-l-4 border-l-crimson shadow-xs'
+                            ? 'border-crimson bg-red-50/20 shadow-xs'
                             : 'border-border/80 hover:bg-app-page hover:border-gray-300'
                         }`}
                         aria-current={isSelected ? 'true' : undefined}
@@ -1277,7 +1277,7 @@ export const RequestTrackingPage: React.FC = () => {
                           onClick={() => handleSelectSchedule(sched)}
                           className={`w-full p-3.5 rounded-button border text-left transition-all focus-ring relative group cursor-pointer ${
                             isSelected
-                              ? 'border-crimson bg-red-50/20 border-l-4 border-l-crimson shadow-xs'
+                              ? 'border-crimson bg-red-50/20 shadow-xs'
                               : 'border-border/80 hover:bg-app-page hover:border-gray-300'
                           }`}
                           aria-current={isSelected ? 'true' : undefined}

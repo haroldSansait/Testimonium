@@ -467,11 +467,12 @@ export const SacramentalRequestPage: React.FC = () => {
                   />
                 </div>
                 <Input
-                  label="Registry Year (Approximate, Optional)"
+                  label="Registry Year (Optional)"
                   type="number"
-                  placeholder="e.g. 1995"
+                  placeholder="Approx. year, e.g. 1995"
                   value={registryYear}
                   onChange={e => setRegistryYear(e.target.value)}
+                  className="h-[42px]"
                 />
               </div>
               <Input

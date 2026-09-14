@@ -465,14 +465,14 @@ export function ActivityLogPage() {
             <span className="text-xs text-gray-400">records in database</span>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm border-l-4 border-l-emerald-500">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Active Logs</span>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-bold text-emerald-600">{activeCount}</span>
             <span className="text-xs text-gray-400">showing in recent feeds</span>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm border-l-4 border-l-gray-400">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Archived Logs</span>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-bold text-gray-600">{archivedCount}</span>

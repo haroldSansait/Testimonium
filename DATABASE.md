@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 13 September 2026
+**Last reconciled:** 14 September 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -31,6 +31,7 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260905180000_phase4_scheduling_foundation`
 - `20260908214500_add_schedule_requested_priest_id`
 - `20260910120000_add_rag_chatbot`
+- `20260913150000_add_caloy_control_center`
 
 ### Development change flow
 
@@ -87,6 +88,9 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `KnowledgeSource` stores diocesan and parish procedure text with a database check constraint (`scope = 'DIOCESE' AND parish_id IS NULL` OR `scope = 'PARISH' AND parish_id IS NOT NULL`), governance lifecycle (`authority`: `PROVISIONAL` -> `CONFIRMED`, `status`: `DRAFT` -> `ACTIVE` -> `RETIRED`), and optimistic integer `version`. Content and knowledge edits create a new version set of chunks and invalidate the previous version as `STALE`; governance-only confirm, publish, retire, and embedding-retry transitions preserve the content version. Migrated legacy FAQ records start in `DRAFT` and `PROVISIONAL` status without automatic retrieval; Coordinators subsequently review the source text, supply reviewed chunk sets, confirm, embed, and publish through standard governance.
 - `KnowledgeChunk` stores chunk content, deterministic SHA-256 `contentHash`, `sourceVersion`, and 768-dimensional embeddings (`vector(768)` via PostgreSQL `pgvector`). Versioned chunk uniqueness is enforced via `@@unique([sourceId, sourceVersion, chunkOrder])`. Worker lease fields (`processingToken`, `leaseExpiresAt`, `embeddingAttemptCount`, `embeddingErrorCode`) manage background embedding progression (`PENDING` -> `PROCESSING` -> `READY` / `FAILED` / `STALE`). Chunks become eligible for embedding once the source is `CONFIRMED` in `DRAFT` status; sources become `ACTIVE` only when all current-version chunks are `READY`.
 - `ChatbotLog` records additive telemetry including `selectedParishId`, `retrievedChunkIds`, `retrievalScores`, `fallback`, `category`, and latency. Default privacy posture writes `NULL` for `question` and `response` (`CHATBOT_LOG_RAW_TEXT=false`).
+- `CaloyRuntimeConfig` manages diocesan assistant operational settings as a singleton row (`config_id = 1`). The table is unseeded on migration, allowing deployments to operate against validated `.env` values until the Diocese Coordinator saves settings (`expectedVersion = 0` creates the initial row). Stale updates are rejected via `409 CONFIG_VERSION_CONFLICT`. Check constraints enforce bounded limits (`ai_ten_minute_max >= 5`, `ai_daily_max >= ai_ten_minute_max`, `chatbot_request_deadline_ms BETWEEN 5000 AND 28000`, `log_retention_days BETWEEN 14 AND 365`). Settings updates and corresponding audit entries in `activity_logs` execute within a single atomic database transaction.
+- `SystemLease` provides distributed atomic coordination using PostgreSQL database time (`NOW()`). The automated retention worker contends for the daily key `CALOY_TELEMETRY_RETENTION:YYYY-MM-DD` (eligible 03:00-03:59 Asia/Manila, executed at most once per Manila day). Both automated and manual telemetry purges contend for and periodically renew `CALOY_TELEMETRY_PURGE` while executing bounded 5,000-row batch deletions; lease loss immediately halts subsequent batches.
+- `AiUsageEvent` captures privacy-safe, non-blocking telemetry for every external AI generation and embedding attempt (including retries) with latency, token consumption (`input_tokens`, `output_tokens`, `total_tokens`), and sanitized error categories. Telemetry rows correlate with `ChatbotLog` via `trace_id` without persisting user questions, responses, or API credentials.
 - Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; optional actor/processor assignments set null.
 
 ## Backup and recovery
@@ -115,4 +119,5 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Restrict database credentials to the backend/migration runner and rotate them through the secret manager.
 - Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
-See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (30 models and 26 enums).
+See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (33 models and 26 enums).
+

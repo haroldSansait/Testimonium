@@ -78,14 +78,15 @@ export const AnimatedAssistantMessage = forwardRef<
                 htmlFor={`parish-clarify-${msg.id}`}
                 className="block text-[11px] font-medium text-text-muted mb-1.5"
               >
-                Select your parish to continue:
+                {msg.selectedClarificationValue ? 'Selected parish:' : 'Select your parish to continue:'}
               </label>
               <CustomSelect
                 id={`parish-clarify-${msg.id}`}
-                disabled={isTyping}
-                value=""
+                disabled={isTyping || Boolean(msg.selectedClarificationValue) || !isLatest}
+                value={msg.selectedClarificationValue ? String(msg.selectedClarificationValue) : ''}
+                selectedLabel={msg.selectedClarificationLabel}
                 placeholder="Choose a parish..."
-                options={parishes.map((p) => ({ value: p.id, label: p.name }))}
+                options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
                 onChange={(val) => {
                   const num = Number(val);
                   if (num && Number.isInteger(num) && num > 0) {
@@ -104,12 +105,13 @@ export const AnimatedAssistantMessage = forwardRef<
                 htmlFor={`doc-clarify-${msg.id}`}
                 className="block text-[11px] font-medium text-text-muted mb-1.5"
               >
-                Select a document type to check:
+                {msg.selectedClarificationValue ? 'Selected document:' : 'Select a document type to check:'}
               </label>
               <CustomSelect
                 id={`doc-clarify-${msg.id}`}
-                disabled={isTyping}
-                value=""
+                disabled={isTyping || Boolean(msg.selectedClarificationValue) || !isLatest}
+                value={msg.selectedClarificationValue ? String(msg.selectedClarificationValue) : ''}
+                selectedLabel={msg.selectedClarificationLabel}
                 placeholder="Choose a document..."
                 options={DOCUMENT_TYPE_OPTIONS}
                 onChange={(val) => {
@@ -129,15 +131,16 @@ export const AnimatedAssistantMessage = forwardRef<
                 htmlFor={`event-clarify-${msg.id}`}
                 className="block text-[11px] font-medium text-text-muted mb-1.5"
               >
-                Select an event or service:
+                {msg.selectedClarificationValue ? 'Selected event/service:' : 'Select an event or service:'}
               </label>
               <CustomSelect
                 id={`event-clarify-${msg.id}`}
-                disabled={isTyping}
-                value=""
+                disabled={isTyping || Boolean(msg.selectedClarificationValue) || !isLatest}
+                value={msg.selectedClarificationValue ? String(msg.selectedClarificationValue) : ''}
+                selectedLabel={msg.selectedClarificationLabel}
                 placeholder="Choose an event or service..."
                 options={(msg.clarificationOptions || []).map((opt) => ({
-                  value: opt.value,
+                  value: String(opt.value),
                   label: opt.label,
                 }))}
                 onChange={(val) => {

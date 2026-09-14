@@ -1,10 +1,10 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 13 September 2026
+**Last reconciled:** 14 September 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
-This reference summarizes the 30 physical models and 26 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
+This reference summarizes the 33 physical models and 26 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
 
 ## Enums
 
@@ -121,6 +121,7 @@ Parish 0..1 ── * KnowledgeSource 1 ── * KnowledgeChunk
 User 1 ── * (Notification, ActivityLog, ChatbotLog, IdempotencyKey)
 User 0..1 ── * CaloyRuntimeConfig (Singleton updater relation)
 ChatbotLog 1 (trace_id) ── 0..* AiUsageEvent (via unconstrained trace_id correlation)
+SystemLease (Standalone distributed coordination lease ledger)
 EmailOutbox (Standalone transactional outbox ledger)
 ```
 

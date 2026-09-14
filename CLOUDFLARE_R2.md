@@ -1,6 +1,6 @@
 # Cloudflare R2 and OCR Pipeline
 
-**Last reconciled:** 13 September 2026
+**Last reconciled:** 14 September 2026
 **Source of truth:** `testimonium-backend/services/R2Service.js`, `ReceiptVerificationService.js`, `FileUploadService.js`, `ParishCouncilService.js`, `ParishService.js`, `utils/fileValidator.js`, and route controllers.
 
 TESTIMONIUM uses Cloudflare R2 through the S3-compatible AWS SDK. Browsers and mobile apps upload files directly to the Express API; the API validates the file format, magic bytes, and size, then streams or writes the file to R2. Storage credentials and access keys are never exposed to web or mobile clients.

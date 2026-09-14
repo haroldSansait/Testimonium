@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 13 September 2026
+**Last reconciled:** 14 September 2026
 
 Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -29,7 +29,7 @@ Create `testimonium-backend/.env` using its `.env.example`. The application requ
 | OCR | `OCR_ENABLED`, `OCR_PROVIDER`; when `ocrspace`, also `OCR_SPACE_API_KEY` and optional size/timeout/retry settings |
 | Transactional Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`, `SMTP_CONNECTION_TIMEOUT_MS`, `SMTP_GREETING_TIMEOUT_MS`, `SMTP_SOCKET_TIMEOUT_MS` |
 | Email Worker | `EMAIL_WORKER_POLL_MS`, `EMAIL_WORKER_BATCH_SIZE`, `EMAIL_WORKER_LEASE_SECONDS`, `EMAIL_MAX_ATTEMPTS` |
-| AI / RAG Chatbot | `CHATBOT_ENABLED` (boolean, default `false` until verified), `GEMINI_API_KEY`, `CHATBOT_MODEL` (`gemini-3.5-flash-lite`), `CHATBOT_EMBEDDING_MODEL` (`gemini-embedding-2`), `CHATBOT_MIN_SIMILARITY` (default `0.65`), `CHATBOT_MAX_CHUNKS` (`5`), `CHATBOT_WORKER_POLL_MS`, `CHATBOT_WORKER_BATCH_SIZE`, `CHATBOT_WORKER_LEASE_SECONDS`, `CHATBOT_LOG_RAW_TEXT` (`false` for privacy) |
+| AI / RAG Chatbot | `CHATBOT_ENABLED` (boolean, default `false` until verified), `GEMINI_API_KEY`, `AI_GENERATION_PROVIDER` (`gemini`), `AI_GENERATION_MODEL` (`gemini-3.5-flash-lite`), `CALOY_ALLOWED_GENERATION_MODELS` (optional allowlist), `AI_SEMANTIC_ROUTER_MODEL` (`gemini-3.5-flash-lite`), `AI_EMBEDDING_PROVIDER` (`gemini`), `AI_EMBEDDING_MODEL` (`gemini-embedding-2`), `AI_EMBEDDING_DIMENSIONS` (`768`), `CHATBOT_MIN_SIMILARITY` (default `0.65`), `CHATBOT_MAX_CONTEXT_CHUNKS` (`4`), `CHATBOT_WORKER_POLL_MS`, `CHATBOT_WORKER_BATCH_SIZE`, `CHATBOT_WORKER_LEASE_SECONDS`, `CHATBOT_LOG_RAW_TEXT` (`false` for privacy) |
 | Protection & Policy | `ADMIN_EMAIL_VERIFICATION_REQUIRED`, rate-limit maxima, and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
 | Maintenance | `ENABLE_ACTIVITY_PURGE=false`, `ACTIVITY_LOG_RETENTION_DAYS=365` |
 

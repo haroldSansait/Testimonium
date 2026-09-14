@@ -185,7 +185,7 @@ export function CaloyLogsPage({ initialData = null }: { initialData?: CaloyLogsR
       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-emerald-600" />
+            <ShieldAlert className="w-4 h-4 text-crimson-700" />
             Privacy-Guaranteed Operational Telemetry
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">

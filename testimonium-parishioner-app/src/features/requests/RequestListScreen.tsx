@@ -81,7 +81,7 @@ export const RequestListScreen: React.FC = () => {
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
         title="Document Requests"
-        subtitle="Certificates & Ecclesial Records"
+        subtitle="Certificates & Sacramental Records"
         rightAction={
           <Button
             title="New"
