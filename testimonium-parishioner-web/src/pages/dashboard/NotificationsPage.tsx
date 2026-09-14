@@ -196,9 +196,9 @@ export const NotificationsPage: React.FC = () => {
               <div className="space-y-8">
                 {groupedNotifications.map(group => (
                   <div key={group.title} className="space-y-3">
-                    <h3 className="text-xs font-bold text-text-muted/70 uppercase tracking-widest pl-2 border-l-2 border-crimson">
+                    <h2 className="text-xs font-bold text-text-muted/70 uppercase tracking-widest pl-2 border-l-2 border-crimson">
                       {group.title}
-                    </h3>
+                    </h2>
                     <div className="divide-y divide-border/60">
                       {group.items.map(notif => {
                         const isNew = newlyArrivedIds.includes(notif.id);
@@ -232,9 +232,9 @@ export const NotificationsPage: React.FC = () => {
                               {/* Text */}
                               <div className="space-y-1 flex-1 min-w-0">
                                 <div className="flex items-center justify-between">
-                                  <h4 className={`text-sm ${!notif.read ? 'font-semibold text-text-primary' : 'text-text-muted'}`}>
+                                  <h3 className={`text-sm ${!notif.read ? 'font-semibold text-text-primary' : 'text-text-muted'}`}>
                                     {notif.title}
-                                  </h4>
+                                  </h3>
                                   <span className="text-[10px] text-text-muted">
                                     {new Date(notif.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                   </span>

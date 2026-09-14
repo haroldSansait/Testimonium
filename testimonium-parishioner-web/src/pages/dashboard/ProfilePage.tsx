@@ -164,13 +164,13 @@ export const ProfilePage: React.FC = () => {
       />
 
       {/* First-Time User / Incomplete Profile Onboarding Prompt Banner */}
-      {(isNewUser || !phone || !address) && (
+      {Boolean(isNewUser || !profile?.phone || !profile?.address) && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-card shadow-sm flex items-start space-x-3 text-xs text-amber-800 animate-in fade-in duration-300">
           <Info size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h4 className="font-bold text-amber-900">
+            <h2 className="font-bold text-amber-900 text-xs sm:text-sm">
               {isNewUser ? 'Welcome to TESTIMONIUM! Let’s complete your profile.' : 'Complete Your Profile Information'}
-            </h4>
+            </h2>
             <p>
               Finalize your phone number and mailing address below so parish secretaries can contact you regarding sacramental certificates and appointments.
             </p>
@@ -187,9 +187,9 @@ export const ProfilePage: React.FC = () => {
                 <Avatar name={displayName || profile?.email || 'User'} size="lg" className="w-24 h-24" />
               </div>
               <div>
-                <h3 className="text-lg font-serif font-bold text-text-primary">
+                <h2 className="text-lg font-serif font-bold text-text-primary">
                   {displayName || 'Parishioner'}
-                </h3>
+                </h2>
                 <p className="text-xs text-text-muted mt-0.5">{profile?.email}</p>
               </div>
               <div className="pt-2">
@@ -254,13 +254,17 @@ export const ProfilePage: React.FC = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <span className="text-xs font-semibold text-text-primary">Email Notifications</span>
+                    <label htmlFor="email-notifications-checkbox" className="text-xs font-semibold text-text-primary cursor-pointer">
+                      Email Notifications
+                    </label>
                     <p className="text-[10px] text-text-muted">Receive status logs and confirmation reports on your email.</p>
                   </div>
                   <input
+                    id="email-notifications-checkbox"
                     type="checkbox"
                     checked={emailNotifications}
                     onChange={e => setEmailNotifications(e.target.checked)}
+                    aria-label="Email Notifications"
                     className="w-4 h-4 rounded text-crimson border-border focus-ring cursor-pointer"
                   />
                 </div>

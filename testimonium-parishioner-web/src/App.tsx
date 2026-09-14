@@ -18,10 +18,8 @@ import TermsPage from './pages/public/TermsPage';
 import PrivacyPage from './pages/public/PrivacyPage';
 import VerifyEmailPage from './pages/public/VerifyEmailPage';
 
-// Authenticated Pages
-import HomePage from './pages/dashboard/HomePage';
-
-// Heavier Authenticated Pages: Lazy loaded for optimal code-splitting and loading speeds
+// Authenticated Pages (Lazy loaded for optimal code-splitting and loading speeds)
+const HomePage = React.lazy(() => import('./pages/dashboard/HomePage'));
 const ParishDirectoryPage = React.lazy(() => import('./pages/dashboard/ParishDirectoryPage'));
 const SacramentalRequestPage = React.lazy(() => import('./pages/dashboard/SacramentalRequestPage'));
 const RequestTrackingPage = React.lazy(() => import('./pages/dashboard/RequestTrackingPage'));

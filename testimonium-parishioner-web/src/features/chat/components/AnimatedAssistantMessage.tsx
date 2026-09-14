@@ -84,7 +84,7 @@ export const AnimatedAssistantMessage = forwardRef<
                 id={`parish-clarify-${msg.id}`}
                 disabled={isTyping || Boolean(msg.selectedClarificationValue) || !isLatest}
                 value={msg.selectedClarificationValue ? String(msg.selectedClarificationValue) : ''}
-                selectedLabel={msg.selectedClarificationLabel}
+                selectedLabel={msg.selectedClarificationLabel ?? undefined}
                 placeholder="Choose a parish..."
                 options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
                 onChange={(val) => {
@@ -111,7 +111,7 @@ export const AnimatedAssistantMessage = forwardRef<
                 id={`doc-clarify-${msg.id}`}
                 disabled={isTyping || Boolean(msg.selectedClarificationValue) || !isLatest}
                 value={msg.selectedClarificationValue ? String(msg.selectedClarificationValue) : ''}
-                selectedLabel={msg.selectedClarificationLabel}
+                selectedLabel={msg.selectedClarificationLabel ?? undefined}
                 placeholder="Choose a document..."
                 options={DOCUMENT_TYPE_OPTIONS}
                 onChange={(val) => {
@@ -137,7 +137,7 @@ export const AnimatedAssistantMessage = forwardRef<
                 id={`event-clarify-${msg.id}`}
                 disabled={isTyping || Boolean(msg.selectedClarificationValue) || !isLatest}
                 value={msg.selectedClarificationValue ? String(msg.selectedClarificationValue) : ''}
-                selectedLabel={msg.selectedClarificationLabel}
+                selectedLabel={msg.selectedClarificationLabel ?? undefined}
                 placeholder="Choose an event or service..."
                 options={(msg.clarificationOptions || []).map((opt) => ({
                   value: String(opt.value),

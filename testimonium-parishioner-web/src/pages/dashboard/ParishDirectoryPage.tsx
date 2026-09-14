@@ -151,20 +151,22 @@ export const ParishDirectoryPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="space-y-6" aria-busy="true">
+      <div className="space-y-6 flex flex-col h-full" aria-busy="true">
         <PageHeader 
           title="Vicariate Directory Map" 
-          description="Explore the parishes of the Vicariate of Canlaon geographically."
+          description="Explore the parishes of the Vicariate of Canlaon geographically, view mass schedules, and request sacraments."
           onRefresh={handleRefresh}
           isRefreshing={true}
           breadcrumbs={['Home', 'Vicariate Directory']}
         />
         
         {/* Search Input Skeleton */}
-        <Skeleton className="h-11 max-w-md w-full rounded-button" />
+        <div className="relative max-w-md w-full z-20">
+          <Skeleton className="h-[42px] w-full rounded-button" />
+        </div>
 
         {/* Map Viewport Skeleton */}
-        <div className="relative h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border bg-gray-100 flex items-center justify-center">
+        <div className="relative z-0 isolate h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md bg-gray-100 flex items-center justify-center">
           <Skeleton className="absolute inset-0 h-full w-full" />
           {/* Floating detail skeleton to mimic desktop view */}
           <div className="hidden lg:block absolute left-4 top-4 bottom-4 w-96 z-10 bg-white border border-border/80 rounded-card p-5 space-y-4">

@@ -347,7 +347,7 @@ export const HomePage: React.FC = () => {
       <div className="space-y-8 pb-10 text-left" aria-busy="true">
         <PageHeader
           title="Home"
-          description="TESTIMONIUM parishioner overview portal."
+          description="Overview of your sacramental requests, appointments, and vicariate events."
           showBackToHome={false}
           onRefresh={refetchAll}
           isRefreshing={true}
@@ -550,7 +550,14 @@ export const HomePage: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row items-start sm:space-x-5 space-y-3 sm:space-y-0">
               <div className="w-20 h-20 rounded overflow-hidden flex-shrink-0 bg-border">
-                <img src={nextParishEvent.coverImage} alt={nextParishEvent.coverImageAlt} className="w-full h-full object-cover" />
+                <img 
+                  src={nextParishEvent.coverImage} 
+                  alt={nextParishEvent.coverImageAlt} 
+                  loading="lazy"
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-cover" 
+                />
               </div>
               <div className="flex-1 space-y-2">
                 <h4 className="font-serif font-bold text-sm sm:text-base text-text-primary leading-snug">

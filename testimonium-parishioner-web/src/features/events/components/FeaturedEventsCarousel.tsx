@@ -237,6 +237,7 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
               aria-roledescription="slide"
               aria-label={`${idx + 1} of ${totalSlides}: ${event.title}`}
               aria-hidden={!isActive}
+              inert={!isActive ? true : undefined}
               className={`absolute inset-0 flex flex-col md:flex-row transition-all duration-500 ease-in-out ${
                 isActive ? 'opacity-100 z-10 pointer-events-auto scale-100' : 'opacity-0 z-0 pointer-events-none scale-[0.98]'
               }`}
@@ -246,7 +247,8 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
                 <img
                   src={event.coverImage}
                   alt={event.coverImageAlt}
-                  loading={idx === 0 ? "eager" : "lazy"}
+                  fetchPriority={idx === 0 ? 'high' : 'auto'}
+                  loading={idx === 0 ? 'eager' : 'lazy'}
                   className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent md:bg-gradient-to-r md:from-transparent md:to-black/30" />

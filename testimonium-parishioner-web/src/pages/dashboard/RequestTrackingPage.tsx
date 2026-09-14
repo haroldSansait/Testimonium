@@ -524,7 +524,7 @@ export const RequestTrackingPage: React.FC = () => {
           className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-2 focus-ring ${
             activeMode === 'documents'
               ? 'bg-white text-crimson shadow-xs border border-border/50'
-              : 'text-text-muted hover:text-text-primary'
+              : 'text-gray-600 hover:text-text-primary'
           }`}
         >
           <FileText size={15} />
@@ -540,7 +540,7 @@ export const RequestTrackingPage: React.FC = () => {
           className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-2 focus-ring ${
             activeMode === 'schedules'
               ? 'bg-white text-crimson shadow-xs border border-border/50'
-              : 'text-text-muted hover:text-text-primary'
+              : 'text-gray-600 hover:text-text-primary'
           }`}
         >
           <Calendar size={15} />
@@ -586,7 +586,7 @@ export const RequestTrackingPage: React.FC = () => {
               className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring ${
                 mobileView === 'requests'
                   ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-text-muted hover:text-text-primary'
+                  : 'text-gray-600 hover:text-text-primary'
               }`}
             >
               <FileText size={14} />
@@ -603,7 +603,7 @@ export const RequestTrackingPage: React.FC = () => {
               className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring disabled:opacity-40 ${
                 mobileView === 'details'
                   ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-text-muted hover:text-text-primary'
+                  : 'text-gray-600 hover:text-text-primary'
               }`}
             >
               <Clock size={14} />
@@ -627,7 +627,7 @@ export const RequestTrackingPage: React.FC = () => {
                     <label htmlFor="search-tracking-input" className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                       Search Tracking Number
                     </label>
-                    <p className="text-[11px] text-text-muted">Enter the TX reference code from your submission.</p>
+                    <p className="text-[11px] text-gray-600">Enter the TX reference code from your submission.</p>
                   </div>
                   <div className="flex gap-2">
                     <SearchInput
@@ -647,7 +647,7 @@ export const RequestTrackingPage: React.FC = () => {
               {/* Submissions List */}
               <div className="bg-white rounded-card border border-border p-5 shadow-xs">
                 <div className="mb-3.5 border-b border-border pb-2.5">
-                  <h3 className="text-sm font-bold text-text-primary">My Submitted Requests</h3>
+                  <h2 className="text-sm font-bold text-text-primary">My Submitted Requests</h2>
                 </div>
                 <div className="space-y-2.5 pt-0">
                   {requests.map(req => {
@@ -675,7 +675,7 @@ export const RequestTrackingPage: React.FC = () => {
                             {formatStatusDisplay(req.status)}
                           </Badge>
                         </div>
-                        <div className="flex justify-between items-center text-[11px] text-text-muted">
+                        <div className="flex justify-between items-center text-[11px] text-gray-600">
                           <span className="capitalize font-medium">{req.documentType} Certificate</span>
                           <span>{new Date(req.updatedAt).toLocaleDateString()}</span>
                         </div>
@@ -829,15 +829,15 @@ export const RequestTrackingPage: React.FC = () => {
                       {/* Request Details Metadata */}
                       <div className="grid grid-cols-2 gap-4 text-xs bg-app-page p-4 rounded-card border border-border/60">
                         <div>
-                          <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Applicant</span>
+                          <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Applicant</span>
                           <span className="font-bold text-text-primary">{selectedRequest.applicantName}</span>
                         </div>
                         <div>
-                          <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Relationship</span>
+                          <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Relationship</span>
                           <span className="font-bold text-text-primary">{selectedRequest.relationship}</span>
                         </div>
                         <div className="col-span-2 pt-2 border-t border-border/40">
-                          <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Purpose</span>
+                          <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Purpose</span>
                           <p className="text-text-primary leading-relaxed">{selectedRequest.purpose}</p>
                         </div>
 
@@ -845,23 +845,23 @@ export const RequestTrackingPage: React.FC = () => {
                         {selectedRequest.paymentStatus && (
                           <div className="col-span-2 pt-2 border-t border-border/40 grid grid-cols-2 gap-3 text-xs text-left">
                             <div>
-                              <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Payment Status</span>
+                              <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Payment Status</span>
                               <span className="font-bold text-text-primary capitalize">{selectedRequest.paymentStatus.toLowerCase()}</span>
                             </div>
                             {selectedRequest.paymentTransactions && selectedRequest.paymentTransactions.length > 0 && (
                               <>
                                 <div>
-                                  <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Reference No</span>
+                                  <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Reference No</span>
                                   <span className="font-mono font-bold text-text-primary">{selectedRequest.paymentTransactions[0].referenceNumber || 'N/A'}</span>
                                 </div>
                                 <div>
-                                  <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Amount Detected</span>
+                                  <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Amount Detected</span>
                                   <span className="font-bold text-text-primary">
                                     {selectedRequest.paymentTransactions[0].amount ? `\u20B1${selectedRequest.paymentTransactions[0].amount}` : 'N/A'}
                                   </span>
                                 </div>
                                 <div>
-                                  <span className="text-text-muted block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Verification</span>
+                                  <span className="text-gray-600 block font-semibold uppercase tracking-wider text-[10px] mb-0.5">Verification</span>
                                   <span className="font-bold text-text-primary">
                                     {selectedRequest.paymentTransactions[0].verifiedAt
                                       ? `Verified on ${new Date(selectedRequest.paymentTransactions[0].verifiedAt).toLocaleDateString()}`
@@ -1215,7 +1215,7 @@ export const RequestTrackingPage: React.FC = () => {
               className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring disabled:opacity-40 ${
                 mobileScheduleView === 'details'
                   ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-text-muted hover:text-text-primary'
+                  : 'text-gray-600 hover:text-text-primary'
               }`}
             >
               <Clock size={14} />
@@ -1239,7 +1239,7 @@ export const RequestTrackingPage: React.FC = () => {
                     <label htmlFor="search-schedule-input" className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                       Schedule Request / Confirmation Number
                     </label>
-                    <p className="text-[11px] text-text-muted">Enter your confirmation number (e.g. CONF-2026-0026) or schedule ID.</p>
+                    <p className="text-[11px] text-gray-600">Enter your confirmation number (e.g. CONF-2026-0026) or schedule ID.</p>
                   </div>
                   <div className="flex gap-2">
                     <SearchInput
@@ -1259,7 +1259,7 @@ export const RequestTrackingPage: React.FC = () => {
               {/* Schedules List */}
               <div className="bg-white rounded-card border border-border p-5 shadow-xs">
                 <div className="mb-3.5 border-b border-border pb-2.5 flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-text-primary">My Schedule Requests</h3>
+                  <h2 className="text-sm font-bold text-text-primary">My Schedule Requests</h2>
                   {loadingSchedules && <Loader2 size={14} className="animate-spin text-crimson" />}
                 </div>
                 {schedules.length === 0 ? (
@@ -1296,7 +1296,7 @@ export const RequestTrackingPage: React.FC = () => {
                           <p className="text-xs font-semibold text-text-primary truncate">
                             {sched.serviceName}
                           </p>
-                          <div className="flex justify-between items-center text-[11px] text-text-muted mt-1">
+                          <div className="flex justify-between items-center text-[11px] text-gray-600 mt-1">
                             <span>{sched.parishName || 'Parish'}</span>
                             <span>{sched.date}</span>
                           </div>

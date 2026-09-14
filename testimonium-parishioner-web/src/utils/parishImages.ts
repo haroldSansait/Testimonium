@@ -1,10 +1,10 @@
-import cabagtasanImg from '../assets/parishes/cabagtasan.png';
-import canlaonImg from '../assets/parishes/canlaon.png';
-import dsbImg from '../assets/parishes/dsb.png';
-import masulogImg from '../assets/parishes/masulog.png';
-import prosperidadImg from '../assets/parishes/prosperidad.png';
-import quezonImg from '../assets/parishes/quezon.png';
-import tagbinoImg from '../assets/parishes/tagbino.png';
+import cabagtasanImg from '../assets/parishes/cabagtasan.webp';
+import canlaonImg from '../assets/parishes/canlaon.webp';
+import dsbImg from '../assets/parishes/dsb.webp';
+import masulogImg from '../assets/parishes/masulog.webp';
+import prosperidadImg from '../assets/parishes/prosperidad.webp';
+import quezonImg from '../assets/parishes/quezon.webp';
+import tagbinoImg from '../assets/parishes/tagbino.webp';
 
 export interface ParishImageLookup {
   id?: string;
