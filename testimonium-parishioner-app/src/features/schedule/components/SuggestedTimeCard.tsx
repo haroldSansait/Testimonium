@@ -83,9 +83,9 @@ const styles = StyleSheet.create({
   suggestionCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: radii.md,
-    padding: spacing.sm + 2,
+    borderColor: colors.borderLight,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
     gap: spacing.xxs,
   },
   suggestionCardSelected: {
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   reasonBadgeText: {
-    fontSize: 10,
+    fontSize: 12,
     color: colors.textSecondary,
     fontWeight: "600",
   },
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ecfdf5",
   },
   badgeSuccessText: {
-    fontSize: 10,
+    fontSize: 12,
     color: "#047857",
     fontWeight: "600",
   },
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fffbeb",
   },
   badgeWarningText: {
-    fontSize: 10,
+    fontSize: 12,
     color: "#b45309",
     fontWeight: "600",
   },

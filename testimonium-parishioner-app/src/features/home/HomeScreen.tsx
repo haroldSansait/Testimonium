@@ -10,31 +10,35 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Badge, BadgeVariant, Button, Card, IconButton, SectionHeader } from "@/components/ui";
-import { UpcomingEventsSection } from "@/features/events/UpcomingEventsSection";
-import { useCurrentMonthEvents } from "@/features/events/api";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { IconButton } from "@/components/ui/IconButton";
+import { ListRow } from "@/components/ui/ListRow";
+import { Divider } from "@/components/ui/Divider";
+import { StatusLabel } from "@/components/ui/StatusLabel";
+import { Button } from "@/components/ui/Button";
+import { ContentColumn } from "@/components/layout/ContentColumn";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
+import { EventBannerCarousel } from "@/features/events/components/EventBannerCarousel";
+import { parseEventDateOnly } from "@/features/events/presentation";
 import { useUnreadNotificationCount } from "@/features/notifications/api";
 import { useRequestList } from "@/features/requests/api";
 import { useScheduleList } from "@/features/schedule/api";
 import { useAuth } from "@/providers/AuthProvider";
-import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export const HomeScreen: React.FC = () => {
   const router = useRouter();
   const { profile, isRegistrationSession } = useAuth();
-  const { requireCompleteProfile } = useRequireCompleteProfile();
+  const { contentBottomInset } = useAppLayoutMetrics();
 
-  const { isFetching: isEventsFetching, refetch: refetchEvents } = useCurrentMonthEvents();
   const { data: requestsData, isFetching: isRequestsFetching, refetch: refetchRequests } = useRequestList({ limit: 3 });
   const { data: scheduleData, isFetching: isScheduleFetching, refetch: refetchSchedule } = useScheduleList("upcoming");
   const unreadNotificationsCount = useUnreadNotificationCount();
 
-  const isRefreshing = isEventsFetching || isRequestsFetching || isScheduleFetching;
+  const isRefreshing = isRequestsFetching || isScheduleFetching;
 
   const handleRefresh = async () => {
     await Promise.all([
-      refetchEvents(),
       refetchRequests(),
       refetchSchedule(),
     ]);
@@ -50,40 +54,14 @@ export const HomeScreen: React.FC = () => {
       ? firstName
       : "";
 
+  const greetingTitle = isRegistrationSession
+    ? validFirstName ? `Welcome, ${validFirstName}!` : "Welcome!"
+    : validFirstName ? `Welcome back, ${validFirstName}!` : "Welcome back!";
+
   const recentRequests = requestsData?.data || [];
   const upcomingAppointments = Array.isArray(scheduleData) ? scheduleData.slice(0, 2) : [];
 
-  const getStatusBadgeVariant = (status: string): BadgeVariant => {
-    switch (status) {
-      case "COMPLETED":
-      case "READY_FOR_PICKUP":
-      case "CONFIRMED":
-      case "APPROVED":
-        return "success";
-      case "PENDING":
-      case "PAYMENT_PENDING":
-      case "REQUESTED":
-        return "warning";
-      case "UNDER_REVIEW":
-      case "PROCESSING":
-      case "PAYMENT_UNDER_REVIEW":
-      case "PAYMENT_VERIFIED":
-        return "info";
-      case "NEEDS_CORRECTION":
-      case "PROPOSED":
-        return "correction";
-      case "REJECTED":
-      case "CANCELLED":
-      case "DECLINED":
-        return "danger";
-      default:
-        return "neutral";
-    }
-  };
-
-  const formatStatusLabel = (status: string): string => {
-    return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-  };
+  const bottomPadding = contentBottomInset("tab");
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -118,7 +96,7 @@ export const HomeScreen: React.FC = () => {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -131,358 +109,196 @@ export const HomeScreen: React.FC = () => {
           />
         }
       >
-        {/* Greeting Banner */}
-        <Card style={styles.bannerCard}>
-          <View style={styles.bannerBadge}>
-            <Text style={styles.bannerBadgeText}>ROMAN CATHOLIC DIOCESE OF SAN CARLOS</Text>
-          </View>
-
-          <Text style={styles.greetingTitle} allowFontScaling>
-            {isRegistrationSession
-              ? validFirstName ? `Welcome, ${validFirstName}!` : "Welcome!"
-              : validFirstName ? `Welcome back, ${validFirstName}!` : "Welcome back!"}
-          </Text>
-          <Text style={styles.bannerCopy} allowFontScaling>
-            Access sacramental records, schedule canonical appointments, and track certificate requests across the diocese.
-          </Text>
-
-          <View style={styles.bannerActionRow}>
-            <Button
-              title="Request Document"
-              size="sm"
-              onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
-              style={styles.bannerBtn}
-            />
-            <Button
-              title="Schedule Appointment"
-              size="sm"
-              variant="secondary"
-              onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
-              style={styles.bannerBtn}
-            />
-          </View>
-
-          {profile?.needsProfileCompletion && (
-            <View style={styles.profileReminderContainer}>
-              <View style={styles.profileReminderContent}>
-                <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-                <Text style={styles.profileReminderText} allowFontScaling>
-                  Complete your profile to access document and schedule requests.
-                </Text>
-              </View>
-              <Button
-                title="Complete Profile"
-                size="sm"
-                variant="outline"
-                onPress={() => router.push("/(app)/(tabs)/profile" as any)}
-                style={styles.profileReminderBtn}
-              />
-            </View>
-          )}
-        </Card>
-
-        {/* Ask Caloy Entry Card */}
-        <Pressable
-          onPress={() => router.push("/(app)/(tabs)/(caloy)" as any)}
-          accessibilityRole="button"
-          accessibilityLabel="Ask Caloy, TESTIMONIUM virtual assistant. Need help with requests, schedules, requirements, parish information, or other questions?"
-          accessibilityHint="Navigates to the Caloy chat tab"
-          style={({ pressed }) => [styles.caloyCard, pressed && styles.caloyCardPressed]}
-        >
-          <View style={styles.caloyCardContent}>
-            <View style={styles.caloyIconCircle}>
-              <Ionicons name="sparkles" size={22} color={colors.primary} />
-            </View>
-            <View style={styles.caloyTextContainer}>
-              <View style={styles.caloyTitleRow}>
-                <Text style={styles.caloyTitle} allowFontScaling>
-                  Ask Caloy
-                </Text>
-                <View style={styles.caloyBadge}>
-                  <Text style={styles.caloyBadgeText}>AI ASSISTANT</Text>
-                </View>
-              </View>
-              <Text style={styles.caloySubtitle} allowFontScaling>
-                Need help with requests, schedules, requirements, parish information, or other TESTIMONIUM questions?
-              </Text>
-            </View>
-          </View>
-          <View style={styles.caloyFooter}>
-            <Text style={styles.caloyActionText} allowFontScaling>
-              Chat with Caloy
+        <ContentColumn style={styles.column}>
+          {/* Greeting Banner */}
+          <View style={styles.greetingHeader}>
+            <Text style={styles.dioceseTag} allowFontScaling>
+              DIOCESE OF SAN CARLOS
             </Text>
-            <Ionicons name="arrow-forward" size={16} color={colors.primary} />
-          </View>
-        </Pressable>
+            <Text style={styles.greetingTitle} allowFontScaling>
+              {greetingTitle}
+            </Text>
+            <Text style={styles.greetingSubtitle} allowFontScaling>
+              Canonical services and sacramental document records.
+            </Text>
 
-        {/* Quick Access Grid (6 Services in 2-Column Responsive Flex Rows) */}
-        <View style={styles.sectionContainer}>
-          <SectionHeader
-            title="Quick Access Services"
-            subtitle="Frequently used diocesan services"
-          />
-
-          <View style={styles.grid}>
-            {/* Row 1 */}
-            <View style={styles.gridRow}>
-              {/* 1. Request Document */}
-              <Pressable
-                onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
-                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Request Document"
-              >
-                <View style={[styles.gridIconCircle, { backgroundColor: colors.primarySoft }]}>
-                  <Ionicons name="document-text-outline" size={22} color={colors.primary} />
-                </View>
-                <Text style={styles.gridTitle} allowFontScaling>Request Document</Text>
-                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                  Certificates & records
-                </Text>
-              </Pressable>
-
-              {/* 2. Track Request */}
-              <Pressable
-                onPress={() => router.push("/(app)/(tabs)/(requests)" as any)}
-                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Track Request"
-              >
-                <View style={[styles.gridIconCircle, { backgroundColor: colors.infoSoft }]}>
-                  <Ionicons name="search-outline" size={22} color={colors.info} />
-                </View>
-                <Text style={styles.gridTitle} allowFontScaling>Track Request</Text>
-                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                  Real-time status updates
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Row 2 */}
-            <View style={styles.gridRow}>
-              {/* 3. Schedule Appointment */}
-              <Pressable
-                onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
-                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Schedule Appointment"
-              >
-                <View style={[styles.gridIconCircle, { backgroundColor: colors.successSoft }]}>
-                  <Ionicons name="calendar-outline" size={22} color={colors.success} />
-                </View>
-                <Text style={styles.gridTitle} allowFontScaling>Schedule Appointment</Text>
-                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                  Masses, blessings & interviews
-                </Text>
-              </Pressable>
-
-              {/* 4. Parish Directory */}
-              <Pressable
-                onPress={() => router.push("/(app)/(tabs)/(parishes)" as any)}
-                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Parish Directory"
-              >
-                <View style={[styles.gridIconCircle, { backgroundColor: colors.warningSoft }]}>
-                  <Ionicons name="business-outline" size={22} color={colors.warning} />
-                </View>
-                <Text style={styles.gridTitle} allowFontScaling>Parish Directory</Text>
-                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                  Offices, hours & contact info
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Row 3 */}
-            <View style={styles.gridRow}>
-              {/* 5. Notifications */}
-              <Pressable
-                onPress={() => router.push("/notifications" as any)}
-                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-              >
-                <View style={[styles.gridIconCircle, { backgroundColor: colors.primarySoft }]}>
-                  <Ionicons name="notifications-outline" size={22} color={colors.primary} />
-                </View>
-                <Text style={styles.gridTitle} allowFontScaling>Notifications</Text>
-                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                  Alerts & official notices
-                </Text>
-              </Pressable>
-
-              {/* 6. My Profile */}
-              <Pressable
-                onPress={() => router.push("/(app)/(tabs)/(profile)" as any)}
-                style={({ pressed }) => [styles.gridCard, pressed && styles.gridCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="My Profile"
-              >
-                <View style={[styles.gridIconCircle, { backgroundColor: colors.surfaceVariant }]}>
-                  <Ionicons name="person-outline" size={22} color={colors.textPrimary} />
-                </View>
-                <Text style={styles.gridTitle} allowFontScaling>My Profile</Text>
-                <Text style={styles.gridSubtitle} numberOfLines={2} allowFontScaling>
-                  Contact & account details
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-
-        {/* Recent Document Requests Summary */}
-        <View style={styles.sectionContainer}>
-          <SectionHeader
-            title="Recent Document Requests"
-            actionLabel="View All"
-            onAction={() => router.push("/(app)/(tabs)/(requests)" as any)}
-          />
-
-          {recentRequests.length > 0 ? (
-            <View style={styles.cardStack}>
-              {recentRequests.map((req) => (
-                <Pressable
-                  key={req.id}
-                  onPress={() => router.push(`/(app)/requests/${req.id}` as any)}
-                  style={({ pressed }) => [styles.itemCard, pressed && styles.itemCardPressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Request ${req.trackingNumber || req.id}`}
-                >
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.itemTitle} numberOfLines={1} allowFontScaling>
-                      {req.documentType ? req.documentType.replace(/_/g, " ") : "Certificate Request"}
-                    </Text>
-                    <Badge
-                      label={formatStatusLabel(req.status)}
-                      variant={getStatusBadgeVariant(req.status)}
-                      size="sm"
-                    />
-                  </View>
-                  <Text style={styles.itemTracking} allowFontScaling>
-                    Tracking #: {req.trackingNumber || `REQ-${req.id}`}
+            {profile?.needsProfileCompletion && (
+              <View style={styles.profileReminder}>
+                <View style={styles.profileReminderTextWrap}>
+                  <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                  <Text style={styles.profileReminderText} allowFontScaling>
+                    Complete your profile to access all services.
                   </Text>
-                  {req.parish?.parishName && (
-                    <Text style={styles.itemMeta} numberOfLines={1} allowFontScaling>
-                      Parish: {req.parish.parishName}
-                    </Text>
-                  )}
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <Card variant="muted" style={styles.emptyCard}>
-              <Ionicons name="document-text-outline" size={24} color={colors.textSecondary} />
-              <Text style={styles.emptyCardText} allowFontScaling>
-                No active document requests.
-              </Text>
-              <Button
-                title="Start a Request"
-                size="sm"
-                variant="outline"
-                onPress={() => requireCompleteProfile(() => router.push("/(app)/requests/new" as any))}
-              />
-            </Card>
-          )}
-        </View>
+                </View>
+                <Button
+                  title="Complete"
+                  size="sm"
+                  variant="outline"
+                  onPress={() => router.push("/(app)/(tabs)/profile" as any)}
+                />
+              </View>
+            )}
+          </View>
 
-        {/* Upcoming Appointments Summary */}
-        <View style={styles.sectionContainer}>
-          <SectionHeader
-            title="Upcoming Appointments"
-            actionLabel="View Schedule"
-            onAction={() => router.push("/(app)/(tabs)/(schedule)" as any)}
+          {/* Three-Day Events Carousel */}
+          <EventBannerCarousel
+            onEventPress={(event) => {
+              const { year, month } = parseEventDateOnly(event.eventDate);
+              router.push({
+                pathname: "/(app)/events/[id]" as any,
+                params: {
+                  id: String(event.id),
+                  year: String(year),
+                  month: String(month),
+                },
+              });
+            }}
+            onViewAllPress={() => router.push("/(app)/events" as any)}
           />
 
-          {upcomingAppointments.length > 0 ? (
-            <View style={styles.cardStack}>
-              {upcomingAppointments.map((item) => (
+          <Divider />
+
+          {/* Recent Document Requests (Flat Divided Rows) */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle} allowFontScaling>
+                  Document Activity
+                </Text>
+                <Text style={styles.sectionSubtitle} allowFontScaling>
+                  Recent certificate requests
+                </Text>
+              </View>
+              {recentRequests.length > 0 && (
                 <Pressable
-                  key={item.id}
-                  onPress={() => router.push(`/(app)/schedule/${item.id}` as any)}
-                  style={({ pressed }) => [styles.itemCard, pressed && styles.itemCardPressed]}
+                  onPress={() => router.push("/(app)/(tabs)/(requests)" as any)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Appointment ${item.displayTitle || item.eventType}`}
+                  accessibilityLabel="View all document requests"
+                  hitSlop={8}
                 >
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.itemTitle} numberOfLines={1} allowFontScaling>
-                      {item.displayTitle || item.eventType.replace(/_/g, " ")}
-                    </Text>
-                    <Badge
-                      label={formatStatusLabel(item.status)}
-                      variant={getStatusBadgeVariant(item.status)}
-                      size="sm"
-                    />
-                  </View>
-                  <View style={styles.itemRow}>
-                    <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-                    <Text style={styles.itemMeta} allowFontScaling>
-                      {item.requestedDate}
-                    </Text>
-                  </View>
-                  {item.parish?.parishName && (
-                    <Text style={styles.itemMeta} numberOfLines={1} allowFontScaling>
-                      Parish: {item.parish.parishName}
-                    </Text>
-                  )}
+                  <Text style={styles.sectionLink} allowFontScaling>
+                    View All
+                  </Text>
                 </Pressable>
-              ))}
+              )}
             </View>
-          ) : (
-            <Card variant="muted" style={styles.emptyCard}>
-              <Ionicons name="calendar-outline" size={24} color={colors.textSecondary} />
-              <Text style={styles.emptyCardText} allowFontScaling>
-                No upcoming canonical appointments scheduled.
-              </Text>
-              <Button
-                title="Book Appointment"
-                size="sm"
-                variant="outline"
-                onPress={() => requireCompleteProfile(() => router.push("/(app)/schedule/new" as any))}
-              />
-            </Card>
-          )}
-        </View>
 
-        {/* Upcoming Events Preview */}
-        <UpcomingEventsSection
-          limit={3}
-          title="Upcoming This Month"
-          subtitle="Public masses and community events"
-          onParishPress={(parishId) => router.push(`/parishes/${parishId}` as any)}
-        />
+            {recentRequests.length > 0 ? (
+              <View style={styles.rowsContainer}>
+                {recentRequests.map((req, idx) => {
+                  const docTitle = req.documentType
+                    ? req.documentType.replace(/_/g, " ")
+                    : "Certificate Request";
+                  const tracking = req.trackingNumber || `REQ-${req.id}`;
+                  const parishName = req.parish?.parishName;
 
-        {/* Parish Directory Discovery Card */}
-        <Pressable
-          onPress={() => router.push("/(app)/(tabs)/(parishes)" as any)}
-          accessibilityRole="button"
-          accessibilityLabel="Explore Parish Directory. Browse parishes across the Diocese of San Carlos"
-          accessibilityHint="Navigates to the Parish Directory tab"
-          style={({ pressed }) => [styles.heroCard, pressed && styles.heroCardPressed]}
-        >
-          <View style={styles.heroContent}>
-            <View style={styles.heroIconCircle}>
-              <Ionicons
-                name="business-outline"
-                size={24}
-                color={colors.primary}
-              />
-            </View>
-            <View style={styles.heroTextContainer}>
-              <Text style={styles.heroTitle} allowFontScaling>
-                Parish Directory
-              </Text>
-              <Text style={styles.heroSubtitle} allowFontScaling>
-                Browse parishes, patron saints, office hours, and contact details across the diocese.
-              </Text>
-            </View>
+                  return (
+                    <ListRow
+                      key={req.id}
+                      title={docTitle}
+                      subtitle={`Tracking: ${tracking}${parishName ? ` • ${parishName}` : ""}`}
+                      trailing={<StatusLabel status={req.status} />}
+                      showDivider={idx < recentRequests.length - 1}
+                      onPress={() => router.push(`/(app)/requests/${req.id}` as any)}
+                      accessibilityLabel={`Request ${docTitle}, tracking ${tracking}`}
+                    />
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyActivityRow}>
+                <Text style={styles.emptyText} allowFontScaling>
+                  No recent document requests.
+                </Text>
+              </View>
+            )}
           </View>
-          <View style={styles.heroFooter}>
-            <Text style={styles.heroActionText} allowFontScaling>
-              Explore Parishes
-            </Text>
-            <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+
+          <Divider />
+
+          {/* Upcoming Schedule Activity (Flat Divided Rows) */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle} allowFontScaling>
+                  Appointments
+                </Text>
+                <Text style={styles.sectionSubtitle} allowFontScaling>
+                  Scheduled services & blessings
+                </Text>
+              </View>
+              {upcomingAppointments.length > 0 && (
+                <Pressable
+                  onPress={() => router.push("/(app)/(tabs)/(schedule)" as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View full schedule"
+                  hitSlop={8}
+                >
+                  <Text style={styles.sectionLink} allowFontScaling>
+                    View Schedule
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            {upcomingAppointments.length > 0 ? (
+              <View style={styles.rowsContainer}>
+                {upcomingAppointments.map((item, idx) => {
+                  const title = item.displayTitle || item.eventType.replace(/_/g, " ");
+                  const dateStr = item.requestedDate;
+                  const parishName = item.parish?.parishName;
+
+                  return (
+                    <ListRow
+                      key={item.id}
+                      title={title}
+                      subtitle={`${dateStr}${parishName ? ` • ${parishName}` : ""}`}
+                      trailing={<StatusLabel status={item.status} />}
+                      showDivider={idx < upcomingAppointments.length - 1}
+                      onPress={() => router.push(`/(app)/schedule/${item.id}` as any)}
+                      accessibilityLabel={`Appointment ${title} on ${dateStr}`}
+                    />
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyActivityRow}>
+                <Text style={styles.emptyText} allowFontScaling>
+                  No upcoming canonical appointments scheduled.
+                </Text>
+              </View>
+            )}
           </View>
-        </Pressable>
+
+          <Divider />
+
+          {/* Editorial Entries: Caloy & Parish Directory */}
+          <View style={styles.discoverySection}>
+            <ListRow
+              title="Ask Caloy"
+              subtitle="Sacramental guidelines, document requirements & parish inquiries"
+              leading={
+                <Ionicons name="sparkles" size={20} color={colors.primary} />
+              }
+              showChevron
+              showDivider
+              onPress={() => router.push("/(app)/(tabs)/(caloy)" as any)}
+              accessibilityLabel="Ask Caloy, TESTIMONIUM virtual assistant"
+            />
+
+            <ListRow
+              title="Parish Directory"
+              subtitle="Explore parishes, schedules, and diocesan offices"
+              leading={
+                <Ionicons name="business-outline" size={20} color={colors.primary} />
+              }
+              showChevron
+              showDivider={false}
+              onPress={() => router.push("/(app)/(tabs)/(parishes)" as any)}
+              accessibilityLabel="Explore Parish Directory"
+            />
+          </View>
+        </ContentColumn>
       </ScrollView>
     </Screen>
   );
@@ -517,301 +333,93 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl + 80,
+    paddingVertical: spacing.md,
+  },
+  column: {
     gap: spacing.lg,
   },
-  bannerCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    borderWidth: 1,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
+  greetingHeader: {
+    paddingHorizontal: spacing.xxs,
+    gap: spacing.xxs,
   },
-  bannerBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs + 2,
-    borderRadius: radii.sm,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.primary + "20",
-  },
-  bannerBadgeText: {
+  dioceseTag: {
     ...fontStyles.meta,
     color: colors.primary,
     fontWeight: "700",
     letterSpacing: 0.8,
   },
   greetingTitle: {
-    ...fontStyles.title,
+    ...fontStyles.titleSerif,
     color: colors.textPrimary,
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: "800",
+    fontSize: 24,
+    lineHeight: 30,
   },
-  bannerCopy: {
+  greetingSubtitle: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
     lineHeight: 20,
-    marginTop: spacing.xs,
   },
-  bannerActionRow: {
+  profileReminder: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  bannerBtn: {
-    flex: 1,
-  },
-  sectionContainer: {
-    gap: spacing.xs,
-  },
-  grid: {
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  gridRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  gridCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    gap: spacing.xxs,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-  },
-  gridCardPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
-  gridIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.md,
-    justifyContent: "center",
     alignItems: "center",
-    marginBottom: spacing.xs,
-  },
-  gridTitle: {
-    ...fontStyles.captionBold,
-    color: colors.textPrimary,
-  },
-  gridSubtitle: {
-    ...fontStyles.meta,
-    color: colors.textSecondary,
-    lineHeight: 14,
-  },
-  cardStack: {
-    gap: spacing.xs,
-  },
-  itemCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    gap: spacing.xxs,
-  },
-  itemCardPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
-  itemHeader: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  itemTitle: {
-    ...fontStyles.captionBold,
-    color: colors.textPrimary,
-    flex: 1,
-    textTransform: "capitalize",
-  },
-  itemTracking: {
-    ...fontStyles.meta,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xxs,
-  },
-  itemMeta: {
-    ...fontStyles.caption,
-    color: colors.textSecondary,
-  },
-  emptyCard: {
-    alignItems: "center",
-    padding: spacing.lg,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginTop: spacing.xs,
     gap: spacing.sm,
   },
-  emptyCardText: {
-    ...fontStyles.caption,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
-  heroCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    borderWidth: 1,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-  },
-  heroCardPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.985 }],
-  },
-  heroContent: {
+  profileReminderTextWrap: {
     flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  heroIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primarySoft,
-    justifyContent: "center",
     alignItems: "center",
-    marginRight: spacing.md,
-  },
-  heroTextContainer: {
+    gap: spacing.xs,
     flex: 1,
-  },
-  heroTitle: {
-    ...fontStyles.heading,
-    color: colors.textPrimary,
-    marginBottom: spacing.xxs,
-  },
-  heroSubtitle: {
-    ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  heroFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    marginTop: spacing.md,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-  },
-  heroActionText: {
-    ...fontStyles.captionMedium,
-    color: colors.primary,
-    marginRight: spacing.xxs,
-  },
-  profileReminderContainer: {
-    marginTop: spacing.md,
-    padding: spacing.sm,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-    gap: spacing.xs,
-  },
-  profileReminderContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
   },
   profileReminderText: {
-    ...fontStyles.bodySmall,
-    color: colors.surface,
-    flex: 1,
-    fontWeight: "500",
-  },
-  profileReminderBtn: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.surface,
-  },
-  caloyCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    borderWidth: 1,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-  },
-  caloyCardPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.985 }],
-  },
-  caloyCardContent: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  caloyIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primarySoft,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: spacing.md,
-  },
-  caloyTextContainer: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
     flex: 1,
   },
-  caloyTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  section: {
     gap: spacing.xs,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    paddingHorizontal: spacing.xxs,
     marginBottom: spacing.xxs,
   },
-  caloyTitle: {
+  sectionTitle: {
     ...fontStyles.heading,
+    fontFamily: fontStyles.titleSerif.fontFamily,
     color: colors.textPrimary,
+    fontSize: 18,
+    lineHeight: 24,
   },
-  caloyBadge: {
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.primary + "20",
-  },
-  caloyBadgeText: {
-    ...fontStyles.meta,
-    color: colors.primary,
-    fontWeight: "700",
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  caloySubtitle: {
-    ...fontStyles.bodySmall,
+  sectionSubtitle: {
+    ...fontStyles.caption,
     color: colors.textSecondary,
-    lineHeight: 18,
+    marginTop: 1,
   },
-  caloyFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    marginTop: spacing.sm,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-  },
-  caloyActionText: {
-    ...fontStyles.captionMedium,
+  sectionLink: {
+    ...fontStyles.captionBold,
     color: colors.primary,
-    fontWeight: "600",
-    marginRight: spacing.xxs,
+  },
+  rowsContainer: {
+    backgroundColor: colors.surface,
+  },
+  emptyActivityRow: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xxs,
+  },
+  emptyText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  discoverySection: {
+    gap: spacing.xxs,
   },
 });

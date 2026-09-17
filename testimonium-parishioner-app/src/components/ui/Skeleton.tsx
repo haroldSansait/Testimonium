@@ -7,6 +7,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 export interface SkeletonProps {
@@ -19,12 +20,21 @@ export interface SkeletonProps {
 export const Skeleton: React.FC<SkeletonProps> = ({
   width = "100%",
   height = 20,
-  borderRadius = radii.sm,
+  borderRadius = radii.xs,
   style,
 }) => {
+  const reduceMotion = useReducedMotion();
   const [opacity] = useState(() => new Animated.Value(0.4));
 
   useEffect(() => {
+    opacity.setValue(reduceMotion ? 0.6 : 0.4);
+  }, [opacity, reduceMotion]);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      return;
+    }
+
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
@@ -41,7 +51,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
     );
     pulse.start();
     return () => pulse.stop();
-  }, [opacity]);
+  }, [opacity, reduceMotion]);
 
   return (
     <Animated.View
@@ -55,55 +65,68 @@ export const Skeleton: React.FC<SkeletonProps> = ({
         },
         style,
       ]}
+      accessible={true}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading content"
     />
+  );
+};
+
+export const RowSkeleton: React.FC = () => {
+  return (
+    <View style={styles.rowSkeleton} accessible={true} accessibilityLabel="Loading item">
+      <Skeleton width={40} height={40} borderRadius={radii.control} />
+      <View style={styles.rowContent}>
+        <Skeleton width="65%" height={16} />
+        <Skeleton width="40%" height={12} style={styles.mtXs} />
+      </View>
+    </View>
   );
 };
 
 export const ParishCardSkeleton: React.FC = () => {
   return (
-    <View style={styles.cardSkeleton} accessible={true} accessibilityLabel="Loading parish information">
-      <View style={styles.cardHeaderRow}>
-        <Skeleton width="60%" height={20} />
-        <Skeleton width={70} height={20} borderRadius={radii.pill} />
+    <View style={styles.rowSkeleton} accessible={true} accessibilityLabel="Loading parish information">
+      <Skeleton width={88} height={72} borderRadius={radii.image} />
+      <View style={styles.rowContent}>
+        <Skeleton width="60%" height={18} />
+        <Skeleton width="40%" height={14} style={styles.mtXs} />
+        <Skeleton width="30%" height={12} style={styles.mtXs} />
       </View>
-      <Skeleton width="40%" height={14} style={styles.mtSm} />
-      <Skeleton width="80%" height={14} style={styles.mtXs} />
     </View>
   );
 };
 
 export const EventCardSkeleton: React.FC = () => {
   return (
-    <View style={styles.cardSkeleton} accessible={true} accessibilityLabel="Loading event information">
-      <View style={styles.cardHeaderRow}>
-        <Skeleton width="50%" height={18} />
-        <Skeleton width={80} height={18} borderRadius={radii.pill} />
+    <View style={styles.rowSkeleton} accessible={true} accessibilityLabel="Loading event information">
+      <Skeleton width={56} height={56} borderRadius={radii.control} />
+      <View style={styles.rowContent}>
+        <Skeleton width="70%" height={16} />
+        <Skeleton width="50%" height={14} style={styles.mtXs} />
+        <Skeleton width="35%" height={12} style={styles.mtXs} />
       </View>
-      <Skeleton width="70%" height={14} style={styles.mtSm} />
-      <Skeleton width="35%" height={14} style={styles.mtXs} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   skeleton: {
-    backgroundColor: colors.placeholderBg,
-  },
-  cardSkeleton: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    backgroundColor: colors.neutral[50],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    borderColor: colors.neutral[200],
   },
-  cardHeaderRow: {
+  rowSkeleton: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral[200],
+    backgroundColor: colors.surface,
   },
-  mtSm: {
-    marginTop: spacing.sm,
+  rowContent: {
+    flex: 1,
   },
   mtXs: {
     marginTop: spacing.xs,

@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Screen } from "@/components/Screen";
+import { AuthScaffold } from "@/components/auth/AuthScaffold";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { FormSection } from "@/components/ui/FormSection";
+import { Divider } from "@/components/ui/Divider";
 import { TextInput } from "@/components/ui/TextInput";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
@@ -66,20 +67,12 @@ export default function ProfileCompletionScreen() {
   };
 
   return (
-    <Screen scrollable style={styles.screen}>
+    <AuthScaffold
+      compactHero
+      title="Complete Your Profile"
+      subtitle="Please provide your official contact details so our parish offices can process your sacramental requests and send notification updates."
+    >
       <View style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.dioceseBadge}>
-            <Text style={styles.dioceseBadgeText}>PROFILE SETUP</Text>
-          </View>
-          <Text style={styles.title} allowFontScaling>
-            Complete Your Profile
-          </Text>
-          <Text style={styles.copy} allowFontScaling>
-            Please provide your official contact details so our parish offices can process your sacramental requests and send notification updates.
-          </Text>
-        </View>
-
         {/* Error Notice */}
         {error && (
           <View style={styles.errorContainer}>
@@ -95,72 +88,64 @@ export default function ProfileCompletionScreen() {
           </View>
         )}
 
-        {/* Full Legal Name Card */}
-        <Card style={styles.formCard}>
-          <Text style={styles.cardHeaderTitle} allowFontScaling>
-            Full Legal Name
-          </Text>
-          <View style={styles.fields}>
-            <TextInput
-              label="First Name *"
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="e.g. Juan"
-              autoCapitalize="words"
-              editable={!isUpdatingProfile}
-            />
-            <TextInput
-              label="Middle Name (Optional)"
-              value={middleName}
-              onChangeText={setMiddleName}
-              placeholder="e.g. Santos"
-              autoCapitalize="words"
-              editable={!isUpdatingProfile}
-            />
-            <TextInput
-              label="Last Name *"
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="e.g. Dela Cruz"
-              autoCapitalize="words"
-              editable={!isUpdatingProfile}
-            />
-            <TextInput
-              label="Suffix (Optional)"
-              value={suffix}
-              onChangeText={setSuffix}
-              placeholder="e.g. Jr., III"
-              autoCapitalize="words"
-              editable={!isUpdatingProfile}
-            />
-          </View>
-        </Card>
+        {/* Section 1: Legal Name */}
+        <FormSection title="Full Legal Name">
+          <TextInput
+            label="First Name *"
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="e.g. Juan"
+            autoCapitalize="words"
+            editable={!isUpdatingProfile}
+          />
+          <TextInput
+            label="Middle Name (Optional)"
+            value={middleName}
+            onChangeText={setMiddleName}
+            placeholder="e.g. Santos"
+            autoCapitalize="words"
+            editable={!isUpdatingProfile}
+          />
+          <TextInput
+            label="Last Name *"
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="e.g. Dela Cruz"
+            autoCapitalize="words"
+            editable={!isUpdatingProfile}
+          />
+          <TextInput
+            label="Suffix (Optional)"
+            value={suffix}
+            onChangeText={setSuffix}
+            placeholder="e.g. Jr., III"
+            autoCapitalize="words"
+            editable={!isUpdatingProfile}
+          />
+        </FormSection>
 
-        {/* Contact & Address Card */}
-        <Card style={styles.formCard}>
-          <Text style={styles.cardHeaderTitle} allowFontScaling>
-            Contact & Address Details
-          </Text>
-          <View style={styles.fields}>
-            <TextInput
-              label="Contact Number *"
-              value={contactNumber}
-              onChangeText={setContactNumber}
-              keyboardType="phone-pad"
-              placeholder="e.g. 09123456789 or +639123456789"
-              helperText="Used for official SMS notices and verification."
-              editable={!isUpdatingProfile}
-            />
-            <TextInput
-              label="Home / Permanent Address (Optional)"
-              value={address}
-              onChangeText={setAddress}
-              placeholder="e.g. Barangay, Municipality/City, Province"
-              autoCapitalize="words"
-              editable={!isUpdatingProfile}
-            />
-          </View>
-        </Card>
+        <Divider />
+
+        {/* Section 2: Contact & Address */}
+        <FormSection title="Contact & Address Details">
+          <TextInput
+            label="Contact Number *"
+            value={contactNumber}
+            onChangeText={setContactNumber}
+            keyboardType="phone-pad"
+            placeholder="e.g. 09123456789 or +639123456789"
+            helperText="Used for official SMS notices and verification."
+            editable={!isUpdatingProfile}
+          />
+          <TextInput
+            label="Home / Permanent Address (Optional)"
+            value={address}
+            onChangeText={setAddress}
+            placeholder="e.g. Barangay, Municipality/City, Province"
+            autoCapitalize="words"
+            editable={!isUpdatingProfile}
+          />
+        </FormSection>
 
         {/* Actions */}
         <View style={styles.actions}>
@@ -168,7 +153,12 @@ export default function ProfileCompletionScreen() {
             title={isUpdatingProfile ? "Saving Profile..." : "Save & Continue to App"}
             size="lg"
             loading={isUpdatingProfile}
-            disabled={isUpdatingProfile || !firstName.trim() || !lastName.trim() || !contactNumber.trim()}
+            disabled={
+              isUpdatingProfile ||
+              !firstName.trim() ||
+              !lastName.trim() ||
+              !contactNumber.trim()
+            }
             onPress={() => {
               void handleSubmit();
             }}
@@ -185,67 +175,13 @@ export default function ProfileCompletionScreen() {
           />
         </View>
       </View>
-    </Screen>
+    </AuthScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
-  },
   container: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  header: {
-    marginBottom: spacing.lg,
-  },
-  dioceseBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs + 2,
-    borderRadius: radii.sm,
-    marginBottom: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.primary + "20",
-  },
-  dioceseBadgeText: {
-    ...fontStyles.meta,
-    color: colors.primary,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-  },
-  title: {
-    ...fontStyles.title,
-    color: colors.textPrimary,
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: "800",
-  },
-  copy: {
-    ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginTop: spacing.xs,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  cardHeaderTitle: {
-    ...fontStyles.captionBold,
-    color: colors.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  fields: {
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   errorContainer: {
     flexDirection: "row",
@@ -255,7 +191,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginBottom: spacing.md,
     gap: spacing.xs,
   },
   errorText: {
@@ -266,7 +201,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     marginBottom: spacing.xl,
   },
 });

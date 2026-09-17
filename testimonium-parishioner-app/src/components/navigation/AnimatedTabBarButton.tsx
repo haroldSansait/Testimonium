@@ -1,20 +1,20 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
-  AccessibilityInfo,
   Animated,
   Pressable,
-  PressableProps,
+  type PressableProps,
   StyleProp,
   StyleSheet,
   ViewStyle,
 } from "react-native";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
-export interface AnimatedTabBarButtonProps extends PressableProps {
+export interface TabBarButtonProps extends PressableProps {
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
-export const AnimatedTabBarButton: React.FC<AnimatedTabBarButtonProps> = ({
+export const TabBarButton: React.FC<TabBarButtonProps> = ({
   children,
   style,
   onPressIn,
@@ -22,33 +22,25 @@ export const AnimatedTabBarButton: React.FC<AnimatedTabBarButtonProps> = ({
   ...rest
 }) => {
   const [scaleAnim] = useState(() => new Animated.Value(1));
-  const reduceMotionRef = useRef(false);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled?.().then((enabled) => {
-      reduceMotionRef.current = Boolean(enabled);
-    });
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   const handlePressIn = () => {
-    if (reduceMotionRef.current) return;
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      speed: 30,
-      bounciness: 0,
+    if (reduceMotion) return;
+    Animated.timing(scaleAnim, {
+      toValue: 0.96,
+      duration: 120,
       useNativeDriver: true,
     }).start();
   };
 
   const handlePressOut = () => {
-    if (reduceMotionRef.current) {
+    if (reduceMotion) {
       scaleAnim.setValue(1);
       return;
     }
-    Animated.spring(scaleAnim, {
+    Animated.timing(scaleAnim, {
       toValue: 1,
-      friction: 6,
-      tension: 100,
+      duration: 150,
       useNativeDriver: true,
     }).start();
   };
@@ -81,6 +73,8 @@ export const AnimatedTabBarButton: React.FC<AnimatedTabBarButtonProps> = ({
     </Pressable>
   );
 };
+
+export const AnimatedTabBarButton = TabBarButton;
 
 const styles = StyleSheet.create({
   content: {

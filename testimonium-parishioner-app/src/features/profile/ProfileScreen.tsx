@@ -10,17 +10,21 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import {
   AppHeader,
-  Badge,
   Button,
-  Card,
+  ListRow,
+  PageSection,
+  RecordSection,
+  StatusLabel,
 } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export const ProfileScreen: React.FC = () => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const { profile, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -50,6 +54,42 @@ export const ProfileScreen: React.FC = () => {
     router.push(path as any);
   };
 
+  const initials = profile?.fullName
+    ? profile.fullName
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((n) => n[0].toUpperCase())
+        .join("")
+    : "P";
+
+  const accountFields = [
+    ...(profile?.contactNumber
+      ? [
+          {
+            label: "Contact Number",
+            value: profile.contactNumber,
+          },
+        ]
+      : []),
+    ...(profile?.address
+      ? [
+          {
+            label: "Residential Address",
+            value: profile.address,
+          },
+        ]
+      : []),
+    {
+      label: "Diocese",
+      value: "Diocese of San Carlos",
+    },
+    {
+      label: "Access Level",
+      value: "Diocesan Parishioner",
+    },
+  ];
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -62,65 +102,66 @@ export const ProfileScreen: React.FC = () => {
             accessibilityLabel="Settings"
             activeOpacity={0.7}
           >
-            <Ionicons name="settings-outline" size={22} color={colors.primary} />
+            <Ionicons name="settings-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
         }
       />
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: contentBottomInset("tab") },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
-        {/* User Identity Card */}
-        <Card style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatarCircle}>
-              <Ionicons
-                name="person-outline"
-                size={36}
-                color={colors.primary}
-                accessibilityElementsHidden={true}
-                importantForAccessibility="no"
+        {/* User Identity Header */}
+        <View style={styles.identityCard}>
+          <View style={styles.avatarMonogram}>
+            <Text style={styles.avatarMonogramText} allowFontScaling>
+              {initials}
+            </Text>
+          </View>
+
+          <View style={styles.identityInfo}>
+            <Text
+              style={styles.userName}
+              accessibilityRole="header"
+              allowFontScaling
+            >
+              {profile?.fullName || "Parishioner"}
+            </Text>
+            <Text style={styles.userEmail} allowFontScaling>
+              {profile?.email}
+            </Text>
+
+            <View style={styles.badgeRow}>
+              <StatusLabel
+                label={
+                  profile?.role
+                    ? profile.role.charAt(0) + profile.role.slice(1).toLowerCase()
+                    : "Parishioner"
+                }
+                status="default"
+                showDot={false}
+              />
+              <StatusLabel
+                label={
+                  profile?.status
+                    ? profile.status.charAt(0) + profile.status.slice(1).toLowerCase()
+                    : "Active"
+                }
+                status="APPROVED"
+                showDot={true}
               />
             </View>
-            <View style={styles.avatarTextContainer}>
-              <Text
-                style={styles.userName}
-                accessibilityRole="header"
-                allowFontScaling
-              >
-                {profile?.fullName || "Parishioner"}
-              </Text>
-              <Text style={styles.userEmail} allowFontScaling>
-                {profile?.email}
-              </Text>
-              <View style={styles.roleBadgeRow}>
-                <Badge
-                  label={
-                    profile?.role
-                      ? profile.role.charAt(0) + profile.role.slice(1).toLowerCase()
-                      : "Parishioner"
-                  }
-                  variant="primary"
-                />
-                <Badge
-                  label={
-                    profile?.status
-                      ? profile.status.charAt(0) + profile.status.slice(1).toLowerCase()
-                      : "Active"
-                  }
-                  variant="success"
-                />
-              </View>
-            </View>
           </View>
-        </Card>
+        </View>
 
-        {/* Account Details */}
-        <Card style={styles.detailsCard}>
-          <View style={styles.cardHeaderWithAction}>
-            <Text style={styles.cardSectionTitle} allowFontScaling>
+        {/* Account Details Record Section */}
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeaderTitle} allowFontScaling>
               Account Information
             </Text>
             <TouchableOpacity
@@ -130,93 +171,81 @@ export const ProfileScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Edit profile details"
             >
-              <Ionicons name="pencil" size={13} color={colors.primary} />
-              <Text style={styles.editLinkText} allowFontScaling>Edit</Text>
+              <Ionicons name="pencil-outline" size={13} color={colors.primary} />
+              <Text style={styles.editLinkText} allowFontScaling>
+                Edit
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {profile?.contactNumber ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel} allowFontScaling>
-                Contact Number
-              </Text>
-              <Text style={styles.detailValue} allowFontScaling>
-                {profile.contactNumber}
-              </Text>
-            </View>
-          ) : null}
+          <RecordSection fields={accountFields} />
+        </View>
 
-          {profile?.address ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel} allowFontScaling>
-                Address
-              </Text>
-              <Text style={styles.detailValue} allowFontScaling>
-                {profile.address}
-              </Text>
-            </View>
-          ) : null}
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel} allowFontScaling>
-              Diocese
-            </Text>
-            <Text style={styles.detailValue} allowFontScaling>
-              Diocese of San Carlos
-            </Text>
-          </View>
-
-          <View style={[styles.detailRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.detailLabel} allowFontScaling>
-              Access Level
-            </Text>
-            <Text style={styles.detailValue} allowFontScaling>
-              Diocesan Parishioner
-            </Text>
-          </View>
-        </Card>
-
-        {/* Quick Links / Settings Card */}
-        <Card style={styles.linksCard}>
-          <TouchableOpacity
-            style={styles.linkRow}
+        {/* App & Policies Section */}
+        <PageSection title="App & Information" style={styles.sectionWrap}>
+          <ListRow
+            title="App Settings"
+            subtitle="Notifications, legal & version details"
+            leading={
+              <Ionicons
+                name="settings-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
             onPress={() => handleNavigate("/(app)/profile/settings")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="settings-outline" size={18} color={colors.primary} />
-            <Text style={styles.linkText}>App Settings & Information</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.linkRow}
+          />
+          <ListRow
+            title="Help Center"
+            subtitle="Guides for certificates, scheduling & Caloy"
+            leading={
+              <Ionicons
+                name="help-circle-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
+            onPress={() => handleNavigate("/(app)/profile/help")}
+          />
+          <ListRow
+            title="Terms of Service"
+            subtitle="Sacramental record & appointment terms"
+            leading={
+              <Ionicons
+                name="document-text-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
             onPress={() => handleNavigate("/(app)/profile/terms")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-            <Text style={styles.linkText}>Terms of Service</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.linkRow, { borderBottomWidth: 0 }]}
+          />
+          <ListRow
+            title="Privacy Policy"
+            subtitle="Data privacy & ecclesiastical registry protection"
+            leading={
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
+            showDivider={false}
             onPress={() => handleNavigate("/(app)/profile/privacy")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
-            <Text style={styles.linkText}>Privacy Policy</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
-        </Card>
+          />
+        </PageSection>
 
-        {/* Sign Out Card */}
-        <Card style={styles.actionsCard}>
+        {/* Sign Out Section */}
+        <View style={styles.logoutSection}>
           <Text style={styles.logoutNotice} allowFontScaling>
             Signing out will end your current session and clear local cached data securely.
           </Text>
           <Button
             title="Sign Out"
-            variant="danger"
+            variant="outline"
             size="lg"
             icon="log-out-outline"
             loading={loggingOut}
@@ -224,7 +253,7 @@ export const ProfileScreen: React.FC = () => {
             accessibilityLabel="Sign out of TESTIMONIUM"
             accessibilityHint="Ends your session and returns to login"
           />
-        </Card>
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -238,8 +267,6 @@ const styles = StyleSheet.create({
   settingsIconBtn: {
     width: 40,
     height: 40,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -248,61 +275,66 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
   },
-  profileCard: {
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-  },
-  avatarContainer: {
+  identityCard: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.md,
   },
-  avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: radii.pill,
+  avatarMonogram: {
+    width: 52,
+    height: 52,
+    borderRadius: radii.xs,
     backgroundColor: colors.primarySoft,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
     marginRight: spacing.md,
   },
-  avatarTextContainer: {
+  avatarMonogramText: {
+    ...fontStyles.titleMedium,
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: 20,
+  },
+  identityInfo: {
     flex: 1,
   },
   userName: {
-    ...fontStyles.heading,
+    ...fontStyles.titleMedium,
     color: colors.textPrimary,
     fontWeight: "700",
+    fontSize: 17,
   },
   userEmail: {
-    ...fontStyles.bodySmall,
+    ...fontStyles.caption,
     color: colors.textSecondary,
-    marginTop: spacing.xxs,
+    marginTop: 1,
   },
-  roleBadgeRow: {
+  badgeRow: {
     flexDirection: "row",
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
-  detailsCard: {
+  sectionWrap: {
     marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
   },
-  cardHeaderWithAction: {
+  sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacing.xs,
   },
-  cardSectionTitle: {
-    ...fontStyles.subheading,
-    color: colors.textPrimary,
+  sectionHeaderTitle: {
+    ...fontStyles.caption,
     fontWeight: "700",
-    flex: 1,
-    paddingRight: spacing.sm,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   editLinkBtn: {
     flexDirection: "row",
@@ -310,62 +342,21 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    flexShrink: 0,
   },
   editLinkText: {
-    ...fontStyles.caption,
-    fontWeight: "700",
+    ...fontStyles.captionMedium,
+    fontWeight: "600",
     color: colors.primary,
   },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  detailLabel: {
-    ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-  },
-  detailValue: {
-    ...fontStyles.bodySmall,
-    color: colors.textPrimary,
-    fontWeight: "600",
-  },
-  linksCard: {
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    padding: 0,
-    overflow: "hidden",
-  },
-  linkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  linkText: {
-    ...fontStyles.body,
-    color: colors.textPrimary,
-    fontWeight: "500",
-    flex: 1,
-  },
-  actionsCard: {
-    marginTop: spacing.xs,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
+  logoutSection: {
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
   },
   logoutNotice: {
     ...fontStyles.caption,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: spacing.md,
     textAlign: "center",
+    lineHeight: 18,
   },
 });

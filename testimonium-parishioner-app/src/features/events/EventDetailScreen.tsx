@@ -1,15 +1,23 @@
 import React from "react";
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Card, EmptyState, Skeleton } from "@/components/ui";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
+import {
+  AppHeader,
+  EmptyState,
+  PageSection,
+  RecordSection,
+  Skeleton,
+  StatusLabel,
+} from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useCurrentMonthEvents } from "./api";
 import {
@@ -21,6 +29,7 @@ import type { MonthParams } from "./types";
 
 export const EventDetailScreen: React.FC = () => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const params = useLocalSearchParams<{
     id: string;
     year?: string;
@@ -59,8 +68,8 @@ export const EventDetailScreen: React.FC = () => {
       <Screen safeArea={true} style={styles.screen}>
         <AppHeader title="Event Details" onBack={handleBack} />
         <View style={styles.content}>
-          <Skeleton height={140} borderRadius={radii.md} style={styles.skeleton} />
-          <Skeleton height={160} borderRadius={radii.md} style={styles.skeleton} />
+          <Skeleton height={100} borderRadius={radii.xs} style={styles.skeleton} />
+          <Skeleton height={180} borderRadius={radii.xs} style={styles.skeleton} />
         </View>
       </Screen>
     );
@@ -86,6 +95,29 @@ export const EventDetailScreen: React.FC = () => {
   const timeFormatted = formatEventTime(event.startTime, event.endTime);
   const dateFormatted = formatEventDate(event.eventDate, "full");
 
+  const scheduleFields = [
+    {
+      label: "Date",
+      value: dateFormatted,
+    },
+    ...(timeFormatted
+      ? [
+          {
+            label: "Time",
+            value: timeFormatted,
+          },
+        ]
+      : []),
+    ...(event.location
+      ? [
+          {
+            label: "Location / Venue",
+            value: event.location,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -94,89 +126,84 @@ export const EventDetailScreen: React.FC = () => {
         onBack={handleBack}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Main Event Title Card */}
-        <Card style={styles.mainCard}>
-          <View style={styles.badgeRow}>
-            <View style={styles.eventTypeBadge}>
-              <Text style={styles.eventTypeText}>{event.eventType}</Text>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: contentBottomInset() },
+        ]}
+      >
+        {/* Main Event Title Block */}
+        <View style={styles.heroBlock}>
+          {event.eventType ? (
+            <View style={styles.badgeRow}>
+              <StatusLabel
+                label={event.eventType.replace(/_/g, " ")}
+                status={event.eventType}
+                showDot={false}
+              />
             </View>
-          </View>
+          ) : null}
 
-          <Text style={styles.titleText}>{event.title}</Text>
-        </Card>
+          <Text
+            style={styles.titleText}
+            accessibilityRole="header"
+            allowFontScaling
+          >
+            {event.title}
+          </Text>
+        </View>
 
-        {/* Schedule & Location Details */}
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Schedule & Venue</Text>
+        {/* Schedule & Venue Record Section */}
+        <RecordSection
+          title="Schedule & Venue"
+          fields={scheduleFields}
+          style={styles.sectionSpacing}
+        />
 
-          <View style={styles.detailRow}>
-            <View style={styles.iconCol}>
-              <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.detailTextCol}>
-              <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{dateFormatted}</Text>
-            </View>
-          </View>
-
-          {timeFormatted && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconCol}>
-                <Ionicons name="time-outline" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Time</Text>
-                <Text style={styles.detailValue}>{timeFormatted}</Text>
-              </View>
-            </View>
-          )}
-
-          {event.location && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconCol}>
-                <Ionicons name="location-outline" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Location / Venue</Text>
-                <Text style={styles.detailValue}>{event.location}</Text>
-              </View>
-            </View>
-          )}
-
-          {event.parish && (
-            <TouchableOpacity
-              style={styles.detailRow}
+        {/* Parish Church Section */}
+        {event.parish ? (
+          <PageSection title="Parish Church" style={styles.sectionSpacing}>
+            <Pressable
               onPress={handleParishPress}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${event.parish.parishName}`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={({ pressed }) => [
+                styles.parishRow,
+                pressed && styles.pressed,
+              ]}
             >
-              <View style={styles.iconCol}>
-                <Ionicons name="business-outline" size={20} color={colors.primary} />
+              <Ionicons
+                name="business-outline"
+                size={20}
+                color={colors.primary}
+                style={{ marginRight: spacing.sm }}
+              />
+              <View style={styles.parishInfoCol}>
+                <Text style={styles.parishNameText} allowFontScaling>
+                  {event.parish.parishName}
+                </Text>
+                <Text style={styles.parishSubtext} allowFontScaling>
+                  Tap to view parish directory & sacraments
+                </Text>
               </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Parish Church</Text>
-                <View style={styles.parishLinkRow}>
-                  <Text style={styles.parishLinkText}>
-                    {event.parish.parishName}
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color={colors.primary}
-                  />
-                </View>
-              </View>
-            </TouchableOpacity>
-          )}
-        </Card>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={colors.primary}
+              />
+            </Pressable>
+          </PageSection>
+        ) : null}
 
         {/* Description / Additional Information */}
-        {event.description && (
-          <Card style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>About this Event</Text>
-            <Text style={styles.descriptionText}>{event.description}</Text>
-          </Card>
-        )}
+        {event.description ? (
+          <PageSection title="About this Event" style={styles.sectionSpacing}>
+            <Text style={styles.descriptionText} allowFontScaling>
+              {event.description}
+            </Text>
+          </PageSection>
+        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -189,8 +216,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    gap: spacing.md,
-    paddingBottom: spacing.xxl,
   },
   skeleton: {
     marginBottom: spacing.sm,
@@ -200,81 +225,53 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing.xl,
   },
-  mainCard: {
+  heroBlock: {
     backgroundColor: colors.surface,
     padding: spacing.md,
-    borderColor: colors.cardBorder,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.md,
   },
   badgeRow: {
     flexDirection: "row",
     marginBottom: spacing.xs,
   },
-  eventTypeBadge: {
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
-  },
-  eventTypeText: {
-    ...fontStyles.caption,
-    fontWeight: "700",
-    color: colors.primary,
-  },
   titleText: {
     ...fontStyles.heading,
     color: colors.textPrimary,
     fontWeight: "700",
+    fontSize: 20,
+    lineHeight: 26,
   },
-  sectionCard: {
+  sectionSpacing: {
+    marginBottom: spacing.md,
+  },
+  parishRow: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.surface,
     padding: spacing.md,
-    borderColor: colors.cardBorder,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
-  sectionTitle: {
-    ...fontStyles.subheading,
-    color: colors.textPrimary,
-    fontWeight: "700",
-    marginBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-    paddingBottom: spacing.xs,
+  pressed: {
+    backgroundColor: colors.surfaceVariant,
   },
-  detailRow: {
-    flexDirection: "row",
-    marginBottom: spacing.md,
-    alignItems: "flex-start",
-  },
-  iconCol: {
-    width: 28,
-    alignItems: "center",
-    marginTop: 2,
-  },
-  detailTextCol: {
+  parishInfoCol: {
     flex: 1,
+    minWidth: 0,
   },
-  detailLabel: {
-    ...fontStyles.caption,
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  detailValue: {
-    ...fontStyles.body,
-    color: colors.textPrimary,
-    fontWeight: "600",
-    marginTop: 1,
-  },
-  parishLinkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 2,
-  },
-  parishLinkText: {
-    ...fontStyles.body,
+  parishNameText: {
+    ...fontStyles.bodyMedium,
     color: colors.primary,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  parishSubtext: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   descriptionText: {
     ...fontStyles.body,

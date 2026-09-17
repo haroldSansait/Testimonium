@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   textSm: {
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 14,
   },
   variantPrimary: {

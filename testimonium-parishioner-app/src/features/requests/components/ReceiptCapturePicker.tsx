@@ -12,6 +12,8 @@ import * as ImagePicker from "expo-image-picker";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import type { LocalSelectedReceipt } from "../types";
 
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
+
 export interface ReceiptCapturePickerProps {
   receipt?: LocalSelectedReceipt | null;
   onReceiptSelected: (receipt: LocalSelectedReceipt) => void;
@@ -19,34 +21,22 @@ export interface ReceiptCapturePickerProps {
   disabled?: boolean;
 }
 
-const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5 MB
-
 export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
   receipt,
   onReceiptSelected,
   onReceiptRemoved,
   disabled = false,
 }) => {
-  const validateAndProcessAsset = (asset: ImagePicker.ImagePickerAsset) => {
+  const handleRemove = () => {
+    onReceiptRemoved();
+  };
+
+  const validateAndProcessAsset = async (asset: ImagePicker.ImagePickerAsset) => {
     const size = asset.fileSize ?? 0;
     const uri = asset.uri;
     const fileName = asset.fileName || "receipt.jpg";
     const mimeType = (asset.mimeType || "").toLowerCase();
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
-
-    // Reject HEIC/HEIF
-    if (
-      mimeType.includes("heic") ||
-      mimeType.includes("heif") ||
-      ext === "heic" ||
-      ext === "heif"
-    ) {
-      Alert.alert(
-        "Unsupported Image Format",
-        "HEIC/HEIF images (iPhone format) are not supported for OCR payment verification. Please convert or take a photo in JPEG or PNG format."
-      );
-      return;
-    }
 
     // Reject PDF or other non-image
     if (ext === "pdf" || mimeType.includes("pdf")) {
@@ -57,8 +47,19 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
       return;
     }
 
-    // Reject WebP or unknown formats
-    if (ext === "webp" || mimeType.includes("webp")) {
+    const isHeic =
+      ext === "heic" ||
+      ext === "heif" ||
+      mimeType.includes("heic") ||
+      mimeType.includes("heif");
+    const isPng = ext === "png" || mimeType === "image/png";
+    const isJpeg =
+      ext === "jpg" ||
+      ext === "jpeg" ||
+      mimeType === "image/jpeg" ||
+      mimeType === "image/jpg";
+
+    if (isHeic || ext === "webp" || mimeType.includes("webp") || (!isPng && !isJpeg)) {
       Alert.alert(
         "Unsupported Image Format",
         "Please select a standard JPEG or PNG receipt image."
@@ -66,7 +67,7 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
       return;
     }
 
-    // Size limit 5 MB
+    // Standard JPEG/PNG size limit 5 MB
     if (size > MAX_RECEIPT_BYTES) {
       Alert.alert(
         "Receipt Too Large",
@@ -75,8 +76,9 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
       return;
     }
 
-    const determinedMime: "image/jpeg" | "image/png" =
-      mimeType.includes("png") || ext === "png" ? "image/png" : "image/jpeg";
+    const determinedMime: "image/jpeg" | "image/png" = isPng
+      ? "image/png"
+      : "image/jpeg";
 
     onReceiptSelected({
       uri,
@@ -109,7 +111,7 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
         return;
       }
 
-      validateAndProcessAsset(result.assets[0]);
+      await validateAndProcessAsset(result.assets[0]);
     } catch {
       Alert.alert("Gallery Error", "Could not open photo gallery. Please try again.");
     }
@@ -138,7 +140,7 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
         return;
       }
 
-      validateAndProcessAsset(result.assets[0]);
+      await validateAndProcessAsset(result.assets[0]);
     } catch {
       Alert.alert("Camera Error", "Could not open camera. Please try again.");
     }
@@ -188,19 +190,19 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel="Replace receipt image from gallery"
                 >
-                  <Ionicons name="images-outline" size={18} color={colors.primary} />
+                  <Ionicons name="images-outline" size={16} color={colors.primary} />
                   <Text style={styles.actionBtnText} allowFontScaling>
                     Replace
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={onReceiptRemoved}
+                  onPress={handleRemove}
                   style={[styles.actionBtn, styles.removeBtn]}
                   accessibilityRole="button"
                   accessibilityLabel="Remove selected receipt"
                 >
-                  <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
                   <Text style={[styles.actionBtnText, { color: colors.danger }]} allowFontScaling>
                     Remove
                   </Text>
@@ -220,7 +222,7 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
           >
             <Ionicons
               name="images-outline"
-              size={22}
+              size={20}
               color={disabled ? colors.textMuted : colors.primary}
             />
             <Text
@@ -240,7 +242,7 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
           >
             <Ionicons
               name="camera-outline"
-              size={22}
+              size={20}
               color={disabled ? colors.textMuted : colors.primary}
             />
             <Text
@@ -262,12 +264,13 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: colors.borderLight,
     marginBottom: spacing.md,
   },
   title: {
     ...fontStyles.subheading,
     color: colors.textPrimary,
+    fontWeight: "700",
   },
   subtitle: {
     ...fontStyles.caption,
@@ -287,46 +290,47 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.borderLight,
     borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.surfaceVariant,
     minHeight: 48,
     gap: 6,
   },
   inputButtonDisabled: {
     borderColor: colors.borderLight,
-    backgroundColor: colors.surfaceVariant,
+    backgroundColor: colors.surfaceMuted,
   },
   inputButtonText: {
-    ...fontStyles.button,
-    color: colors.primary,
-    fontSize: 13,
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+    fontWeight: "600",
   },
   inputButtonTextDisabled: {
     color: colors.textMuted,
   },
   previewContainer: {
     borderRadius: radii.sm,
-    overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.borderLight,
-    backgroundColor: colors.surfaceVariant,
+    overflow: "hidden",
   },
   previewImage: {
     width: "100%",
-    height: 200,
-    backgroundColor: colors.overlay,
+    height: 180,
+    backgroundColor: colors.surfaceVariant,
   },
   previewMeta: {
     padding: spacing.sm,
     backgroundColor: colors.surface,
+    gap: spacing.xs,
   },
   metaTextGroup: {
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   receiptName: {
-    ...fontStyles.bodyMedium,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
+    fontWeight: "600",
   },
   receiptSize: {
     ...fontStyles.caption,
@@ -335,26 +339,24 @@ const styles = StyleSheet.create({
   },
   previewButtons: {
     flexDirection: "row",
-    justifyContent: "flex-end",
     gap: spacing.sm,
-    marginTop: spacing.xs,
   },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.borderLight,
     gap: 4,
-    minHeight: 36,
   },
   removeBtn: {
-    borderColor: colors.danger,
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSoft,
   },
   actionBtnText: {
     ...fontStyles.captionMedium,
-    color: colors.primary,
+    color: colors.textPrimary,
   },
 });

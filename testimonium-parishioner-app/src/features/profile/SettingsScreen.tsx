@@ -3,27 +3,43 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
+  Switch,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Button, Card } from "@/components/ui";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
+import {
+  AppHeader,
+  Button,
+  ListRow,
+  PageSection,
+  RecordSection,
+} from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
-import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { colors, spacing } from "@/theme/tokens";
 
 export const SettingsScreen: React.FC = () => {
   const router = useRouter();
-  const { profile, logout } = useAuth();
+  const { contentBottomInset } = useAppLayoutMetrics();
+  const { profile, logout, refreshProfile, updateProfile } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const appVersion = Constants.expoConfig?.version || Constants.nativeAppVersion || "Unavailable";
+  const [isSavingEmailPreference, setIsSavingEmailPreference] = useState(false);
+  const [emailPreferenceOverride, setEmailPreferenceOverride] = useState<
+    boolean | null
+  >(null);
+  const emailNotificationsEnabled =
+    emailPreferenceOverride ?? profile?.emailNotificationsEnabled ?? true;
+
+  const appVersion =
+    Constants.expoConfig?.version || Constants.nativeAppVersion || "1.0.0";
   const nativeBuild =
     Constants.nativeBuildVersion ||
-    Constants.expoConfig?.ios?.buildNumber ||
-    (Constants.expoConfig?.android?.versionCode ? String(Constants.expoConfig.android.versionCode) : null);
+    (Constants.expoConfig?.android?.versionCode
+      ? String(Constants.expoConfig.android.versionCode)
+      : null);
   const versionLabel = nativeBuild ? `${appVersion} (Build ${nativeBuild})` : appVersion;
 
   const handleBack = () => {
@@ -36,6 +52,54 @@ export const SettingsScreen: React.FC = () => {
 
   const handleNavigate = (path: string) => {
     router.push(path as any);
+  };
+
+  const handleReplayIntro = async () => {
+    Alert.alert(
+      "Replay Welcome Tour",
+      "Would you like to replay the TESTIMONIUM welcome tour?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Start Tour",
+          onPress: () => {
+            router.push({
+              pathname: "/(product-onboarding)" as any,
+              params: { preview: "true" },
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEmailPreferenceChange = async (nextValue: boolean) => {
+    if (isSavingEmailPreference) return;
+    const previousValue = emailNotificationsEnabled;
+    setEmailPreferenceOverride(nextValue);
+    setIsSavingEmailPreference(true);
+
+    try {
+      await updateProfile({
+        emailNotificationsEnabled: nextValue,
+      });
+      setEmailPreferenceOverride(null);
+    } catch (error: any) {
+      setEmailPreferenceOverride(previousValue);
+      try {
+        await refreshProfile();
+        setEmailPreferenceOverride(null);
+      } catch {
+        // Preserve the known pre-save value if the authoritative refetch also fails.
+      }
+      Alert.alert(
+        "Preference Not Saved",
+        error?.message ||
+          "Email notification preference could not be saved. Please try again."
+      );
+    } finally {
+      setIsSavingEmailPreference(false);
+    }
   };
 
   const handleLogout = () => {
@@ -60,6 +124,13 @@ export const SettingsScreen: React.FC = () => {
     );
   };
 
+  const aboutFields = [
+    { label: "Application", value: "TESTIMONIUM Mobile" },
+    { label: "Version", value: versionLabel },
+    { label: "Diocese", value: "Diocese of San Carlos" },
+    { label: "Platform", value: "Parishioner Portal" },
+  ];
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -68,106 +139,128 @@ export const SettingsScreen: React.FC = () => {
         onBack={handleBack}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: contentBottomInset() },
+        ]}
+      >
         {/* Account Section */}
-        <Text style={styles.sectionHeader}>Account</Text>
-        <Card style={styles.menuCard}>
-          <TouchableOpacity
-            style={styles.menuItem}
+        <PageSection title="Account & Profile" style={styles.sectionWrap}>
+          <ListRow
+            title="Edit Profile"
+            subtitle={profile?.fullName || "Update your name, contact and address"}
+            leading={
+              <Ionicons
+                name="person-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
             onPress={() => handleNavigate("/(app)/profile/edit")}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuIconBox}>
-              <Ionicons name="person-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.menuTextCol}>
-              <Text style={styles.menuTitle}>Edit Profile</Text>
-              <Text style={styles.menuSubtitle}>
-                {profile?.fullName || "Update your name, contact and address"}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        </Card>
+          />
+        </PageSection>
 
-        {/* Legal & Policies */}
-        <Text style={styles.sectionHeader}>Legal & Compliance</Text>
-        <Card style={styles.menuCard}>
-          <TouchableOpacity
-            style={[styles.menuItem, styles.menuItemBorder]}
+        {/* Preferences Section */}
+        <PageSection title="Preferences & Tour" style={styles.sectionWrap}>
+          <ListRow
+            title="Email Notifications"
+            subtitle="Updates for certificates, schedules and payments"
+            leading={
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            trailing={
+              <Switch
+                value={emailNotificationsEnabled}
+                onValueChange={(value) => {
+                  void handleEmailPreferenceChange(value);
+                }}
+                disabled={isSavingEmailPreference}
+                trackColor={{ false: colors.borderLight, true: colors.primaryLight }}
+                thumbColor={emailNotificationsEnabled ? colors.primary : colors.surface}
+                accessibilityLabel="Email notifications"
+                accessibilityState={{
+                  checked: emailNotificationsEnabled,
+                  disabled: isSavingEmailPreference,
+                }}
+              />
+            }
+          />
+          <ListRow
+            title="Replay Welcome Tour"
+            subtitle="Review TESTIMONIUM features and guides"
+            leading={
+              <Ionicons
+                name="sparkles-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
+            showDivider={false}
+            onPress={handleReplayIntro}
+          />
+        </PageSection>
+
+        {/* Legal & Compliance Section */}
+        <PageSection title="Legal & Compliance" style={styles.sectionWrap}>
+          <ListRow
+            title="Help Center"
+            subtitle="Requests, scheduling, payments and events"
+            leading={
+              <Ionicons
+                name="help-circle-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
             onPress={() => handleNavigate("/(app)/profile/help")}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuIconBox}>
-              <Ionicons name="help-circle-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.menuTextCol}>
-              <Text style={styles.menuTitle}>Help Center</Text>
-              <Text style={styles.menuSubtitle}>Requests, scheduling, payments and events</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuItem, styles.menuItemBorder]}
+          />
+          <ListRow
+            title="Terms of Service"
+            subtitle="Sacramental record processing & scheduling terms"
+            leading={
+              <Ionicons
+                name="document-text-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
             onPress={() => handleNavigate("/(app)/profile/terms")}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuIconBox}>
-              <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.menuTextCol}>
-              <Text style={styles.menuTitle}>Terms of Service</Text>
-              <Text style={styles.menuSubtitle}>
-                Sacramental record processing & scheduling terms
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.menuItem}
+          />
+          <ListRow
+            title="Privacy Policy"
+            subtitle="Data privacy & ecclesiastical registry protection"
+            leading={
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={true}
+            showDivider={false}
             onPress={() => handleNavigate("/(app)/profile/privacy")}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuIconBox}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.menuTextCol}>
-              <Text style={styles.menuTitle}>Privacy Policy</Text>
-              <Text style={styles.menuSubtitle}>
-                Data privacy & ecclesiastical registry protection
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        </Card>
+          />
+        </PageSection>
 
-        {/* App Information */}
-        <Text style={styles.sectionHeader}>About</Text>
-        <Card style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Application</Text>
-            <Text style={styles.infoValue}>TESTIMONIUM Mobile</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Version</Text>
-            <Text style={styles.infoValue}>{versionLabel}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Diocese</Text>
-            <Text style={styles.infoValue}>Diocese of San Carlos</Text>
-          </View>
-          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.infoLabel}>Platform</Text>
-            <Text style={styles.infoValue}>Parishioner Portal</Text>
-          </View>
-        </Card>
+        {/* Application Information Record Section */}
+        <View style={styles.sectionWrap}>
+          <RecordSection title="About TESTIMONIUM" fields={aboutFields} />
+        </View>
 
-        {/* Logout Section */}
+        {/* Sign Out Section */}
         <View style={styles.logoutSection}>
           <Button
             title="Sign Out"
-            variant="danger"
+            variant="outline"
             size="lg"
             icon="log-out-outline"
             loading={isLoggingOut}
@@ -188,79 +281,12 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
   },
-  sectionHeader: {
-    ...fontStyles.caption,
-    fontWeight: "700",
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-    marginLeft: 4,
-  },
-  menuCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    padding: 0,
-    overflow: "hidden",
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  menuIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuTextCol: {
-    flex: 1,
-  },
-  menuTitle: {
-    ...fontStyles.body,
-    fontWeight: "600",
-    color: colors.textPrimary,
-  },
-  menuSubtitle: {
-    ...fontStyles.caption,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  infoCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  infoLabel: {
-    ...fontStyles.caption,
-    color: colors.textMuted,
-  },
-  infoValue: {
-    ...fontStyles.bodySmall,
-    fontWeight: "600",
-    color: colors.textPrimary,
+  sectionWrap: {
+    marginBottom: spacing.md,
   },
   logoutSection: {
-    marginTop: spacing.xl,
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
 });

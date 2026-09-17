@@ -22,125 +22,135 @@ export interface TextInputProps extends NativeTextInputProps {
   containerStyle?: StyleProp<ViewStyle>;
 }
 
-export const TextInput: React.FC<TextInputProps> = ({
-  label,
-  error,
-  helperText,
-  isPassword = false,
-  secureTextEntry,
-  leftIcon,
-  rightIcon,
-  containerStyle,
-  style,
-  onFocus,
-  onBlur,
-  ...props
-}) => {
-  const [isFocused, setIsFocused] = useState(false);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+export const TextInput = React.forwardRef<NativeTextInput, TextInputProps>(
+  (
+    {
+      label,
+      error,
+      helperText,
+      isPassword = false,
+      secureTextEntry,
+      leftIcon,
+      rightIcon,
+      containerStyle,
+      style,
+      onFocus,
+      onBlur,
+      ...props
+    },
+    ref
+  ) => {
+    const [isFocused, setIsFocused] = useState(false);
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
-  const shouldHideText = isPassword ? !isPasswordVisible : secureTextEntry;
+    const shouldHideText = isPassword ? !isPasswordVisible : secureTextEntry;
 
-  const handleFocus: NativeTextInputProps["onFocus"] = (e) => {
-    setIsFocused(true);
-    onFocus?.(e);
-  };
+    const handleFocus: NativeTextInputProps["onFocus"] = (e) => {
+      setIsFocused(true);
+      onFocus?.(e);
+    };
 
-  const handleBlur: NativeTextInputProps["onBlur"] = (e) => {
-    setIsFocused(false);
-    onBlur?.(e);
-  };
+    const handleBlur: NativeTextInputProps["onBlur"] = (e) => {
+      setIsFocused(false);
+      onBlur?.(e);
+    };
 
-  return (
-    <View style={[styles.group, containerStyle]}>
-      {label ? (
-        <Text style={styles.label} allowFontScaling>
-          {label}
-        </Text>
-      ) : null}
-
-      <View
-        style={[
-          styles.inputContainer,
-          isFocused && styles.focused,
-          Boolean(error) && styles.errorBorder,
-        ]}
-      >
-        {leftIcon ? (
-          <Ionicons
-            name={leftIcon}
-            size={20}
-            color={colors.textSecondary}
-            style={styles.leftIcon}
-            accessibilityElementsHidden={true}
-            importantForAccessibility="no"
-          />
+    return (
+      <View style={[styles.group, containerStyle]}>
+        {label ? (
+          <Text style={styles.label} allowFontScaling>
+            {label}
+          </Text>
         ) : null}
 
-        <NativeTextInput
-          accessibilityLabel={label || props.placeholder || "Text input"}
-          style={[styles.input, style]}
-          placeholderTextColor={colors.textSecondary}
-          secureTextEntry={shouldHideText}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          allowFontScaling
-          {...props}
-        />
+        <View
+          style={[
+            styles.inputContainer,
+            isFocused && styles.focused,
+            Boolean(error) && styles.errorBorder,
+          ]}
+        >
+          {leftIcon ? (
+            <Ionicons
+              name={leftIcon}
+              size={20}
+              color={colors.neutral[650]}
+              style={styles.leftIcon}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no"
+            />
+          ) : null}
 
-        {rightIcon}
+          <NativeTextInput
+            ref={ref}
+            accessibilityLabel={label || props.placeholder || "Text input"}
+            style={[styles.input, style]}
+            placeholderTextColor={colors.neutral[500]}
+            secureTextEntry={shouldHideText}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            allowFontScaling
+            {...props}
+          />
 
-        {isPassword && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
-            accessibilityHint="Toggles password visibility"
-            onPress={() => setIsPasswordVisible((prev) => !prev)}
-            style={styles.toggleButton}
-            hitSlop={8}
-          >
-            <Text style={styles.toggleText} allowFontScaling>
-              {isPasswordVisible ? "Hide" : "Show"}
-            </Text>
-          </Pressable>
+          {rightIcon}
+
+          {isPassword && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+              accessibilityHint="Toggles password visibility"
+              onPress={() => setIsPasswordVisible((prev) => !prev)}
+              style={styles.toggleButton}
+              hitSlop={8}
+            >
+              <Text style={styles.toggleText} allowFontScaling>
+                {isPasswordVisible ? "Hide" : "Show"}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
+        {Boolean(error) && (
+          <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
+            {error}
+          </Text>
+        )}
+
+        {Boolean(helperText) && !error && (
+          <Text style={styles.helperText} allowFontScaling>
+            {helperText}
+          </Text>
         )}
       </View>
+    );
+  }
+);
 
-      {Boolean(error) && (
-        <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
-          {error}
-        </Text>
-      )}
-
-      {Boolean(helperText) && !error && (
-        <Text style={styles.helperText} allowFontScaling>
-          {helperText}
-        </Text>
-      )}
-    </View>
-  );
-};
+TextInput.displayName = "TextInput";
 
 const styles = StyleSheet.create({
   group: {
     gap: spacing.xs,
+    width: "100%",
   },
   label: {
     ...fontStyles.captionMedium,
-    color: colors.textPrimary,
+    fontSize: 14,
+    color: colors.neutral[950],
   },
   inputContainer: {
     minHeight: 48,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
+    borderColor: colors.neutral[300],
+    borderRadius: radii.control,
     backgroundColor: colors.surface,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.md,
   },
   focused: {
-    borderColor: colors.primary,
+    borderColor: colors.brand[700],
   },
   errorBorder: {
     borderColor: colors.danger,
@@ -150,20 +160,19 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    color: colors.textPrimary,
+    minHeight: 48,
     ...fontStyles.body,
+    color: colors.neutral[950],
     paddingVertical: spacing.sm,
   },
   toggleButton: {
     minHeight: 44,
-    minWidth: 44,
     justifyContent: "center",
-    alignItems: "center",
-    marginLeft: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   toggleText: {
     ...fontStyles.captionMedium,
-    color: colors.primary,
+    color: colors.brand[700],
   },
   errorText: {
     ...fontStyles.caption,
@@ -172,7 +181,7 @@ const styles = StyleSheet.create({
   },
   helperText: {
     ...fontStyles.caption,
-    color: colors.textSecondary,
+    color: colors.neutral[650],
     marginTop: 2,
   },
 });

@@ -2,12 +2,13 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Screen } from "@/components/Screen";
+import { AuthScaffold } from "@/components/auth/AuthScaffold";
 import { LegalModal } from "@/components/legal/LegalModal";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { TextInput } from "@/components/ui/TextInput";
+import { FormSection } from "@/components/ui/FormSection";
+import { Divider } from "@/components/ui/Divider";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/config/legal";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
@@ -116,21 +117,12 @@ export default function RegisterScreen() {
     privacyAccepted;
 
   return (
-    <Screen scrollable style={styles.screen}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.dioceseBadge}>
-            <Text style={styles.dioceseBadgeText}>PARISHIONER REGISTRATION</Text>
-          </View>
-          <Text style={styles.title} allowFontScaling>
-            Create Account
-          </Text>
-          <Text style={styles.copy} allowFontScaling>
-            Register for sacramental services and certificate records with the Diocese of San Carlos.
-          </Text>
-        </View>
-
+    <AuthScaffold
+      compactHero
+      title="Create Account"
+      subtitle="Register for sacramental services and certificate records with the Vicariate of Canlaon."
+    >
+      <View style={styles.formContainer}>
         {/* Error Notice */}
         {error && (
           <View style={styles.errorContainer}>
@@ -146,190 +138,180 @@ export default function RegisterScreen() {
           </View>
         )}
 
-        {/* Personal Details Card */}
-        <Card style={styles.formCard}>
-          <Text style={styles.cardHeaderTitle} allowFontScaling>
-            Personal Information
-          </Text>
-          <View style={styles.fields}>
-            <TextInput
-              label="First Name *"
-              value={firstName}
-              onChangeText={(val) => {
-                setFirstName(val);
-                if (error) setError(null);
-              }}
-              placeholder="e.g. Juan"
-              autoCapitalize="words"
-              editable={!isRegistering && !isSigningIn}
-            />
-            <TextInput
-              label="Middle Name (Optional)"
-              value={middleName}
-              onChangeText={setMiddleName}
-              placeholder="e.g. Santos"
-              autoCapitalize="words"
-              editable={!isRegistering && !isSigningIn}
-            />
-            <TextInput
-              label="Last Name *"
-              value={lastName}
-              onChangeText={(val) => {
-                setLastName(val);
-                if (error) setError(null);
-              }}
-              placeholder="e.g. Dela Cruz"
-              autoCapitalize="words"
-              editable={!isRegistering && !isSigningIn}
-            />
-            <TextInput
-              label="Suffix (Optional)"
-              value={suffix}
-              onChangeText={setSuffix}
-              placeholder="e.g. Jr., III"
-              autoCapitalize="words"
-              editable={!isRegistering && !isSigningIn}
-            />
-          </View>
-        </Card>
+        {/* Section 1: Personal Details */}
+        <FormSection title="Personal Information">
+          <TextInput
+            label="First Name *"
+            value={firstName}
+            onChangeText={(val) => {
+              setFirstName(val);
+              if (error) setError(null);
+            }}
+            placeholder="e.g. Juan"
+            autoCapitalize="words"
+            editable={!isRegistering && !isSigningIn}
+          />
+          <TextInput
+            label="Middle Name (Optional)"
+            value={middleName}
+            onChangeText={setMiddleName}
+            placeholder="e.g. Santos"
+            autoCapitalize="words"
+            editable={!isRegistering && !isSigningIn}
+          />
+          <TextInput
+            label="Last Name *"
+            value={lastName}
+            onChangeText={(val) => {
+              setLastName(val);
+              if (error) setError(null);
+            }}
+            placeholder="e.g. Dela Cruz"
+            autoCapitalize="words"
+            editable={!isRegistering && !isSigningIn}
+          />
+          <TextInput
+            label="Suffix (Optional)"
+            value={suffix}
+            onChangeText={setSuffix}
+            placeholder="e.g. Jr., III"
+            autoCapitalize="words"
+            editable={!isRegistering && !isSigningIn}
+          />
+        </FormSection>
 
-        {/* Account Credentials Card */}
-        <Card style={styles.formCard}>
-          <Text style={styles.cardHeaderTitle} allowFontScaling>
-            Account Credentials
-          </Text>
-          <View style={styles.fields}>
-            <TextInput
-              label="Email Address *"
-              value={email}
-              onChangeText={(val) => {
-                setEmail(val);
-                if (error) setError(null);
-              }}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              placeholder="e.g. juan.delacruz@example.com"
-              leftIcon="mail-outline"
-              editable={!isRegistering && !isSigningIn}
-            />
-            <TextInput
-              label="Password *"
-              value={password}
-              onChangeText={(val) => {
-                setPassword(val);
-                if (error) setError(null);
-              }}
-              isPassword
-              autoComplete="new-password"
-              placeholder="Minimum 6 characters"
-              leftIcon="lock-closed-outline"
-              editable={!isRegistering && !isSigningIn}
-            />
+        <Divider style={styles.sectionDivider} />
 
-            {/* Live Password Strength Indicator */}
-            {password.length > 0 && (
-              <View style={styles.strengthContainer} accessibilityLiveRegion="polite">
-                <View style={styles.strengthHeader}>
-                  <Text style={styles.strengthLabelText}>Password Strength:</Text>
-                  <Text
-                    style={[
-                      styles.strengthValueText,
-                      passwordStrength.level === "STRONG"
-                        ? styles.strengthStrong
-                        : passwordStrength.level === "MODERATE"
-                        ? styles.strengthModerate
-                        : styles.strengthWeak,
-                    ]}
-                  >
-                    {passwordStrength.label.toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.strengthBarRow}>
-                  <View
-                    style={[
-                      styles.strengthBarSegment,
-                      passwordStrength.score >= 1
-                        ? (passwordStrength.level === "STRONG"
-                          ? styles.barStrong
-                          : passwordStrength.level === "MODERATE"
-                          ? styles.barModerate
-                          : styles.barWeak)
-                        : styles.barInactive,
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.strengthBarSegment,
-                      passwordStrength.score >= 2
-                        ? (passwordStrength.level === "STRONG"
-                          ? styles.barStrong
-                          : passwordStrength.level === "MODERATE"
-                          ? styles.barModerate
-                          : styles.barWeak)
-                        : styles.barInactive,
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.strengthBarSegment,
-                      passwordStrength.score >= 3 ? styles.barStrong : styles.barInactive,
-                    ]}
-                  />
-                </View>
-                <Text style={styles.strengthFeedbackText}>{passwordStrength.feedback}</Text>
+        {/* Section 2: Account Credentials */}
+        <FormSection title="Account Credentials">
+          <TextInput
+            label="Email Address *"
+            value={email}
+            onChangeText={(val) => {
+              setEmail(val);
+              if (error) setError(null);
+            }}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            placeholder="e.g. juan.delacruz@example.com"
+            leftIcon="mail-outline"
+            editable={!isRegistering && !isSigningIn}
+          />
+          <TextInput
+            label="Password *"
+            value={password}
+            onChangeText={(val) => {
+              setPassword(val);
+              if (error) setError(null);
+            }}
+            isPassword
+            autoComplete="new-password"
+            placeholder="Minimum 6 characters"
+            leftIcon="lock-closed-outline"
+            editable={!isRegistering && !isSigningIn}
+          />
+
+          {/* Live Password Strength Indicator */}
+          {password.length > 0 && (
+            <View style={styles.strengthContainer} accessibilityLiveRegion="polite">
+              <View style={styles.strengthHeader}>
+                <Text style={styles.strengthLabelText}>Password Strength:</Text>
+                <Text
+                  style={[
+                    styles.strengthValueText,
+                    passwordStrength.level === "STRONG"
+                      ? styles.strengthStrong
+                      : passwordStrength.level === "MODERATE"
+                      ? styles.strengthModerate
+                      : styles.strengthWeak,
+                  ]}
+                >
+                  {passwordStrength.label.toUpperCase()}
+                </Text>
               </View>
-            )}
+              <View style={styles.strengthBarRow}>
+                <View
+                  style={[
+                    styles.strengthBarSegment,
+                    passwordStrength.score >= 1
+                      ? (passwordStrength.level === "STRONG"
+                        ? styles.barStrong
+                        : passwordStrength.level === "MODERATE"
+                        ? styles.barModerate
+                        : styles.barWeak)
+                      : styles.barInactive,
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.strengthBarSegment,
+                    passwordStrength.score >= 2
+                      ? (passwordStrength.level === "STRONG"
+                        ? styles.barStrong
+                        : passwordStrength.level === "MODERATE"
+                        ? styles.barModerate
+                        : styles.barWeak)
+                      : styles.barInactive,
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.strengthBarSegment,
+                    passwordStrength.score >= 3 ? styles.barStrong : styles.barInactive,
+                  ]}
+                />
+              </View>
+              <Text style={styles.strengthFeedbackText}>{passwordStrength.feedback}</Text>
+            </View>
+          )}
 
-            <TextInput
-              label="Confirm Password *"
-              value={confirmPassword}
-              onChangeText={(val) => {
-                setConfirmPassword(val);
-                if (error) setError(null);
-              }}
-              isPassword
-              autoComplete="new-password"
-              placeholder="Re-enter your password"
-              leftIcon="lock-closed-outline"
-              editable={!isRegistering && !isSigningIn}
-            />
+          <TextInput
+            label="Confirm Password *"
+            value={confirmPassword}
+            onChangeText={(val) => {
+              setConfirmPassword(val);
+              if (error) setError(null);
+            }}
+            isPassword
+            autoComplete="new-password"
+            placeholder="Re-enter your password"
+            leftIcon="lock-closed-outline"
+            editable={!isRegistering && !isSigningIn}
+          />
 
-            {/* Password Validation Hints */}
-            <View style={styles.passwordHints}>
-              <Text style={styles.hintTitle} allowFontScaling>
-                Password Requirements:
-              </Text>
+          {/* Password Validation Hints */}
+          <View style={styles.passwordHints}>
+            <Text style={styles.hintTitle} allowFontScaling>
+              Password Requirements:
+            </Text>
+            <Text
+              style={[
+                styles.hintItem,
+                password.length >= 6 ? styles.hintValid : styles.hintMuted,
+              ]}
+              allowFontScaling
+            >
+              • Minimum 6 characters {password.length >= 6 ? "✓" : ""}
+            </Text>
+            {confirmPassword.length > 0 && (
               <Text
                 style={[
                   styles.hintItem,
-                  password.length >= 6 ? styles.hintValid : styles.hintMuted,
+                  password === confirmPassword ? styles.hintValid : styles.hintInvalid,
                 ]}
                 allowFontScaling
               >
-                • Minimum 6 characters {password.length >= 6 ? "✓" : ""}
+                • Passwords {password === confirmPassword ? "match ✓" : "do not match ✗"}
               </Text>
-              {confirmPassword.length > 0 && (
-                <Text
-                  style={[
-                    styles.hintItem,
-                    password === confirmPassword ? styles.hintValid : styles.hintInvalid,
-                  ]}
-                  allowFontScaling
-                >
-                  • Passwords {password === confirmPassword ? "match ✓" : "do not match ✗"}
-                </Text>
-              )}
-            </View>
+            )}
           </View>
-        </Card>
+        </FormSection>
 
-        {/* Legal Consent Card */}
-        <Card style={styles.formCard}>
-          <Text style={styles.cardHeaderTitle} allowFontScaling>
-            Legal Terms & Privacy Consent *
-          </Text>
+        <Divider style={styles.sectionDivider} />
 
+        {/* Section 3: Legal Terms & Privacy */}
+        <FormSection title="Legal Terms & Privacy Consent">
           <View style={styles.legalCheckboxes}>
             <Pressable
               accessibilityRole="checkbox"
@@ -339,7 +321,7 @@ export default function RegisterScreen() {
               style={styles.checkboxRow}
             >
               <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
-                {termsAccepted && <Ionicons name="checkmark" size={16} color="#FFF" />}
+                {termsAccepted && <Ionicons name="checkmark" size={15} color="#FFF" />}
               </View>
               <View style={styles.checkboxTextContainer}>
                 <Text style={styles.checkboxLabel} allowFontScaling>
@@ -366,7 +348,7 @@ export default function RegisterScreen() {
               style={styles.checkboxRow}
             >
               <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
-                {privacyAccepted && <Ionicons name="checkmark" size={16} color="#FFF" />}
+                {privacyAccepted && <Ionicons name="checkmark" size={15} color="#FFF" />}
               </View>
               <View style={styles.checkboxTextContainer}>
                 <Text style={styles.checkboxLabel} allowFontScaling>
@@ -385,13 +367,15 @@ export default function RegisterScreen() {
               </View>
             </Pressable>
           </View>
-        </Card>
+        </FormSection>
 
-        {/* Actions */}
+        {/* Action Buttons */}
         <View style={styles.actions}>
           <Button
             title={isRegistering ? "Creating Account..." : "Register Account"}
             size="lg"
+            variant="primary"
+            fullWidth
             loading={isRegistering}
             disabled={!isFormValid || isRegistering || isSigningIn}
             onPress={() => {
@@ -402,17 +386,18 @@ export default function RegisterScreen() {
           {showGoogleButton && (
             <>
               <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
+                <Divider style={styles.dividerLine} />
                 <Text style={styles.dividerText} allowFontScaling>
                   OR
                 </Text>
-                <View style={styles.dividerLine} />
+                <Divider style={styles.dividerLine} />
               </View>
 
               <Button
                 title="Sign Up with Google"
                 size="lg"
                 variant="secondary"
+                fullWidth
                 leftComponent={<GoogleLogo size={20} />}
                 loading={isSigningIn}
                 disabled={isRegistering || isSigningIn}
@@ -427,6 +412,7 @@ export default function RegisterScreen() {
             title="Already have an account? Sign In"
             size="lg"
             variant="outline"
+            fullWidth
             disabled={isRegistering || isSigningIn}
             onPress={() =>
               navigateBackOrReplace(
@@ -444,67 +430,29 @@ export default function RegisterScreen() {
         type={activeModal || "TERMS"}
         onClose={() => setActiveModal(null)}
       />
-    </Screen>
+    </AuthScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
+  formContainer: {
+    paddingVertical: spacing.sm,
   },
-  container: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  header: {
-    marginBottom: spacing.lg,
-  },
-  dioceseBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs + 2,
-    borderRadius: radii.sm,
-    marginBottom: spacing.xs,
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
-    borderColor: colors.primary + "20",
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs,
   },
-  dioceseBadgeText: {
-    ...fontStyles.meta,
-    color: colors.primary,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-  },
-  title: {
-    ...fontStyles.title,
-    color: colors.textPrimary,
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: "800",
-  },
-  copy: {
-    ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginTop: spacing.xs,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  cardHeaderTitle: {
-    ...fontStyles.captionBold,
-    color: colors.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  fields: {
-    gap: spacing.md,
+  errorText: {
+    ...fontStyles.caption,
+    color: colors.danger,
+    lineHeight: 18,
+    flex: 1,
   },
   passwordHints: {
     backgroundColor: colors.surfaceMuted,
@@ -513,6 +461,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     gap: 2,
+    marginTop: spacing.xxs,
   },
   strengthContainer: {
     gap: 4,
@@ -567,7 +516,7 @@ const styles = StyleSheet.create({
   strengthFeedbackText: {
     ...fontStyles.caption,
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: 12,
   },
   hintTitle: {
     ...fontStyles.captionMedium,
@@ -598,10 +547,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   checkbox: {
-    width: 22,
-    height: 22,
+    width: 20,
+    height: 20,
     borderRadius: radii.xs,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.borderStrong,
     justifyContent: "center",
     alignItems: "center",
@@ -628,23 +577,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textDecorationLine: "underline",
   },
-  errorContainer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  errorText: {
-    ...fontStyles.caption,
-    color: colors.danger,
-    lineHeight: 18,
-    flex: 1,
-  },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -653,18 +585,19 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 1,
-    backgroundColor: colors.borderLight,
   },
   dividerText: {
     ...fontStyles.caption,
-    color: colors.textMuted,
+    color: colors.neutral[500],
     fontWeight: "600",
     letterSpacing: 0.5,
   },
   actions: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: spacing.md,
+    marginTop: spacing.md,
     marginBottom: spacing.xl,
+  },
+  sectionDivider: {
+    marginBottom: spacing.lg,
   },
 });

@@ -10,7 +10,12 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Button, EmptyState, FilterChip, Skeleton } from "@/components/ui";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { Button } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { useRequestList, useRequestTrackingLookup } from "./api";
@@ -22,6 +27,7 @@ type FilterTab = "ALL" | "ACTIVE" | "COMPLETED";
 export const RequestListScreen: React.FC = () => {
   const router = useRouter();
   const { requireCompleteProfile } = useRequireCompleteProfile();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
   const [trackingNumber, setTrackingNumber] = useState("");
   const trackingLookup = useRequestTrackingLookup();
@@ -77,6 +83,8 @@ export const RequestListScreen: React.FC = () => {
     }
   };
 
+  const bottomPadding = contentBottomInset("tab");
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -126,25 +134,16 @@ export const RequestListScreen: React.FC = () => {
         />
       </View>
 
-      {/* Filter Chips Bar */}
-      <View style={styles.tabBar}>
-        <FilterChip
-          label="All Requests"
-          count={requests.length}
-          selected={activeTab === "ALL"}
-          onPress={() => setActiveTab("ALL")}
-        />
-        <FilterChip
-          label="Active"
-          count={activeCount}
-          selected={activeTab === "ACTIVE"}
-          onPress={() => setActiveTab("ACTIVE")}
-        />
-        <FilterChip
-          label="Past / Completed"
-          count={pastCount}
-          selected={activeTab === "COMPLETED"}
-          onPress={() => setActiveTab("COMPLETED")}
+      {/* Segmented Control Filter */}
+      <View style={styles.filterSection}>
+        <SegmentedControl<FilterTab>
+          options={[
+            { value: "ALL", label: `All (${requests.length})` },
+            { value: "ACTIVE", label: `Active (${activeCount})` },
+            { value: "COMPLETED", label: `Past (${pastCount})` },
+          ]}
+          selectedValue={activeTab}
+          onSelect={(val: FilterTab) => setActiveTab(val)}
         />
       </View>
 
@@ -152,9 +151,9 @@ export const RequestListScreen: React.FC = () => {
       <View style={styles.content}>
         {isLoading ? (
           <View style={styles.skeletonContainer}>
-            <Skeleton width="100%" height={120} style={styles.skeletonItem} />
-            <Skeleton width="100%" height={120} style={styles.skeletonItem} />
-            <Skeleton width="100%" height={120} style={styles.skeletonItem} />
+            <Skeleton width="100%" height={100} style={styles.skeletonItem} />
+            <Skeleton width="100%" height={100} style={styles.skeletonItem} />
+            <Skeleton width="100%" height={100} style={styles.skeletonItem} />
           </View>
         ) : error ? (
           <View style={styles.centerContainer}>
@@ -193,7 +192,7 @@ export const RequestListScreen: React.FC = () => {
             renderItem={({ item }) => (
               <RequestCard request={item} onPress={handleRequestPress} />
             )}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, { paddingBottom: bottomPadding }]}
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
@@ -231,7 +230,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: colors.borderLight,
     borderRadius: radii.md,
     paddingHorizontal: spacing.sm,
   },
@@ -244,21 +243,18 @@ const styles = StyleSheet.create({
     ...fontStyles.bodySmall,
     color: colors.textPrimary,
   },
-  tabBar: {
-    flexDirection: "row",
+  filterSection: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-    gap: spacing.xs,
+    borderBottomColor: colors.borderLight,
   },
   content: {
     flex: 1,
   },
   listContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
   },
   skeletonContainer: {
     padding: spacing.md,

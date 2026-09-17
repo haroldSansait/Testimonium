@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   Animated,
-  Platform,
   Pressable,
   StyleSheet,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors } from "@/theme/tokens";
 
 export interface CenterActionButtonProps {
@@ -19,18 +18,12 @@ export interface CenterActionButtonProps {
 export const CenterActionButton: React.FC<CenterActionButtonProps> = ({
   isOpen,
   onPress,
-  isServiceActive = false,
+  isServiceActive: _isServiceActive = false,
 }) => {
   const [rotateAnim] = useState(() => new Animated.Value(isOpen ? 1 : 0));
   const [scaleAnim] = useState(() => new Animated.Value(1));
   const isInitialMount = useRef(true);
-  const reduceMotionRef = useRef(false);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled?.().then((enabled) => {
-      reduceMotionRef.current = Boolean(enabled);
-    });
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (isInitialMount.current) {
@@ -38,38 +31,35 @@ export const CenterActionButton: React.FC<CenterActionButtonProps> = ({
       return;
     }
 
-    if (reduceMotionRef.current) {
+    if (reduceMotion) {
       rotateAnim.setValue(isOpen ? 1 : 0);
       return;
     }
 
-    Animated.spring(rotateAnim, {
+    Animated.timing(rotateAnim, {
       toValue: isOpen ? 1 : 0,
-      friction: 7,
-      tension: 60,
+      duration: 180,
       useNativeDriver: true,
     }).start();
-  }, [isOpen, rotateAnim]);
+  }, [isOpen, reduceMotion, rotateAnim]);
 
   const handlePressIn = () => {
-    if (reduceMotionRef.current) return;
-    Animated.spring(scaleAnim, {
-      toValue: 0.94,
-      speed: 20,
-      bounciness: 0,
+    if (reduceMotion) return;
+    Animated.timing(scaleAnim, {
+      toValue: 0.96,
+      duration: 120,
       useNativeDriver: true,
     }).start();
   };
 
   const handlePressOut = () => {
-    if (reduceMotionRef.current) {
+    if (reduceMotion) {
       scaleAnim.setValue(1);
       return;
     }
-    Animated.spring(scaleAnim, {
+    Animated.timing(scaleAnim, {
       toValue: 1,
-      friction: 6,
-      tension: 100,
+      duration: 160,
       useNativeDriver: true,
     }).start();
   };
@@ -94,15 +84,11 @@ export const CenterActionButton: React.FC<CenterActionButtonProps> = ({
         <Animated.View
           style={[
             styles.button,
-            isServiceActive && !isOpen && styles.buttonServiceActive,
             {
               transform: [{ scale: scaleAnim }],
             },
           ]}
         >
-          {/* Subtle active service halo ring if inside service route */}
-          {isServiceActive && !isOpen && <View style={styles.activeHalo} />}
-
           <Animated.View style={{ transform: [{ rotate: spin }] }}>
             <Ionicons name="add" size={28} color="#FFFFFF" />
           </Animated.View>
@@ -131,32 +117,9 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand[700],
     alignItems: "center",
     justifyContent: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.24,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  buttonServiceActive: {
-    borderWidth: 2,
-    borderColor: colors.primarySoft,
-  },
-  activeHalo: {
-    position: "absolute",
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    opacity: 0.35,
+    elevation: 3,
   },
 });

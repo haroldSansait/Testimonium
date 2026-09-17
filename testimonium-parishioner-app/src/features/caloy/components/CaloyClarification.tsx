@@ -66,27 +66,33 @@ export const CaloyClarification: React.FC<CaloyClarificationProps> = ({
         </Text>
       </View>
 
-      <View style={styles.optionsWrap}>
-        {options.map((option) => (
+      <View style={styles.optionsList}>
+        {options.map((option, idx) => (
           <Pressable
             key={option.value}
             onPress={() => !disabled && onSelectOption(option)}
             disabled={disabled}
             style={({ pressed }) => [
-              styles.chip,
-              pressed && !disabled && styles.chipPressed,
-              disabled && styles.chipDisabled,
+              styles.optionRow,
+              idx === options.length - 1 && styles.optionRowLast,
+              pressed && !disabled && styles.optionRowPressed,
+              disabled && styles.optionRowDisabled,
             ]}
             accessibilityRole="button"
             accessibilityLabel={`Select ${option.label}`}
             accessibilityState={{ disabled }}
           >
             <Text
-              style={[styles.chipText, disabled && styles.chipTextDisabled]}
+              style={[styles.optionText, disabled && styles.optionTextDisabled]}
               allowFontScaling
             >
               {option.label}
             </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={14}
+              color={disabled ? colors.textMuted : colors.primary}
+            />
           </Pressable>
         ))}
       </View>
@@ -97,54 +103,60 @@ export const CaloyClarification: React.FC<CaloyClarificationProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginTop: spacing.xs,
-    padding: spacing.sm,
-    backgroundColor: colors.surfaceVariant,
-    borderRadius: radii.md,
-    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+    borderRadius: radii.sm,
+    borderColor: colors.borderLight,
     borderWidth: 1,
-    gap: spacing.xs,
+    overflow: "hidden",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+    backgroundColor: colors.surfaceVariant,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
   headerTitle: {
-    ...fontStyles.meta,
+    ...fontStyles.caption,
     color: colors.primary,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    fontSize: 12,
   },
-  optionsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xxs,
-  },
-  chip: {
+  optionsList: {
     backgroundColor: colors.surface,
-    borderColor: colors.primary,
-    borderWidth: 1,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-    alignSelf: "flex-start",
   },
-  chipPressed: {
-    backgroundColor: colors.primarySoft,
-    transform: [{ scale: 0.97 }],
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: 44,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  chipDisabled: {
+  optionRowLast: {
+    borderBottomWidth: 0,
+  },
+  optionRowPressed: {
+    backgroundColor: colors.surfaceVariant,
+  },
+  optionRowDisabled: {
     opacity: 0.6,
-    borderColor: colors.borderStrong,
   },
-  chipText: {
-    ...fontStyles.captionMedium,
-    color: colors.primary,
+  optionText: {
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
     fontWeight: "600",
+    flex: 1,
+    marginRight: spacing.xs,
   },
-  chipTextDisabled: {
+  optionTextDisabled: {
     color: colors.textSecondary,
   },
 });

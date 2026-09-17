@@ -2,7 +2,6 @@ import React from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleProp,
   StyleSheet,
@@ -31,7 +30,7 @@ export const Screen: React.FC<ScreenProps> = ({
   safeArea = true,
   edges = ["top", "left", "right"],
   contentContainerStyle,
-  keyboardVerticalOffset = Platform.OS === "ios" ? 64 : 0,
+  keyboardVerticalOffset = 0,
   ...props
 }) => {
   if (scrollable) {
@@ -49,7 +48,6 @@ export const Screen: React.FC<ScreenProps> = ({
     const wrappedContent = keyboardAvoiding ? (
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
         {scrollContent}
@@ -79,7 +77,6 @@ export const Screen: React.FC<ScreenProps> = ({
         {keyboardAvoiding ? (
           <KeyboardAvoidingView
             style={styles.flex}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
             keyboardVerticalOffset={keyboardVerticalOffset}
           >
             {children}
@@ -140,14 +137,14 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.canvas,
   },
   scrollContent: {
     flexGrow: 1,
   },
   centerScreen: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.canvas,
     justifyContent: "center",
     alignItems: "center",
     padding: spacing.lg,
@@ -156,24 +153,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.xxl,
-    borderRadius: radii.lg,
+    borderRadius: radii.control,
     alignItems: "center",
     gap: spacing.md,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: colors.neutral[200],
   },
   loadingLabel: {
     ...fontStyles.bodyMedium,
-    color: colors.textSecondary,
+    color: colors.neutral[650],
   },
   errorCard: {
     backgroundColor: colors.surface,
     padding: spacing.lg,
-    borderRadius: radii.lg,
+    borderRadius: radii.control,
     alignItems: "center",
     gap: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.dangerBorder,
+    borderColor: colors.danger,
     maxWidth: 320,
     width: "100%",
   },
@@ -186,5 +183,8 @@ const styles = StyleSheet.create({
     ...fontStyles.button,
     color: colors.primary,
     marginTop: spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    textAlignVertical: "center",
   },
 });

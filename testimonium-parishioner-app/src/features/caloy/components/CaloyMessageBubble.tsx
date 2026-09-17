@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import type { CaloyClarificationOption, CaloyMessage } from "../types";
 import { CaloyClarification } from "./CaloyClarification";
@@ -22,30 +24,11 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
   isInputDisabled = false,
 }) => {
   const isUser = message.sender === "user";
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReducedMotion();
   const [revealedCharCount, setRevealedCharCount] = useState<number>(
     message.isRevealing ? 0 : message.text.length
   );
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
-
-  // Check reduced motion accessibility setting
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((enabled) => {
-        if (enabled) {
-          setReduceMotion(true);
-        }
-      })
-      .catch(() => {});
-
-    const sub = AccessibilityInfo.addEventListener?.("reduceMotionChanged", (enabled) => {
-      setReduceMotion(enabled);
-    });
-
-    return () => {
-      sub?.remove?.();
-    };
-  }, []);
 
   // Progressive reveal animation - keep state updater pure
   useEffect(() => {
@@ -103,7 +86,8 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
 
   if (isUser) {
     return (
-      <View
+      <Animated.View
+        entering={reduceMotion ? undefined : FadeIn.duration(180)}
         style={styles.userContainer}
         accessibilityRole="text"
         accessibilityLabel={`You said: ${message.text}`}
@@ -116,13 +100,14 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
             {formattedTime}
           </Text>
         </View>
-      </View>
+      </Animated.View>
     );
   }
 
   // Assistant bubble
   return (
-    <View
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeIn.duration(180)}
       style={styles.caloyContainer}
       accessibilityRole="text"
       accessibilityLabel={`Caloy responded: ${message.text}`}
@@ -175,7 +160,7 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
           </>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
@@ -208,7 +193,7 @@ const styles = StyleSheet.create({
   userTimestamp: {
     ...fontStyles.meta,
     color: "rgba(255, 255, 255, 0.7)",
-    fontSize: 10,
+    fontSize: 12,
     alignSelf: "flex-end",
     marginTop: 2,
   },
@@ -259,6 +244,6 @@ const styles = StyleSheet.create({
   caloyTimestamp: {
     ...fontStyles.meta,
     color: colors.textMuted,
-    fontSize: 10,
+    fontSize: 12,
   },
 });

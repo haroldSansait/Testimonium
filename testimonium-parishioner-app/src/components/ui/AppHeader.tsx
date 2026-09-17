@@ -7,8 +7,8 @@ import {
   ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { IconButton } from "./IconButton";
 import { colors, fontStyles, spacing } from "@/theme/tokens";
+import { IconButton } from "./IconButton";
 
 export interface AppHeaderProps {
   title: string;
@@ -40,7 +40,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               accessibilityHint="Navigates to the previous screen"
               size={44}
             >
-              <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+              <Ionicons name="arrow-back" size={22} color={colors.neutral[950]} />
             </IconButton>
           </View>
         ) : null}
@@ -49,7 +49,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <View style={[styles.titleSlot, !onBack && styles.titleSlotNoBack]}>
             <Text
               style={[styles.title, !onBack && styles.titleNoBack]}
-              numberOfLines={1}
+              numberOfLines={2}
               accessibilityRole="header"
               allowFontScaling
             >
@@ -58,7 +58,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             {subtitle ? (
               <Text
                 style={[styles.subtitle, !onBack && styles.subtitleNoBack]}
-                numberOfLines={1}
+                numberOfLines={2}
                 allowFontScaling
               >
                 {subtitle}
@@ -70,9 +70,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         )}
 
         {rightAction ? (
-          <View style={styles.rightSlot}>
-            {rightAction}
-          </View>
+          <View style={styles.rightSlot}>{rightAction}</View>
         ) : onBack ? (
           <View style={styles.rightEmptySlot} />
         ) : null}
@@ -102,7 +100,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: colors.neutral[200],
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
@@ -142,7 +140,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...fontStyles.heading,
-    color: colors.textPrimary,
+    color: colors.neutral[950],
     textAlign: "center",
   },
   titleNoBack: {
@@ -150,9 +148,9 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     ...fontStyles.caption,
-    color: colors.textSecondary,
+    color: colors.neutral[650],
     textAlign: "center",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   subtitleNoBack: {
     textAlign: "left",
@@ -162,11 +160,11 @@ const styles = StyleSheet.create({
   },
   largeTitle: {
     ...fontStyles.title,
-    color: colors.textPrimary,
+    color: colors.neutral[950],
   },
   largeSubtitle: {
     ...fontStyles.bodySmall,
-    color: colors.textSecondary,
+    color: colors.neutral[650],
     marginTop: spacing.xxs,
   },
 });

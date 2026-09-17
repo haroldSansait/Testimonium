@@ -1,6 +1,7 @@
 import React from "react";
 import {
   Image,
+  Pressable,
   StyleProp,
   StyleSheet,
   Text,
@@ -8,8 +9,8 @@ import {
   ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, Badge } from "@/components/ui";
-import { colors, fontStyles, spacing } from "@/theme/tokens";
+import { StatusLabel } from "@/components/ui/StatusLabel";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import type { ParishDto } from "./types";
 
 export interface ParishCardProps {
@@ -36,171 +37,187 @@ export const ParishCard: React.FC<ParishCardProps> = ({
   } ${parish.address ? `Address: ${parish.address}.` : ""}`;
 
   return (
-    <Card
+    <Pressable
       onPress={onPress ? () => onPress(parish) : undefined}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint="Navigates to parish details"
-      style={[styles.card, style]}
+      style={({ pressed }) => [
+        styles.container,
+        pressed && styles.pressed,
+        style,
+      ]}
     >
-      {hasCoverImage ? (
-        <View style={styles.imageContainer}>
+      <View style={styles.contentRow}>
+        {hasCoverImage ? (
           <Image
             source={{ uri: parish.coverImage }}
-            style={styles.coverImage}
+            style={styles.thumbnail}
             resizeMode="cover"
             onError={() => setImageError(true)}
             accessibilityElementsHidden={true}
             importantForAccessibility="no"
           />
-        </View>
-      ) : null}
+        ) : (
+          <View style={styles.placeholderThumbnail}>
+            <Ionicons
+              name="business-outline"
+              size={22}
+              color={colors.primary}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no"
+            />
+          </View>
+        )}
 
-      <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <View style={styles.titleContainer}>
+        <View style={styles.textColumn}>
+          <View style={styles.headerRow}>
             <Text
               style={styles.title}
+              numberOfLines={2}
               accessibilityRole="header"
               allowFontScaling
             >
               {parish.name}
             </Text>
           </View>
+
           {parish.type ? (
-            <Badge
-              label={parish.type}
-              variant="primary"
-              style={styles.typeBadge}
-            />
+            <View style={styles.typeRow}>
+              <StatusLabel
+                label={parish.type}
+                status="default"
+                showDot={false}
+              />
+            </View>
+          ) : null}
+
+          {parish.patronSaint ? (
+            <View style={styles.metaRow}>
+              <Ionicons
+                name="sparkles-outline"
+                size={13}
+                color={colors.primary}
+                style={styles.metaIcon}
+                accessibilityElementsHidden={true}
+                importantForAccessibility="no"
+              />
+              <Text style={styles.patronText} numberOfLines={1} allowFontScaling>
+                {parish.patronSaint}
+              </Text>
+            </View>
+          ) : null}
+
+          {locationLabel || parish.address ? (
+            <View style={styles.metaRow}>
+              <Ionicons
+                name="location-outline"
+                size={13}
+                color={colors.textSecondary}
+                style={styles.metaIcon}
+                accessibilityElementsHidden={true}
+                importantForAccessibility="no"
+              />
+              <Text
+                style={styles.locationText}
+                numberOfLines={2}
+                allowFontScaling
+              >
+                {parish.address || locationLabel}
+              </Text>
+            </View>
           ) : null}
         </View>
 
-        {parish.patronSaint ? (
-          <View style={styles.metaRow}>
-            <Ionicons
-              name="sparkles-outline"
-              size={14}
-              color={colors.primary}
-              style={styles.metaIcon}
-              accessibilityElementsHidden={true}
-              importantForAccessibility="no"
-            />
-            <Text style={styles.patronText} allowFontScaling>
-              Patron: {parish.patronSaint}
-            </Text>
-          </View>
-        ) : null}
-
-        {locationLabel || parish.address ? (
-          <View style={styles.metaRow}>
-            <Ionicons
-              name="location-outline"
-              size={14}
-              color={colors.textSecondary}
-              style={styles.metaIcon}
-              accessibilityElementsHidden={true}
-              importantForAccessibility="no"
-            />
-            <Text
-              style={styles.locationText}
-              numberOfLines={2}
-              allowFontScaling
-            >
-              {parish.address || locationLabel}
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.footerRow}>
-          <Text style={styles.viewDetailText} allowFontScaling>
-            View Parish Details
-          </Text>
+        <View style={styles.chevronColumn}>
           <Ionicons
             name="chevron-forward"
-            size={16}
-            color={colors.primary}
+            size={18}
+            color={colors.textMuted}
             accessibilityElementsHidden={true}
             importantForAccessibility="no"
           />
         </View>
       </View>
-    </Card>
+    </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
-    padding: 0,
-    overflow: "hidden",
-    marginBottom: spacing.sm,
+  container: {
     backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-  },
-  imageContainer: {
-    width: "100%",
-    height: 140,
-    backgroundColor: colors.surfaceVariant,
-  },
-  coverImage: {
-    width: "100%",
-    height: "100%",
-  },
-  content: {
-    padding: spacing.md,
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: spacing.sm,
     marginBottom: spacing.xs,
   },
-  titleContainer: {
+  pressed: {
+    backgroundColor: colors.surfaceVariant,
+  },
+  contentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  thumbnail: {
+    width: 68,
+    height: 68,
+    borderRadius: radii.xs,
+    backgroundColor: colors.surfaceVariant,
+  },
+  placeholderThumbnail: {
+    width: 68,
+    height: 68,
+    borderRadius: radii.xs,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  textColumn: {
     flex: 1,
-    paddingRight: spacing.sm,
+    marginHorizontal: spacing.sm,
+    minWidth: 0,
+  },
+  headerRow: {
+    marginBottom: 2,
   },
   title: {
     ...fontStyles.titleMedium,
     color: colors.textPrimary,
     fontWeight: "700",
+    fontSize: 15,
+    lineHeight: 20,
   },
-  typeBadge: {
-    marginTop: spacing.xxs,
+  typeRow: {
+    marginTop: 2,
+    marginBottom: 4,
+    alignSelf: "flex-start",
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: spacing.xs,
+    marginTop: 2,
   },
   metaIcon: {
-    marginRight: spacing.xs,
-    alignSelf: "flex-start",
-    marginTop: 2,
+    marginRight: 4,
+    marginTop: 1,
   },
   patronText: {
     ...fontStyles.bodySmall,
     color: colors.primary,
     fontWeight: "600",
+    fontSize: 12,
     flex: 1,
   },
   locationText: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
+    fontSize: 12,
     flex: 1,
   },
-  footerRow: {
-    flexDirection: "row",
+  chevronColumn: {
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "flex-end",
-    marginTop: spacing.sm,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-  },
-  viewDetailText: {
-    ...fontStyles.captionMedium,
-    color: colors.primary,
-    marginRight: spacing.xxs,
-    fontWeight: "600",
+    paddingLeft: spacing.xxs,
   },
 });

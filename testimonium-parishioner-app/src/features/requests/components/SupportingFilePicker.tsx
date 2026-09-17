@@ -2,7 +2,6 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { Badge } from "@/components/ui/Badge";
 import { useFeedback } from "@/providers/FeedbackProvider";
 import { isAppError } from "@/services/api/errors";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -88,22 +87,32 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
           ) : null}
         </View>
 
-        <Badge
-          label={requirement.required ? "Required" : "Optional"}
-          variant={requirement.required ? "primary" : "neutral"}
-          size="sm"
-        />
+        <View
+          style={[
+            styles.badge,
+            requirement.required ? styles.badgeRequired : styles.badgeOptional,
+          ]}
+        >
+          <Text
+            style={[
+              styles.badgeText,
+              requirement.required ? styles.badgeTextRequired : styles.badgeTextOptional,
+            ]}
+            allowFontScaling
+          >
+            {requirement.required ? "Required" : "Optional"}
+          </Text>
+        </View>
       </View>
 
       {selectedFile ? (
         <View style={styles.selectedCard}>
-          <View style={styles.fileIconBadge}>
-            <Ionicons
-              name={getFileIcon(selectedFile.mimeType || selectedFile.name)}
-              size={22}
-              color={colors.primary}
-            />
-          </View>
+          <Ionicons
+            name={getFileIcon(selectedFile.mimeType || selectedFile.name)}
+            size={22}
+            color={colors.primary}
+            style={styles.fileIcon}
+          />
 
           <View style={styles.fileInfo}>
             <Text style={styles.fileName} numberOfLines={1} allowFontScaling>
@@ -154,13 +163,11 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
           accessibilityLabel={`Attach document for ${requirement.label}. Accepts PDF, PNG, JPEG, WebP up to 5 megabytes.`}
           activeOpacity={0.7}
         >
-          <View style={[styles.uploadIconBadge, disabled && styles.uploadIconBadgeDisabled]}>
-            <Ionicons
-              name="cloud-upload-outline"
-              size={22}
-              color={disabled ? colors.textMuted : colors.primary}
-            />
-          </View>
+          <Ionicons
+            name="cloud-upload-outline"
+            size={20}
+            color={disabled ? colors.textMuted : colors.primary}
+          />
           <View style={styles.uploadTextGroup}>
             <Text
               style={[styles.uploadTitle, disabled && styles.uploadTitleDisabled]}
@@ -174,7 +181,7 @@ export const SupportingFilePicker: React.FC<SupportingFilePickerProps> = ({
           </View>
           <Ionicons
             name="chevron-forward"
-            size={18}
+            size={16}
             color={disabled ? colors.borderLight : colors.textSecondary}
           />
         </TouchableOpacity>
@@ -190,7 +197,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: colors.borderLight,
   },
   headerRow: {
     flexDirection: "row",
@@ -213,39 +220,49 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 18,
   },
+  badge: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+  },
+  badgeRequired: {
+    backgroundColor: colors.primarySoft,
+  },
+  badgeOptional: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  badgeText: {
+    ...fontStyles.meta,
+    fontWeight: "700",
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  badgeTextRequired: {
+    color: colors.primary,
+  },
+  badgeTextOptional: {
+    color: colors.textSecondary,
+  },
   uploadCard: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
     borderRadius: radii.md,
-    backgroundColor: colors.surfaceVariant,
-    minHeight: 58,
+    backgroundColor: colors.surfaceMuted,
+    minHeight: 52,
     gap: spacing.sm,
   },
   uploadCardDisabled: {
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surfaceVariant,
     opacity: 0.6,
-  },
-  uploadIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  uploadIconBadgeDisabled: {
-    backgroundColor: colors.borderLight,
   },
   uploadTextGroup: {
     flex: 1,
   },
   uploadTitle: {
-    ...fontStyles.bodyMedium,
+    ...fontStyles.captionMedium,
     color: colors.primary,
     fontWeight: "600",
   },
@@ -255,27 +272,23 @@ const styles = StyleSheet.create({
   uploadHint: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+    fontSize: 12,
     marginTop: 1,
   },
   selectedCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surfaceVariant,
+    backgroundColor: colors.surfaceMuted,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
-    minHeight: 56,
+    minHeight: 52,
     gap: spacing.sm,
   },
-  fileIconBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
+  fileIcon: {
+    marginTop: 1,
   },
   fileInfo: {
     flex: 1,
@@ -305,9 +318,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   actionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -316,6 +329,5 @@ const styles = StyleSheet.create({
   },
   removeBtn: {
     borderColor: colors.dangerBorder,
-    backgroundColor: colors.surface,
   },
 });

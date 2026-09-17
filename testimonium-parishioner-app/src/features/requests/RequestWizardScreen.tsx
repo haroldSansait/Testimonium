@@ -3,25 +3,27 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
-import {
-  AppHeader,
-  BottomActionBar,
-  Button,
-  Card,
-  EmptyState,
-  SectionHeader,
-  Skeleton,
-  TextInput,
-} from "@/components/ui";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { TextInput } from "@/components/ui/TextInput";
+import { SelectionRow } from "@/components/ui/SelectionRow";
+import { FormSection } from "@/components/ui/FormSection";
+import { RecordSection } from "@/components/ui/RecordSection";
+import { Divider } from "@/components/ui/Divider";
+import { SafeBottomActionBar } from "@/components/ui/SafeBottomActionBar";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { useParishes } from "@/features/parishes/api";
 import type { ParishDto } from "@/features/parishes/types";
 import { useFeedback } from "@/providers/FeedbackProvider";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
@@ -65,8 +67,10 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   initialParishId,
 }) => {
   const router = useRouter();
-  const { user, profile } = useAuth();
+  const { profile, user } = useAuth();
   const feedback = useFeedback();
+  const reduceMotion = useReducedMotion();
+  const { contentBottomInset } = useAppLayoutMetrics();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [selectedParishOverride, setSelectedParishOverride] = useState<ParishDto | null>(null);
@@ -191,7 +195,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     );
   }
 
-
   // Step 1 -> Step 2
   const handleSelectParish = (parish: ParishDto) => {
     if (selectedParish?.id !== parish.id) {
@@ -199,7 +202,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       setSelectedDocType(null);
       setSelectedFiles({});
     }
-    setStep(2);
   };
 
   // Step 2 -> Step 3
@@ -208,7 +210,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       setSelectedDocType(docType);
       setSelectedFiles({});
     }
-    setStep(3);
   };
 
   // Step 3 -> Step 4
@@ -285,7 +286,6 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     return idempotencyKeyRef.current;
   };
 
-
   const handleConfirmAndSubmit = async () => {
     if (!selectedParish || !selectedDocType || inFlightGuard.current) return;
     if (!hasValidRequirementsFee) {
@@ -348,53 +348,22 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       // Clean local wizard state
       idempotencyKeyRef.current = null;
       createdDraftIdRef.current = null;
-      inFlightGuard.current = false;
-      setIsSubmitting(false);
 
+      // Invalidate relevant queries
+      void queryClient.invalidateQueries({ queryKey: requestKeys.lists(user?.uid) });
+      void queryClient.invalidateQueries({ queryKey: requestKeys.detail(user?.uid, String(draftId)) });
+
+      // Navigate to detail page
       feedback.showSuccess(
-        "Request Submitted Successfully",
-        `Your document request has been submitted to ${selectedParish.name}. You can track its progress and review uploaded documents at any time.`,
-        {
-          referenceNumber: submitted.trackingNumber || undefined,
-          confirmText: "View Request",
-          onConfirm: () => {
-            router.replace(`/(app)/requests/${submitted.id}` as any);
-          },
-        }
+        "Request Submitted",
+        "Your document request has been submitted successfully."
       );
+      router.replace(`/(app)/requests/${submitted.id}` as any);
     } catch (err: any) {
       inFlightGuard.current = false;
       setIsSubmitting(false);
-      setSubmissionStage("");
-
-      if (err?.code === "PROFILE_INCOMPLETE") {
-        feedback.showWarning(
-          "Profile Details Required",
-          "Please complete your profile (full name and contact number) before requesting documents.",
-          {
-            confirmText: "Complete Profile",
-            onConfirm: () => router.push("/(app)/(tabs)/profile" as any),
-          }
-        );
-        return;
-      }
-
-      if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
-        feedback.showWarning(
-          "Authorization Letter Required",
-          "An authorization letter is required when requesting documents as an Authorized Representative."
-        );
-        return;
-      }
 
       if (createdDraftId) {
-        void queryClient.invalidateQueries({
-          queryKey: requestKeys.lists(user?.uid),
-        });
-        void queryClient.invalidateQueries({
-          queryKey: requestKeys.detail(user?.uid, createdDraftId),
-        });
-
         feedback.showConfirm(
           "Draft Saved",
           `Your application draft has been saved to your account, but an issue occurred while finalizing: ${err.message || "Network request failed"}.\n\nYou can complete uploading your documents and submit it from the Requests tab.`,
@@ -431,6 +400,8 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
   };
 
+  const bottomInset = contentBottomInset("action");
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -457,25 +428,31 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          step >= 3 && styles.scrollContentWithBottomAction,
+          { paddingBottom: bottomInset + spacing.md },
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        <Animated.View
+          key={step}
+          entering={reduceMotion ? undefined : FadeIn.duration(180)}
+        >
         {/* ================= STEP 1: PARISH SELECTION ================= */}
         {step === 1 ? (
           <View style={styles.stepContainer}>
-            <Text style={styles.stepHeading} allowFontScaling>
-              Select the Parish where your sacramental record is kept:
-            </Text>
-            <Text style={styles.stepSubtext} allowFontScaling>
-              Choose from all active parishes across the Diocese of San Carlos.
-            </Text>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeading} allowFontScaling>
+                Select Target Parish
+              </Text>
+              <Text style={styles.stepSubtext} allowFontScaling>
+                Choose the parish where your sacramental record is registered.
+              </Text>
+            </View>
 
             {loadingParishes ? (
               <View style={styles.skeletonList}>
-                <Skeleton width="100%" height={70} style={styles.skeletonItem} />
-                <Skeleton width="100%" height={70} style={styles.skeletonItem} />
-                <Skeleton width="100%" height={70} style={styles.skeletonItem} />
+                <Skeleton width="100%" height={60} style={styles.skeletonItem} />
+                <Skeleton width="100%" height={60} style={styles.skeletonItem} />
+                <Skeleton width="100%" height={60} style={styles.skeletonItem} />
               </View>
             ) : parishes.length === 0 ? (
               <EmptyState
@@ -484,32 +461,19 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 description="Unable to load parishes. Please check your network connection."
               />
             ) : (
-              parishes.map((parish) => (
-                <TouchableOpacity
-                  key={parish.id}
-                  onPress={() => handleSelectParish(parish)}
-                  style={[
-                    styles.parishCard,
-                    selectedParish?.id === parish.id && styles.parishCardActive,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${parish.name}, ${parish.municipalityCity || ""}`}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.parishIconBox}>
-                    <Ionicons name="business" size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.parishDetails}>
-                    <Text style={styles.parishName} numberOfLines={1} allowFontScaling>
-                      {parish.name}
-                    </Text>
-                    <Text style={styles.parishLocation} allowFontScaling>
-                      {[parish.municipalityCity, parish.province].filter(Boolean).join(", ")}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              ))
+              <View style={styles.selectionList}>
+                {parishes.map((parish) => (
+                  <SelectionRow
+                    key={parish.id}
+                    title={parish.name}
+                    subtitle={[parish.municipalityCity, parish.province].filter(Boolean).join(", ")}
+                    selected={selectedParish?.id === parish.id}
+                    onSelect={() => handleSelectParish(parish)}
+                    mode="radio"
+                    accessibilityLabel={`Parish: ${parish.name}`}
+                  />
+                ))}
+              </View>
             )}
           </View>
         ) : null}
@@ -517,12 +481,14 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         {/* ================= STEP 2: DOCUMENT TYPE SELECTION ================= */}
         {step === 2 ? (
           <View style={styles.stepContainer}>
-            <Text style={styles.stepHeading} allowFontScaling>
-              Select Document Type:
-            </Text>
-            <Text style={styles.stepSubtext} allowFontScaling>
-              Available document types for {selectedParish?.name}:
-            </Text>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeading} allowFontScaling>
+                Select Document Type
+              </Text>
+              <Text style={styles.stepSubtext} allowFontScaling>
+                Available certificate types offered by {selectedParish?.name}:
+              </Text>
+            </View>
 
             {offeredDocTypes.length === 0 ? (
               <EmptyState
@@ -533,32 +499,19 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 onAction={() => setStep(1)}
               />
             ) : (
-              offeredDocTypes.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => handleSelectDocType(type)}
-                  style={[
-                    styles.docTypeCard,
-                    selectedDocType === type && styles.docTypeCardActive,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${formatDocumentType(type)}`}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.docTypeIconBox}>
-                    <Ionicons name="document-text" size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.docTypeDetails}>
-                    <Text style={styles.docTypeName} allowFontScaling>
-                      {formatDocumentType(type)}
-                    </Text>
-                    <Text style={styles.docTypeDesc} allowFontScaling>
-                      Official authenticated sacramental certificate
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              ))
+              <View style={styles.selectionList}>
+                {offeredDocTypes.map((type) => (
+                  <SelectionRow
+                    key={type}
+                    title={formatDocumentType(type)}
+                    subtitle="Official authenticated sacramental certificate"
+                    selected={selectedDocType === type}
+                    onSelect={() => handleSelectDocType(type)}
+                    mode="radio"
+                    accessibilityLabel={`Document type: ${formatDocumentType(type)}`}
+                  />
+                ))}
+              </View>
             )}
           </View>
         ) : null}
@@ -566,146 +519,123 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         {/* ================= STEP 3: APPLICANT INFORMATION ================= */}
         {step === 3 ? (
           <View style={styles.stepContainer}>
-            <Card style={styles.formCard}>
-              <SectionHeader
-                title="Applicant & Request Details"
-                subtitle={`For ${formatDocumentType(selectedDocType)} at ${selectedParish?.name}`}
+            <FormSection
+              title="Applicant Information"
+              description={`For ${formatDocumentType(selectedDocType)} at ${selectedParish?.name}`}
+            >
+              <TextInput
+                label="First Name *"
+                value={applicantFirstName}
+                onChangeText={(val) => {
+                  setApplicantFirstName(val);
+                  if (fieldErrors.firstName) {
+                    setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
+                  }
+                }}
+                placeholder="e.g. Juan"
+                maxLength={50}
+                autoCapitalize="words"
+                error={fieldErrors.firstName}
+                accessibilityLabel="First name of the applicant"
               />
 
-              <View style={styles.inputsWrapper}>
-                <TextInput
-                  label="First Name *"
-                  value={applicantFirstName}
-                  onChangeText={(val) => {
-                    setApplicantFirstName(val);
-                    if (fieldErrors.firstName) {
-                      setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
-                    }
-                  }}
-                  placeholder="e.g. Juan"
-                  maxLength={50}
-                  autoCapitalize="words"
-                  error={fieldErrors.firstName}
-                  accessibilityLabel="First name of the applicant"
-                  containerStyle={styles.formInputGroup}
-                />
+              <TextInput
+                label="Middle Name (Optional)"
+                value={applicantMiddleName}
+                onChangeText={setApplicantMiddleName}
+                placeholder="e.g. Santos"
+                maxLength={50}
+                autoCapitalize="words"
+                accessibilityLabel="Middle name of the applicant"
+              />
 
-                <TextInput
-                  label="Middle Name (Optional)"
-                  value={applicantMiddleName}
-                  onChangeText={setApplicantMiddleName}
-                  placeholder="e.g. Santos"
-                  maxLength={50}
-                  autoCapitalize="words"
-                  accessibilityLabel="Middle name of the applicant"
-                  containerStyle={styles.formInputGroup}
-                />
+              <TextInput
+                label="Last Name *"
+                value={applicantLastName}
+                onChangeText={(val) => {
+                  setApplicantLastName(val);
+                  if (fieldErrors.lastName) {
+                    setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
+                  }
+                }}
+                placeholder="e.g. Dela Cruz"
+                maxLength={50}
+                autoCapitalize="words"
+                error={fieldErrors.lastName}
+                accessibilityLabel="Last name of the applicant"
+              />
+            </FormSection>
 
-                <TextInput
-                  label="Last Name *"
-                  value={applicantLastName}
-                  onChangeText={(val) => {
-                    setApplicantLastName(val);
-                    if (fieldErrors.lastName) {
-                      setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
-                    }
-                  }}
-                  placeholder="e.g. Dela Cruz"
-                  maxLength={50}
-                  autoCapitalize="words"
-                  error={fieldErrors.lastName}
-                  accessibilityLabel="Last name of the applicant"
-                  containerStyle={styles.formInputGroup}
-                />
+            <Divider />
 
-                {/* Relationship Pills */}
-                <View style={styles.formInputGroup}>
-                  <Text style={styles.sectionLabel} allowFontScaling>
-                    Relationship to Record Holder *
-                  </Text>
-                  <View style={styles.chipRow}>
-                    {RELATIONSHIP_OPTIONS.map((opt) => (
-                      <TouchableOpacity
-                        key={opt}
-                        onPress={() => {
-                          setRelationship(opt);
-                          if (opt !== "Authorized Representative") {
-                            setSelectedFiles((prev) => {
-                              if (!prev["authorization_letter"]) return prev;
-                              const copy = { ...prev };
-                              delete copy["authorization_letter"];
-                              return copy;
-                            });
-                          }
-                        }}
-                        style={[
-                          styles.chip,
-                          opt === "Authorized Representative" && styles.chipWide,
-                          relationship === opt && styles.chipActive,
-                        ]}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected: relationship === opt }}
-                        accessibilityLabel={`Relationship: ${opt}`}
-                        activeOpacity={0.7}
-                      >
-                        {relationship === opt && (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={16}
-                            color={colors.primary}
-                            style={styles.chipIcon}
-                          />
-                        )}
-                        <Text
-                          style={[
-                            styles.chipText,
-                            relationship === opt && styles.chipTextActive,
-                          ]}
-                          allowFontScaling
-                        >
-                          {opt}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                <TextInput
-                  label="Purpose / Reason for Request *"
-                  value={purpose}
-                  onChangeText={(val) => {
-                    setPurpose(val);
-                    if (fieldErrors.purpose) {
-                      setFieldErrors((prev) => ({ ...prev, purpose: undefined }));
-                    }
-                  }}
-                  placeholder="e.g. Marriage requirement, School admission, Personal record"
-                  multiline={true}
-                  numberOfLines={3}
-                  style={styles.textArea}
-                  error={fieldErrors.purpose}
-                  accessibilityLabel="Purpose or reason for requesting this certificate"
-                  containerStyle={styles.formInputGroup}
-                />
+            {/* Relationship Section */}
+            <FormSection
+              title="Relationship to Record Holder *"
+              description="Select your relationship to the person named on the sacramental record."
+            >
+              <View style={styles.selectionList}>
+                {RELATIONSHIP_OPTIONS.map((opt) => (
+                  <SelectionRow
+                    key={opt}
+                    title={opt}
+                    selected={relationship === opt}
+                    onSelect={() => {
+                      setRelationship(opt);
+                      if (opt !== "Authorized Representative") {
+                        setSelectedFiles((prev) => {
+                          if (!prev["authorization_letter"]) return prev;
+                          const copy = { ...prev };
+                          delete copy["authorization_letter"];
+                          return copy;
+                        });
+                      }
+                    }}
+                    mode="radio"
+                    accessibilityLabel={`Relationship: ${opt}`}
+                  />
+                ))}
               </View>
-            </Card>
+            </FormSection>
+
+            <Divider />
+
+            <FormSection title="Purpose of Request">
+              <TextInput
+                label="Purpose / Reason for Request *"
+                value={purpose}
+                onChangeText={(val) => {
+                  setPurpose(val);
+                  if (fieldErrors.purpose) {
+                    setFieldErrors((prev) => ({ ...prev, purpose: undefined }));
+                  }
+                }}
+                placeholder="e.g. Marriage requirement, School admission, Personal record"
+                multiline={true}
+                numberOfLines={3}
+                style={styles.textArea}
+                error={fieldErrors.purpose}
+                accessibilityLabel="Purpose or reason for requesting this certificate"
+              />
+            </FormSection>
           </View>
         ) : null}
 
         {/* ================= STEP 4: SUPPORTING DOCUMENTS ================= */}
         {step === 4 ? (
           <View style={styles.stepContainer}>
-            <Text style={styles.stepHeading} allowFontScaling>
-              Required Attachments
-            </Text>
-            <Text style={styles.stepSubtext} allowFontScaling>
-              Attach the required identity and sacramental documents before proceeding to review.
-            </Text>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeading} allowFontScaling>
+                Required Attachments
+              </Text>
+              <Text style={styles.stepSubtext} allowFontScaling>
+                Attach required identity and sacramental documents before proceeding to review.
+              </Text>
+            </View>
 
             {loadingRequirements ? (
               <View style={styles.skeletonList}>
-                <Skeleton width="100%" height={100} style={styles.skeletonItem} />
-                <Skeleton width="100%" height={100} style={styles.skeletonItem} />
+                <Skeleton width="100%" height={80} style={styles.skeletonItem} />
+                <Skeleton width="100%" height={80} style={styles.skeletonItem} />
               </View>
             ) : requirementsError ? (
               <EmptyState
@@ -732,11 +662,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 />
               ))
             ) : (
-              <Card style={styles.formCard}>
+              <View style={styles.noReqContainer}>
                 <Text style={styles.noReqText} allowFontScaling>
                   No specific supporting attachments are required for this certificate.
                 </Text>
-              </Card>
+              </View>
             )}
 
             {/* Conditional Authorization Letter for Authorized Representative */}
@@ -774,124 +704,72 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         {/* ================= STEP 5: REVIEW & SUBMIT ================= */}
         {step === 5 ? (
           <View style={styles.stepContainer}>
-            <Card style={styles.formCard}>
-              <SectionHeader
-                title="Review Your Application"
-                subtitle="Please verify all information before finalizing submission."
-              />
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepHeading} allowFontScaling>
+                Review Your Application
+              </Text>
+              <Text style={styles.stepSubtext} allowFontScaling>
+                Please verify all information before finalizing submission.
+              </Text>
+            </View>
 
-              {/* Group 1: Document & Parish */}
-              <View style={styles.reviewGroup}>
-                <Text style={styles.reviewGroupHeader} allowFontScaling>
-                  Document & Parish
-                </Text>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel} allowFontScaling>
-                    Document Type:
-                  </Text>
-                  <Text style={styles.reviewValue} allowFontScaling>
-                    {formatDocumentType(selectedDocType)}
-                  </Text>
-                </View>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel} allowFontScaling>
-                    Target Parish:
-                  </Text>
-                  <Text style={styles.reviewValue} allowFontScaling>
-                    {selectedParish?.name}
-                  </Text>
-                </View>
-              </View>
+            {/* Group 1: Document & Parish */}
+            <RecordSection
+              title="Document & Parish"
+              fields={[
+                { label: "Document Type", value: formatDocumentType(selectedDocType) },
+                { label: "Target Parish", value: selectedParish?.name || "None selected" },
+              ]}
+            />
 
-              {/* Group 2: Applicant Information */}
-              <View style={styles.reviewGroup}>
-                <Text style={styles.reviewGroupHeader} allowFontScaling>
-                  Applicant Details
-                </Text>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel} allowFontScaling>
-                    Record Holder Name:
-                  </Text>
-                  <Text style={styles.reviewValue} allowFontScaling>
-                    {applicantName}
-                  </Text>
-                </View>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel} allowFontScaling>
-                    Relationship:
-                  </Text>
-                  <Text style={styles.reviewValue} allowFontScaling>
-                    {relationship}
-                  </Text>
-                </View>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel} allowFontScaling>
-                    Purpose:
-                  </Text>
-                  <Text style={styles.reviewValue} allowFontScaling>
-                    {purpose}
-                  </Text>
-                </View>
-              </View>
+            <Divider />
 
-              {/* Group 3: Supporting Attachments */}
-              <View style={styles.reviewGroup}>
-                <Text style={styles.reviewGroupHeader} allowFontScaling>
-                  Supporting Attachments
-                </Text>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel} allowFontScaling>
-                    Attached Files:
-                  </Text>
-                  <Text style={styles.reviewValue} allowFontScaling>
-                    {Object.keys(selectedFiles).length} file(s) attached
-                  </Text>
-                </View>
+            {/* Group 2: Applicant Information */}
+            <RecordSection
+              title="Applicant Details"
+              fields={[
+                { label: "Record Holder Name", value: applicantName },
+                { label: "Relationship", value: relationship },
+                { label: "Purpose", value: purpose },
+              ]}
+            />
 
-                {relationship === "Authorized Representative" ? (
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel} allowFontScaling>
-                      Authorization Letter:
-                    </Text>
-                    <Text
-                      style={[
-                        styles.reviewValue,
-                        {
-                          color: selectedFiles["authorization_letter"]
-                            ? colors.success
-                            : colors.danger,
-                          fontWeight: "600",
-                        },
-                      ]}
-                      allowFontScaling
-                    >
-                      {selectedFiles["authorization_letter"] ? "Attached (Ready to upload)" : "Missing"}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+            <Divider />
 
-              {/* Authoritative Dynamic Fee Banner */}
-              <View style={styles.feeBanner}>
-                <View style={styles.feeBannerHeader}>
-                  <Ionicons name="pricetag" size={18} color={colors.primary} />
-                  <Text style={styles.feeBannerTitle} allowFontScaling>
-                    Authoritative Parish Fee
-                  </Text>
-                </View>
-                <Text style={styles.feeBannerAmount} allowFontScaling>
-                  {formatFee(requirements?.baseFee)}
-                </Text>
-                <Text style={styles.feeBannerNote} allowFontScaling>
-                  Official processing fee set by {selectedParish?.name || "the parish"}.
-                </Text>
-              </View>
-            </Card>
+            {/* Group 3: Supporting Attachments */}
+            <RecordSection
+              title="Supporting Attachments"
+              fields={[
+                { label: "Attached Files", value: `${Object.keys(selectedFiles).length} file(s) attached` },
+                ...(relationship === "Authorized Representative"
+                  ? [
+                      {
+                        label: "Authorization Letter",
+                        value: selectedFiles["authorization_letter"] ? "Attached (Ready)" : "Missing",
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+
+            <Divider />
+
+            {/* Dynamic Authoritative Fee */}
+            <RecordSection
+              title="Parish Fee"
+              fields={[
+                {
+                  label: "Authoritative Processing Fee",
+                  value: formatFee(requirements?.baseFee),
+                  hint: `Official fee set by ${selectedParish?.name || "the parish"}`,
+                },
+              ]}
+            />
 
             <View style={styles.legalNotice}>
               <Ionicons
                 name="shield-checkmark-outline"
-                size={18}
+                size={16}
                 color={colors.textSecondary}
               />
               <Text style={styles.legalNoticeText} allowFontScaling>
@@ -900,46 +778,61 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             </View>
           </View>
         ) : null}
+        </Animated.View>
       </ScrollView>
 
-      {/* Sticky Bottom Actions for Steps 3, 4, 5 */}
-      {step === 3 ? (
-        <BottomActionBar>
+      {/* Safe Bottom Action Bar on All Steps */}
+      <SafeBottomActionBar>
+        {step === 1 ? (
           <Button
-            title="Next: Supporting Documents"
+            title="Continue to Document Type"
             variant="primary"
             size="lg"
-            icon="arrow-forward"
+            disabled={!selectedParish}
+            onPress={() => setStep(2)}
+            style={styles.fullWidthAction}
+          />
+        ) : step === 2 ? (
+          <Button
+            title="Continue to Details"
+            variant="primary"
+            size="lg"
+            disabled={!selectedDocType}
+            onPress={() => setStep(3)}
+            style={styles.fullWidthAction}
+          />
+        ) : step === 3 ? (
+          <Button
+            title="Continue to Attachments"
+            variant="primary"
+            size="lg"
+            disabled={!applicantFirstName.trim() || !applicantLastName.trim() || !purpose.trim()}
             onPress={handleValidateFormAndNext}
             style={styles.fullWidthAction}
           />
-        </BottomActionBar>
-      ) : step === 4 ? (
-        <BottomActionBar>
+        ) : step === 4 ? (
           <Button
-            title="Next: Review Request"
+            title="Continue to Review"
             variant="primary"
             size="lg"
-            icon="arrow-forward"
             onPress={handleValidateFilesAndNext}
             style={styles.fullWidthAction}
           />
-        </BottomActionBar>
-      ) : step === 5 ? (
-        <BottomActionBar>
+        ) : step === 5 ? (
           <Button
             title={isSubmitting ? submissionStage || "Submitting..." : "Confirm & Submit Request"}
             variant="primary"
             size="lg"
-            icon="checkmark-circle-outline"
-            onPress={handleConfirmAndSubmit}
+            onPress={() => {
+              void handleConfirmAndSubmit();
+            }}
             loading={isSubmitting}
             disabled={isSubmitting || !hasValidRequirementsFee}
             accessibilityLabel="Confirm and submit your document request"
             style={styles.fullWidthAction}
           />
-        </BottomActionBar>
-      ) : null}
+        ) : null}
+      </SafeBottomActionBar>
     </Screen>
   );
 };
@@ -951,15 +844,12 @@ const styles = StyleSheet.create({
   },
   stepBar: {
     flexDirection: "row",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
-    gap: 4,
+    height: 3,
+    backgroundColor: colors.borderLight,
   },
   stepSegment: {
     flex: 1,
-    height: 4,
-    borderRadius: 2,
+    height: "100%",
   },
   stepSegmentActive: {
     backgroundColor: colors.primary,
@@ -972,24 +862,31 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
-  },
-  scrollContentWithBottomAction: {
-    paddingBottom: spacing.xxl + 80,
   },
   stepContainer: {
-    flex: 1,
+    gap: spacing.md,
+  },
+  stepHeader: {
+    marginBottom: spacing.xs,
   },
   stepHeading: {
-    ...fontStyles.subheading,
+    ...fontStyles.titleSerif,
     color: colors.textPrimary,
-    marginBottom: 2,
-    fontWeight: "700",
+    fontSize: 20,
+    lineHeight: 26,
   },
   stepSubtext: {
-    ...fontStyles.caption,
+    ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  selectionList: {
+    gap: spacing.xs,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: "top",
   },
   skeletonList: {
     gap: spacing.sm,
@@ -997,221 +894,77 @@ const styles = StyleSheet.create({
   skeletonItem: {
     borderRadius: radii.md,
   },
-  parishCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surface,
+  noReqContainer: {
     padding: spacing.md,
+    backgroundColor: colors.surfaceMuted,
     borderRadius: radii.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    minHeight: 56,
-  },
-  parishCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  parishIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.sm,
-  },
-  parishDetails: {
-    flex: 1,
-  },
-  parishName: {
-    ...fontStyles.bodyMedium,
-    color: colors.textPrimary,
-    fontWeight: "600",
-  },
-  parishLocation: {
-    ...fontStyles.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  docTypeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    minHeight: 56,
-  },
-  docTypeCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  docTypeIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.sm,
-  },
-  docTypeDetails: {
-    flex: 1,
-  },
-  docTypeName: {
-    ...fontStyles.bodyMedium,
-    color: colors.textPrimary,
-    fontWeight: "600",
-  },
-  docTypeDesc: {
-    ...fontStyles.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  formCard: {
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-  },
-  inputsWrapper: {
-    gap: spacing.sm,
-  },
-  formInputGroup: {
-    marginBottom: spacing.xs,
-  },
-  sectionLabel: {
-    ...fontStyles.captionMedium,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 3,
-    borderRadius: radii.pill,
-    borderWidth: 1.5,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surfaceVariant,
-    minHeight: 38,
-  },
-  chipWide: {
-    flexBasis: "100%",
-  },
-  chipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  chipIcon: {
-    marginRight: 4,
-  },
-  chipText: {
-    ...fontStyles.captionMedium,
-    color: colors.textSecondary,
-  },
-  chipTextActive: {
-    color: colors.primary,
-    fontWeight: "700",
   },
   noReqText: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    fontStyle: "italic",
     textAlign: "center",
-    paddingVertical: spacing.md,
-  },
-  reviewGroup: {
-    marginBottom: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  reviewGroupHeader: {
-    ...fontStyles.captionMedium,
-    color: colors.primary,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
   },
   reviewRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingVertical: 4,
-    gap: spacing.sm,
+    alignItems: "center",
+    paddingVertical: spacing.xs,
   },
   reviewLabel: {
     ...fontStyles.caption,
     color: colors.textSecondary,
   },
   reviewValue: {
-    ...fontStyles.bodySmall,
+    ...fontStyles.captionMedium,
     color: colors.textPrimary,
-    fontWeight: "500",
-    flex: 1,
-    textAlign: "right",
+    fontWeight: "600",
   },
   feeBanner: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginTop: spacing.xs,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    gap: spacing.xxs,
   },
   feeBannerHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    marginBottom: 4,
   },
   feeBannerTitle: {
-    ...fontStyles.captionMedium,
-    color: colors.primary,
-    fontWeight: "600",
+    ...fontStyles.meta,
+    color: colors.textSecondary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   feeBannerAmount: {
-    ...fontStyles.heading,
+    ...fontStyles.titleSerif,
     color: colors.primary,
-    fontWeight: "800",
-    fontSize: 26,
-    marginVertical: 2,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "700",
   },
   feeBannerNote: {
     ...fontStyles.caption,
     color: colors.textSecondary,
-    textAlign: "center",
   },
   legalNotice: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surfaceVariant,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    marginBottom: spacing.md,
+    alignItems: "flex-start",
     gap: spacing.xs,
+    padding: spacing.sm,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.sm,
   },
   legalNoticeText: {
     ...fontStyles.caption,
     color: colors.textSecondary,
     flex: 1,
+    lineHeight: 16,
   },
   fullWidthAction: {
-    flex: 1,
+    width: "100%",
   },
 });

@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export const CaloyTypingIndicator: React.FC = () => {
+  const reduceMotion = useReducedMotion();
   const [dot1] = useState(() => new Animated.Value(0));
   const [dot2] = useState(() => new Animated.Value(0));
   const [dot3] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
+    if (reduceMotion) {
+      dot1.setValue(0.6);
+      dot2.setValue(0.6);
+      dot3.setValue(0.6);
+      return;
+    }
+
     const createAnimation = (animValue: Animated.Value, delay: number) => {
       return Animated.loop(
         Animated.sequence([
@@ -42,7 +51,7 @@ export const CaloyTypingIndicator: React.FC = () => {
       a2.stop();
       a3.stop();
     };
-  }, [dot1, dot2, dot3]);
+  }, [dot1, dot2, dot3, reduceMotion]);
 
   const interpolateTranslate = (animValue: Animated.Value) => {
     return animValue.interpolate({

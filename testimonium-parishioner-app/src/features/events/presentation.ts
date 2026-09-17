@@ -28,6 +28,49 @@ export const getCurrentLocalMonthParams = (baseDate = new Date()): MonthParams =
 };
 
 /**
+ * Returns YYYY-MM-DD for a given date in Asia/Manila calendar timezone.
+ */
+export const getManilaDateString = (date: Date = new Date()): string => {
+  // Use Intl.DateTimeFormat with en-CA which outputs YYYY-MM-DD
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(date);
+};
+
+/**
+ * Computes today, tomorrow, and the day after in Asia/Manila calendar dates.
+ * Handles month, year, and leap year roll-overs reliably.
+ */
+export const getManilaThreeDayRange = (
+  now: Date = new Date()
+): { startDate: string; endDate: string; dates: string[] } => {
+  const todayStr = getManilaDateString(now);
+  const [year, month, day] = todayStr.split("-").map(Number);
+
+  const d0 = new Date(Date.UTC(year, month - 1, day));
+  const d1 = new Date(Date.UTC(year, month - 1, day + 1));
+  const d2 = new Date(Date.UTC(year, month - 1, day + 2));
+
+  const formatUtc = (d: Date): string => {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dt = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${dt}`;
+  };
+
+  const dates = [formatUtc(d0), formatUtc(d1), formatUtc(d2)];
+  return {
+    startDate: dates[0],
+    endDate: dates[2],
+    dates,
+  };
+};
+
+/**
  * Parses YYYY-MM-DD from an eventDate string safely without UTC timezone shift.
  * Resilient against null, undefined, and malformed inputs.
  */

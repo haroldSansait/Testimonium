@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   Animated,
   BackHandler,
   Modal,
@@ -12,7 +11,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { colors, fontStyles, radii, shadows, spacing } from "@/theme/tokens";
+import { Divider } from "../ui/Divider";
 
 export interface QuickActionSheetProps {
   visible: boolean;
@@ -73,14 +74,13 @@ export const createPanResponderCallbacks = (
   onStartShouldSetPanResponder: () => false,
   onStartShouldSetPanResponderCapture: () => false,
   onMoveShouldSetPanResponder: (_: unknown, gestureState: { dy: number; dx: number }) => {
-    // Only respond to deliberate downward drag (dy > 10, predominantly vertical)
+    // Deliberate downward drag (dy > 10, predominantly vertical)
     return (
       gestureState.dy > 10 &&
       Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.2
     );
   },
   onMoveShouldSetPanResponderCapture: (_: unknown, gestureState: { dy: number; dx: number }) => {
-    // Capture downward drag if moving past threshold to prevent action cards from receiving tap
     return (
       gestureState.dy > 14 &&
       Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.5
@@ -88,12 +88,10 @@ export const createPanResponderCallbacks = (
   },
   onPanResponderGrant: () => {},
   onPanResponderMove: (_: unknown, gestureState: { dy: number }) => {
-    // translationY = max(0, gesture.dy) - strictly downward only
     const dy = Math.max(0, gestureState.dy);
     dragY.setValue(dy);
   },
   onPanResponderRelease: (_: unknown, gestureState: { dy: number; vy: number }) => {
-    // Dismiss if dragged down > 100dp OR if downward release velocity is significant
     if (gestureState.dy > 100 || (gestureState.dy > 40 && gestureState.vy > 0.5)) {
       onDismiss();
     } else {
@@ -115,14 +113,8 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
   const [slideAnim] = useState(() => new Animated.Value(300));
   const [fadeAnim] = useState(() => new Animated.Value(0));
   const [dragY] = useState(() => new Animated.Value(0));
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReducedMotion();
   const isNavigatingRef = useRef(false);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled?.().then((enabled) => {
-      setReduceMotion(Boolean(enabled));
-    });
-  }, []);
 
   // Handle hardware Back button on Android
   useEffect(() => {
@@ -137,7 +129,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
     return () => backHandler.remove();
   }, [visible, onClose]);
 
-  // Handle opening & closing slide animations
+  // Opening & closing slide animations
   useEffect(() => {
     if (visible) {
       isNavigatingRef.current = false;
@@ -152,10 +144,9 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
             duration: 180,
             useNativeDriver: true,
           }),
-          Animated.spring(slideAnim, {
+          Animated.timing(slideAnim, {
             toValue: 0,
-            friction: 8,
-            tension: 65,
+            duration: 200,
             useNativeDriver: true,
           }),
         ]).start();
@@ -194,10 +185,9 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
             if (reduceMotion) {
               dragY.setValue(0);
             } else {
-              Animated.spring(dragY, {
+              Animated.timing(dragY, {
                 toValue: 0,
-                tension: 75,
-                friction: 9,
+                duration: 180,
                 useNativeDriver: true,
               }).start();
             }
@@ -211,7 +201,6 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
   const handleActionPress = (destination: string) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
-    // Close sheet before navigating to prevent double push
     onClose();
     onSelectAction(destination);
   };
@@ -231,7 +220,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
       statusBarTranslucent
     >
       <View style={styles.overlay}>
-        {/* Dimmed backdrop - tap to dismiss */}
+        {/* Dimmed backdrop */}
         <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
           <Pressable
             style={StyleSheet.absoluteFill}
@@ -241,7 +230,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
           />
         </Animated.View>
 
-        {/* Slide-up sheet with pan responder for downward drag dismissal */}
+        {/* Slide-up sheet */}
         <Animated.View
           {...panResponder.panHandlers}
           accessibilityLabel="Quick Actions Sheet"
@@ -261,7 +250,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title} allowFontScaling>
+            <Text style={styles.title} accessibilityRole="header" allowFontScaling>
               Quick Actions
             </Text>
             <Pressable
@@ -275,68 +264,64 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
               accessibilityHint="Dismisses the quick action menu"
               hitSlop={8}
             >
-              <Ionicons name="close" size={22} color={colors.textPrimary} />
+              <Ionicons name="close" size={22} color={colors.neutral[950]} />
             </Pressable>
           </View>
 
-          {/* Action List */}
+          {/* Action List - Flat divided rows, direct icons */}
           <View style={styles.actionsList}>
-            {ACTION_ITEMS.map((item) => {
+            {ACTION_ITEMS.map((item, index) => {
               const isCurrent = item.activeMatcher(currentPathname);
               return (
-                <Pressable
-                  key={item.id}
-                  onPress={() => handleActionPress(item.destination)}
-                  style={({ pressed }) => [
-                    styles.actionCard,
-                    isCurrent && styles.actionCardCurrent,
-                    pressed && styles.actionCardPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.title}, ${item.subtitle}${
-                    isCurrent ? ", Current section" : ""
-                  }`}
-                >
-                  <View
-                    style={[
-                      styles.iconCircle,
-                      { backgroundColor: item.iconBgColor },
-                      isCurrent && styles.iconCircleCurrent,
+                <View key={item.id}>
+                  <Pressable
+                    onPress={() => handleActionPress(item.destination)}
+                    style={({ pressed }) => [
+                      styles.actionRow,
+                      isCurrent && styles.actionRowCurrent,
+                      pressed && styles.actionRowPressed,
                     ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.title}, ${item.subtitle}${
+                      isCurrent ? ", Current section" : ""
+                    }`}
                   >
-                    <Ionicons
-                      name={item.icon}
-                      size={22}
-                      color={item.iconColor}
-                    />
-                  </View>
-                  <View style={styles.textContainer}>
-                    <View style={styles.titleRow}>
-                      <Text
-                        style={[
-                          styles.actionTitle,
-                          isCurrent && styles.actionTitleCurrent,
-                        ]}
-                        allowFontScaling
-                      >
-                        {item.title}
-                      </Text>
-                      {isCurrent && (
-                        <View style={styles.activeBadge}>
-                          <Text style={styles.activeBadgeText}>ACTIVE</Text>
-                        </View>
-                      )}
+                    <View style={styles.iconSlot}>
+                      <Ionicons
+                        name={item.icon}
+                        size={24}
+                        color={isCurrent ? colors.brand[700] : colors.neutral[950]}
+                      />
                     </View>
-                    <Text style={styles.actionSubtitle} allowFontScaling>
-                      {item.subtitle}
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={colors.textMuted}
-                  />
-                </Pressable>
+
+                    <View style={styles.textContainer}>
+                      <View style={styles.titleRow}>
+                        <Text
+                          style={[
+                            styles.actionTitle,
+                            isCurrent && styles.actionTitleCurrent,
+                          ]}
+                          allowFontScaling
+                        >
+                          {item.title}
+                        </Text>
+                        {isCurrent && (
+                          <View style={styles.activeDot} />
+                        )}
+                      </View>
+                      <Text style={styles.actionSubtitle} allowFontScaling>
+                        {item.subtitle}
+                      </Text>
+                    </View>
+
+                    <Ionicons
+                      name="chevron-forward"
+                      size={18}
+                      color={colors.neutral[500]}
+                    />
+                  </Pressable>
+                  {index < ACTION_ITEMS.length - 1 ? <Divider /> : null}
+                </View>
               );
             })}
           </View>
@@ -353,19 +338,15 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    backgroundColor: colors.overlay,
   },
   sheetContainer: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 20,
+    ...shadows.sheet,
   },
   handleContainer: {
     alignItems: "center",
@@ -373,10 +354,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   handle: {
-    width: 38,
-    height: 4.5,
-    borderRadius: 2.5,
-    backgroundColor: colors.borderStrong,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.neutral[300],
   },
   header: {
     flexDirection: "row",
@@ -385,11 +366,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: colors.neutral[200],
   },
   title: {
     ...fontStyles.heading,
-    color: colors.textPrimary,
+    color: colors.neutral[950],
     fontSize: 18,
     fontWeight: "700",
   },
@@ -399,44 +380,33 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.surfaceVariant,
+    backgroundColor: colors.neutral[50],
   },
   closeButtonPressed: {
     opacity: 0.7,
   },
   actionsList: {
-    paddingVertical: spacing.sm,
-    gap: spacing.xs + 2,
+    paddingVertical: spacing.xs,
   },
-  actionCard: {
+  actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    minHeight: 64,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+    minHeight: 56,
+    borderRadius: radii.control,
   },
-  actionCardCurrent: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft + "30",
+  actionRowCurrent: {
+    backgroundColor: colors.brand[50],
   },
-  actionCardPressed: {
-    backgroundColor: colors.surfaceVariant,
-    transform: [{ scale: 0.985 }],
+  actionRowPressed: {
+    backgroundColor: colors.neutral[50],
   },
-  iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  iconSlot: {
+    width: 36,
     alignItems: "center",
     justifyContent: "center",
     marginRight: spacing.sm,
-  },
-  iconCircleCurrent: {
-    borderWidth: 1.5,
-    borderColor: colors.primary,
   },
   textContainer: {
     flex: 1,
@@ -449,32 +419,24 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   actionTitle: {
-    ...fontStyles.bodyMedium,
-    color: colors.textPrimary,
+    ...fontStyles.body,
     fontWeight: "600",
-    fontSize: 15,
+    color: colors.neutral[950],
   },
   actionTitleCurrent: {
-    color: colors.primary,
+    color: colors.brand[700],
     fontWeight: "700",
   },
-  activeBadge: {
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: radii.sm,
-  },
-  activeBadgeText: {
-    ...fontStyles.meta,
-    fontSize: 9,
-    fontWeight: "800",
-    color: colors.primary,
-    letterSpacing: 0.5,
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.brand[700],
+    marginLeft: 2,
   },
   actionSubtitle: {
-    ...fontStyles.meta,
-    color: colors.textSecondary,
-    fontSize: 12,
+    ...fontStyles.caption,
+    color: colors.neutral[650],
     marginTop: 2,
   },
 });

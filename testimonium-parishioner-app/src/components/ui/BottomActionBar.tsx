@@ -1,24 +1,33 @@
 import React from "react";
-import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
+import {
+  LayoutChangeEvent,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing } from "@/theme/tokens";
+import { colors, shadows, spacing } from "@/theme/tokens";
 
 export interface BottomActionBarProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  onLayout?: (event: LayoutChangeEvent) => void;
 }
 
 export const BottomActionBar: React.FC<BottomActionBarProps> = ({
   children,
   style,
   contentStyle,
+  onLayout,
 }) => {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 16);
 
   return (
     <View
+      onLayout={onLayout}
       style={[
         styles.container,
         { paddingBottom: bottomPadding },
@@ -34,14 +43,10 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: colors.neutral[200],
     paddingTop: spacing.md,
     paddingHorizontal: spacing.md,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    ...shadows.sheet,
   },
   content: {
     flexDirection: "row",

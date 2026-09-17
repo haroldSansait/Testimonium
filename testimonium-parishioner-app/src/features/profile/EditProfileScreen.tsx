@@ -10,12 +10,14 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Button, Card, TextInput } from "@/components/ui";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
+import { AppHeader, Button, TextInput } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export const EditProfileScreen: React.FC = () => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const { profile, updateProfile, isUpdatingProfile } = useAuth();
 
   const [fullName, setFullName] = useState<string>(profile?.fullName || "");
@@ -82,16 +84,25 @@ export const EditProfileScreen: React.FC = () => {
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: contentBottomInset() },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
-          <Card style={styles.formCard}>
-            <Text style={styles.sectionHeader}>Personal Information</Text>
+          <View style={styles.formContainer}>
+            <Text style={styles.sectionHeader} allowFontScaling>
+              Personal Information
+            </Text>
 
             <View style={styles.readOnlyRow}>
-              <Text style={styles.readOnlyLabel}>Email Address</Text>
-              <Text style={styles.readOnlyValue}>{profile?.email}</Text>
-              <Text style={styles.readOnlyHint}>
+              <Text style={styles.readOnlyLabel} allowFontScaling>
+                Email Address
+              </Text>
+              <Text style={styles.readOnlyValue} allowFontScaling>
+                {profile?.email}
+              </Text>
+              <Text style={styles.readOnlyHint} allowFontScaling>
                 Email address is managed via your sign-in account.
               </Text>
             </View>
@@ -134,7 +145,9 @@ export const EditProfileScreen: React.FC = () => {
             />
 
             {errorMessage && (
-              <Text style={styles.errorBanner}>{errorMessage}</Text>
+              <Text style={styles.errorBanner} allowFontScaling>
+                {errorMessage}
+              </Text>
             )}
 
             <Button
@@ -147,7 +160,7 @@ export const EditProfileScreen: React.FC = () => {
               style={styles.saveButton}
               accessibilityLabel="Save profile changes"
             />
-          </Card>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -164,11 +177,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl,
   },
-  formCard: {
+  formContainer: {
     backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
     padding: spacing.md,
     gap: spacing.md,
   },
@@ -198,7 +212,7 @@ const styles = StyleSheet.create({
   },
   readOnlyHint: {
     ...fontStyles.caption,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
   },
@@ -207,7 +221,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
     backgroundColor: colors.dangerSoft,
     padding: spacing.sm,
-    borderRadius: radii.sm,
+    borderRadius: radii.xs,
     borderWidth: 1,
     borderColor: colors.danger,
   },

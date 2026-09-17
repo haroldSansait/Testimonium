@@ -4,15 +4,22 @@ import {
   StyleProp,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, Badge } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
-import { formatEventDate, formatEventTime } from "./presentation";
+import {
+  formatEventDate,
+  formatEventTime,
+  parseEventDateOnly,
+} from "./presentation";
 import type { PublicEventDto } from "./types";
+
+const MONTH_SHORT = [
+  "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+];
 
 export interface EventCardProps {
   event: PublicEventDto;
@@ -33,211 +40,222 @@ export const EventCard: React.FC<EventCardProps> = ({
   const formattedTime = formatEventTime(event.startTime, event.endTime);
   const parishName = event.parish?.parishName;
 
+  const { month, day } = parseEventDateOnly(event.eventDate);
+  const monthLabel = month >= 1 && month <= 12 ? MONTH_SHORT[month - 1] : "";
+
   const accessibilityLabel = `${event.title}. ${formattedDate}${
     formattedTime ? ` at ${formattedTime}` : ""
   }. ${event.location ? `Location: ${event.location}.` : ""}${
     parishName ? ` At ${parishName}.` : ""
   }`;
 
-  const cardContent = (
-    <Card
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={[styles.card, style]}
+      accessibilityHint="Opens event details"
+      style={({ pressed }) => [
+        styles.container,
+        pressed && styles.pressed,
+        style,
+      ]}
     >
-      <View style={styles.topRow}>
-        <View style={styles.dateBadge}>
-          <Ionicons
-            name="calendar-outline"
-            size={13}
-            color={colors.primary}
-            style={styles.calendarIcon}
-            accessibilityElementsHidden={true}
-            importantForAccessibility="no"
-          />
-          <Text style={styles.dateText} allowFontScaling>
-            {formattedDate}
+      {/* Date badge on left */}
+      <View style={styles.dateCol}>
+        <Text style={styles.dateDay} allowFontScaling>
+          {day > 0 ? String(day) : "--"}
+        </Text>
+        <Text style={styles.dateMonth} allowFontScaling>
+          {monthLabel}
+        </Text>
+      </View>
+
+      {/* Main Details */}
+      <View style={styles.contentCol}>
+        <View style={styles.headerRow}>
+          <Text
+            style={styles.title}
+            numberOfLines={2}
+            accessibilityRole="header"
+            allowFontScaling
+          >
+            {event.title}
           </Text>
         </View>
 
         {event.eventType ? (
-          <Badge
-            label={event.eventType.replace(/_/g, " ")}
-            variant="secondary"
-          />
+          <Text style={styles.eventTypeLabel} allowFontScaling>
+            {event.eventType.replace(/_/g, " ")}
+          </Text>
         ) : null}
-      </View>
 
-      <Text
-        style={styles.title}
-        accessibilityRole="header"
-        allowFontScaling
-      >
-        {event.title}
-      </Text>
+        {formattedTime ? (
+          <View style={styles.metaRow}>
+            <Ionicons
+              name="time-outline"
+              size={13}
+              color={colors.textSecondary}
+              style={styles.metaIcon}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no"
+            />
+            <Text style={styles.metaText} allowFontScaling>
+              {formattedTime}
+            </Text>
+          </View>
+        ) : null}
 
-      {formattedTime || event.location ? (
-        <View style={styles.detailsContainer}>
-          {formattedTime ? (
-            <View style={styles.detailRow}>
-              <Ionicons
-                name="time-outline"
-                size={14}
-                color={colors.textSecondary}
-                style={styles.detailIcon}
-                accessibilityElementsHidden={true}
-                importantForAccessibility="no"
-              />
-              <Text style={styles.detailText} allowFontScaling>
-                {formattedTime}
-              </Text>
-            </View>
-          ) : null}
+        {event.location ? (
+          <View style={styles.metaRow}>
+            <Ionicons
+              name="location-outline"
+              size={13}
+              color={colors.textSecondary}
+              style={styles.metaIcon}
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no"
+            />
+            <Text style={styles.metaText} numberOfLines={1} allowFontScaling>
+              {event.location}
+            </Text>
+          </View>
+        ) : null}
 
-          {event.location ? (
-            <View style={styles.detailRow}>
-              <Ionicons
-                name="location-outline"
-                size={14}
-                color={colors.textSecondary}
-                style={styles.detailIcon}
-                accessibilityElementsHidden={true}
-                importantForAccessibility="no"
-              />
-              <Text
-                style={styles.detailText}
-                numberOfLines={1}
-                allowFontScaling
-              >
-                {event.location}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
-      {!hideParishName && parishName && onParishPress ? (
-        <View style={styles.parishFooter}>
+        {!hideParishName && parishName ? (
           <Pressable
             onPress={(e) => {
-              e.stopPropagation();
-              onParishPress(event.parishId);
+              if (onParishPress) {
+                e.stopPropagation();
+                onParishPress(event.parishId);
+              }
             }}
-            accessible={true}
             accessibilityRole="button"
             accessibilityLabel={`View ${parishName}`}
-            accessibilityHint="Navigates to parish details"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={({ pressed }) => [
-              styles.parishButton,
-              pressed && styles.parishButtonPressed,
-            ]}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={styles.parishRow}
           >
             <Ionicons
               name="business-outline"
-              size={14}
+              size={13}
               color={colors.primary}
-              style={styles.parishIcon}
+              style={styles.metaIcon}
               accessibilityElementsHidden={true}
               importantForAccessibility="no"
             />
             <Text style={styles.parishNameText} numberOfLines={1} allowFontScaling>
               {parishName}
             </Text>
-            <Ionicons
-              name="chevron-forward"
-              size={14}
-              color={colors.primary}
-              accessibilityElementsHidden={true}
-              importantForAccessibility="no"
-            />
+            {onParishPress ? (
+              <Ionicons
+                name="chevron-forward"
+                size={12}
+                color={colors.primary}
+              />
+            ) : null}
           </Pressable>
-        </View>
-      ) : null}
-    </Card>
+        ) : null}
+      </View>
+
+      <View style={styles.chevronCol}>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={colors.textMuted}
+          accessibilityElementsHidden={true}
+          importantForAccessibility="no"
+        />
+      </View>
+    </Pressable>
   );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-        {cardContent}
-      </TouchableOpacity>
-    );
-  }
-
-  return cardContent;
 };
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.sm,
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-  },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.xs,
-  },
-  dateBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.primarySoft,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: radii.pill,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  calendarIcon: {
-    marginRight: spacing.xxs,
+  pressed: {
+    backgroundColor: colors.surfaceVariant,
   },
-  dateText: {
-    ...fontStyles.captionMedium,
+  dateCol: {
+    width: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primarySoft,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.xs,
+    marginRight: spacing.sm,
+  },
+  dateDay: {
+    ...fontStyles.titleMedium,
     color: colors.primary,
     fontWeight: "700",
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  dateMonth: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  contentCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerRow: {
+    marginBottom: 2,
   },
   title: {
-    ...fontStyles.subheading,
+    ...fontStyles.bodyMedium,
     color: colors.textPrimary,
     fontWeight: "700",
-    marginVertical: spacing.xxs,
+    fontSize: 14,
+    lineHeight: 18,
   },
-  detailsContainer: {
-    marginTop: spacing.xs,
-    gap: spacing.xxs,
+  eventTypeLabel: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
+    fontSize: 12,
+    textTransform: "capitalize",
+    marginBottom: 2,
   },
-  detailRow: {
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: 2,
   },
-  detailIcon: {
-    marginRight: spacing.xs,
+  metaIcon: {
+    marginRight: 4,
   },
-  detailText: {
-    ...fontStyles.bodySmall,
+  metaText: {
+    ...fontStyles.caption,
     color: colors.textSecondary,
+    fontSize: 12,
     flex: 1,
   },
-  parishFooter: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-  },
-  parishButton: {
+  parishRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 36,
-  },
-  parishButtonPressed: {
-    opacity: 0.7,
-  },
-  parishIcon: {
-    marginRight: spacing.xs,
+    marginTop: 4,
   },
   parishNameText: {
-    ...fontStyles.captionMedium,
+    ...fontStyles.caption,
     color: colors.primary,
-    flex: 1,
     fontWeight: "600",
+    fontSize: 12,
+    flex: 1,
+  },
+  chevronCol: {
+    paddingLeft: spacing.xs,
+    justifyContent: "center",
   },
 });

@@ -53,3 +53,16 @@ jest.mock("@react-native-google-signin/google-signin", () => ({
 jest.mock("@react-native-async-storage/async-storage", () =>
   require("@react-native-async-storage/async-storage/jest/async-storage-mock")
 );
+
+jest.mock("react-native-reanimated", () => {
+  const { View } = require("react-native");
+  const FadeIn = {
+    duration: jest.fn(() => FadeIn),
+  };
+
+  return {
+    __esModule: true,
+    default: { View },
+    FadeIn,
+  };
+});

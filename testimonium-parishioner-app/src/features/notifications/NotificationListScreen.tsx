@@ -1,16 +1,17 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Alert,
-  FlatList,
+  Pressable,
   RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { AppHeader, Button, EmptyState, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
@@ -25,10 +26,65 @@ export interface NotificationListScreenProps {
   showBackButton?: boolean;
 }
 
+export interface NotificationGroup {
+  title: "Today" | "Yesterday" | "Earlier";
+  data: NotificationItem[];
+}
+
+export const getManilaDateKey = (date: Date): string =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
+const previousCalendarDateKey = (dateKey: string): string => {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const previous = new Date(Date.UTC(year, month - 1, day - 1));
+  return `${previous.getUTCFullYear()}-${String(
+    previous.getUTCMonth() + 1
+  ).padStart(2, "0")}-${String(previous.getUTCDate()).padStart(2, "0")}`;
+};
+
+export const groupNotificationsByManilaDate = (
+  notifications: NotificationItem[],
+  now: Date = new Date()
+): NotificationGroup[] => {
+  if (notifications.length === 0) return [];
+
+  const todayDate = getManilaDateKey(now);
+  const yesterdayDate = previousCalendarDateKey(todayDate);
+  const todayItems: NotificationItem[] = [];
+  const yesterdayItems: NotificationItem[] = [];
+  const earlierItems: NotificationItem[] = [];
+
+  for (const item of notifications) {
+    const date = new Date(item.dateSent || item.createdAt);
+    const dateKey = !isNaN(date.getTime()) ? getManilaDateKey(date) : "";
+    if (dateKey === todayDate) {
+      todayItems.push(item);
+    } else if (dateKey === yesterdayDate) {
+      yesterdayItems.push(item);
+    } else {
+      earlierItems.push(item);
+    }
+  }
+
+  const groups: NotificationGroup[] = [];
+  if (todayItems.length > 0) groups.push({ title: "Today", data: todayItems });
+  if (yesterdayItems.length > 0) {
+    groups.push({ title: "Yesterday", data: yesterdayItems });
+  }
+  if (earlierItems.length > 0) groups.push({ title: "Earlier", data: earlierItems });
+  return groups;
+};
+
 export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   showBackButton = true,
 }) => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
 
   const {
     data: notifications = [],
@@ -72,6 +128,7 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return "";
     return d.toLocaleDateString(undefined, {
+      timeZone: "Asia/Manila",
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -79,63 +136,75 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
     });
   };
 
+  // Group notifications chronologically into Today, Yesterday, Earlier
+  const groupedSections = useMemo(
+    () => groupNotificationsByManilaDate(notifications),
+    [notifications]
+  );
+
   const renderItem = ({ item }: { item: NotificationItem }) => {
     const isUnread = !item.isRead;
     const iconName =
       item.referenceType === "DOCUMENT_REQUEST"
-        ? "document-text"
+        ? "document-text-outline"
         : item.referenceType === "SCHEDULE_REQUEST"
-        ? "calendar"
-        : "notifications";
+        ? "calendar-outline"
+        : "notifications-outline";
 
     return (
-      <TouchableOpacity
-        style={[styles.card, isUnread && styles.unreadCard]}
+      <Pressable
+        style={({ pressed }) => [
+          styles.row,
+          isUnread && styles.unreadRow,
+          pressed && styles.pressedRow,
+        ]}
         onPress={() => handleNotificationPress(item)}
-        activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={`${item.title}, ${isUnread ? "Unread" : "Read"}`}
       >
-        <View style={styles.cardHeader}>
-          <View style={[styles.iconBox, isUnread && styles.unreadIconBox]}>
-            <Ionicons
-              name={iconName}
-              size={18}
-              color={isUnread ? colors.primary : colors.textMuted}
-            />
-          </View>
+        <View style={styles.iconCol}>
+          <Ionicons
+            name={iconName}
+            size={20}
+            color={isUnread ? colors.primary : colors.textSecondary}
+          />
+        </View>
 
-          <View style={styles.headerTextCol}>
-            <View style={styles.titleRow}>
+        <View style={styles.contentCol}>
+          <View style={styles.titleRow}>
+            <View style={styles.titleTextContainer}>
+              {isUnread && <View style={styles.unreadDot} />}
               <Text
                 style={[styles.title, isUnread && styles.unreadTitle]}
-                numberOfLines={1}
+                numberOfLines={2}
+                allowFontScaling
               >
                 {item.title}
               </Text>
-              {isUnread && <View style={styles.unreadDot} />}
             </View>
-            <Text style={styles.timestamp}>
+            <Text style={styles.timestamp} allowFontScaling>
               {formatTimestamp(item.dateSent || item.createdAt)}
             </Text>
           </View>
+
+          <Text style={styles.message} numberOfLines={4} allowFontScaling>
+            {item.message}
+          </Text>
+
+          {(item.referenceType === "DOCUMENT_REQUEST" ||
+            item.referenceType === "SCHEDULE_REQUEST") &&
+          item.referenceId ? (
+            <View style={styles.actionPrompt}>
+              <Text style={styles.actionPromptText} allowFontScaling>
+                {item.referenceType === "DOCUMENT_REQUEST"
+                  ? "View Request Details"
+                  : "View Schedule Details"}
+              </Text>
+              <Ionicons name="chevron-forward" size={13} color={colors.primary} />
+            </View>
+          ) : null}
         </View>
-
-        <Text style={styles.message} numberOfLines={3}>
-          {item.message}
-        </Text>
-
-        {(item.referenceType === "DOCUMENT_REQUEST" || item.referenceType === "SCHEDULE_REQUEST") && item.referenceId ? (
-          <View style={styles.actionPrompt}>
-            <Text style={styles.actionPromptText}>
-              {item.referenceType === "DOCUMENT_REQUEST"
-                ? "View Document Request"
-                : "View Schedule"}
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
-          </View>
-        ) : null}
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -165,9 +234,9 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <Skeleton height={90} borderRadius={radii.md} style={styles.skeleton} />
-          <Skeleton height={90} borderRadius={radii.md} style={styles.skeleton} />
-          <Skeleton height={90} borderRadius={radii.md} style={styles.skeleton} />
+          <Skeleton height={64} borderRadius={radii.xs} style={styles.skeleton} />
+          <Skeleton height={64} borderRadius={radii.xs} style={styles.skeleton} />
+          <Skeleton height={64} borderRadius={radii.xs} style={styles.skeleton} />
         </View>
       ) : error ? (
         <View style={styles.errorContainer}>
@@ -180,11 +249,22 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
           />
         </View>
       ) : (
-        <FlatList
-          data={notifications}
+        <SectionList
+          sections={groupedSections}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
+          renderSectionHeader={({ section: { title } }) => (
+            <View style={styles.sectionHeaderBox}>
+              <Text style={styles.sectionHeaderText} allowFontScaling>
+                {title}
+              </Text>
+            </View>
+          )}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: contentBottomInset() },
+          ]}
+          stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
@@ -214,17 +294,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
     flexGrow: 1,
-    paddingBottom: spacing.xxl,
   },
   loadingContainer: {
     padding: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   skeleton: {
-    marginBottom: spacing.xs,
+    marginBottom: spacing.xxs,
   },
   errorContainer: {
     flex: 1,
@@ -235,81 +312,89 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xxl,
     alignItems: "center",
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+  sectionHeaderBox: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    backgroundColor: colors.background,
   },
-  unreadCard: {
-    borderColor: colors.primary + "35",
-    backgroundColor: colors.surface,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+  sectionHeaderText: {
+    ...fontStyles.caption,
+    fontWeight: "700",
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
-  cardHeader: {
+  row: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  iconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.pill,
+  unreadRow: {
+    backgroundColor: colors.surface,
+  },
+  pressedRow: {
     backgroundColor: colors.surfaceVariant,
+  },
+  iconCol: {
+    width: 28,
+    marginTop: 2,
     alignItems: "center",
-    justifyContent: "center",
   },
-  unreadIconBox: {
-    backgroundColor: colors.primarySoft,
-  },
-  headerTextCol: {
+  contentCol: {
     flex: 1,
+    marginLeft: spacing.xs,
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  titleTextContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    paddingRight: spacing.xs,
+  },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.primary,
+    marginRight: spacing.xs,
   },
   title: {
-    ...fontStyles.body,
-    fontWeight: "500",
+    ...fontStyles.bodyMedium,
     color: colors.textPrimary,
-    flex: 1,
+    fontWeight: "500",
+    fontSize: 14,
   },
   unreadTitle: {
     fontWeight: "700",
     color: colors.textPrimary,
   },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-    marginLeft: spacing.xs,
-  },
   timestamp: {
     ...fontStyles.caption,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
-    marginTop: 1,
   },
   message: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    marginTop: 4,
+    fontSize: 13,
     lineHeight: 18,
+    marginTop: 2,
   },
   actionPrompt: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: spacing.sm,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+    marginTop: spacing.xs,
   },
   actionPromptText: {
     ...fontStyles.caption,

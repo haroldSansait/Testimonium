@@ -9,15 +9,13 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import {
-  AppHeader,
-  BottomActionBar,
-  Button,
-  Card,
-  EmptyState,
-  Skeleton,
-} from "@/components/ui";
-
+import { AppHeader } from "@/components/ui/AppHeader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { SafeBottomActionBar } from "@/components/ui/SafeBottomActionBar";
+import { ContentColumn } from "@/components/layout/ContentColumn";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
@@ -27,7 +25,12 @@ import {
 } from "./api";
 import { PaymentQrCard } from "./components/PaymentQrCard";
 import { ReceiptCapturePicker } from "./components/ReceiptCapturePicker";
-import { formatDocumentType, formatFee, hasAuthoritativeFee, isPaymentEligible } from "./presentation";
+import {
+  formatDocumentType,
+  formatFee,
+  hasAuthoritativeFee,
+  isPaymentEligible,
+} from "./presentation";
 import type { LocalSelectedReceipt } from "./types";
 
 export interface PaymentScreenProps {
@@ -36,6 +39,7 @@ export interface PaymentScreenProps {
 
 export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const isValidId = Boolean(requestId && /^[1-9]\d*$/.test(String(requestId).trim()));
 
   const {
@@ -175,6 +179,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
   const hasValidFee = Boolean(request && hasAuthoritativeFee(request.fee));
   const feeLabel = request ? formatFee(request.fee) : "Fee unavailable";
   const docTypeLabel = request ? formatDocumentType(request.documentType) : "Document";
+  const bottomInset = contentBottomInset(isEligible && hasValidFee ? "action" : "none");
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -187,7 +192,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
 
       {loadingRequest || loadingConfig ? (
         <View style={styles.loadingContainer}>
-          <Skeleton width="100%" height={100} style={styles.skeletonItem} />
+          <Skeleton width="100%" height={90} style={styles.skeletonItem} />
           <Skeleton width="100%" height={260} style={styles.skeletonItem} />
           <Skeleton width="100%" height={140} style={styles.skeletonItem} />
         </View>
@@ -224,85 +229,91 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
       ) : (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + spacing.md }]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Summary Banner */}
-          <Card style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryInfo}>
-                <Text style={styles.docType} allowFontScaling>
-                  {docTypeLabel}
-                </Text>
-                <Text style={styles.applicant} allowFontScaling>
-                  Applicant: {request.applicantName}
-                </Text>
-                <Text style={styles.parish} allowFontScaling>
-                  {request.parish?.parishName}
-                </Text>
+          <ContentColumn>
+            {/* Flat Summary Block */}
+            <View style={styles.summaryBlock}>
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryInfo}>
+                  <Text style={styles.docType} allowFontScaling>
+                    {docTypeLabel}
+                  </Text>
+                  <Text style={styles.applicant} allowFontScaling>
+                    Applicant: {request.applicantName}
+                  </Text>
+                  {request.parish?.parishName ? (
+                    <Text style={styles.parish} allowFontScaling>
+                      {request.parish.parishName}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View style={styles.feeBox}>
+                  <Text style={styles.feeCaption} allowFontScaling>
+                    Total Fee
+                  </Text>
+                  <Text style={styles.feeAmount} allowFontScaling>
+                    {feeLabel}
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.feeBox}>
-                <Text style={styles.feeCaption} allowFontScaling>
-                  Total Fee
-                </Text>
-                <Text style={styles.feeAmount} allowFontScaling>
-                  {feeLabel}
-                </Text>
-              </View>
+              {request.paymentCorrectionNote ? (
+                <View style={styles.correctionNoteBox}>
+                  <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                  <Text style={styles.correctionNoteText} allowFontScaling>
+                    Correction note from staff: {request.paymentCorrectionNote}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
-            {request.paymentCorrectionNote ? (
-              <View style={styles.correctionNoteBox}>
-                <Ionicons name="alert-circle" size={16} color={colors.danger} />
-                <Text style={styles.correctionNoteText} allowFontScaling>
-                  Correction note from staff: {request.paymentCorrectionNote}
-                </Text>
-              </View>
-            ) : null}
-          </Card>
-
-          {/* Payment Configuration Card (QR + Bank/Wallet info) */}
-          <PaymentQrCard
-            configuration={paymentConfig}
-            feeAmount={request.fee}
-          />
-
-          {/* Receipt Selection & Preview (Gallery + Camera) */}
-          <ReceiptCapturePicker
-            receipt={selectedReceipt}
-            onReceiptSelected={setSelectedReceipt}
-            onReceiptRemoved={() => setSelectedReceipt(null)}
-            disabled={isUploading}
-          />
-
-          {/* Notice */}
-          <View style={styles.infoNotice}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={colors.textSecondary}
+            {/* Payment Configuration (QR + Bank/Wallet info) */}
+            <PaymentQrCard
+              configuration={paymentConfig}
+              feeAmount={request.fee}
             />
-            <Text style={styles.infoNoticeText} allowFontScaling>
-              Receipts are securely verified by parish staff. Please ensure the reference number, amount, and date are clearly visible.
-            </Text>
-          </View>
+
+            {/* Receipt Selection & Preview */}
+            <ReceiptCapturePicker
+              receipt={selectedReceipt}
+              onReceiptSelected={setSelectedReceipt}
+              onReceiptRemoved={() => setSelectedReceipt(null)}
+              disabled={isUploading}
+            />
+
+            {/* Security Notice */}
+            <View style={styles.infoNotice}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={colors.primary}
+              />
+              <Text style={styles.infoNoticeText} allowFontScaling>
+                Official receipts are verified by parish staff. Please ensure the reference number, amount, and date are legible.
+              </Text>
+            </View>
+          </ContentColumn>
         </ScrollView>
       )}
 
       {isEligible && hasValidFee && (
-        <BottomActionBar>
+        <SafeBottomActionBar>
           <Button
             title={isUploading ? "Submitting Proof..." : "Submit Receipt for Review"}
             variant="primary"
             size="lg"
             icon="cloud-upload-outline"
-            onPress={handleReceiptUpload}
+            onPress={() => {
+              void handleReceiptUpload();
+            }}
             loading={isUploading}
             disabled={!selectedReceipt || isUploading}
             accessibilityLabel="Submit payment receipt for staff review"
           />
-        </BottomActionBar>
+        </SafeBottomActionBar>
       )}
     </Screen>
   );
@@ -318,13 +329,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xxl + 80,
   },
   loadingContainer: {
     padding: spacing.md,
+    gap: spacing.md,
   },
   skeletonItem: {
-    marginBottom: spacing.md,
     borderRadius: radii.md,
   },
   centerContainer: {
@@ -332,20 +342,22 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     justifyContent: "center",
   },
-  summaryCard: {
-    padding: spacing.md,
-    marginBottom: spacing.md,
+  summaryBlock: {
     backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.md,
   },
   summaryHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: spacing.sm,
   },
   summaryInfo: {
     flex: 1,
-    paddingRight: spacing.sm,
   },
   docType: {
     ...fontStyles.subheading,
@@ -364,7 +376,7 @@ const styles = StyleSheet.create({
   },
   feeBox: {
     alignItems: "flex-end",
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.surfaceVariant,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radii.sm,
@@ -408,11 +420,6 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.textSecondary,
     flex: 1,
-  },
-  submitErrorText: {
-    ...fontStyles.caption,
-    color: colors.danger,
-    marginTop: spacing.xs,
-    textAlign: "center",
+    lineHeight: 18,
   },
 });

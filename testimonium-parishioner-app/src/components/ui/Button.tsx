@@ -35,13 +35,13 @@ export const Button: React.FC<ButtonProps> = ({
   const isDisabled = disabled || loading;
   const defaultHitSlop =
     size === "sm"
-      ? { top: 6, bottom: 6, left: 6, right: 6 }
+      ? { top: 4, bottom: 4, left: 4, right: 4 }
       : undefined;
 
   const iconColor =
     variant === "primary" || variant === "danger"
       ? colors.surface
-      : colors.primary;
+      : colors.brand[700];
 
   return (
     <Pressable
@@ -60,7 +60,7 @@ export const Button: React.FC<ButtonProps> = ({
         variant === "outline" && styles.outline,
         variant === "ghost" && styles.ghost,
         variant === "danger" && styles.danger,
-        state.pressed && styles.pressed,
+        state.pressed && !isDisabled && (variant === "primary" ? styles.pressedPrimary : styles.pressedDefault),
         isDisabled && styles.disabled,
         typeof style === "function" ? style(state) : style,
       ]}
@@ -70,7 +70,7 @@ export const Button: React.FC<ButtonProps> = ({
         <ActivityIndicator
           color={
             variant === "outline" || variant === "ghost" || variant === "secondary"
-              ? colors.primary
+              ? colors.brand[700]
               : colors.surface
           }
           size="small"
@@ -116,11 +116,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
+    borderRadius: radii.button,
     flexDirection: "row",
   },
   sizeSm: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
@@ -143,15 +143,17 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   primary: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand[700],
   },
   secondary: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.brand[50],
+    borderWidth: 1,
+    borderColor: colors.brand[700],
   },
   outline: {
-    backgroundColor: "transparent",
-    borderWidth: 1.5,
-    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.neutral[300],
   },
   ghost: {
     backgroundColor: "transparent",
@@ -163,12 +165,16 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "stretch",
   },
-  pressed: {
-    opacity: 0.88,
+  pressedPrimary: {
+    backgroundColor: colors.brand[800],
+    opacity: 0.95,
+  },
+  pressedDefault: {
+    opacity: 0.82,
     transform: [{ scale: 0.98 }],
   },
   disabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
   label: {
     ...fontStyles.button,
@@ -176,26 +182,28 @@ const styles = StyleSheet.create({
   },
   labelSm: {
     ...fontStyles.captionMedium,
+    fontSize: 13,
   },
   labelLg: {
     ...fontStyles.subheading,
+    fontSize: 16,
   },
   primaryLabel: {
     color: colors.surface,
   },
   secondaryLabel: {
-    color: colors.primary,
+    color: colors.brand[700],
   },
   outlineLabel: {
-    color: colors.textPrimary,
+    color: colors.neutral[950],
   },
   ghostLabel: {
-    color: colors.primary,
+    color: colors.brand[700],
   },
   dangerLabel: {
     color: colors.surface,
   },
   disabledLabel: {
-    color: colors.disabled,
+    color: colors.neutral[500],
   },
 });

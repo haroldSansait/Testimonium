@@ -83,7 +83,7 @@ testimonium-parishioner-app/
 │   ├── services/
 │   │   ├── api/                         # Centralized apiClient and normalized errors
 │   │   ├── auth/                        # Native Google Sign-In adapter
-│   │   └── media/                       # Image picker and HEIC-to-JPEG converter
+│   │   └── media/                       # Android image/document picker helpers
 │   ├── theme/                           # Colors, spacing, typography, ecclesiastical tokens
 │   ├── types/                           # Shared domain and API contract types
 │   ├── utils/                           # Date formatting, validators, presentation mappers
@@ -105,7 +105,7 @@ testimonium-parishioner-app/
 ### API & service layer (`src/services/*`)
 - Centralizes HTTP requests, bearer token injection, `Idempotency-Key` headers, and timeout handling.
 - Normalizes backend error payloads into strongly-typed `AppError` objects.
-- Handles media conversions (HEIC to JPEG) and multipart upload payload construction.
+- Builds replayable multipart upload payloads for Android-supported JPEG/PNG images and documents; no HEIC conversion or iOS-specific media path is introduced.
 
 ### Server-state layer (TanStack Query)
 - Controls caching, query deduplication, background revalidation, and mutation lifecycle.

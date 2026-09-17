@@ -49,6 +49,10 @@ export default function AppRootStackLayout() {
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
       <Stack.Screen
+        name="profile/help"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
         name="profile/terms"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />

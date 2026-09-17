@@ -29,6 +29,8 @@ export const IconButton: React.FC<IconButtonProps> = ({
   variant = "ghost",
   disabled = false,
 }) => {
+  const targetSize = Math.max(size, 44);
+
   return (
     <Pressable
       onPress={onPress}
@@ -38,10 +40,10 @@ export const IconButton: React.FC<IconButtonProps> = ({
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       style={({ pressed }) => [
         styles.base,
-        { width: Math.max(size, 44), height: Math.max(size, 44), minWidth: 44, minHeight: 44 },
+        { width: targetSize, height: targetSize, minWidth: 44, minHeight: 44 },
         variant === "surface" && styles.variantSurface,
         variant === "primary" && styles.variantPrimary,
         pressed && !disabled && (variant === "primary" ? styles.pressedPrimary : styles.pressedDefault),
@@ -63,17 +65,17 @@ const styles = StyleSheet.create({
   variantSurface: {
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.neutral[300],
   },
   variantPrimary: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand[700],
   },
   pressedDefault: {
-    backgroundColor: colors.surfaceVariant,
+    backgroundColor: colors.neutral[50],
     opacity: 0.85,
   },
   pressedPrimary: {
-    backgroundColor: colors.primaryPressed,
+    backgroundColor: colors.brand[800],
   },
   disabled: {
     opacity: 0.4,

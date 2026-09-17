@@ -4,12 +4,12 @@ import { Tabs, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  AnimatedTabBarButton,
+  TabBarButton,
   CenterActionButton,
   QuickActionSheet,
 } from "@/components/navigation";
 import { useUnreadNotificationCount } from "@/features/notifications/api";
-import { colors, fontStyles } from "@/theme/tokens";
+import { colors, fontStyles, shadows } from "@/theme/tokens";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -20,7 +20,7 @@ export default function TabsLayout() {
 
   // Safe computation: guarantee at least 12px bottom padding on Android 3-button nav, plus bottom inset
   const bottomInset = Math.max(insets.bottom, 12);
-  const tabHeight = 60 + bottomInset;
+  const tabHeight = 58 + bottomInset;
 
   // Detect if user is currently viewing a service route (Requests, Schedule, Parishes)
   const isServiceActive = useMemo(() => {
@@ -50,25 +50,21 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.textSecondary,
-          tabBarButton: (props) => <AnimatedTabBarButton {...props} />,
+          tabBarActiveTintColor: colors.brand[700],
+          tabBarInactiveTintColor: colors.neutral[650],
+          tabBarButton: (props) => <TabBarButton {...props} />,
           tabBarStyle: {
             backgroundColor: colors.surface,
-            borderTopColor: colors.cardBorder,
+            borderTopColor: colors.neutral[200],
             borderTopWidth: 1,
             height: tabHeight,
             paddingBottom: bottomInset + 2,
             paddingTop: 6,
-            elevation: 12,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: -3 },
-            shadowOpacity: 0.08,
-            shadowRadius: 10,
+            ...shadows.sheet,
           },
           tabBarLabelStyle: {
-            ...fontStyles.meta,
-            fontSize: 10,
+            ...fontStyles.caption,
+            fontSize: 12,
             fontWeight: "600",
             marginTop: 2,
           },
@@ -85,12 +81,13 @@ export default function TabsLayout() {
             title: "Home",
             tabBarAccessibilityLabel: "Home tab",
             tabBarIcon: ({ color, focused }) => (
-              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <View style={styles.iconContainer}>
                 <Ionicons
                   name={focused ? "home" : "home-outline"}
-                  size={21}
+                  size={22}
                   color={color}
                 />
+                {focused && <View style={styles.activeDot} />}
               </View>
             ),
           }}
@@ -103,12 +100,13 @@ export default function TabsLayout() {
             title: "Caloy",
             tabBarAccessibilityLabel: "Caloy assistant tab",
             tabBarIcon: ({ color, focused }) => (
-              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <View style={styles.iconContainer}>
                 <Ionicons
                   name={focused ? "sparkles" : "sparkles-outline"}
-                  size={21}
+                  size={22}
                   color={color}
                 />
+                {focused && <View style={styles.activeDot} />}
               </View>
             ),
           }}
@@ -154,19 +152,20 @@ export default function TabsLayout() {
               backgroundColor: colors.danger,
               color: "#FFFFFF",
               fontSize: 10,
-              fontWeight: "800",
+              fontWeight: "700",
               minWidth: 18,
               height: 18,
               lineHeight: 18,
               borderRadius: 9,
             },
             tabBarIcon: ({ color, focused }) => (
-              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <View style={styles.iconContainer}>
                 <Ionicons
                   name={focused ? "notifications" : "notifications-outline"}
-                  size={21}
+                  size={22}
                   color={color}
                 />
+                {focused && <View style={styles.activeDot} />}
               </View>
             ),
           }}
@@ -179,12 +178,13 @@ export default function TabsLayout() {
             title: "Profile",
             tabBarAccessibilityLabel: "Profile tab",
             tabBarIcon: ({ color, focused }) => (
-              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <View style={styles.iconContainer}>
                 <Ionicons
                   name={focused ? "person" : "person-outline"}
-                  size={21}
+                  size={22}
                   color={color}
                 />
+                {focused && <View style={styles.activeDot} />}
               </View>
             ),
           }}
@@ -226,14 +226,18 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  iconWrap: {
-    width: 44,
-    height: 28,
-    borderRadius: 14,
+  iconContainer: {
     alignItems: "center",
     justifyContent: "center",
+    width: 36,
+    height: 28,
   },
-  iconWrapActive: {
-    backgroundColor: colors.primarySoft,
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.brand[700],
+    position: "absolute",
+    bottom: -3,
   },
 });

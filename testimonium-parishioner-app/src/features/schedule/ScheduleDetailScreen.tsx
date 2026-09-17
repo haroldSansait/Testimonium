@@ -9,13 +9,20 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { AppHeader, Button, Card, EmptyState, Skeleton } from "@/components/ui";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { StatusLabel } from "@/components/ui/StatusLabel";
+import { RecordSection } from "@/components/ui/RecordSection";
+import { Divider } from "@/components/ui/Divider";
+import { ContentColumn } from "@/components/layout/ContentColumn";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useRespondReschedule, useScheduleDetail } from "./api";
 import {
   extractTimeSlotFromSchedule,
   formatScheduleDate,
-  getScheduleStatusBadge,
   isRescheduleProposalPending,
 } from "./presentation";
 import { getScheduleEventLabel } from "./types";
@@ -23,6 +30,7 @@ import { getScheduleEventLabel } from "./types";
 export const ScheduleDetailScreen: React.FC = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const [actionError, setActionError] = useState<string | null>(null);
 
   const {
@@ -54,8 +62,8 @@ export const ScheduleDetailScreen: React.FC = () => {
     }
 
     const expectedVersion = schedule.version;
-
     const actionText = accept ? "Accept" : "Decline";
+
     Alert.alert(
       `${actionText} Proposed Reschedule`,
       accept
@@ -86,7 +94,6 @@ export const ScheduleDetailScreen: React.FC = () => {
                 "Failed to respond to reschedule proposal. Please try again.";
               setActionError(msg);
               Alert.alert("Action Failed", msg);
-              // Cleanly refetch schedule state on failure/race
               void refetch();
             }
           },
@@ -99,10 +106,10 @@ export const ScheduleDetailScreen: React.FC = () => {
     return (
       <Screen safeArea={true} style={styles.screen}>
         <AppHeader title="Schedule Details" onBack={handleBack} />
-        <View style={styles.content}>
-          <Skeleton height={140} borderRadius={radii.md} style={styles.skeleton} />
-          <Skeleton height={180} borderRadius={radii.md} style={styles.skeleton} />
-          <Skeleton height={120} borderRadius={radii.md} style={styles.skeleton} />
+        <View style={styles.loadingContainer}>
+          <Skeleton height={100} borderRadius={radii.md} />
+          <Skeleton height={140} borderRadius={radii.md} />
+          <Skeleton height={120} borderRadius={radii.md} />
         </View>
       </Screen>
     );
@@ -112,7 +119,7 @@ export const ScheduleDetailScreen: React.FC = () => {
     return (
       <Screen safeArea={true} style={styles.screen}>
         <AppHeader title="Schedule Details" onBack={handleBack} />
-        <View style={styles.errorContainer}>
+        <View style={styles.centerContainer}>
           <EmptyState
             icon="alert-circle-outline"
             title="Schedule Not Found"
@@ -125,7 +132,6 @@ export const ScheduleDetailScreen: React.FC = () => {
     );
   }
 
-  const badge = getScheduleStatusBadge(schedule.status);
   const eventLabel = getScheduleEventLabel(schedule.eventType);
   const dateFormatted = formatScheduleDate(schedule.requestedDate, "full");
   const timeSlot = extractTimeSlotFromSchedule(schedule);
@@ -133,6 +139,7 @@ export const ScheduleDetailScreen: React.FC = () => {
   const hasPriestAssigned = Boolean(schedule.assignedPriestId);
   const isPriestAccepted = hasPriestAssigned && schedule.priestResponseStatus === "ACCEPTED";
   const canAcceptReschedule = hasProposal && isPriestAccepted;
+  const bottomInset = contentBottomInset("none");
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -142,208 +149,168 @@ export const ScheduleDetailScreen: React.FC = () => {
         onBack={handleBack}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Status Header Card */}
-        <Card style={styles.mainCard}>
-          <View style={styles.badgeRow}>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: badge.bg, borderColor: badge.border },
-              ]}
-            >
-              <Text style={[styles.statusText, { color: badge.text }]}>
-                {badge.label}
-              </Text>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: bottomInset + spacing.lg }]}
+      >
+        <ContentColumn style={styles.column}>
+          {/* Identity Header */}
+          <View style={styles.headerBlock}>
+            <View style={styles.headerRow}>
+              <View style={styles.titleWrap}>
+                <Text style={styles.titleText} allowFontScaling>
+                  {schedule.displayTitle || eventLabel}
+                </Text>
+                {schedule.displayTitle && schedule.displayTitle !== eventLabel ? (
+                  <Text style={styles.subtitleText} allowFontScaling>
+                    {eventLabel}
+                  </Text>
+                ) : null}
+              </View>
+              <StatusLabel status={schedule.status} />
             </View>
           </View>
 
-          <Text style={styles.titleText}>
-            {schedule.displayTitle || eventLabel}
-          </Text>
-          {schedule.displayTitle && schedule.displayTitle !== eventLabel && (
-            <Text style={styles.subtitleText}>{eventLabel}</Text>
-          )}
-        </Card>
-
-        {/* Action Required Reschedule Proposal Card */}
-        {hasProposal && (
-          <Card style={styles.proposalCard}>
-            <View style={styles.proposalHeader}>
-              <Ionicons name="notifications" size={20} color="#1E40AF" />
-              <Text style={styles.proposalTitle}>
-                Alternative Date Proposed
-              </Text>
-            </View>
-
-            <Text style={styles.proposalDescription}>
-              The parish staff has proposed an alternative schedule for your request:
-            </Text>
-
-            <View style={styles.proposedTimeBox}>
-              <View style={styles.proposedRow}>
-                <Ionicons name="calendar" size={16} color="#1E40AF" />
-                <Text style={styles.proposedText}>
-                  {formatScheduleDate(schedule.proposedDate, "full")}
+          {/* Action Required: Reschedule Proposal Block */}
+          {hasProposal && (
+            <View style={styles.proposalBox}>
+              <View style={styles.proposalHeader}>
+                <Ionicons name="alert-circle-outline" size={20} color={colors.primary} />
+                <Text style={styles.proposalTitle} allowFontScaling>
+                  Alternative Schedule Proposed
                 </Text>
               </View>
-              {schedule.proposedStartDatetime && (
+
+              <Text style={styles.proposalDesc} allowFontScaling>
+                Parish staff has proposed an alternative date and time for your schedule:
+              </Text>
+
+              <View style={styles.proposedDetailBox}>
                 <View style={styles.proposedRow}>
-                  <Ionicons name="time" size={16} color="#1E40AF" />
-                  <Text style={styles.proposedText}>
-                    {new Date(schedule.proposedStartDatetime).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+                  <Text style={styles.proposedText} allowFontScaling>
+                    {formatScheduleDate(schedule.proposedDate, "full")}
                   </Text>
                 </View>
-              )}
-            </View>
-
-            {schedule.rescheduleReason && (
-              <View style={styles.reasonBox}>
-                <Text style={styles.reasonLabel}>Staff Note:</Text>
-                <Text style={styles.reasonText}>{schedule.rescheduleReason}</Text>
+                {schedule.proposedStartDatetime ? (
+                  <View style={styles.proposedRow}>
+                    <Ionicons name="time-outline" size={16} color={colors.primary} />
+                    <Text style={styles.proposedText} allowFontScaling>
+                      {new Date(schedule.proposedStartDatetime).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
-            )}
 
-            {!isPriestAccepted && (
-              <View style={styles.priestGateBox}>
-                <Ionicons name="time-outline" size={16} color="#1E40AF" />
-                <View style={styles.priestGateContent}>
-                  <Text style={styles.priestGateTitle}>Waiting for Priest Acceptance</Text>
-                  <Text style={styles.priestGateText}>
-                    You can review the proposed date and time, but final acceptance will become available once the assigned priest accepts the schedule.
+              {schedule.rescheduleReason ? (
+                <View style={styles.reasonBox}>
+                  <Text style={styles.reasonLabel} allowFontScaling>
+                    Staff Note:
+                  </Text>
+                  <Text style={styles.reasonText} allowFontScaling>
+                    {schedule.rescheduleReason}
                   </Text>
                 </View>
-              </View>
-            )}
+              ) : null}
 
-            {actionError && (
-              <Text style={styles.actionErrorText}>{actionError}</Text>
-            )}
+              {!isPriestAccepted ? (
+                <View style={styles.priestGateNotice}>
+                  <Ionicons name="hourglass-outline" size={16} color={colors.primary} />
+                  <View style={styles.priestGateContent}>
+                    <Text style={styles.priestGateTitle} allowFontScaling>
+                      Waiting for Celebrant Confirmation
+                    </Text>
+                    <Text style={styles.priestGateText} allowFontScaling>
+                      You can review this proposal now. Final acceptance will become available as soon as the assigned celebrant confirms availability.
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
-            <View style={styles.proposalActions}>
-              <Button
-                title="Decline"
-                variant="outline"
-                size="md"
-                onPress={() => handleRespond(false)}
-                loading={respondMutation.isPending}
-                style={styles.proposalBtn}
-              />
-              <Button
-                title="Accept Alternative"
-                variant="primary"
-                size="md"
-                onPress={() => handleRespond(true)}
-                disabled={!canAcceptReschedule || respondMutation.isPending}
-                loading={respondMutation.isPending}
-                style={[styles.proposalBtn, !canAcceptReschedule && styles.disabledBtn]}
-              />
-            </View>
-          </Card>
-        )}
-
-        {/* Schedule Timing & Location */}
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Schedule Information</Text>
-
-          <View style={styles.detailRow}>
-            <View style={styles.iconCol}>
-              <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.detailTextCol}>
-              <Text style={styles.detailLabel}>Requested Date</Text>
-              <Text style={styles.detailValue}>{dateFormatted}</Text>
-            </View>
-          </View>
-
-          <View style={styles.detailRow}>
-            <View style={styles.iconCol}>
-              <Ionicons name="time-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.detailTextCol}>
-              <Text style={styles.detailLabel}>Time Slot</Text>
-              <Text style={styles.detailValue}>{timeSlot}</Text>
-            </View>
-          </View>
-
-          {schedule.requestedPriest?.name && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconCol}>
-                <Ionicons name="person-outline" size={18} color={colors.textMuted} />
-              </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Requested Priest (Preference)</Text>
-                <Text style={styles.detailValue}>
-                  {schedule.requestedPriest.name}
+              {actionError ? (
+                <Text style={styles.actionErrorText} allowFontScaling>
+                  {actionError}
                 </Text>
+              ) : null}
+
+              <View style={styles.proposalActions}>
+                <Button
+                  title="Decline Proposal"
+                  variant="outline"
+                  size="md"
+                  onPress={() => handleRespond(false)}
+                  loading={respondMutation.isPending}
+                  style={styles.proposalBtn}
+                />
+                <Button
+                  title="Accept Alternative"
+                  variant="primary"
+                  size="md"
+                  onPress={() => handleRespond(true)}
+                  disabled={!canAcceptReschedule || respondMutation.isPending}
+                  loading={respondMutation.isPending}
+                  style={styles.proposalBtn}
+                />
               </View>
             </View>
           )}
 
-          {schedule.assignedPriest?.fullName && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconCol}>
-                <Ionicons name="person-outline" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Assigned Celebrant / Priest</Text>
-                <Text style={styles.detailValue}>
-                  {schedule.assignedPriest.fullName}
-                </Text>
-              </View>
-            </View>
-          )}
+          <Divider />
 
-          {schedule.remarks && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconCol}>
-                <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Remarks & Notes</Text>
-                <Text style={styles.detailValue}>{schedule.remarks}</Text>
-              </View>
-            </View>
-          )}
-        </Card>
+          {/* Record Section 1: Appointment Details */}
+          <RecordSection
+            title="Appointment Details"
+            fields={[
+              { label: "Service / Sacrament", value: eventLabel },
+              { label: "Requested Date", value: dateFormatted },
+              { label: "Time Slot", value: timeSlot },
+              ...(schedule.remarks
+                ? [{ label: "Remarks & Notes", value: schedule.remarks }]
+                : []),
+            ]}
+          />
 
-        {/* Parish Information */}
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Parish Location</Text>
+          <Divider />
 
-          <View style={styles.detailRow}>
-            <View style={styles.iconCol}>
-              <Ionicons name="business-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.detailTextCol}>
-              <Text style={styles.detailLabel}>Parish Name</Text>
-              <Text style={styles.detailValue}>
-                {schedule.parish?.parishName || "Parish"}
-              </Text>
-              {schedule.parish?.municipalityCity && (
-                <Text style={styles.detailSubValue}>
-                  {schedule.parish.municipalityCity}
-                  {schedule.parish.province ? `, ${schedule.parish.province}` : ""}
-                </Text>
-              )}
-            </View>
-          </View>
+          {/* Record Section 2: Celebrant Details */}
+          <RecordSection
+            title="Celebrant Information"
+            fields={[
+              ...(schedule.requestedPriest?.name
+                ? [{ label: "Preferred Celebrant", value: `${schedule.requestedPriest.name} (Preference)` }]
+                : []),
+              {
+                label: "Assigned Celebrant",
+                value: schedule.assignedPriest?.fullName || "To be assigned by parish",
+              },
+            ]}
+          />
 
-          {schedule.parish?.contactNumber && (
-            <View style={styles.detailRow}>
-              <View style={styles.iconCol}>
-                <Ionicons name="call-outline" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.detailTextCol}>
-                <Text style={styles.detailLabel}>Parish Office Contact</Text>
-                <Text style={styles.detailValue}>{schedule.parish.contactNumber}</Text>
-              </View>
-            </View>
-          )}
-        </Card>
+          <Divider />
+
+          {/* Record Section 3: Parish Location */}
+          <RecordSection
+            title="Parish Information"
+            fields={[
+              { label: "Parish Name", value: schedule.parish?.parishName || "Parish" },
+              ...(schedule.parish?.municipalityCity
+                ? [
+                    {
+                      label: "Location",
+                      value: `${schedule.parish.municipalityCity}${
+                        schedule.parish.province ? `, ${schedule.parish.province}` : ""
+                      }`,
+                    },
+                  ]
+                : []),
+              ...(schedule.parish?.contactNumber
+                ? [{ label: "Office Contact", value: schedule.parish.contactNumber }]
+                : []),
+            ]}
+          />
+        </ContentColumn>
       </ScrollView>
     </Screen>
   );
@@ -356,75 +323,72 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
+  },
+  column: {
     gap: spacing.md,
-    paddingBottom: spacing.xxl,
   },
-  skeleton: {
-    marginBottom: spacing.sm,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
-  mainCard: {
-    backgroundColor: colors.surface,
+  loadingContainer: {
     padding: spacing.md,
-    borderColor: colors.cardBorder,
+    gap: spacing.md,
   },
-  badgeRow: {
+  centerContainer: {
+    flex: 1,
+    padding: spacing.md,
+    justifyContent: "center",
+  },
+  headerBlock: {
+    paddingHorizontal: spacing.xxs,
+  },
+  headerRow: {
     flexDirection: "row",
-    marginBottom: spacing.xs,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.sm,
   },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-  },
-  statusText: {
-    ...fontStyles.caption,
-    fontWeight: "700",
-    fontSize: 12,
+  titleWrap: {
+    flex: 1,
   },
   titleText: {
-    ...fontStyles.heading,
+    ...fontStyles.titleSerif,
     color: colors.textPrimary,
-    fontWeight: "700",
+    fontSize: 22,
+    lineHeight: 28,
   },
   subtitleText: {
-    ...fontStyles.bodySmall,
+    ...fontStyles.captionMedium,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  proposalCard: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
+  proposalBox: {
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: radii.md,
     borderWidth: 1,
+    borderColor: colors.borderLight,
     padding: spacing.md,
+    gap: spacing.sm,
   },
   proposalHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    marginBottom: spacing.xs,
   },
   proposalTitle: {
-    ...fontStyles.subheading,
-    color: "#1E40AF",
-    fontWeight: "700",
+    ...fontStyles.captionBold,
+    color: colors.primary,
+    fontSize: 15,
   },
-  proposalDescription: {
+  proposalDesc: {
     ...fontStyles.bodySmall,
-    color: "#1E3A8A",
-    marginBottom: spacing.sm,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
-  proposedTimeBox: {
-    backgroundColor: "#DBEAFE",
+  proposedDetailBox: {
+    backgroundColor: colors.surface,
     padding: spacing.sm,
     borderRadius: radii.sm,
-    gap: 4,
-    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    gap: spacing.xs,
   },
   proposedRow: {
     flexDirection: "row",
@@ -432,110 +396,56 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   proposedText: {
-    ...fontStyles.body,
-    fontWeight: "700",
-    color: "#1E40AF",
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
   },
   reasonBox: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceMuted,
     padding: spacing.sm,
-    borderRadius: radii.xs,
-    marginBottom: spacing.md,
+    borderRadius: radii.sm,
+    gap: 2,
   },
   reasonLabel: {
     ...fontStyles.caption,
+    color: colors.textSecondary,
     fontWeight: "700",
-    color: colors.textMuted,
   },
   reasonText: {
-    ...fontStyles.bodySmall,
+    ...fontStyles.caption,
     color: colors.textPrimary,
-    marginTop: 2,
+  },
+  priestGateNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    gap: spacing.xs,
+  },
+  priestGateContent: {
+    flex: 1,
+    gap: 2,
+  },
+  priestGateTitle: {
+    ...fontStyles.captionMedium,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  priestGateText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
   actionErrorText: {
     ...fontStyles.caption,
     color: colors.danger,
-    marginBottom: spacing.sm,
-  },
-  priestGateBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: radii.xs,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  priestGateContent: {
-    flex: 1,
-    marginLeft: spacing.xs,
-  },
-  priestGateTitle: {
-    ...fontStyles.caption,
-    fontWeight: "700",
-    color: "#1E3A8A",
-  },
-  priestGateText: {
-    ...fontStyles.caption,
-    color: "#1E40AF",
-    marginTop: 2,
-    fontSize: 11,
-    lineHeight: 15,
   },
   proposalActions: {
     flexDirection: "row",
     gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   proposalBtn: {
     flex: 1,
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  sectionCard: {
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderColor: colors.cardBorder,
-  },
-  sectionTitle: {
-    ...fontStyles.subheading,
-    color: colors.textPrimary,
-    fontWeight: "700",
-    marginBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-    paddingBottom: spacing.xs,
-  },
-  detailRow: {
-    flexDirection: "row",
-    marginBottom: spacing.md,
-    alignItems: "flex-start",
-  },
-  iconCol: {
-    width: 28,
-    alignItems: "center",
-    marginTop: 2,
-  },
-  detailTextCol: {
-    flex: 1,
-  },
-  detailLabel: {
-    ...fontStyles.caption,
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  detailValue: {
-    ...fontStyles.body,
-    color: colors.textPrimary,
-    fontWeight: "600",
-    marginTop: 1,
-  },
-  detailSubValue: {
-    ...fontStyles.caption,
-    color: colors.textMuted,
-    marginTop: 2,
   },
 });

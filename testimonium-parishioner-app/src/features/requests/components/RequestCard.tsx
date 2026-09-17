@@ -1,13 +1,13 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Badge, Card } from "@/components/ui";
+import { MotionPressable } from "@/components/ui/MotionPressable";
+import { StatusLabel } from "@/components/ui/StatusLabel";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
   formatDate,
   formatDocumentType,
   formatFee,
-  formatStatus,
   isPaymentEligible,
   isDocumentCorrectionEligible,
 } from "../presentation";
@@ -19,7 +19,6 @@ export interface RequestCardProps {
 }
 
 export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) => {
-  const statusInfo = formatStatus(request.status, request.isDraft);
   const docTypeLabel = formatDocumentType(request.documentType);
   const dateLabel = formatDate(request.dateRequested || request.createdAt);
   const feeLabel = formatFee(request.fee);
@@ -29,28 +28,26 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
   const showCorrectionAlert = isDocumentCorrectionEligible(request);
 
   return (
-    <Card style={styles.card}>
-      <TouchableOpacity
+    <View style={styles.container}>
+      <MotionPressable
         onPress={() => onPress(request)}
-        activeOpacity={0.7}
         accessibilityRole="button"
-        accessibilityLabel={`${docTypeLabel} for ${request.applicantName}, status: ${statusInfo.label}, tracking number: ${request.trackingNumber || "Draft"}`}
-        style={styles.touchable}
+        accessibilityLabel={`${docTypeLabel} for ${request.applicantName}, status: ${request.status}, tracking number: ${request.trackingNumber || "Draft"}`}
+        accessibilityHint="Opens request details"
+        style={styles.pressable}
       >
+        {/* Top Tracking & Status Row */}
         <View style={styles.topRow}>
           <View style={styles.trackingBox}>
-            <Ionicons name="document-text" size={15} color={colors.primary} />
+            <Ionicons name="document-text-outline" size={15} color={colors.primary} />
             <Text style={styles.trackingText} allowFontScaling numberOfLines={1}>
               {request.trackingNumber || "Draft Request"}
             </Text>
           </View>
-          <Badge
-            label={statusInfo.label}
-            variant={statusInfo.variant}
-            size="sm"
-          />
+          <StatusLabel status={request.status} />
         </View>
 
+        {/* Document Type & Applicant */}
         <View style={styles.mainInfo}>
           <Text style={styles.docType} numberOfLines={1} allowFontScaling>
             {docTypeLabel}
@@ -60,14 +57,13 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
           </Text>
         </View>
 
-        <View style={styles.metaDivider} />
-
+        {/* Parish & Date Meta */}
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
             <Ionicons
-              name="business-outline"
+              name="location-outline"
               size={13}
-              color={colors.textMuted}
+              color={colors.primary}
               style={styles.metaIcon}
             />
             <Text style={styles.metaText} numberOfLines={1} allowFontScaling>
@@ -79,7 +75,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
             <Ionicons
               name="calendar-outline"
               size={13}
-              color={colors.textMuted}
+              color={colors.textSecondary}
               style={styles.metaIcon}
             />
             <Text style={styles.metaText} allowFontScaling>
@@ -88,6 +84,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
           </View>
         </View>
 
+        {/* Fee row if present */}
         {request.fee !== null && request.fee !== undefined ? (
           <View style={styles.feeRow}>
             <Text style={styles.feeLabel} allowFontScaling>
@@ -125,21 +122,24 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
             <Ionicons name="chevron-forward" size={14} color={colors.danger} />
           </View>
         ) : null}
-      </TouchableOpacity>
-    </Card>
+      </MotionPressable>
+    </View>
   );
 };
 
+export const RequestListItem = RequestCard;
+
 const styles = StyleSheet.create({
-  card: {
-    padding: 0,
-    marginBottom: spacing.sm,
+  container: {
     backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    marginBottom: spacing.sm,
+    overflow: "hidden",
   },
-  touchable: {
+  pressable: {
     padding: spacing.md,
-    minHeight: 44,
   },
   topRow: {
     flexDirection: "row",
@@ -158,7 +158,6 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     fontWeight: "700",
     color: colors.textPrimary,
-    fontFamily: "monospace",
     letterSpacing: 0.3,
   },
   mainInfo: {
@@ -166,8 +165,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   docType: {
-    ...fontStyles.subheading,
+    ...fontStyles.bodyMedium,
+    fontFamily: fontStyles.titleSerif.fontFamily,
     color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: "700",
   },
   applicant: {
@@ -175,16 +177,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  metaDivider: {
-    height: 1,
-    backgroundColor: colors.borderLight,
-    marginVertical: spacing.xs,
-  },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 2,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
   },
   metaItem: {
     flexDirection: "row",
@@ -214,7 +213,7 @@ const styles = StyleSheet.create({
   },
   feeLabel: {
     ...fontStyles.caption,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   feeValue: {
     ...fontStyles.captionMedium,
@@ -225,7 +224,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 2,
     borderRadius: radii.sm,
     marginTop: spacing.sm,
     gap: spacing.xs,

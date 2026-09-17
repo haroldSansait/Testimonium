@@ -11,6 +11,7 @@ export interface BackendUserProfile {
   privacyAccepted: boolean;
   needsProfileCompletion: boolean;
   isNewUser?: boolean;
+  emailNotificationsEnabled?: boolean;
   status: string;
   role: string;
   parish?: {
@@ -76,6 +77,7 @@ export interface UpdateProfilePayload {
   suffix?: string;
   contactNumber?: string;
   address?: string;
+  emailNotificationsEnabled?: boolean;
 }
 
 export interface ResendVerificationResponse {

@@ -15,9 +15,9 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { AppHeader, IconButton } from "@/components/ui";
 import { useParishes } from "@/features/parishes/api";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -34,9 +34,10 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
   showBackButton = true,
 }) => {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { insets } = useAppLayoutMetrics();
   const [inputText, setInputText] = useState("");
   const [isParishModalVisible, setIsParishModalVisible] = useState(false);
+  const [parishSearch, setParishSearch] = useState("");
   const flatListRef = useRef<FlatList<CaloyMessage>>(null);
   const isNearBottomRef = useRef(true);
 
@@ -54,6 +55,17 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
 
   const { data: parishesData } = useParishes({ limit: 100 });
   const parishes = useMemo(() => parishesData?.items || [], [parishesData?.items]);
+
+  // Filter parishes in modal
+  const filteredParishes = useMemo(() => {
+    const list = [
+      { id: "0", name: "All Parishes (Diocese-wide)" },
+      ...parishes.map((p) => ({ id: String(p.id), name: p.name })),
+    ];
+    if (!parishSearch.trim()) return list;
+    const q = parishSearch.trim().toLowerCase();
+    return list.filter((p) => p.name.toLowerCase().includes(q));
+  }, [parishes, parishSearch]);
 
   // Track near-bottom distance to prevent force-scrolling if user is reading older messages
   const handleScroll = useCallback(
@@ -138,8 +150,6 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
     [handleSelectClarification, handleRevealComplete, isTyping]
   );
 
-  // When rendered standalone without bottom tabs, provide bottom safe area to clear 3-button system nav.
-  // When rendered inside bottom tabs, bottom tab bar handles system nav clearance.
   const bottomPadding = showBackButton
     ? Math.max(insets.bottom, 12) + spacing.xs
     : spacing.sm;
@@ -174,8 +184,14 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
           </Text>
         </View>
         <Pressable
-          onPress={() => setIsParishModalVisible(true)}
-          style={({ pressed }) => [styles.changeContextBtn, pressed && styles.changeContextBtnPressed]}
+          onPress={() => {
+            setParishSearch("");
+            setIsParishModalVisible(true);
+          }}
+          style={({ pressed }) => [
+            styles.changeContextBtn,
+            pressed && styles.changeContextBtnPressed,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Change Parish Context"
         >
@@ -185,7 +201,7 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
         </Pressable>
       </View>
 
-      {/* Main Chat Area - Unified single KeyboardAvoidingView layout authority */}
+      {/* Main Chat Area - Unified single KeyboardAvoidingView */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -241,7 +257,7 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
             >
               <Ionicons
                 name="arrow-up"
-                size={20}
+                size={18}
                 color={!inputText.trim() || isTyping ? colors.disabled : colors.textInverse}
               />
             </Pressable>
@@ -249,7 +265,7 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
         </View>
       </KeyboardAvoidingView>
 
-      {/* Parish Context Selection Modal */}
+      {/* Searchable Parish Context Selection Modal */}
       <Modal
         visible={isParishModalVisible}
         animationType="slide"
@@ -271,13 +287,41 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
               </IconButton>
             </View>
 
+            {/* Parish Search Input */}
+            <View style={styles.modalSearchBox}>
+              <Ionicons
+                name="search-outline"
+                size={16}
+                color={colors.textSecondary}
+                style={{ marginRight: spacing.xs }}
+              />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search parish name..."
+                placeholderTextColor={colors.textMuted}
+                value={parishSearch}
+                onChangeText={setParishSearch}
+                autoCorrect={false}
+              />
+              {parishSearch.length > 0 ? (
+                <Pressable
+                  onPress={() => setParishSearch("")}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={16}
+                    color={colors.textSecondary}
+                  />
+                </Pressable>
+              ) : null}
+            </View>
+
             <FlatList
-              data={[
-                { id: "0", name: "All Parishes (Diocese-wide)" },
-                ...parishes.map((p) => ({ id: String(p.id), name: p.name })),
-              ]}
+              data={filteredParishes}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.parishListContent}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => {
                 const isSelected =
                   item.id === "0"
@@ -327,17 +371,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   screen: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
   },
   contextBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.surfaceVariant,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: colors.borderLight,
   },
   contextInfo: {
     flexDirection: "row",
@@ -347,7 +391,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   contextLabel: {
-    ...fontStyles.meta,
+    ...fontStyles.caption,
     color: colors.textSecondary,
   },
   contextValue: {
@@ -355,39 +399,42 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   changeContextBtn: {
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: spacing.xxs,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.xs,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surface,
   },
   changeContextBtnPressed: {
-    opacity: 0.7,
+    backgroundColor: colors.surfaceVariant,
   },
   changeContextText: {
-    ...fontStyles.meta,
+    ...fontStyles.captionMedium,
     color: colors.primary,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   messagesList: {
     paddingVertical: spacing.md,
     flexGrow: 1,
     justifyContent: "flex-end",
+    backgroundColor: colors.surface,
   },
   inputContainer: {
     backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: colors.borderLight,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.surfaceVariant,
     borderRadius: radii.pill,
-    borderColor: colors.borderStrong,
+    borderColor: colors.borderLight,
     borderWidth: 1,
-    paddingHorizontal: spacing.sm + 4,
+    paddingHorizontal: spacing.md,
     paddingVertical: Platform.OS === "ios" ? spacing.xs : 2,
     gap: spacing.xs,
   },
@@ -400,9 +447,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
@@ -418,14 +465,14 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: colors.overlay,
     justifyContent: "flex-end",
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    maxHeight: "75%",
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
+    maxHeight: "80%",
     paddingBottom: spacing.xl,
   },
   modalHeader: {
@@ -435,10 +482,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: colors.borderLight,
   },
   modalTitle: {
-    ...fontStyles.heading,
+    ...fontStyles.subheading,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  modalSearchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: radii.xs,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  modalSearchInput: {
+    flex: 1,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
   },
   parishListContent: {
@@ -449,18 +514,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
-    borderRadius: radii.md,
+    borderRadius: radii.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
   parishOptionSelected: {
     backgroundColor: colors.primarySoft,
   },
   parishOptionPressed: {
-    opacity: 0.8,
+    backgroundColor: colors.surfaceVariant,
   },
   parishOptionText: {
-    ...fontStyles.body,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
     flex: 1,
   },

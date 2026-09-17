@@ -73,11 +73,12 @@ const styles = StyleSheet.create({
   },
   title: {
     ...fontStyles.subheading,
-    color: colors.textPrimary,
+    fontWeight: "700",
+    color: colors.neutral[950],
   },
   subtitle: {
     ...fontStyles.caption,
-    color: colors.textSecondary,
+    color: colors.neutral[650],
     marginTop: spacing.xxs,
   },
   action: {
@@ -91,6 +92,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...fontStyles.captionMedium,
-    color: colors.primary,
+    color: colors.brand[700],
+    fontWeight: "600",
   },
 });

@@ -10,15 +10,15 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import {
-  AppHeader,
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  SectionHeader,
-  Skeleton,
-} from "@/components/ui";
+import { AppHeader } from "@/components/ui/AppHeader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { StatusLabel } from "@/components/ui/StatusLabel";
+import { RecordSection } from "@/components/ui/RecordSection";
+import { Divider } from "@/components/ui/Divider";
+import { ContentColumn } from "@/components/layout/ContentColumn";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
@@ -50,6 +50,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   requestId,
 }) => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const isValidId = Boolean(requestId && /^[1-9]\d*$/.test(String(requestId).trim()));
 
   const {
@@ -145,6 +146,9 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
     }
   };
 
+  const attachments = request?.attachments || [];
+  const correctionIds = request?.correctionRequirementIds || [];
+
   const handleResubmitCorrections = async () => {
     if (!request || inFlightGuard.current) return;
 
@@ -158,9 +162,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
     }
 
     inFlightGuard.current = true;
-
     try {
-      // 1. Upload replacement files sequentially
       for (const reqId of correctionIds) {
         const file = correctionFiles[reqId];
         await uploadFileMutation.mutateAsync({
@@ -170,17 +172,18 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
         });
       }
 
-      // 2. Resubmit request
       await resubmitMutation.mutateAsync(request.id);
 
+      setCorrectionFiles({});
       Alert.alert(
         "Corrections Submitted",
-        "Your corrected documents have been submitted and are awaiting staff review."
+        "Your replacement files have been sent to the parish office for review."
       );
+      void refetch();
     } catch (err: any) {
       Alert.alert(
-        "Resubmission Error",
-        err.message || "Failed to resubmit corrected documents. Please try again."
+        "Submission Failed",
+        err.message || "Could not resubmit corrected documents. Please try again."
       );
       void refetch();
     } finally {
@@ -190,31 +193,16 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
 
   const handleFinalizeDraft = async () => {
     if (!request || inFlightGuard.current) return;
-
-    const requiredDocs = (requirements?.requiredDocuments || []).filter((d) => d.required);
-    const uploadedIds = new Set((request.attachments || []).map((a) => a.category));
-    const missing = requiredDocs.filter((d) => !uploadedIds.has(d.id));
-
-    if (missing.length > 0) {
-      const names = missing.map((m) => m.label || m.id).join("\n• ");
-      Alert.alert(
-        "Required Documents Missing",
-        `Please attach all required documents before submitting this request:\n\n• ${names}`
-      );
-      return;
-    }
-
     inFlightGuard.current = true;
+
     try {
       await submitDraftMutation.mutateAsync(request.id);
-      Alert.alert(
-        "Request Submitted",
-        "Your request has been successfully submitted and forwarded to the parish."
-      );
+      Alert.alert("Request Submitted", "Your draft has been submitted to the parish office.");
+      void refetch();
     } catch (err: any) {
       Alert.alert(
         "Submission Failed",
-        err.message || "Could not submit draft request. Please check required attachments."
+        err.message || "Could not finalize draft. Please try again."
       );
       void refetch();
     } finally {
@@ -222,31 +210,8 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
     }
   };
 
-  if (!isValidId || (!isLoading && (error || !request))) {
-    return (
-      <Screen safeArea={true} style={styles.screen}>
-        <AppHeader
-          title="Request Details"
-          onBack={handleBack}
-          backAccessibilityLabel="Back to requests list"
-        />
-        <View style={styles.centerContainer}>
-          <EmptyState
-            icon="alert-circle-outline"
-            title="Request Unavailable"
-            description="The requested document application could not be found or you do not have permission to view it."
-            actionLabel="Return to Requests"
-            onAction={handleBack}
-          />
-        </View>
-      </Screen>
-    );
-  }
-
-  const statusInfo = request
-    ? formatStatus(request.status, request.isDraft)
-    : null;
-  const docTypeLabel = request
+  const statusInfo = request ? formatStatus(request.status, request.isDraft) : null;
+  const docTypeLabel = request?.documentType
     ? formatDocumentType(request.documentType)
     : "Document Request";
   const feeLabel = request ? formatFee(request.fee) : "Fee unavailable";
@@ -254,14 +219,13 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const isCorrectionActionAvailable = isDocumentCorrectionEligible(request);
   const isCancellationAvailable = isCancelEligible(request);
 
-  const attachments = request?.attachments || [];
-  const correctionIds = request?.correctionRequirementIds || [];
-
   const requiredDocuments = requirements?.requiredDocuments || [];
   const requiredDocs = requiredDocuments.filter((d) => d.required);
   const uploadedRequirementIds = new Set(attachments.map((a) => a.category));
   const missingRequiredDocs = requiredDocs.filter((d) => !uploadedRequirementIds.has(d.id));
   const isDraftComplete = missingRequiredDocs.length === 0;
+
+  const bottomPadding = contentBottomInset("none");
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -274,71 +238,89 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <Skeleton width="100%" height={140} style={styles.skeletonCard} />
-          <Skeleton width="100%" height={180} style={styles.skeletonCard} />
+          <Skeleton width="100%" height={120} style={styles.skeletonCard} />
           <Skeleton width="100%" height={160} style={styles.skeletonCard} />
+          <Skeleton width="100%" height={140} style={styles.skeletonCard} />
         </View>
-      ) : request && statusInfo ? (
+      ) : error || !request || !statusInfo ? (
+        <View style={styles.centerContainer}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Request Not Found"
+            description="Unable to load this document request. Please check your connection or return to your list."
+            actionLabel="Return to Requests"
+            onAction={handleBack}
+          />
+        </View>
+      ) : (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + spacing.md }]}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
-              onRefresh={() => void refetch()}
+              onRefresh={() => {
+                void refetch();
+              }}
               colors={[colors.primary]}
               tintColor={colors.primary}
             />
           }
         >
-          {/* Header Card */}
-          <Card style={styles.headerCard}>
-            <View style={styles.statusRow}>
-              <Badge
-                label={statusInfo.label}
-                variant={statusInfo.variant}
-                size="md"
-              />
-              {request.trackingNumber ? (
-                <Text style={styles.trackingRef} allowFontScaling>
-                  Ref: {request.trackingNumber}
-                </Text>
-              ) : null}
-            </View>
+          <ContentColumn style={styles.column}>
+            {/* Record Title & Identity Block */}
+            <View style={styles.recordHeader}>
+              <View style={styles.recordIdentityRow}>
+                <View style={styles.titleWrap}>
+                  <Text style={styles.recordTitle} allowFontScaling>
+                    {docTypeLabel}
+                  </Text>
+                  {request.trackingNumber ? (
+                    <Text style={styles.trackingRef} allowFontScaling>
+                      Tracking: {request.trackingNumber}
+                    </Text>
+                  ) : (
+                    <Text style={styles.trackingDraft} allowFontScaling>
+                      Draft Application
+                    </Text>
+                  )}
+                </View>
+                <StatusLabel status={request.status} />
+              </View>
 
-            <Text style={styles.statusDescription} allowFontScaling>
-              {statusInfo.description}
-            </Text>
+              <Text style={styles.statusDescription} allowFontScaling>
+                {statusInfo.description}
+              </Text>
+            </View>
 
             {/* Attention Action Banners */}
             {request.isDraft ? (
-              <View style={styles.draftBox}>
-                <View style={styles.draftBoxHeader}>
-                  <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-                  <Text style={styles.draftBoxTitle} allowFontScaling>
-                    Draft Request — Attachment Checklist
+              <View style={styles.alertBox}>
+                <View style={styles.alertBoxHeader}>
+                  <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                  <Text style={styles.alertBoxTitle} allowFontScaling>
+                    Draft Checklist
                   </Text>
                 </View>
-                <Text style={styles.draftBoxDesc} allowFontScaling>
+                <Text style={styles.alertBoxDesc} allowFontScaling>
                   {isDraftComplete
                     ? "All required attachments have been uploaded to this draft. You can now finalize and submit."
-                    : `Please attach the remaining ${missingRequiredDocs.length} required document(s) to continue this draft.`}
+                    : `Please attach the remaining ${missingRequiredDocs.length} required document(s) to continue.`}
                 </Text>
 
-                {/* Draft Requirements Checklist & Pickers */}
                 {requiredDocuments.map((reqDoc) => {
                   const uploadedAtt = attachments.find((a) => a.category === reqDoc.id);
 
                   if (uploadedAtt) {
                     return (
                       <View key={reqDoc.id} style={styles.draftUploadedRow}>
-                        <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
                         <View style={styles.draftUploadedDetails}>
                           <Text style={styles.draftUploadedLabel} allowFontScaling>
                             {reqDoc.label || reqDoc.id}
                           </Text>
                           <Text style={styles.draftUploadedFileName} numberOfLines={1} allowFontScaling>
-                            {uploadedAtt.fileName} • Server Attachment
+                            {uploadedAtt.fileName}
                           </Text>
                         </View>
                       </View>
@@ -346,25 +328,24 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   }
 
                   return (
-                    <View key={reqDoc.id} style={styles.draftMissingItem}>
-                      <SupportingFilePicker
-                        requirement={reqDoc}
-                        selectedFile={draftFiles[reqDoc.id]}
-                        onFileSelected={(file) => handleDraftFileUpload(reqDoc.id, file)}
-                        onFileRemoved={() => {
-                          setDraftFiles((prev) => {
-                            const updated = { ...prev };
-                            delete updated[reqDoc.id];
-                            return updated;
-                          });
-                        }}
-                        disabled={
-                          uploadFileMutation.isPending ||
-                          submitDraftMutation.isPending ||
-                          draftUploadingReqId === reqDoc.id
-                        }
-                      />
-                    </View>
+                    <SupportingFilePicker
+                      key={reqDoc.id}
+                      requirement={reqDoc}
+                      selectedFile={draftFiles[reqDoc.id]}
+                      onFileSelected={(file) => void handleDraftFileUpload(reqDoc.id, file)}
+                      onFileRemoved={() => {
+                        setDraftFiles((prev) => {
+                          const updated = { ...prev };
+                          delete updated[reqDoc.id];
+                          return updated;
+                        });
+                      }}
+                      disabled={
+                        uploadFileMutation.isPending ||
+                        submitDraftMutation.isPending ||
+                        draftUploadingReqId === reqDoc.id
+                      }
+                    />
                   );
                 })}
 
@@ -372,56 +353,59 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   title={
                     isDraftComplete
                       ? "Finalize & Submit Request"
-                      : `Submit Request (${missingRequiredDocs.length} Required Missing)`
+                      : `Submit Request (${missingRequiredDocs.length} Missing)`
                   }
                   variant={isDraftComplete ? "primary" : "outline"}
                   size="md"
                   icon="checkmark-circle-outline"
-                  onPress={handleFinalizeDraft}
+                  onPress={() => {
+                    void handleFinalizeDraft();
+                  }}
                   loading={submitDraftMutation.isPending}
                   disabled={submitDraftMutation.isPending || Boolean(draftUploadingReqId)}
-                  style={styles.actionBtn}
-                  accessibilityLabel="Finalize and submit draft request"
+                  style={styles.fullWidthAction}
                 />
               </View>
             ) : isPaymentActionAvailable ? (
-              <View style={styles.paymentBox}>
-                <View style={styles.paymentBoxHeader}>
-                  <Ionicons name="card-outline" size={20} color={colors.primary} />
-                  <Text style={styles.paymentBoxTitle} allowFontScaling>
+              <View style={styles.alertBox}>
+                <View style={styles.alertBoxHeader}>
+                  <Ionicons name="card-outline" size={18} color={colors.primary} />
+                  <Text style={styles.alertBoxTitle} allowFontScaling>
                     Payment Required: {feeLabel}
                   </Text>
                 </View>
                 {request.paymentCorrectionNote ? (
-                  <Text style={styles.paymentCorrectionNote} allowFontScaling>
-                    Note: {request.paymentCorrectionNote}
+                  <Text style={styles.alertBoxDesc} allowFontScaling>
+                    Staff Note: {request.paymentCorrectionNote}
                   </Text>
-                ) : null}
+                ) : (
+                  <Text style={styles.alertBoxDesc} allowFontScaling>
+                    Please settle the required processing fee and submit your official receipt proof.
+                  </Text>
+                )}
                 <Button
                   title="Pay & Upload Receipt"
                   variant="primary"
                   size="md"
                   icon="arrow-forward"
                   onPress={handleGoToPayment}
-                  style={styles.actionBtn}
-                  accessibilityLabel={`Pay ${feeLabel} and upload proof of payment`}
+                  style={styles.fullWidthAction}
                 />
               </View>
             ) : isCorrectionActionAvailable ? (
-              <View style={styles.correctionBox}>
-                <View style={styles.correctionBoxHeader}>
-                  <Ionicons name="alert-circle-outline" size={20} color={colors.danger} />
-                  <Text style={styles.correctionBoxTitle} allowFontScaling>
+              <View style={[styles.alertBox, styles.alertBoxDanger]}>
+                <View style={styles.alertBoxHeader}>
+                  <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+                  <Text style={[styles.alertBoxTitle, { color: colors.danger }]} allowFontScaling>
                     Document Corrections Required
                   </Text>
                 </View>
                 {request.correctionNote ? (
-                  <Text style={styles.correctionNoteText} allowFontScaling>
+                  <Text style={styles.alertBoxDesc} allowFontScaling>
                     Staff Note: {request.correctionNote}
                   </Text>
                 ) : null}
 
-                {/* Correction Upload Pickers */}
                 {correctionIds.map((reqId) => {
                   const reqDoc = requirements?.requiredDocuments?.find((d) => d.id === reqId) || {
                     id: reqId,
@@ -454,153 +438,114 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   variant="primary"
                   size="md"
                   icon="send-outline"
-                  onPress={handleResubmitCorrections}
+                  onPress={() => {
+                    void handleResubmitCorrections();
+                  }}
                   loading={resubmitMutation.isPending || uploadFileMutation.isPending}
-                  style={styles.actionBtn}
-                  accessibilityLabel="Resubmit corrected document attachments"
+                  style={styles.fullWidthAction}
                 />
               </View>
             ) : null}
-          </Card>
 
-          {/* Applicant & Request Information */}
-          <Card style={styles.sectionCard}>
-            <SectionHeader title="Application Details" />
-            <View style={styles.detailsGrid}>
-              <View style={styles.detailItem}>
-                <Text style={styles.fieldLabel} allowFontScaling>
-                  Applicant Name
-                </Text>
-                <Text style={styles.fieldValue} allowFontScaling>
-                  {request.applicantName}
-                </Text>
-              </View>
+            <Divider />
 
-              <View style={styles.detailItem}>
-                <Text style={styles.fieldLabel} allowFontScaling>
-                  Relationship
-                </Text>
-                <Text style={styles.fieldValue} allowFontScaling>
-                  {request.relationship || "Self"}
-                </Text>
-              </View>
-
-              <View style={styles.detailItem}>
-                <Text style={styles.fieldLabel} allowFontScaling>
-                  Target Parish
-                </Text>
-                <Text style={styles.fieldValue} allowFontScaling>
-                  {request.parish?.parishName || "Parish"}
-                </Text>
-              </View>
-
-              <View style={styles.detailItem}>
-                <Text style={styles.fieldLabel} allowFontScaling>
-                  Date Requested
-                </Text>
-                <Text style={styles.fieldValue} allowFontScaling>
-                  {formatDate(request.dateRequested)}
-                </Text>
-              </View>
-
-              {request.purpose ? (
-                <View style={[styles.detailItem, { width: "100%" }]}>
-                  <Text style={styles.fieldLabel} allowFontScaling>
-                    Purpose / Reason
-                  </Text>
-                  <Text style={styles.fieldValue} allowFontScaling>
-                    {request.purpose}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </Card>
-
-          {/* Fee & Payment Summary */}
-          <Card style={styles.sectionCard}>
-            <SectionHeader title="Payment & Fee Snapshot" />
-            <View style={styles.feeSummaryRow}>
-              <Text style={styles.feeLabel} allowFontScaling>
-                Document Fee:
-              </Text>
-              <Text style={styles.feeValue} allowFontScaling>
-                {feeLabel}
-              </Text>
-            </View>
-            <View style={styles.feeSummaryRow}>
-              <Text style={styles.feeLabel} allowFontScaling>
-                Payment Status:
-              </Text>
-              <Badge
-                label={
-                  request.paymentStatus === "CONFIRMED"
-                    ? "Paid / Confirmed"
-                    : request.paymentStatus === "PROOF_SUBMITTED"
-                    ? "Proof Submitted"
-                    : "Unpaid"
-                }
-                variant={
-                  request.paymentStatus === "CONFIRMED"
-                    ? "success"
-                    : request.paymentStatus === "PROOF_SUBMITTED"
-                    ? "info"
-                    : "neutral"
-                }
-                size="sm"
-              />
-            </View>
-          </Card>
-
-          {/* Supporting Documents List */}
-          {attachments.length > 0 ? (
-            <Card style={styles.sectionCard}>
-              <SectionHeader title="Submitted Attachments" />
-              {attachments.map((att) => (
-                <View key={att.id} style={styles.attachmentRow}>
-                  <Ionicons
-                    name="document-attach-outline"
-                    size={20}
-                    color={colors.primary}
-                    style={styles.attachmentIcon}
-                  />
-                  <View style={styles.attachmentDetails}>
-                    <Text style={styles.attachmentName} numberOfLines={1} allowFontScaling>
-                      {att.fileName}
-                    </Text>
-                    <Text style={styles.attachmentMeta} allowFontScaling>
-                      {att.category} • {formatDate(att.uploadedAt)}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </Card>
-          ) : null}
-
-          {/* Real Activity & History */}
-          <Card style={styles.sectionCard}>
-            <SectionHeader title="Request History & Timeline" />
-            <RequestStatusTimeline
-              history={request.requestHistory}
-              estimatedDays={requirements?.estimatedProcessingDays}
+            {/* Record Section 1: Application Details */}
+            <RecordSection
+              title="Application Details"
+              fields={[
+                { label: "Applicant Name", value: request.applicantName },
+                { label: "Relationship", value: request.relationship || "Self" },
+                { label: "Target Parish", value: request.parish?.parishName || "Parish" },
+                { label: "Date Requested", value: formatDate(request.dateRequested) },
+                ...(request.purpose ? [{ label: "Purpose / Reason", value: request.purpose }] : []),
+              ]}
             />
-          </Card>
 
-          {/* Cancel Action */}
-          {isCancellationAvailable ? (
-            <View style={styles.cancelContainer}>
-              <Button
-                title="Cancel Request"
-                variant="outline"
-                size="md"
-                onPress={handleCancelPress}
-                loading={cancelMutation.isPending}
-                style={styles.cancelBtn}
-                accessibilityLabel="Cancel this document request"
+            <Divider />
+
+            {/* Record Section 2: Fee & Payment Snapshot */}
+            <RecordSection
+              title="Payment & Fee Snapshot"
+              fields={[
+                {
+                  label: "Processing Fee",
+                  value: (
+                    <Text style={styles.fieldValueHighlight} allowFontScaling>
+                      {feeLabel}
+                    </Text>
+                  ),
+                },
+                {
+                  label: "Payment Status",
+                  value: (
+                    <StatusLabel
+                      status={
+                        request.paymentStatus === "CONFIRMED"
+                          ? "CONFIRMED"
+                          : request.paymentStatus === "PROOF_SUBMITTED"
+                          ? "PAYMENT_UNDER_REVIEW"
+                          : "PAYMENT_PENDING"
+                      }
+                    />
+                  ),
+                },
+              ]}
+            />
+
+            <Divider />
+
+            {/* Record Section 3: Submitted Attachments */}
+            {attachments.length > 0 ? (
+              <>
+                <RecordSection title="Submitted Attachments">
+                  {attachments.map((att, index) => (
+                    <View key={att.id || index} style={styles.attachmentRow}>
+                      <Ionicons
+                        name="document-attach-outline"
+                        size={18}
+                        color={colors.primary}
+                        style={styles.attachmentIcon}
+                      />
+                      <View style={styles.attachmentDetails}>
+                        <Text style={styles.attachmentName} numberOfLines={1} allowFontScaling>
+                          {att.fileName}
+                        </Text>
+                        <Text style={styles.attachmentMeta} allowFontScaling>
+                          {att.category} • {formatDate(att.uploadedAt)}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </RecordSection>
+                <Divider />
+              </>
+            ) : null}
+
+            {/* Record Section 4: Request Timeline & History */}
+            <RecordSection title="Request History & Timeline">
+              <RequestStatusTimeline
+                history={request.requestHistory}
+                estimatedDays={requirements?.estimatedProcessingDays}
               />
-            </View>
-          ) : null}
+            </RecordSection>
+
+            {/* Cancel Action */}
+            {isCancellationAvailable ? (
+              <View style={styles.cancelContainer}>
+                <Button
+                  title="Cancel Request"
+                  variant="ghost"
+                  size="md"
+                  onPress={handleCancelPress}
+                  loading={cancelMutation.isPending}
+                  style={styles.cancelBtn}
+                  accessibilityLabel="Cancel this document request"
+                />
+              </View>
+            ) : null}
+          </ContentColumn>
         </ScrollView>
-      ) : null}
+      )}
     </Screen>
   );
 };
@@ -614,8 +559,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl + 24,
+    paddingVertical: spacing.md,
+  },
+  column: {
+    gap: spacing.md,
   },
   loadingContainer: {
     padding: spacing.md,
@@ -629,64 +576,74 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     justifyContent: "center",
   },
-  headerCard: {
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
+  recordHeader: {
+    paddingHorizontal: spacing.xxs,
+    gap: spacing.xs,
   },
-  statusRow: {
+  recordIdentityRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.xs,
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  titleWrap: {
+    flex: 1,
+  },
+  recordTitle: {
+    ...fontStyles.titleSerif,
+    color: colors.textPrimary,
+    fontSize: 22,
+    lineHeight: 28,
   },
   trackingRef: {
     ...fontStyles.caption,
+    color: colors.textSecondary,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  trackingDraft: {
+    ...fontStyles.caption,
+    color: colors.primary,
     fontWeight: "700",
-    color: colors.textPrimary,
-    fontFamily: "monospace",
+    marginTop: 2,
   },
   statusDescription: {
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
-    marginVertical: spacing.xs,
-    lineHeight: 18,
+    lineHeight: 20,
   },
-  draftBox: {
-    backgroundColor: colors.primarySoft,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginTop: spacing.sm,
+  alertBox: {
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
     borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  draftBoxHeader: {
+  alertBoxDanger: {
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
+  },
+  alertBoxHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
   },
-  draftBoxTitle: {
-    ...fontStyles.bodyMedium,
+  alertBoxTitle: {
+    ...fontStyles.captionMedium,
     color: colors.primary,
     fontWeight: "700",
   },
-  draftBoxDesc: {
-    ...fontStyles.caption,
-    color: colors.textPrimary,
-    marginTop: 2,
-    marginBottom: spacing.sm,
+  alertBoxDesc: {
+    ...fontStyles.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
   draftUploadedRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    marginBottom: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
     gap: spacing.xs,
+    paddingVertical: spacing.xxs,
   },
   draftUploadedDetails: {
     flex: 1,
@@ -694,143 +651,66 @@ const styles = StyleSheet.create({
   draftUploadedLabel: {
     ...fontStyles.captionMedium,
     color: colors.textPrimary,
-    fontWeight: "600",
   },
   draftUploadedFileName: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+    fontSize: 12,
   },
-  draftMissingItem: {
-    marginBottom: spacing.xs,
-  },
-  paymentBox: {
-    backgroundColor: colors.primarySoft,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginTop: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  paymentBoxHeader: {
+  fieldRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  paymentBoxTitle: {
-    ...fontStyles.bodyMedium,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-  paymentCorrectionNote: {
-    ...fontStyles.caption,
-    color: colors.textPrimary,
-    marginTop: 4,
-    marginBottom: spacing.xs,
-  },
-  correctionBox: {
-    backgroundColor: colors.dangerSoft,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginTop: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.dangerSoft,
-  },
-  correctionBoxHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  correctionBoxTitle: {
-    ...fontStyles.bodyMedium,
-    color: colors.danger,
-    fontWeight: "700",
-  },
-  correctionNoteText: {
-    ...fontStyles.bodySmall,
-    color: colors.textPrimary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  paymentButton: {
-    marginTop: spacing.md,
-  },
-  actionBtn: {
-    marginTop: spacing.sm,
-  },
-  sectionCard: {
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-  },
-  detailsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    rowGap: spacing.md,
-    marginTop: spacing.xs,
-  },
-  detailItem: {
-    width: "50%",
-    paddingRight: spacing.xs,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingVertical: spacing.xs,
+    gap: spacing.md,
   },
   fieldLabel: {
     ...fontStyles.caption,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    fontWeight: "600",
+    color: colors.textSecondary,
+    flex: 1,
   },
   fieldValue: {
-    ...fontStyles.bodyMedium,
+    ...fontStyles.captionMedium,
     color: colors.textPrimary,
-    fontWeight: "600",
-    marginTop: 2,
+    textAlign: "right",
+    flex: 2,
   },
-  feeSummaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  feeLabel: {
-    ...fontStyles.bodyMedium,
-    color: colors.textSecondary,
-  },
-  feeValue: {
-    ...fontStyles.subheading,
+  fieldValueHighlight: {
+    ...fontStyles.captionBold,
     color: colors.primary,
-    fontWeight: "800",
+    textAlign: "right",
   },
   attachmentRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   attachmentIcon: {
-    marginRight: spacing.sm,
+    marginTop: 1,
   },
   attachmentDetails: {
     flex: 1,
   },
   attachmentName: {
-    ...fontStyles.bodyMedium,
+    ...fontStyles.bodySmall,
     color: colors.textPrimary,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   attachmentMeta: {
     ...fontStyles.caption,
     color: colors.textSecondary,
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 1,
   },
   cancelContainer: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
+    paddingVertical: spacing.xs,
+    alignItems: "center",
   },
   cancelBtn: {
-    borderColor: colors.danger,
+    alignSelf: "center",
+  },
+  fullWidthAction: {
+    width: "100%",
   },
 });

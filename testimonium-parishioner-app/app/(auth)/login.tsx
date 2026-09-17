@@ -1,17 +1,17 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Screen } from "@/components/Screen";
+import { AuthScaffold } from "@/components/auth";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Divider } from "@/components/ui/Divider";
 import { GoogleLogo } from "@/components/ui/GoogleLogo";
+import { StateView } from "@/components/ui/StateView";
 import { TextInput } from "@/components/ui/TextInput";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
 import { isGoogleAuthAvailable } from "@/services/auth/googleAuth";
-import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { navigateBackOrReplace } from "@/services/navigation/back";
+import { colors, fontStyles, spacing } from "@/theme/tokens";
 
 export default function LoginScreen() {
   const { signInWithEmail, signInWithGoogle, isSigningIn } = useAuth();
@@ -55,109 +55,91 @@ export default function LoginScreen() {
   };
 
   return (
-    <Screen scrollable style={styles.screen}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.dioceseBadge}>
-            <Text style={styles.dioceseBadgeText}>TESTIMONIUM PORTAL</Text>
-          </View>
-          <Text style={styles.title} allowFontScaling>
-            Sign In
-          </Text>
-          <Text style={styles.copy} allowFontScaling>
-            Enter your registered credentials to access your sacramental services and records.
-          </Text>
-        </View>
-
-        {/* Error Notice */}
+    <AuthScaffold
+      title="Sign In"
+      subtitle="Enter your credentials to access sacramental services and records."
+    >
+      <View style={styles.formContent}>
         {error && (
-          <View style={styles.errorContainer}>
-            <Ionicons
-              name="alert-circle"
-              size={18}
-              color={colors.danger}
-              style={styles.errorIcon}
-            />
-            <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
-              {error}
-            </Text>
-          </View>
+          <StateView.InlineError
+            message={error}
+            style={styles.errorContainer}
+          />
         )}
 
-        {/* Form Card */}
-        <Card style={styles.formCard}>
-          <View style={styles.fields}>
-            <TextInput
-              label="Email Address"
-              value={email}
-              onChangeText={(val) => {
-                setEmail(val);
-                if (error) setError(null);
-              }}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              placeholder="e.g. parishioner@example.com"
-              leftIcon="mail-outline"
-              editable={!isSigningIn}
-            />
-
-            <TextInput
-              label="Password"
-              value={password}
-              onChangeText={(val) => {
-                setPassword(val);
-                if (error) setError(null);
-              }}
-              isPassword
-              autoComplete="current-password"
-              placeholder="Enter your password"
-              leftIcon="lock-closed-outline"
-              editable={!isSigningIn}
-            />
-
-            <View style={styles.forgotRow}>
-              <Pressable
-                onPress={() => router.push("/(auth)/forgot-password" as any)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Forgot password? Instructions to reset password"
-              >
-                <Text style={styles.forgotText} allowFontScaling>
-                  Forgot Password?
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <Button
-            title={isSigningIn ? "Signing In..." : "Sign In"}
-            size="lg"
-            loading={isSigningIn}
-            disabled={isSigningIn || !email.trim() || !password}
-            onPress={() => {
-              void handleSubmit();
+        <View style={styles.fields}>
+          <TextInput
+            label="Email Address"
+            value={email}
+            onChangeText={(val) => {
+              setEmail(val);
+              if (error) setError(null);
             }}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            placeholder="e.g. parishioner@example.com"
+            leftIcon="mail-outline"
+            editable={!isSigningIn}
           />
-        </Card>
+
+          <TextInput
+            label="Password"
+            value={password}
+            onChangeText={(val) => {
+              setPassword(val);
+              if (error) setError(null);
+            }}
+            isPassword
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            leftIcon="lock-closed-outline"
+            editable={!isSigningIn}
+          />
+
+          <View style={styles.forgotRow}>
+            <Pressable
+              onPress={() => router.push("/(auth)/forgot-password" as any)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Forgot password? Instructions to reset password"
+            >
+              <Text style={styles.forgotText} allowFontScaling>
+                Forgot Password?
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <Button
+          title={isSigningIn ? "Signing In..." : "Sign In"}
+          size="lg"
+          variant="primary"
+          fullWidth
+          loading={isSigningIn}
+          disabled={isSigningIn || !email.trim() || !password}
+          onPress={() => {
+            void handleSubmit();
+          }}
+        />
 
         {/* Alternative Actions */}
         <View style={styles.actions}>
           {showGoogleButton && (
             <>
               <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
+                <Divider style={styles.dividerLine} />
                 <Text style={styles.dividerText} allowFontScaling>
                   OR
                 </Text>
-                <View style={styles.dividerLine} />
+                <Divider style={styles.dividerLine} />
               </View>
 
               <Button
-                title="Continue with Google"
+                title="Sign In with Google"
                 size="lg"
                 variant="secondary"
+                fullWidth
                 leftComponent={<GoogleLogo size={20} />}
                 loading={isSigningIn}
                 disabled={isSigningIn}
@@ -172,6 +154,7 @@ export default function LoginScreen() {
             title="Create New Account"
             size="lg"
             variant="outline"
+            fullWidth
             disabled={isSigningIn}
             onPress={() => router.push("/(auth)/register" as any)}
           />
@@ -179,6 +162,7 @@ export default function LoginScreen() {
           <Button
             title="Back"
             variant="ghost"
+            fullWidth
             disabled={isSigningIn}
             onPress={() =>
               navigateBackOrReplace(
@@ -190,57 +174,16 @@ export default function LoginScreen() {
           />
         </View>
       </View>
-    </Screen>
+    </AuthScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
+  formContent: {
+    paddingVertical: spacing.sm,
   },
-  container: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  header: {
-    marginBottom: spacing.lg,
-  },
-  dioceseBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs + 2,
-    borderRadius: radii.sm,
-    marginBottom: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.primary + "20",
-  },
-  dioceseBadgeText: {
-    ...fontStyles.meta,
-    color: colors.primary,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-  },
-  title: {
-    ...fontStyles.title,
-    color: colors.textPrimary,
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: "800",
-  },
-  copy: {
-    ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginTop: spacing.xs,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
+  errorContainer: {
     marginBottom: spacing.md,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   fields: {
     gap: spacing.md,
@@ -253,28 +196,12 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     ...fontStyles.captionMedium,
-    color: colors.primary,
+    color: colors.brand[700],
     fontWeight: "600",
   },
-  errorContainer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  errorIcon: {
-    marginTop: 1,
-  },
-  errorText: {
-    ...fontStyles.caption,
-    color: colors.danger,
-    lineHeight: 18,
-    flex: 1,
+  actions: {
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   dividerRow: {
     flexDirection: "row",
@@ -284,16 +211,11 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 1,
-    backgroundColor: colors.borderLight,
   },
   dividerText: {
     ...fontStyles.caption,
-    color: colors.textMuted,
+    color: colors.neutral[500],
     fontWeight: "600",
     letterSpacing: 0.5,
-  },
-  actions: {
-    gap: spacing.sm,
   },
 });

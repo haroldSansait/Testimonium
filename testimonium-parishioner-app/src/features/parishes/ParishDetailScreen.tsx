@@ -10,14 +10,15 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
+import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import {
   AppHeader,
-  Badge,
   Button,
-  Card,
   EmptyState,
+  PageSection,
   ParishCardSkeleton,
-  SectionHeader,
+  RecordSection,
+  StatusLabel,
 } from "@/components/ui";
 import { UpcomingEventsSection } from "@/features/events/UpcomingEventsSection";
 import { getEffectiveOfferedDocuments } from "@/features/requests/presentation";
@@ -41,6 +42,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
   parishId,
 }) => {
   const router = useRouter();
+  const { contentBottomInset } = useAppLayoutMetrics();
   const { requireCompleteProfile } = useRequireCompleteProfile();
   const [imageError, setImageError] = useState(false);
 
@@ -107,7 +109,10 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
       ) : parish ? (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: contentBottomInset() },
+          ]}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -120,7 +125,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
             />
           }
         >
-          {/* Cover Image */}
+          {/* Cover Image Banner */}
           {hasCoverImage ? (
             <View style={styles.imageContainer}>
               <Image
@@ -139,12 +144,13 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
             <View style={styles.headerBlock}>
               <View style={styles.badgeRow}>
                 {parish.type ? (
-                  <Badge label={parish.type} variant="primary" />
+                  <StatusLabel label={parish.type} status="default" showDot={false} />
                 ) : null}
                 {parish.feastDay ? (
-                  <Badge
+                  <StatusLabel
                     label={`Feast: ${parish.feastDay}`}
-                    variant="neutral"
+                    status="neutral"
+                    showDot={false}
                   />
                 ) : null}
               </View>
@@ -161,7 +167,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                 <View style={styles.infoRow}>
                   <Ionicons
                     name="sparkles-outline"
-                    size={16}
+                    size={15}
                     color={colors.primary}
                     style={styles.infoIcon}
                     accessibilityElementsHidden={true}
@@ -177,7 +183,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                 <View style={styles.infoRow}>
                   <Ionicons
                     name="location-outline"
-                    size={16}
+                    size={15}
                     color={colors.textSecondary}
                     style={styles.infoIcon}
                     accessibilityElementsHidden={true}
@@ -192,7 +198,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
 
             {/* Quick Actions Bar */}
             {phoneUrl || emailUrl || mapUrl ? (
-              <View style={styles.actionsCard}>
+              <View style={styles.actionsBlock}>
                 <Text style={styles.actionsTitle} allowFontScaling>
                   Contact & Location
                 </Text>
@@ -242,13 +248,16 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
               </View>
             ) : null}
 
-            {/* Request Document CTA (Only if parish offers online document requests) */}
+            {/* Request Document CTA */}
             {getEffectiveOfferedDocuments(parish.availableDocuments).length > 0 ? (
-              <Card style={styles.requestCtaCard}>
-                <View style={styles.requestCtaContent}>
-                  <View style={styles.requestCtaIconBox}>
-                    <Ionicons name="document-text" size={24} color={colors.primary} />
-                  </View>
+              <View style={styles.requestCtaContainer}>
+                <View style={styles.requestCtaHeader}>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={20}
+                    color={colors.primary}
+                    style={{ marginRight: spacing.xs }}
+                  />
                   <View style={styles.requestCtaTextGroup}>
                     <Text style={styles.requestCtaTitle} allowFontScaling>
                       Request Sacramental Certificate
@@ -270,36 +279,28 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                   }}
                   accessibilityLabel={`Request document from ${parish.name}`}
                 />
-              </Card>
+              </View>
             ) : null}
 
-            {/* Description */}
+            {/* About Description */}
             {parish.directoryDescription ? (
-              <Card style={styles.sectionCard}>
-                <SectionHeader title="About the Parish" />
+              <PageSection title="About the Parish" style={styles.sectionSpacing}>
                 <Text style={styles.descriptionText} allowFontScaling>
                   {parish.directoryDescription}
                 </Text>
-              </Card>
+              </PageSection>
             ) : null}
 
             {/* Office Hours */}
             {officeHoursRows.length > 0 ? (
-              <Card style={styles.sectionCard}>
-                <SectionHeader title="Parish Office Hours" />
-                <View style={styles.officeHoursContainer}>
-                  {officeHoursRows.map((row) => (
-                    <View key={row.day} style={styles.officeHourRow}>
-                      <Text style={styles.dayText} allowFontScaling>
-                        {row.day}
-                      </Text>
-                      <Text style={styles.hoursText} allowFontScaling>
-                        {row.hours}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </Card>
+              <RecordSection
+                title="Parish Office Hours"
+                fields={officeHoursRows.map((row) => ({
+                  label: row.day,
+                  value: row.hours,
+                }))}
+                style={styles.sectionSpacing}
+              />
             ) : null}
 
             {/* Parish Public Events */}
@@ -308,6 +309,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
               title="Events at this Parish"
               subtitle="Public events and masses scheduled this month"
               hideParishName={true}
+              style={styles.sectionSpacing}
             />
           </View>
         </ScrollView>
@@ -326,14 +328,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: spacing.xxl,
   },
   contentPadding: {
     padding: spacing.md,
   },
   imageContainer: {
     width: "100%",
-    height: 200,
+    height: 180,
     backgroundColor: colors.surfaceVariant,
   },
   coverImage: {
@@ -343,9 +344,9 @@ const styles = StyleSheet.create({
   headerBlock: {
     backgroundColor: colors.surface,
     padding: spacing.md,
-    borderRadius: radii.lg,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: colors.borderLight,
     marginBottom: spacing.md,
   },
   badgeRow: {
@@ -355,7 +356,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   parishTitle: {
-    ...fontStyles.title,
+    ...fontStyles.heading,
     color: colors.textPrimary,
     marginVertical: spacing.xs,
   },
@@ -371,6 +372,7 @@ const styles = StyleSheet.create({
   patronText: {
     ...fontStyles.bodyMedium,
     color: colors.primary,
+    fontWeight: "600",
     flex: 1,
   },
   addressText: {
@@ -378,18 +380,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
-  actionsCard: {
+  actionsBlock: {
     backgroundColor: colors.surface,
     padding: spacing.md,
-    borderRadius: radii.lg,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: colors.borderLight,
     marginBottom: spacing.md,
   },
   actionsTitle: {
     ...fontStyles.captionMedium,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
+    fontWeight: "600",
   },
   actionsRow: {
     flexDirection: "row",
@@ -400,54 +403,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 90,
   },
-  sectionCard: {
-    marginBottom: spacing.md,
+  requestCtaContainer: {
     backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-  },
-  descriptionText: {
-    ...fontStyles.body,
-    color: colors.textPrimary,
-    lineHeight: 22,
-  },
-  officeHoursContainer: {
-    gap: spacing.xs,
-  },
-  officeHourRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: spacing.xxs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  dayText: {
-    ...fontStyles.bodySmall,
-    color: colors.textPrimary,
-    fontWeight: "600",
-  },
-  hoursText: {
-    ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-  },
-  requestCtaCard: {
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.cardBorder,
-    padding: spacing.md,
-  },
-  requestCtaContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  requestCtaIconBox: {
-    width: 44,
-    height: 44,
     borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+  },
+  requestCtaHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
   },
   requestCtaTextGroup: {
     flex: 1,
@@ -461,5 +428,14 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.textSecondary,
     marginTop: 2,
+    lineHeight: 16,
+  },
+  sectionSpacing: {
+    marginBottom: spacing.md,
+  },
+  descriptionText: {
+    ...fontStyles.body,
+    color: colors.textPrimary,
+    lineHeight: 22,
   },
 });
