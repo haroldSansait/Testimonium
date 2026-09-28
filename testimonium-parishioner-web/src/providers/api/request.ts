@@ -55,6 +55,7 @@ const mapBackendToFrontendStatus = (status: string): RequestStatus => {
     case 'PAYMENT_VERIFIED':
       return 'payment-verification';
     case 'PROCESSING':
+    case 'READY_FOR_SIGNING':
       return 'processing';
     case 'READY_FOR_PICKUP':
       return 'ready';

@@ -116,6 +116,7 @@ const formatActionLabel = (action: string): string => {
     case "PAYMENT_VERIFIED":
       return "Payment Confirmed";
     case "PROCESSING":
+    case "READY_FOR_SIGNING":
       return "Preparation Underway";
     case "READY_FOR_PICKUP":
       return "Marked Ready for Pickup";

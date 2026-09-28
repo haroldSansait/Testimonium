@@ -25,6 +25,7 @@ export const DOCUMENT_REQUEST_STATUS_LABELS = {
   PAYMENT_NEEDS_CORRECTION: "Payment proof needs correction",
   PAYMENT_VERIFIED: "Payment verified",
   PROCESSING: "Processing",
+  READY_FOR_SIGNING: "Processing",
   READY_FOR_PICKUP: "Ready for pickup",
   COMPLETED: "Completed",
   REJECTED: "Rejected",

@@ -67,13 +67,14 @@ describe("Requests Presentation & Helpers", () => {
       "PAYMENT_NEEDS_CORRECTION",
       "PAYMENT_VERIFIED",
       "PROCESSING",
+      "READY_FOR_SIGNING",
       "READY_FOR_PICKUP",
       "COMPLETED",
       "REJECTED",
       "CANCELLED",
     ];
 
-    it("has valid presentation definitions for all 12 statuses", () => {
+    it("has valid presentation definitions for all 13 statuses", () => {
       for (const status of allStatuses) {
         const presentation = STATUS_PRESENTATION[status];
         expect(presentation).toBeDefined();

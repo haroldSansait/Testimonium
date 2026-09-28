@@ -967,6 +967,7 @@ export class LiveToolRegistry {
         break;
       case "PAYMENT_VERIFIED":
       case "PROCESSING":
+      case "READY_FOR_SIGNING":
         statusExplanation = "Your payment has been verified. The parish office is currently preparing your certificate.";
         safeNextAction = "Certificate is being prepared.";
         break;

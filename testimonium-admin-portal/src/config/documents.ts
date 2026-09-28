@@ -87,3 +87,62 @@ export const CANONICAL_DOCUMENT_TYPES: CanonicalDocumentDefinition[] = [
 
 export const CANONICAL_DOCUMENT_IDS = CANONICAL_DOCUMENT_TYPES.map((d) => d.id);
 export const DEFAULT_OFFERED_DOCUMENTS = [...CANONICAL_DOCUMENT_IDS];
+
+export interface CanonicalRequirement {
+  id: string;
+  label: string;
+}
+
+export const CANONICAL_REQUIREMENTS: CanonicalRequirement[] = Array.from(
+  new Map(
+    CANONICAL_DOCUMENT_TYPES.flatMap((doc) => doc.requirements)
+      .map((requirement) => [requirement.id, requirement] as const)
+  ).values()
+);
+
+export const DEFAULT_REQUIREMENTS_PER_DOC: Record<string, string[]> = Object.fromEntries(
+  CANONICAL_DOCUMENT_TYPES.map((doc) => [doc.id, doc.requirements.map((r) => r.id)])
+);
+
+export function getAssignedCanonicalRequirements(docId: string, documentSettings: any) {
+  const conf = documentSettings?.[docId] || {};
+  const reqs = conf.requirements || {};
+  const defaults = DEFAULT_REQUIREMENTS_PER_DOC[docId] || [];
+
+  return CANONICAL_REQUIREMENTS.filter((requirement) => {
+    if (reqs[requirement.id] !== undefined) {
+      return reqs[requirement.id] === true;
+    }
+    return defaults.includes(requirement.id);
+  });
+}
+
+export function getAvailableCanonicalRequirements(docId: string, documentSettings: any) {
+  const assignedIds = new Set(
+    getAssignedCanonicalRequirements(docId, documentSettings).map((requirement) => requirement.id)
+  );
+  return CANONICAL_REQUIREMENTS.filter((requirement) => !assignedIds.has(requirement.id));
+}
+
+export function setCanonicalRequirementAssignment(
+  documentSettings: any,
+  docId: string,
+  requirementId: string,
+  assigned: boolean
+) {
+  if (!CANONICAL_REQUIREMENTS.some((requirement) => requirement.id === requirementId)) {
+    throw new Error(`Unknown canonical requirement: ${requirementId}`);
+  }
+
+  const doc = documentSettings?.[docId] || { price: 0, requirements: {} };
+  return {
+    ...documentSettings,
+    [docId]: {
+      ...doc,
+      requirements: {
+        ...(doc.requirements || {}),
+        [requirementId]: assigned,
+      },
+    },
+  };
+}

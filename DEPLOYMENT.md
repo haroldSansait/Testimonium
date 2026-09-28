@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 14 September 2026
+**Last reconciled:** 28 September 2026
 
 Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -68,6 +68,8 @@ Client variables are public configuration. Never put service-account keys, R2 se
    npx prisma generate
    ```
 
+   *Note: Ensure recent migrations through `20260928180000_enforce_single_mother_parish` (which creates the partial unique index `parishes_single_mother_parish_idx`) are fully applied before running application services.*
+
 3. Start or restart the backend with a process manager. Example PM2 command:
 
    ```bash
@@ -132,5 +134,7 @@ The additive migration `20260913150000_add_caloy_control_center` must be applied
 - Back out an application release by serving the previous frontend build and restarting the previous backend release. Do not reverse a migration unless a tested down-migration or restore plan exists.
 - Monitor API health, structured backend logs, R2 upload errors, OCR failures, and rate-limit behavior after release.
 - `RATE_LIMIT_STORE=memory` is process-local; use a shared strategy before horizontally scaling rate-limited API instances.
+- Ensure that the single Mother Parish invariant (`parishes_single_mother_parish_idx`) is respected during seed operations and parish modifications.
+- Note that Priests have parish-scoped read-only access to document requests, and document status changes to `READY_FOR_SIGNING` trigger an in-app notification to the active primary priest.
 
 For R2 CORS and lifecycle configuration, see [CLOUDFLARE_R2.md](CLOUDFLARE_R2.md).

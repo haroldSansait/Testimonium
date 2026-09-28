@@ -34,6 +34,7 @@ export const baseParishObject = z.object({
   eventSettings: z.any().optional().nullable(),
   officeHours: z.any().optional().nullable(),
   venueCapacity: z.number().int().positive().max(10000).optional().nullable(),
+  isMotherParish: z.boolean().optional(),
   parishInfo: z
     .object({
       name: z.string().min(1, "Parish name must be at least 1 character"),
@@ -47,6 +48,7 @@ export const baseParishObject = z.object({
       address: z.string().optional().nullable(),
       contactNumber: z.string().optional().nullable(),
       email: z.string().email("Invalid email format").optional().nullable().or(z.literal("")),
+      isMotherParish: z.boolean().optional(),
     })
     .optional()
     .nullable(),
@@ -101,4 +103,3 @@ export const updateDirectorySettingsSchema = z.object({
   contactNumber: z.string().optional().nullable(),
   email: z.string().email("Invalid email format").optional().nullable().or(z.literal("")),
 });
-

@@ -102,7 +102,7 @@ export class DocumentRequestRepository {
   async countStats(parishId) {
     const pendingWhere = {
       status: {
-        in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING"]
+        in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING"]
       },
       isDraft: false
     };

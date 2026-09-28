@@ -11,6 +11,7 @@ import { NewParishWizard, type WizardData, MONTHS, getDaysInMonth } from '@/comp
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { SearchableDropdown, type DropdownOption } from '@/components/ui/SearchableDropdown';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/utils/cn';
 import type { Parish, ParishType, ParishStatus } from '@/types';
 
@@ -120,6 +121,7 @@ interface EditParishFormData {
   address: string;
   contactNumber: string;
   email: string;
+  isMotherParish: boolean;
 }
 
 interface EditParishModalProps {
@@ -127,9 +129,10 @@ interface EditParishModalProps {
   onSave: (data: Partial<Parish>) => Promise<void>;
   onClose: () => void;
   isSaving: boolean;
+  isDioceseCoordinator: boolean;
 }
 
-function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalProps) {
+function EditParishModal({ parish, onSave, onClose, isSaving, isDioceseCoordinator }: EditParishModalProps) {
   const [form, setForm] = useState<EditParishFormData>({
     name: parish.name,
     type: parish.type,
@@ -145,6 +148,7 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
     address: parish.address ?? '',
     contactNumber: parish.contactNumber ?? '',
     email: parish.email ?? '',
+    isMotherParish: parish.isMotherParish === true,
   });
 
   const [priests, setPriests] = useState<DropdownOption[]>([]);
@@ -262,22 +266,34 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
       form.feastDay.trim()
     ) && !isLoadingStaff;
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = async () => {
     if (!form.type) return;
-    await onSave({
-      name: form.name,
-      type: form.type as ParishType,
-      vicariate: form.vicariate,
-      municipalityCity: form.municipalityCity.trim(),
-      feastDay: form.feastDay.trim(),
-      priestId: form.priestId,
-      secretaryId: form.secretaryId,
-      status: form.status,
-      patronSaint: form.patronSaint || undefined,
-      address: form.address || undefined,
-      contactNumber: form.contactNumber || undefined,
-      email: form.email || undefined,
-    });
+    setSaveError(null);
+    try {
+      await onSave({
+        name: form.name,
+        type: form.type as ParishType,
+        vicariate: form.vicariate,
+        municipalityCity: form.municipalityCity.trim(),
+        feastDay: form.feastDay.trim(),
+        priestId: form.priestId,
+        secretaryId: form.secretaryId,
+        status: form.status,
+        patronSaint: form.patronSaint || undefined,
+        address: form.address || undefined,
+        contactNumber: form.contactNumber || undefined,
+        email: form.email || undefined,
+        ...(isDioceseCoordinator ? { isMotherParish: form.isMotherParish } : {}),
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to update parish.';
+      setSaveError(errorMsg);
+    }
   };
 
   return createPortal(
@@ -317,6 +333,11 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
           {staffError && (
             <div className="text-xs text-red-600 font-medium bg-red-50 border border-red-150 rounded-lg p-3">
               {staffError}
+            </div>
+          )}
+          {saveError && (
+            <div id="ep-error-message" className="text-xs text-red-600 font-medium bg-red-50 border border-red-200 rounded-lg p-3">
+              {saveError}
             </div>
           )}
 
@@ -433,6 +454,23 @@ function EditParishModal({ parish, onSave, onClose, isSaving }: EditParishModalP
               <input id="ep-email" type="email" className={inputCls} placeholder="parish@diocese.org" value={form.email} onChange={set('email')} />
             </FormField>
           </div>
+
+          {isDioceseCoordinator && (
+            <FormField label="Mother Parish" id="ep-is-mother-parish">
+              <label htmlFor="ep-is-mother-parish" className="relative flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  id="ep-is-mother-parish"
+                  type="checkbox"
+                  checked={form.isMotherParish}
+                  onChange={(event) => setForm((prev) => ({ ...prev, isMotherParish: event.target.checked }))}
+                  className="sr-only peer"
+                />
+                <div className="relative w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-crimson-700/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-crimson-600" />
+                <span className="text-sm font-medium text-slate-700">Set as Mother Parish</span>
+                <span className="text-xs font-bold text-slate-500">{form.isMotherParish ? 'ON' : 'OFF'}</span>
+              </label>
+            </FormField>
+          )}
         </div>
 
         {/* Footer */}
@@ -489,6 +527,9 @@ interface ToastState {
 }
 
 export function ParishManagementPage() {
+  const { role } = useAuth();
+  const isDioceseCoordinator = role === 'DIOCESE_COORDINATOR';
+
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('all');
@@ -530,23 +571,33 @@ export function ParishManagementPage() {
   // ── Wizard finish → addParish ──────────────────────────────────────────────
 
   const handleWizardFinish = async (data: WizardData) => {
-    await ParishManagementService.addParish({
-      parishInfo: {
-        name: data.parishInfo.name,
-        type: data.parishInfo.type as ParishType,
-        vicariate: data.parishInfo.vicariate,
-        municipalityCity: data.parishInfo.municipalityCity,
-        feastDay: data.parishInfo.feastDay,
-        patronSaint: data.parishInfo.patronSaint || undefined,
-        address: data.parishInfo.address || undefined,
-        contactNumber: data.parishInfo.contactNumber || undefined,
-        email: data.parishInfo.email || undefined,
-      },
-      priest: data.priest,
-      secretary: data.secretary,
-    });
-    showToast('Parish added successfully.');
-    void fetchParishes();
+    try {
+      await ParishManagementService.addParish({
+        parishInfo: {
+          name: data.parishInfo.name,
+          type: data.parishInfo.type as ParishType,
+          vicariate: data.parishInfo.vicariate,
+          municipalityCity: data.parishInfo.municipalityCity,
+          feastDay: data.parishInfo.feastDay,
+          patronSaint: data.parishInfo.patronSaint || undefined,
+          address: data.parishInfo.address || undefined,
+          contactNumber: data.parishInfo.contactNumber || undefined,
+          email: data.parishInfo.email || undefined,
+          isMotherParish: data.parishInfo.isMotherParish,
+        },
+        priest: data.priest,
+        secretary: data.secretary,
+      });
+      showToast('Parish added successfully.');
+      void fetchParishes();
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to add parish.';
+      showToast(errorMsg, 'error');
+      throw err;
+    }
   };
 
   // ── Edit parish ────────────────────────────────────────────────────────────
@@ -558,8 +609,13 @@ export function ParishManagementPage() {
       setModal({ type: 'none' });
       showToast('Parish updated successfully.');
       void fetchParishes();
-    } catch {
-      showToast('Failed to update parish.', 'error');
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to update parish.';
+      showToast(errorMsg, 'error');
+      throw err;
     } finally {
       setIsSaving(false);
     }
@@ -652,7 +708,16 @@ export function ParishManagementPage() {
                 <tbody>
                   {parishes.map((parish) => (
                     <tr key={parish.id}>
-                      <td className="font-semibold text-gray-900">{parish.name}</td>
+                      <td className="font-semibold text-gray-900">
+                        <div>{parish.name}</div>
+                        {parish.isMotherParish && (
+                          <div className="mt-0.5">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-crimson-50 text-crimson-700 border border-crimson-200/60 leading-none">
+                              Mother Parish
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td><ParishTypeBadge type={parish.type} /></td>
                       <td className="text-gray-700">{parish.priest}</td>
                       <td className="text-gray-700">{parish.secretary}</td>
@@ -705,6 +770,7 @@ export function ParishManagementPage() {
           onSave={(data) => handleEditSave(modal.parish.id, data)}
           onClose={() => setModal({ type: 'none' })}
           isSaving={isSaving}
+          isDioceseCoordinator={isDioceseCoordinator}
         />
       )}
 

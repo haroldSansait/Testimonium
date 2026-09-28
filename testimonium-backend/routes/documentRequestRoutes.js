@@ -8,12 +8,13 @@ import { updateRequestStatusSchema } from "../validators/requestSchemas.js";
 const router = Router();
 
 const staffRoles = ["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"];
+const managingStaffRoles = ["SECRETARY", "DIOCESE_COORDINATOR"];
 
 router.use(authenticateFirebaseToken);
 router.use(checkRole(staffRoles));
 
 router.get("/", list);
-router.patch("/:id/status", validateBody(updateRequestStatusSchema), updateStatus);
+router.patch("/:id/status", checkRole(managingStaffRoles), validateBody(updateRequestStatusSchema), updateStatus);
 router.get("/:id/attachments/:attachmentId/download", downloadAttachment);
 
 export default router;

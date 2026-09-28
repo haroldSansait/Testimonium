@@ -64,4 +64,28 @@ export class RecipientResolver {
     // Deduplicate using a Set (guards against edge cases like role overlap)
     return [...new Set([...secretaries, ...coordinators])];
   }
+
+  /**
+   * Returns the user ID of the active PRIMARY priest assigned to a given parish.
+   * Primary priest: roleName = "PRIEST", isAssistant = false, status = "ACTIVE".
+   * @param {number} parishId
+   * @param {object|null} tx - Prisma transaction client (optional)
+   * @returns {Promise<number|null>}
+   */
+  static async getPrimaryPriest(parishId, tx = null) {
+    const client = tx || prisma;
+
+    const priest = await client.user.findFirst({
+      where: {
+        parishId,
+        status: "ACTIVE",
+        isAssistant: false,
+        role: { roleName: "PRIEST" },
+      },
+      orderBy: { id: "asc" },
+      select: { id: true },
+    });
+
+    return priest ? priest.id : null;
+  }
 }

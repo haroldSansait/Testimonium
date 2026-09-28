@@ -27,6 +27,7 @@ const STATUS_COLORS: Record<string, { fill: string; badgeBg: string; text: strin
 
   // In Processing / Review (Amber)
   PROCESSING: { fill: '#d97706', badgeBg: 'bg-amber-50', text: 'text-amber-700' },
+  READY_FOR_SIGNING: { fill: '#d97706', badgeBg: 'bg-amber-50', text: 'text-amber-700' },
   UNDER_REVIEW: { fill: '#d97706', badgeBg: 'bg-amber-50', text: 'text-amber-700' },
   PAYMENT_UNDER_REVIEW: { fill: '#d97706', badgeBg: 'bg-amber-50', text: 'text-amber-700' },
   REQUESTED: { fill: '#d97706', badgeBg: 'bg-amber-50', text: 'text-amber-700' },

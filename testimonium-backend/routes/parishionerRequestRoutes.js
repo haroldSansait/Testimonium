@@ -12,6 +12,7 @@ import {
   downloadAttachment,
 } from "../controllers/ParishionerRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
+import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
 import { createRequestSchema } from "../validators/requestSchemas.js";
 import {
@@ -24,6 +25,7 @@ const router = Router();
 
 // Apply auth check
 router.use(authenticateFirebaseToken);
+router.use(checkRole(["PARISHIONER"]));
 
 router.post("/", validateBody(createRequestSchema), create);
 router.post("/:id/submit", submitDraft);

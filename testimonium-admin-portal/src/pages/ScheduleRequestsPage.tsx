@@ -385,6 +385,15 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                 </div>
               </div>
 
+              {request.status === 'Confirmed' && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <p>
+                    Reassigning the priest for a Confirmed appointment will return this schedule to Pending. The new priest must accept the assignment before the schedule can be confirmed again.
+                  </p>
+                </div>
+              )}
+
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start gap-2">
                 <Clock className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
                 <p>
@@ -980,7 +989,9 @@ export function ScheduleRequestsPage() {
     } : null);
 
     try {
-      await assignPriest(selectedRequest.id, priestId, selectedRequest.version);
+      const updated = await assignPriest(selectedRequest.id, priestId, selectedRequest.version);
+      setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
+      setSelectedRequest(updated);
       setToastMessage(`Priest ${priestName} assigned successfully. Notification dispatched.`);
     } catch (err: any) {
       console.error('Failed to assign priest:', err);

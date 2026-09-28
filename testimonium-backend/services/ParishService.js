@@ -11,6 +11,7 @@ import {
   DEFAULT_OFFERED_DOCUMENTS,
   normalizeAvailableDocumentsForSave,
   getEffectiveOfferedDocuments,
+  validateDocumentSettingsForSave,
 } from "../config/documents.js";
 import {
   validateOfficeHoursForSave,
@@ -31,6 +32,27 @@ const generateSlug = (name) => {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .trim();
+};
+
+const MOTHER_PARISH_UNIQUE_INDEX = "parishes_single_mother_parish_idx";
+const motherParishConflictError = () => {
+  const err = new Error(
+    "Another parish is already designated as the Mother Parish. Unset it before designating a different parish."
+  );
+  err.statusCode = 409;
+  err.code = "MOTHER_PARISH_ALREADY_EXISTS";
+  return err;
+};
+
+const isMotherParishUniqueViolation = (error) => {
+  if (error?.code !== "P2002") return false;
+  const metadata = JSON.stringify(error?.meta || {});
+  return metadata.includes(MOTHER_PARISH_UNIQUE_INDEX);
+};
+
+const assertMotherParishAvailable = async (tx, where = {}) => {
+  const existing = await tx.parish.findFirst({ where: { isMotherParish: true, ...where } });
+  if (existing) throw motherParishConflictError();
 };
 
 const DEFAULT_MASS_SCHEDULE_TEMPLATES = [
@@ -105,7 +127,7 @@ export class ParishService {
    * @param {number} actorId
    * @returns {Promise<object>}
    */
-  async createParish(payload, actorId) {
+  async createParish(payload, actorId, actorRole) {
     const parishInfo = payload.parishInfo || payload;
     const name = parishInfo.name?.trim();
     const type = parishInfo.type;
@@ -115,6 +137,13 @@ export class ParishService {
     const contactNumber = parishInfo.contactNumber?.trim() || null;
     const email = parishInfo.email?.trim() || null;
     const venueCapacity = parishInfo.venueCapacity ? parseInt(parishInfo.venueCapacity, 10) : null;
+
+    if (parishInfo.isMotherParish !== undefined && actorRole !== "DIOCESE_COORDINATOR") {
+      const err = new Error("Only Diocese Coordinators can modify the Mother Parish designation.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
 
     if (!name || !type) {
       const err = new Error("Parish name and type are required.");
@@ -165,6 +194,11 @@ export class ParishService {
       }
       if (existingPriestUser.status !== "ACTIVE") {
         const err = new Error("Selected priest account is inactive.");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (existingPriestUser.isAssistant === true) {
+        const err = new Error("Selected priest is an assistant and cannot be assigned as the primary priest.");
         err.statusCode = 400;
         throw err;
       }
@@ -272,6 +306,8 @@ export class ParishService {
           throw err;
         }
 
+        if (parishInfo.isMotherParish === true) await assertMotherParishAvailable(tx);
+
         // Generate unique slug
         const baseSlug = generateSlug(name) || "parish";
         let candidateSlug = baseSlug;
@@ -296,6 +332,7 @@ export class ParishService {
             contactNumber,
             email,
             venueCapacity,
+            isMotherParish: parishInfo.isMotherParish === true,
             isActive: true,
           },
         });
@@ -354,6 +391,8 @@ export class ParishService {
         return parish;
       });
     } catch (dbErr) {
+      if (dbErr?.code === "MOTHER_PARISH_ALREADY_EXISTS") throw dbErr;
+      if (isMotherParishUniqueViolation(dbErr)) throw motherParishConflictError();
       logger.error({ err: dbErr, parishName: name }, "[ParishService] Failed to create parish in DB transaction");
       throw dbErr;
     }
@@ -454,18 +493,8 @@ export class ParishService {
       });
     }
 
-    // 10. Fetch complete parish with all active users and return DTO
-    const finalParish = await prisma.parish.findUnique({
-      where: { id: createdParish.id },
-      include: {
-        users: {
-          where: { status: "ACTIVE" },
-          include: { role: true },
-        },
-      },
-    });
-
-    return this.mapToDto(finalParish);
+    // 10. Return the same canonical projection used by normal parish reads.
+    return this.getCanonicalParishDto(createdParish.id);
   }
 
   /**
@@ -473,13 +502,21 @@ export class ParishService {
    * @param {string|number} id
    * @param {object} data
    * @param {number} actorId
+   * @param {string} [actorRole]
    * @returns {Promise<object>}
    */
-  async editParish(id, data, actorId) {
+  async editParish(id, data, actorId, actorRole) {
     const numericId = parseInt(id, 10);
     if (isNaN(numericId)) {
       const err = new Error("Invalid parish ID format.");
       err.statusCode = 400;
+      throw err;
+    }
+
+    if (data.isMotherParish !== undefined && actorRole !== "DIOCESE_COORDINATOR") {
+      const err = new Error("Only Diocese Coordinators can modify the Mother Parish designation.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
       throw err;
     }
 
@@ -524,7 +561,8 @@ export class ParishService {
       updatePayload.isActive = data.status === "Active";
     }
     if (data.documentSettings !== undefined) {
-      updatePayload.documentSettings = data.documentSettings && typeof data.documentSettings === "object" ? JSON.stringify(data.documentSettings) : data.documentSettings;
+      const validatedDocSettings = validateDocumentSettingsForSave(data.documentSettings);
+      updatePayload.documentSettings = JSON.stringify(validatedDocSettings);
     }
     if (data.eventSettings !== undefined) {
       const normalizedSettings = validateSchedulingSettingsForSave(data.eventSettings);
@@ -550,6 +588,9 @@ export class ParishService {
     if (data.venueCapacity !== undefined) {
       updatePayload.venueCapacity = data.venueCapacity ? parseInt(data.venueCapacity, 10) : null;
     }
+    if (data.isMotherParish !== undefined) {
+      updatePayload.isMotherParish = data.isMotherParish;
+    }
 
 
     const isAuthoritySensitive = Boolean(schedulingMutation || data.priestId !== undefined);
@@ -572,7 +613,9 @@ export class ParishService {
       .filter((pId) => pId != null)
       .sort((a, b) => a - b);
 
-    const parish = await prisma.$transaction(async (tx) => {
+    let parish;
+    try {
+      parish = await prisma.$transaction(async (tx) => {
       // 1. CANONICAL LOCK ORDER: Parish scheduling configuration row(s), ascending ID
       if (isAuthoritySensitive) {
         for (const pId of parishesToLock) {
@@ -592,7 +635,13 @@ export class ParishService {
           err.statusCode = 404;
           throw err;
         }
-        const priestUser = existingParish.users.find((u) => u.role?.roleName === "PRIEST");
+        const priestUser = existingParish.users
+          .filter((u) =>
+            u.role?.roleName === "PRIEST" &&
+            u.status === "ACTIVE" &&
+            u.isAssistant !== true
+          )
+          .sort((a, b) => Number(a.id) - Number(b.id))[0];
         if (priestUser) {
           currentPriestId = priestUser.id;
         }
@@ -617,6 +666,9 @@ export class ParishService {
         err.statusCode = 404;
         throw err;
       }
+      if (data.isMotherParish === true) {
+        await assertMotherParishAvailable(tx, { id: { not: numericId } });
+      }
       if (
         schedulingMutation &&
         currentParish.schedulingConfigVersion !== expectedSchedulingConfigVersion
@@ -627,7 +679,13 @@ export class ParishService {
         throw err;
       }
 
-      const currentPriest = currentParish.users.find(u => u.role.roleName === "PRIEST");
+      const currentPriest = currentParish.users
+        .filter((u) =>
+          u.role?.roleName === "PRIEST" &&
+          u.status === "ACTIVE" &&
+          u.isAssistant !== true
+        )
+        .sort((a, b) => Number(a.id) - Number(b.id))[0];
       const currentSecretary = currentParish.users.find(u => u.role.roleName === "SECRETARY");
 
       // 4. Handle Priest Assignment
@@ -670,6 +728,11 @@ export class ParishService {
             }
             if (newPriestUser.status !== "ACTIVE") {
               const err = new Error("Selected priest is not active.");
+              err.statusCode = 400;
+              throw err;
+            }
+            if (newPriestUser.isAssistant === true) {
+              const err = new Error("Selected priest is an assistant and cannot be assigned as the primary priest.");
               err.statusCode = 400;
               throw err;
             }
@@ -814,7 +877,11 @@ export class ParishService {
       affectedRecordId: parish.id,
       parishId: parish.id,
     });
-    return this.mapToDto(parish);
+    } catch (dbErr) {
+      if (isMotherParishUniqueViolation(dbErr)) throw motherParishConflictError();
+      throw dbErr;
+    }
+    return this.getCanonicalParishDto(parish.id);
   }
 
   /**
@@ -872,7 +939,10 @@ export class ParishService {
    * @returns {object}
    */
   mapToDto(p) {
-    const priestUser = p.users?.find((u) => u.role?.roleName === "PRIEST");
+    const priestUsers = (p.users?.filter((u) => u.role?.roleName === "PRIEST") || [])
+      .sort((a, b) => Number(a.id) - Number(b.id));
+    const primaryPriestUser = priestUsers.find((u) => !u.isAssistant);
+    const assistantPriestUsers = priestUsers.filter((u) => u.isAssistant === true);
     const secretaryUser = p.users?.find((u) => u.role?.roleName === "SECRETARY");
 
     return {
@@ -881,9 +951,14 @@ export class ParishService {
       slug: p.slug || "",
       type: this.mapEnumToType(p.type),
       vicariate: "Vicariate of Canlaon",
-      priest: priestUser ? priestUser.fullName : "Unassigned",
-      priestId: priestUser ? String(priestUser.id) : null,
-      priestName: priestUser ? priestUser.fullName : "Unassigned",
+      isMotherParish: p.isMotherParish === true,
+      priest: primaryPriestUser ? primaryPriestUser.fullName : "Unassigned",
+      priestId: primaryPriestUser ? String(primaryPriestUser.id) : null,
+      priestName: primaryPriestUser ? primaryPriestUser.fullName : "Unassigned",
+      assistantPriests: assistantPriestUsers.map((u) => ({
+        id: String(u.id),
+        name: u.fullName,
+      })),
       secretary: secretaryUser ? secretaryUser.fullName : "Unassigned",
       secretaryId: secretaryUser ? String(secretaryUser.id) : null,
       secretaryName: secretaryUser ? secretaryUser.fullName : "Unassigned",
@@ -949,6 +1024,11 @@ export class ParishService {
           }
         : null,
     };
+  }
+
+  async getCanonicalParishDto(id) {
+    const parish = await this.parishRepository.findById(id);
+    return this.mapToDto(parish);
   }
 
   /**

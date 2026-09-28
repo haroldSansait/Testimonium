@@ -18,6 +18,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   SECRETARY: [
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.VIEW_DOCUMENT_REQUESTS,
+    PERMISSIONS.MANAGE_DOCUMENT_REQUESTS,
     PERMISSIONS.VIEW_SCHEDULE_REQUESTS,
     PERMISSIONS.VIEW_CALENDAR,
     PERMISSIONS.VIEW_NOTIFICATIONS,
@@ -40,6 +41,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   DIOCESE_COORDINATOR: [
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.VIEW_DOCUMENT_REQUESTS,
+    PERMISSIONS.MANAGE_DOCUMENT_REQUESTS,
     PERMISSIONS.VIEW_SCHEDULE_REQUESTS,
     PERMISSIONS.VIEW_CALENDAR,
     PERMISSIONS.VIEW_NOTIFICATIONS,
@@ -137,6 +139,11 @@ export function canViewCaloyLogs(role: UserRole | null | undefined): boolean {
 /** True when the role may manage/purge Caloy operational logs. */
 export function canManageCaloyLogs(role: UserRole | null | undefined): boolean {
   return hasPermission(role, PERMISSIONS.MANAGE_CALOY_LOGS);
+}
+
+/** True when the role may manage (change status / approve / reject) document requests. */
+export function canManageDocumentRequests(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.MANAGE_DOCUMENT_REQUESTS);
 }
 
 // Re-export Permission type for convenient single-import by consumers.

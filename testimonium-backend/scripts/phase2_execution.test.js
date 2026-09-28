@@ -770,9 +770,9 @@ test("Quality Gate Enforcement: Staff CAN verify payment when OCR failed due to 
             parishId: 1,
             fee: 100,
           }),
-          update: async ({ data }) => {
+          updateMany: async ({ data }) => {
             persistedStatus = data.status;
-            return { id: 99, ...data };
+            return { count: 1 };
           },
         },
         paymentTransaction: {

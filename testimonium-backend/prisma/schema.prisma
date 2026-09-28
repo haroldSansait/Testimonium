@@ -43,6 +43,7 @@ enum DocumentRequestStatus {
   PAYMENT_NEEDS_CORRECTION
   PAYMENT_VERIFIED
   PROCESSING
+  READY_FOR_SIGNING
   READY_FOR_PICKUP
   COMPLETED
   REJECTED
@@ -226,6 +227,7 @@ model Parish {
   dailyReports            DailyReport[]
   councilConfiguration    ParishCouncilConfiguration?
   knowledgeSources        KnowledgeSource[]           @relation("ParishKnowledgeSources")
+  isMotherParish          Boolean                     @default(false) @map("is_mother_parish")
 
   @@index([type])
   @@index([isActive])
@@ -703,26 +705,26 @@ model KnowledgeSource {
 }
 
 model KnowledgeChunk {
-  id                    Int                          @id @default(autoincrement()) @map("chunk_id")
-  sourceId              Int                          @map("source_id")
-  content               String                       @db.Text
-  chunkOrder            Int                          @map("chunk_order")
-  contentHash           String                       @map("content_hash") @db.VarChar(64)
-  sourceVersion         Int                          @default(1) @map("source_version")
+  id                    Int                         @id @default(autoincrement()) @map("chunk_id")
+  sourceId              Int                         @map("source_id")
+  content               String                      @db.Text
+  chunkOrder            Int                         @map("chunk_order")
+  contentHash           String                      @map("content_hash") @db.VarChar(64)
+  sourceVersion         Int                         @default(1) @map("source_version")
   embedding             Unsupported("vector(768)")?
-  embeddingProvider     String?                      @map("embedding_provider") @db.VarChar(50)
-  embeddingModel        String?                      @map("embedding_model") @db.VarChar(100)
-  embeddingDimensions   Int?                         @map("embedding_dimensions")
-  embeddingStatus       EmbeddingStatus              @default(PENDING) @map("embedding_status")
-  embeddedAt            DateTime?                    @map("embedded_at") @db.Timestamptz(6)
-  processingToken       String?                      @map("processing_token") @db.VarChar(100)
-  leaseExpiresAt        DateTime?                    @map("lease_expires_at") @db.Timestamptz(6)
-  embeddingAttemptCount Int                          @default(0) @map("embedding_attempt_count")
-  embeddingErrorCode    String?                      @map("embedding_error_code") @db.VarChar(100)
+  embeddingProvider     String?                     @map("embedding_provider") @db.VarChar(50)
+  embeddingModel        String?                     @map("embedding_model") @db.VarChar(100)
+  embeddingDimensions   Int?                        @map("embedding_dimensions")
+  embeddingStatus       EmbeddingStatus             @default(PENDING) @map("embedding_status")
+  embeddedAt            DateTime?                   @map("embedded_at") @db.Timestamptz(6)
+  processingToken       String?                     @map("processing_token") @db.VarChar(100)
+  leaseExpiresAt        DateTime?                   @map("lease_expires_at") @db.Timestamptz(6)
+  embeddingAttemptCount Int                         @default(0) @map("embedding_attempt_count")
+  embeddingErrorCode    String?                     @map("embedding_error_code") @db.VarChar(100)
   metadata              Json?
-  createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
-  source                KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  source                KnowledgeSource             @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@unique([sourceId, sourceVersion, chunkOrder])
   @@index([sourceId])
@@ -733,26 +735,26 @@ model KnowledgeChunk {
 }
 
 model ChatbotLog {
-  id                 Int       @id @default(autoincrement()) @map("chatbot_log_id")
-  userId             Int?      @map("user_id")
-  sessionId          String?   @map("session_id") @db.VarChar(100)
-  traceId            String?   @map("trace_id") @db.VarChar(100)
-  selectedParishId   Int?      @map("selected_parish_id")
-  question           String?   @db.Text
-  response           String?   @db.Text
-  responseType       String?   @map("response_type") @db.VarChar(50)
-  retrievedChunkIds  Int[]     @default([]) @map("retrieved_chunk_ids")
-  retrievalScores    Float[]   @default([]) @map("retrieval_scores")
-  fallback           Boolean   @default(false)
-  fallbackReason     String?   @map("fallback_reason") @db.VarChar(100)
-  category           String?   @db.VarChar(100)
-  embeddingProvider  String?   @map("embedding_provider") @db.VarChar(50)
-  generationProvider String?   @map("generation_provider") @db.VarChar(50)
-  generationModel    String?   @map("generation_model") @db.VarChar(100)
-  latencyMs          Int?      @map("latency_ms")
-  errorCategory      String?   @map("error_category") @db.VarChar(100)
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  user               User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                 Int      @id @default(autoincrement()) @map("chatbot_log_id")
+  userId             Int?     @map("user_id")
+  sessionId          String?  @map("session_id") @db.VarChar(100)
+  traceId            String?  @map("trace_id") @db.VarChar(100)
+  selectedParishId   Int?     @map("selected_parish_id")
+  question           String?  @db.Text
+  response           String?  @db.Text
+  responseType       String?  @map("response_type") @db.VarChar(50)
+  retrievedChunkIds  Int[]    @default([]) @map("retrieved_chunk_ids")
+  retrievalScores    Float[]  @default([]) @map("retrieval_scores")
+  fallback           Boolean  @default(false)
+  fallbackReason     String?  @map("fallback_reason") @db.VarChar(100)
+  category           String?  @db.VarChar(100)
+  embeddingProvider  String?  @map("embedding_provider") @db.VarChar(50)
+  generationProvider String?  @map("generation_provider") @db.VarChar(50)
+  generationModel    String?  @map("generation_model") @db.VarChar(100)
+  latencyMs          Int?     @map("latency_ms")
+  errorCategory      String?  @map("error_category") @db.VarChar(100)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([sessionId])
@@ -767,20 +769,20 @@ model ChatbotLog {
 }
 
 model CaloyRuntimeConfig {
-  id                        Int       @id @default(1) @map("config_id")
-  enabled                   Boolean   @default(true)
-  generationProvider        String    @default("gemini") @map("generation_provider") @db.VarChar(50)
-  generationModel           String    @default("gemini-3.5-flash-lite") @map("generation_model") @db.VarChar(100)
-  aiTenMinuteMax            Int       @default(20) @map("ai_ten_minute_max")
-  aiDailyMax                Int       @default(50) @map("ai_daily_max")
-  chatbotRequestDeadlineMs  Int       @default(25000) @map("chatbot_request_deadline_ms")
-  automaticRetentionEnabled Boolean   @default(false) @map("automatic_retention_enabled")
-  logRetentionDays          Int       @default(90) @map("log_retention_days")
-  version                   Int       @default(1)
-  updatedById               Int?      @map("updated_by_id")
-  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  updatedBy                 User?     @relation("CaloyRuntimeConfigUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  id                        Int      @id @default(1) @map("config_id")
+  enabled                   Boolean  @default(true)
+  generationProvider        String   @default("gemini") @map("generation_provider") @db.VarChar(50)
+  generationModel           String   @default("gemini-3.5-flash-lite") @map("generation_model") @db.VarChar(100)
+  aiTenMinuteMax            Int      @default(20) @map("ai_ten_minute_max")
+  aiDailyMax                Int      @default(50) @map("ai_daily_max")
+  chatbotRequestDeadlineMs  Int      @default(25000) @map("chatbot_request_deadline_ms")
+  automaticRetentionEnabled Boolean  @default(false) @map("automatic_retention_enabled")
+  logRetentionDays          Int      @default(90) @map("log_retention_days")
+  version                   Int      @default(1)
+  updatedById               Int?     @map("updated_by_id")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy                 User?    @relation("CaloyRuntimeConfigUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("caloy_runtime_config")
 }
@@ -819,7 +821,6 @@ model AiUsageEvent {
   @@index([traceId])
   @@map("ai_usage_events")
 }
-
 
 model ActivityLog {
   id               Int       @id @default(autoincrement()) @map("log_id")

@@ -42,6 +42,13 @@ export const updateStatus = async (req, res, next) => {
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
 
+    if (actorRole === "PRIEST") {
+      return res.status(403).json({
+        success: false,
+        message: "Priests have read-only access to document requests.",
+      });
+    }
+
     if (isNaN(id)) {
       return res.status(400).json({
         success: false,

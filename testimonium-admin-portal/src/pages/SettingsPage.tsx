@@ -39,6 +39,9 @@ import { ParishCouncilEditor } from '@/components/settings/ParishCouncilEditor';
 import {
   CANONICAL_DOCUMENT_TYPES,
   DEFAULT_OFFERED_DOCUMENTS,
+  getAssignedCanonicalRequirements,
+  getAvailableCanonicalRequirements,
+  setCanonicalRequirementAssignment,
 } from '@/config/documents';
 import { cn } from '@/utils/cn';
 import { CANONICAL_SCHEDULING_SERVICES } from '@/utils/schedulingAvailabilityHelpers';
@@ -184,6 +187,13 @@ export function SettingsPage() {
   const [paymentQrImage, setPaymentQrImage] = useState<string | null>(null);
   const [paymentQrEnabled, setPaymentQrEnabled] = useState<boolean>(false);
   const [availableDocuments, setAvailableDocuments] = useState<string[]>([...DEFAULT_OFFERED_DOCUMENTS]);
+  const [addingReqDocId, setAddingReqDocId] = useState<string | null>(null);
+  const [requirementToRemove, setRequirementToRemove] = useState<{
+    docId: string;
+    reqId: string;
+    reqLabel: string;
+    docLabel: string;
+  } | null>(null);
   const [venueCapacity, setVenueCapacity] = useState<number | null>(null);
   const [uploadingQr, setUploadingQr] = useState(false);
   const [schedulingRulesDirty, setSchedulingRulesDirty] = useState(false);
@@ -433,20 +443,28 @@ export function SettingsPage() {
     }));
   };
 
-  const handleDocRequirementToggle = (docId: string, reqId: string) => {
-    setDocumentSettings((prev: any) => {
-      const doc = prev[docId] || { price: 0, requirements: {} };
-      const reqs = { ...doc.requirements };
-      reqs[reqId] = !reqs[reqId];
-      return {
-        ...prev,
-        [docId]: {
-          ...doc,
-          requirements: reqs
-        }
-      };
-    });
+  const getAssignedRequirements = (docId: string) => {
+    return getAssignedCanonicalRequirements(docId, documentSettings);
   };
+
+  const getAvailableRequirementsToAdd = (docId: string) => {
+    return getAvailableCanonicalRequirements(docId, documentSettings);
+  };
+
+  const handleDocRequirementAdd = (docId: string, reqId: string) => {
+    if (!reqId) return;
+    setDocumentSettings((prev: any) =>
+      setCanonicalRequirementAssignment(prev, docId, reqId, true)
+    );
+    setAddingReqDocId(null);
+  };
+
+  const handleDocRequirementRemove = (docId: string, reqId: string) => {
+    setDocumentSettings((prev: any) =>
+      setCanonicalRequirementAssignment(prev, docId, reqId, false)
+    );
+  };
+
 
   const handleEventRequirementToggle = (evtId: string, reqId: string) => {
     setEventSettings((prev: any) => {
@@ -716,7 +734,7 @@ export function SettingsPage() {
           // Keep the original conflict as the actionable error.
         }
       }
-      setToast({ message: err?.message || 'Failed to update parish configurations.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || err?.message || 'Failed to update parish configurations.', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -947,47 +965,140 @@ export function SettingsPage() {
                 <div className="divide-y divide-gray-200 border border-gray-200 rounded-xl overflow-hidden">
                   {CANONICAL_DOCUMENT_TYPES.filter((doc) => availableDocuments.includes(doc.id)).map((doc) => {
                     const conf = documentSettings[doc.id] || { price: doc.defaultPrice, requirements: {} };
+                    const assigned = getAssignedRequirements(doc.id);
+                    const availableToAdd = getAvailableRequirementsToAdd(doc.id);
+
                     return (
-                      <div key={doc.id} className="p-4 bg-white hover:bg-gray-50/40 transition-colors">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                          <span className="font-bold text-gray-900 text-sm">{doc.label}</span>
-                          <div className="flex items-center gap-2">
+                      <div key={doc.id} className="p-4 bg-white hover:bg-gray-50/30 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-crimson-50 border border-crimson-100 flex items-center justify-center text-crimson-700 shrink-0">
+                              <FileText className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-gray-900 text-sm leading-tight block">{doc.label}</span>
+                              <span className="text-[11px] text-gray-400">
+                                {assigned.length === 0
+                                  ? 'No prerequisite requirements'
+                                  : `${assigned.length} prerequisite requirement${assigned.length > 1 ? 's' : ''}`}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs font-semibold text-gray-500">Fee (PHP):</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="10"
-                              value={conf.price}
-                              onChange={(e) => handlePriceChange(doc.id, parseFloat(e.target.value))}
-                              className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
-                            />
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">₱</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={conf.price}
+                                onChange={(e) => handlePriceChange(doc.id, parseFloat(e.target.value))}
+                                className="w-24 pl-6 pr-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-crimson-700/20 focus:border-crimson-700"
+                              />
+                            </div>
                           </div>
                         </div>
 
-                        <div className="pl-2">
-                          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
-                            Prerequisite Requirements
-                          </span>
-                          <div className="flex flex-wrap gap-2">
-                            {doc.requirements.map((req) => {
-                              const isReq = conf.requirements?.[req.id] ?? true;
-                              return (
-                                <button
+                        <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                              <FileCheck className="w-3 h-3 text-gray-400" />
+                              Prerequisite Requirements
+                            </span>
+                            {assigned.length > 0 && (
+                              <span className="text-[10px] font-semibold text-gray-400">
+                                {assigned.length} active
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-2.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {assigned.length === 0 && addingReqDocId !== doc.id && (
+                                <span className="text-xs text-gray-400 italic py-0.5">
+                                  No prerequisite requirements assigned.
+                                </span>
+                              )}
+
+                              {assigned.map((req) => (
+                                <div
                                   key={req.id}
-                                  type="button"
-                                  onClick={() => handleDocRequirementToggle(doc.id, req.id)}
-                                  className={cn(
-                                    'px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
-                                    isReq
-                                      ? 'bg-red-50 text-crimson-700 border-crimson-700/20'
-                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-600'
-                                  )}
+                                  className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 bg-white hover:bg-gray-50 border border-gray-200/90 rounded-lg text-xs font-medium text-gray-800 shadow-2xs transition-all group"
                                 >
-                                  {isReq ? '✓ ' : '+ '}
-                                  {req.label}
+                                  <span className="w-1.5 h-1.5 rounded-full bg-crimson-600 shrink-0" />
+                                  <span>{req.label}</span>
+                                  <Tooltip content={`Remove ${req.label}`} side="top">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setRequirementToRemove({
+                                          docId: doc.id,
+                                          reqId: req.id,
+                                          reqLabel: req.label,
+                                          docLabel: doc.label,
+                                        })
+                                      }
+                                      className="ml-1 p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                                      aria-label={`Remove ${req.label}`}
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </Tooltip>
+                                </div>
+                              ))}
+
+                              {availableToAdd.length > 0 && addingReqDocId !== doc.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => setAddingReqDocId(doc.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-crimson-700 hover:text-crimson-800 bg-red-50/70 hover:bg-red-50 border border-crimson-700/20 hover:border-crimson-700/35 rounded-lg shadow-2xs transition-all cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Add Requirement
                                 </button>
-                              );
-                            })}
+                              )}
+
+                              {availableToAdd.length === 0 && (
+                                <span className="inline-block text-[11px] text-gray-400 font-medium py-0.5">
+                                  All canonical requirements assigned
+                                </span>
+                              )}
+                            </div>
+
+                            {addingReqDocId === doc.id && (
+                              <div className="flex items-center gap-2 pt-1 max-w-sm animate-in fade-in duration-150">
+                                <div className="flex-1">
+                                  <CustomSelect
+                                    id={`add-requirement-${doc.id}`}
+                                    value=""
+                                    onChange={(val) => {
+                                      if (val) {
+                                        handleDocRequirementAdd(doc.id, String(val));
+                                      }
+                                    }}
+                                    options={availableToAdd.map((req) => ({
+                                      value: req.id,
+                                      label: req.label,
+                                    }))}
+                                    placeholder="Select requirement to add..."
+                                    size="sm"
+                                    defaultOpen={true}
+                                    onClose={() => setAddingReqDocId(null)}
+                                  />
+                                </div>
+                                <Tooltip content="Cancel" side="top">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAddingReqDocId(null)}
+                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                                    aria-label="Cancel adding requirement"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </Tooltip>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1999,6 +2110,51 @@ export function SettingsPage() {
           document.body
         )
       )}
+
+      {/* Remove Requirement Confirmation Modal */}
+      {requirementToRemove &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={(e) => e.target === e.currentTarget && setRequirementToRemove(null)}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150">
+              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
+                Remove Requirement?
+              </h3>
+              <p className="text-xs text-gray-500 mb-6 leading-relaxed">
+                Are you sure you want to remove <span className="font-semibold text-gray-800">{requirementToRemove.reqLabel}</span> as a prerequisite for <span className="font-semibold text-gray-800">{requirementToRemove.docLabel}</span>?
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setRequirementToRemove(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDocRequirementRemove(requirementToRemove.docId, requirementToRemove.reqId);
+                    setToast({
+                      message: `Removed "${requirementToRemove.reqLabel}" from ${requirementToRemove.docLabel}.`,
+                      type: 'success',
+                    });
+                    setRequirementToRemove(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 active:scale-95 transition-all rounded-lg cursor-pointer shadow-xs"
+                >
+                  Remove Requirement
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Toast Notification */}
       {toast && (

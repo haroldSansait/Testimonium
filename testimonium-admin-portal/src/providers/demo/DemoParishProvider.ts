@@ -131,6 +131,13 @@ export const DemoParishProvider: ParishProvider = {
       secretaryId = result.user.id;
     }
 
+    if (parishInfo.isMotherParish) {
+      const existingMother = store.find((p) => p.isMotherParish);
+      if (existingMother) {
+        throw new Error('Another parish is already designated as the Mother Parish. Unset it before designating a different parish.');
+      }
+    }
+
     const slug = generateSlug(parishInfo.name);
     const newParish: Parish = {
       id: `parish-${Date.now()}`,
@@ -151,6 +158,7 @@ export const DemoParishProvider: ParishProvider = {
       secretaryId,
       secretaryName,
       status: 'Active',
+      isMotherParish: parishInfo.isMotherParish === true,
     };
 
     seedDemoMassTemplates(newParish.id);
@@ -173,6 +181,15 @@ export const DemoParishProvider: ParishProvider = {
     if (data.contactNumber !== undefined) parish.contactNumber = data.contactNumber;
     if (data.email !== undefined) parish.email = data.email;
     if (data.status !== undefined) parish.status = data.status;
+    if (data.isMotherParish !== undefined) {
+      if (data.isMotherParish) {
+        const otherMother = store.find((p) => p.id !== id && p.isMotherParish);
+        if (otherMother) {
+          throw new Error('Another parish is already designated as the Mother Parish. Unset it before designating a different parish.');
+        }
+      }
+      parish.isMotherParish = data.isMotherParish;
+    }
 
     // Priest update
     if (data.priestId !== undefined) {

@@ -5,6 +5,7 @@ import { cn } from '@/utils/cn';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { SearchableDropdown, type DropdownOption } from '@/components/ui/SearchableDropdown';
 import { UserManagementService } from '@/services/UserManagementService';
+import { useAuth } from '@/hooks/useAuth';
 import type {
   PersonData,
   StaffAssignmentMode,
@@ -23,6 +24,7 @@ export interface ParishInfoData {
   address: string;
   contactNumber: string;
   email: string;
+  isMotherParish: boolean;
 }
 
 export interface WizardData {
@@ -70,6 +72,7 @@ const EMPTY_PARISH_INFO: ParishInfoData = {
   address: '',
   contactNumber: '',
   email: '',
+  isMotherParish: false,
 };
 
 const EMPTY_PERSON: PersonData = { fullName: '', email: '', contactNumber: '' };
@@ -114,7 +117,15 @@ const inputCls =
 
 // ─── Step 1: Parish Details ───────────────────────────────────────────────────
 
-function Step1({ data, onChange }: { data: ParishInfoData; onChange: (d: ParishInfoData) => void }) {
+function Step1({
+  data,
+  onChange,
+  isDioceseCoordinator,
+}: {
+  data: ParishInfoData;
+  onChange: (d: ParishInfoData) => void;
+  isDioceseCoordinator?: boolean;
+}) {
   const set = (field: keyof ParishInfoData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...data, [field]: e.target.value });
 
@@ -259,6 +270,23 @@ function Step1({ data, onChange }: { data: ParishInfoData; onChange: (d: ParishI
           />
         </FormField>
       </div>
+
+      {isDioceseCoordinator && (
+        <FormField label="Mother Parish" id="parish-is-mother">
+          <label htmlFor="parish-is-mother" className="relative flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              id="parish-is-mother"
+              type="checkbox"
+              checked={data.isMotherParish}
+              onChange={(event) => onChange({ ...data, isMotherParish: event.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="relative w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-crimson-700/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-crimson-600" />
+            <span className="text-sm font-medium text-slate-700">Set as Mother Parish</span>
+            <span className="text-xs font-bold text-slate-500">{data.isMotherParish ? 'ON' : 'OFF'}</span>
+          </label>
+        </FormField>
+      )}
     </div>
   );
 }
@@ -578,6 +606,7 @@ function Step3Review({
         <Row label="Address" value={data.parishInfo.address} />
         <Row label="Contact Number" value={data.parishInfo.contactNumber} />
         <Row label="Email" value={data.parishInfo.email} />
+        <Row label="Mother Parish" value={data.parishInfo.isMotherParish ? 'Yes' : 'No'} />
       </Section>
 
       <Section title="Staff Assignments">
@@ -614,6 +643,9 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
     secretary: { ...DEFAULT_SECRETARY_CONFIG },
   });
 
+  const { role } = useAuth();
+  const isDioceseCoordinator = role === 'DIOCESE_COORDINATOR';
+
   const [priestOptions, setPriestOptions] = useState<DropdownOption[]>([]);
   const [secretaryOptions, setSecretaryOptions] = useState<DropdownOption[]>([]);
   const [isLoadingStaff, setIsLoadingStaff] = useState(false);
@@ -641,7 +673,6 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
             badge: u.parish && u.parish !== 'None' ? `(${u.parish})` : undefined,
           }))
         );
-
         setSecretaryOptions(
           secretariesList.map((u) => ({
             id: u.id,
@@ -650,6 +681,7 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
             badge: u.parish && u.parish !== 'None' ? `(${u.parish})` : undefined,
           }))
         );
+
       } catch (err: any) {
         console.error('Failed to load assignable staff directory:', err);
         if (active) {
@@ -716,6 +748,7 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
           address: data.parishInfo.address.trim(),
           contactNumber: data.parishInfo.contactNumber.trim(),
           email: data.parishInfo.email.trim(),
+          isMotherParish: data.parishInfo.isMotherParish,
         },
         priest: {
           mode: data.priest.mode,
@@ -841,6 +874,7 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
             <Step1
               data={data.parishInfo}
               onChange={(parishInfo) => setData((d) => ({ ...d, parishInfo }))}
+              isDioceseCoordinator={isDioceseCoordinator}
             />
           )}
           {step === 2 && (

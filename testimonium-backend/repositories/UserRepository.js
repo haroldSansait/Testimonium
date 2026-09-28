@@ -118,6 +118,9 @@ export class UserRepository {
         andConditions.push({ role: { roleName: "PRIEST" }, isAssistant: true });
       } else if (role === "PRIEST") {
         andConditions.push({ role: { roleName: "PRIEST" } });
+        if (assignableForParishId !== undefined) {
+          andConditions.push({ isAssistant: false });
+        }
       } else {
         andConditions.push({ role: { roleName: role } });
       }

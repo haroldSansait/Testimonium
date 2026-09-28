@@ -45,6 +45,7 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
       };
     case "UNDER_REVIEW":
     case "PROCESSING":
+    case "READY_FOR_SIGNING":
       return {
         label: "Under Review",
         intent: "info",

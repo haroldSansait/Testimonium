@@ -2,6 +2,7 @@ import api from '@/api/api';
 import type { DocumentProvider, DocumentRequestFilters } from '../interfaces';
 import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
+import { mapDocumentStatusToBackend } from './documentStatusMapping';
 
 interface BackendDocumentRequestDTO {
   id: number;
@@ -106,6 +107,8 @@ const mapDocumentStatus = (status: string): DocumentStatus => {
       return 'Payment Verified';
     case 'PROCESSING':
       return 'Processing';
+    case 'READY_FOR_SIGNING':
+      return 'Ready for Signing';
     case 'READY_FOR_PICKUP':
       return 'Ready for Pickup';
     case 'NEEDS_CORRECTION':
@@ -196,21 +199,7 @@ export const ApiDocumentProvider: DocumentProvider = {
     const { search, documentType, status, page = 1, pageSize = 5 } = filters;
 
     // Map filters back to backend values
-    let backendStatus = status;
-    if (status && status !== 'all') {
-      if (status === 'Pending Review') backendStatus = 'PENDING' as any;
-      else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW' as any;
-      else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION' as any;
-      else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING' as any;
-      else if (status === 'Awaiting Payment Review') backendStatus = 'PAYMENT_UNDER_REVIEW' as any;
-      else if (status === 'Payment Needs Correction') backendStatus = 'PAYMENT_NEEDS_CORRECTION' as any;
-      else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED' as any;
-      else if (status === 'Processing') backendStatus = 'PROCESSING' as any;
-      else if (status === 'Ready for Pickup') backendStatus = 'READY_FOR_PICKUP' as any;
-      else if (status === 'Released' || status === 'Completed') backendStatus = 'COMPLETED' as any;
-      else if (status === 'Rejected') backendStatus = 'REJECTED' as any;
-      else if (status === 'Cancelled') backendStatus = 'CANCELLED' as any;
-    }
+    const backendStatus = mapDocumentStatusToBackend(status);
 
     let backendDocType = documentType;
     if (documentType && documentType !== 'all') {
@@ -246,19 +235,7 @@ export const ApiDocumentProvider: DocumentProvider = {
   },
 
   async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]): Promise<DocumentRequest> {
-    let backendStatus = 'PENDING';
-    if (status === 'Pending Review') backendStatus = 'PENDING';
-    else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
-    else if (status === 'Needs Correction') backendStatus = 'NEEDS_CORRECTION';
-    else if (status === 'Payment Pending') backendStatus = 'PAYMENT_PENDING';
-    else if (status === 'Awaiting Payment Review') backendStatus = 'PAYMENT_UNDER_REVIEW';
-    else if (status === 'Payment Needs Correction') backendStatus = 'PAYMENT_NEEDS_CORRECTION';
-    else if (status === 'Payment Verified') backendStatus = 'PAYMENT_VERIFIED';
-    else if (status === 'Processing') backendStatus = 'PROCESSING';
-    else if (status === 'Ready for Pickup') backendStatus = 'READY_FOR_PICKUP';
-    else if (status === 'Released' || status === 'Completed') backendStatus = 'COMPLETED';
-    else if (status === 'Rejected') backendStatus = 'REJECTED';
-    else if (status === 'Cancelled') backendStatus = 'CANCELLED';
+    const backendStatus = mapDocumentStatusToBackend(status) || 'PENDING';
 
     optimisticDocumentStatuses[id] = status;
 
@@ -276,5 +253,4 @@ export const ApiDocumentProvider: DocumentProvider = {
     }
   }
 };
-
 

@@ -1,5 +1,8 @@
 import { prisma } from "../config/db.js";
 import { logger } from "../config/logger.js";
+import { CANONICAL_REQUIREMENT_IDS } from "../config/documents.js";
+
+export { CANONICAL_REQUIREMENT_IDS };
 
 /**
  * Configurable Sacramental Document Requirements Matrix
@@ -121,6 +124,21 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
   },
 };
 
+const allExistingRequirementDefinitions = Object.values(DOCUMENT_REQUIREMENTS_MATRIX)
+  .flatMap((config) => config.requiredDocuments);
+
+export const CANONICAL_REQUIREMENTS_CATALOG = Object.fromEntries(
+  CANONICAL_REQUIREMENT_IDS.map((requirementId) => {
+    const existingDefinition = allExistingRequirementDefinitions.find(
+      (requirement) => requirement.id === requirementId
+    );
+    if (!existingDefinition) {
+      throw new Error(`Missing existing definition for canonical requirement "${requirementId}".`);
+    }
+    return [requirementId, { ...existingDefinition }];
+  })
+);
+
 export class DocumentRequirementService {
   /**
    * Returns requirements metadata for all document types or a specific document type.
@@ -133,7 +151,8 @@ export class DocumentRequirementService {
     if (parishId) {
       const client = prismaClient || prisma;
       const parish = await client.parish.findUnique({
-        where: { id: parseInt(parishId, 10) }
+        where: { id: parseInt(parishId, 10) },
+        select: { documentSettings: true },
       });
       if (parish && parish.documentSettings) {
         try {
@@ -146,14 +165,34 @@ export class DocumentRequirementService {
                     ? null
                     : parseFloat(config.price);
               }
-              if (config.requirements) {
-                matrix[docType].requiredDocuments = matrix[docType].requiredDocuments.map(doc => {
-                  const isRequired = config.requirements[doc.id];
-                  if (isRequired !== undefined) {
-                    return { ...doc, required: !!isRequired };
+              if (config.requirements && typeof config.requirements === "object") {
+                const defaultDocs = matrix[docType].requiredDocuments;
+                const defaultIds = new Set(defaultDocs.map((d) => d.id));
+                const resolvedDocs = [];
+
+                // 1. Process matrix defaults, preserving their original order & definitions
+                for (const doc of defaultDocs) {
+                  const override = config.requirements[doc.id];
+                  if (override === false) {
+                    continue; // Explicitly disabled
                   }
-                  return doc;
-                }).filter(doc => doc.required);
+                  resolvedDocs.push({
+                    ...doc,
+                    required: true,
+                  });
+                }
+
+                // 2. Process canonical requirements not in defaults, in deterministic canonical order
+                for (const reqId of CANONICAL_REQUIREMENT_IDS) {
+                  if (!defaultIds.has(reqId) && config.requirements[reqId] === true) {
+                    resolvedDocs.push({
+                      ...CANONICAL_REQUIREMENTS_CATALOG[reqId],
+                      required: true,
+                    });
+                  }
+                }
+
+                matrix[docType].requiredDocuments = resolvedDocs;
               }
             }
           }

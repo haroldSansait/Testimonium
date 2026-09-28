@@ -197,6 +197,11 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
               }`}>
                 {officeIsOpen ? 'Open Now' : 'Closed'}
               </span>
+              {effectiveParish.isMotherParish && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-white/20 text-white backdrop-blur-xs border border-white/20">
+                  Mother Parish
+                </span>
+              )}
               {effectiveParish.type && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-white/20 text-white backdrop-blur-xs">
                   {effectiveParish.type}
@@ -307,7 +312,11 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
                 <User size={12} className="mr-1.5 text-crimson" />
                 Parish Administration
               </span>
-              <ParishPersonnelList priest={parish.assignedPriest} secretary={parish.assignedSecretary} />
+              <ParishPersonnelList
+                priest={effectiveParish.assignedPriest}
+                secretary={effectiveParish.assignedSecretary}
+                assistantPriests={effectiveParish.assistantPriests}
+              />
             </div>
 
             <ParishCouncilSection

@@ -97,6 +97,12 @@ export const STATUS_PRESENTATION: Record<
     description: "Your certificate is being generated and prepared by parish records.",
     icon: "cog-outline",
   },
+  READY_FOR_SIGNING: {
+    label: "In Preparation",
+    variant: "info",
+    description: "Your certificate is being generated and prepared by parish records.",
+    icon: "cog-outline",
+  },
   READY_FOR_PICKUP: {
     label: "Ready for Pickup",
     variant: "success",

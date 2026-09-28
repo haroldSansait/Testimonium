@@ -31,7 +31,8 @@ const DEMO_PARISHES: Parish[] = [
       'Solemnity of Corpus Christi Procession - June 18',
       'Youth Camp and Recollection - July 22-25'
     ],
-    services: ['Baptism', 'Confirmation', 'Marriage', 'Funeral Mass', 'Sick Call', 'Blessings']
+    services: ['Baptism', 'Confirmation', 'Marriage', 'Funeral Mass', 'Sick Call', 'Blessings'],
+    isMotherParish: true,
   },
   {
     id: 'p2',
@@ -59,7 +60,8 @@ const DEMO_PARISHES: Parish[] = [
       'Feast of St. Joseph Celebration - May 1',
       'Livelihood Training Seminar - August 10'
     ],
-    services: ['Baptism', 'Confirmation', 'Marriage', 'Funeral Mass', 'Blessings']
+    services: ['Baptism', 'Confirmation', 'Marriage', 'Funeral Mass', 'Blessings'],
+    isMotherParish: false,
   },
   {
     id: 'p3',

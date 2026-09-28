@@ -17,6 +17,26 @@ import {
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { buildApplicantName } from "../utils/nameUtils.js";
 
+export async function assertParishionerOwnerRole(userId, client = prisma) {
+  const user = await client.user.findUnique({
+    where: { id: userId },
+    include: { role: true },
+  });
+  const isParishioner = Boolean(
+    user && (
+      user.role?.roleName === "PARISHIONER" ||
+      (!user.role && (!user.roleId || user.roleId === 1))
+    )
+  );
+  if (!isParishioner) {
+    const error = new Error("Parishioner document-request access is restricted to parishioner accounts.");
+    error.statusCode = 403;
+    error.code = "FORBIDDEN";
+    throw error;
+  }
+  return user;
+}
+
 export class ParishionerRequestService {
   /**
    * Validates whether an authorization letter is required and present.
@@ -61,14 +81,8 @@ export class ParishionerRequestService {
       throw error;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { role: true },
-    });
-    const isParishioner = Boolean(
-      user && (!user.roleId || user.roleId === 1 || user.role?.roleName === "PARISHIONER")
-    );
-    if (isParishioner && isProfileIncomplete(user)) {
+    const user = await assertParishionerOwnerRole(userId);
+    if (isProfileIncomplete(user)) {
       const error = new Error("Please complete your profile details (full name and contact number) before requesting documents.");
       error.statusCode = 403;
       error.code = "PROFILE_INCOMPLETE";
@@ -331,14 +345,8 @@ export class ParishionerRequestService {
    */
   async submitDraft(requestId, userId) {
     return prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        include: { role: true },
-      });
-      const isParishioner = Boolean(
-        user && (!user.roleId || user.roleId === 1 || user.role?.roleName === "PARISHIONER")
-      );
-      if (isParishioner && isProfileIncomplete(user)) {
+      const user = await assertParishionerOwnerRole(userId, tx);
+      if (isProfileIncomplete(user)) {
         const error = new Error("Please complete your profile details (full name and contact number) before submitting document requests.");
         error.statusCode = 403;
         error.code = "PROFILE_INCOMPLETE";
@@ -486,6 +494,7 @@ export class ParishionerRequestService {
    */
   async cancelRequest(requestId, userId, remarks = "Cancelled by requester") {
     return prisma.$transaction(async (tx) => {
+      await assertParishionerOwnerRole(userId, tx);
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
       });
@@ -565,6 +574,7 @@ export class ParishionerRequestService {
    * Lists requests for a parishioner, paginated and filtered.
    */
   async listRequests(userId, filters) {
+    await assertParishionerOwnerRole(userId);
     return this.parishionerRequestRepository.findMany({
       userId,
       page: filters.page,
@@ -579,6 +589,7 @@ export class ParishionerRequestService {
    * Retrieves a single request by ID.
    */
   async getRequestById(id, userId) {
+    await assertParishionerOwnerRole(userId);
     const request = await this.parishionerRequestRepository.findById(id, userId);
     if (!request) {
       const error = new Error("Request not found.");
@@ -592,6 +603,7 @@ export class ParishionerRequestService {
    * Retrieves a single request by tracking number.
    */
   async getRequestByTrackingNumber(trackingNumber, userId) {
+    await assertParishionerOwnerRole(userId);
     const request = await this.parishionerRequestRepository.findByTrackingNumber(trackingNumber, userId);
     if (!request) {
       const error = new Error("Request tracking number not found.");
@@ -606,6 +618,7 @@ export class ParishionerRequestService {
    */
   async resubmitCorrections(requestId, userId) {
     return prisma.$transaction(async (tx) => {
+      await assertParishionerOwnerRole(userId, tx);
       // 1. Verify ownership
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },

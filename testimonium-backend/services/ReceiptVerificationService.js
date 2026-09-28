@@ -4,6 +4,7 @@ import { FileUploadService } from "./FileUploadService.js";
 import { OcrProcessingService } from "./OcrProcessingService.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { AuditLogService } from "./AuditLogService.js";
+import { assertParishionerOwnerRole } from "./ParishionerRequestService.js";
 
 export class ReceiptVerificationService {
   /**
@@ -29,6 +30,7 @@ export class ReceiptVerificationService {
   static async processReceipt(requestId, userId, file) {
     // Phase A: Prisma Transaction
     const result = await prisma.$transaction(async (tx) => {
+      await assertParishionerOwnerRole(userId, tx);
       // ── Step 0: Pessimistic Row Lock on DocumentRequest ─────────────────────
       // Serializes concurrent receipt uploads for the same request to guarantee
       // that concurrent uploads cannot create duplicate PaymentTransactions

@@ -128,6 +128,7 @@ export class ParishRepository {
         contactNumber: data.contactNumber || null,
         email: data.email || null,
         venueCapacity: data.venueCapacity ? parseInt(data.venueCapacity, 10) : null,
+        isMotherParish: data.isMotherParish === true,
         isActive: true,
       },
       include: parishInclude,
@@ -156,6 +157,9 @@ export class ParishRepository {
     }
     if (data.status !== undefined) {
       updateData.isActive = data.status === "Active";
+    }
+    if (data.isMotherParish !== undefined) {
+      updateData.isMotherParish = data.isMotherParish;
     }
 
     return prisma.parish.update({

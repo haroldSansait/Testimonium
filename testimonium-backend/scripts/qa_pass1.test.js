@@ -6,6 +6,16 @@ import { ParishEventService } from "../services/ParishEventService.js";
 
 function setupMockState() {
   const persistedNotifications = [];
+  const futureSunday = new Date();
+  futureSunday.setUTCHours(0, 0, 0, 0);
+  futureSunday.setUTCDate(futureSunday.getUTCDate() + 7);
+  while (futureSunday.getUTCDay() !== 0) {
+    futureSunday.setUTCDate(futureSunday.getUTCDate() + 1);
+  }
+  const futureSundayStart = new Date(futureSunday);
+  futureSundayStart.setUTCHours(1, 0, 0, 0);
+  const futureSundayEnd = new Date(futureSunday);
+  futureSundayEnd.setUTCHours(2, 0, 0, 0);
   const state = {
     schedules: [
       {
@@ -55,9 +65,9 @@ function setupMockState() {
         requestedDate: new Date("2026-09-15T00:00:00.000Z"),
         startDatetime: new Date("2026-09-15T01:00:00.000Z"),
         endDatetime: new Date("2026-09-15T02:00:00.000Z"),
-        proposedDate: new Date("2026-09-20T00:00:00.000Z"),
-        proposedStartDatetime: new Date("2026-09-20T01:00:00.000Z"),
-        proposedEndDatetime: new Date("2026-09-20T02:00:00.000Z"),
+        proposedDate: futureSunday,
+        proposedStartDatetime: futureSundayStart,
+        proposedEndDatetime: futureSundayEnd,
         rescheduleReason: "Priest unavailable on original date",
         assignedPriestId: null,
         priestResponseStatus: null,

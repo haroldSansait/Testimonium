@@ -20,9 +20,16 @@ export const ParishCard: React.FC<ParishCardProps> = ({ parish, isSelected, onCl
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h3 className="font-serif font-bold text-text-primary text-sm">
-            {parish.name}
-          </h3>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="font-serif font-bold text-text-primary text-sm">
+              {parish.name}
+            </h3>
+            {parish.isMotherParish && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-crimson/10 text-crimson border border-crimson/20">
+                Mother Parish
+              </span>
+            )}
+          </div>
           <p className="text-xs text-text-muted flex items-center">
             <MapPin size={12} className="mr-1 flex-shrink-0 text-crimson" />
             <span className="truncate max-w-[250px]">{parish.address}</span>

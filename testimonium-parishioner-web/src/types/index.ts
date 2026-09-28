@@ -25,6 +25,7 @@ export interface Parish {
   description: string;
   assignedPriest: string;
   assignedSecretary: string;
+  assistantPriests?: { id: string | number; name: string }[];
   massSchedules: string[];
   upcomingEvents: string[];
   services: string[];
@@ -38,6 +39,7 @@ export interface Parish {
   venueCapacity?: number | null;
   eventSettings?: any;
   type?: string;
+  isMotherParish?: boolean;
   councils?: {
     pastoral: {
       members: Array<{

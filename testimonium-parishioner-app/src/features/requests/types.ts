@@ -23,6 +23,7 @@ export type DocumentRequestStatus =
   | "PAYMENT_NEEDS_CORRECTION"
   | "PAYMENT_VERIFIED"
   | "PROCESSING"
+  | "READY_FOR_SIGNING"
   | "READY_FOR_PICKUP"
   | "COMPLETED"
   | "REJECTED"

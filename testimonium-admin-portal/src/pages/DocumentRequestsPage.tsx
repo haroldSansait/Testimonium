@@ -12,6 +12,8 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { canManageDocumentRequests } from '@/permissions/rolePermissions';
 import { cn } from '@/utils/cn';
 import api from '@/api/api';
 
@@ -52,6 +54,7 @@ const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
   { label: 'Payment Needs Correction', value: 'Payment Needs Correction' },
   { label: 'Payment Verified', value: 'Payment Verified' },
   { label: 'Processing', value: 'Processing' },
+  { label: 'Ready for Signing', value: 'Ready for Signing' },
   { label: 'Ready for Pickup', value: 'Ready for Pickup' },
   { label: 'Released', value: 'Released' },
   { label: 'Rejected', value: 'Rejected' },
@@ -64,9 +67,10 @@ interface DetailsModalProps {
   request: DocumentRequest;
   onClose: () => void;
   onStatusChange: (status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => Promise<void>;
+  canManage?: boolean;
 }
 
-function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModalProps) {
+function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = true }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
@@ -242,6 +246,16 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
           </>
         );
       case 'Processing':
+        return (
+          <button
+            onClick={() => void handleAction('Ready for Signing')}
+            disabled={isUpdating}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+          >
+            Mark Ready for Signing
+          </button>
+        );
+      case 'Ready for Signing':
         return (
           <button
             onClick={() => void handleAction('Ready for Pickup')}
@@ -805,7 +819,13 @@ function DocumentDetailsModal({ request, onClose, onStatusChange }: DetailsModal
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-2">
-            {renderActionButtons()}
+            {canManage ? (
+              renderActionButtons()
+            ) : (
+              <p className="text-xs text-gray-500 italic">
+                You have read-only access to document requests.
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -840,6 +860,8 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 
 export function DocumentRequestsPage() {
   const location = useLocation();
+  const { role } = useAuth();
+  const canManage = canManageDocumentRequests(role);
   const [search, setSearch] = useState('');
   const [documentType, setDocumentType] = useState<DocumentType | 'all'>('all');
   const [status, setStatus] = useState<DocumentStatus | 'all'>('all');
@@ -931,10 +953,17 @@ export function DocumentRequestsPage() {
     <div>
       <PageHeader
         title="Document Requests"
-        subtitle="Manage and process parishioner requests for official certificates and documents."
+        subtitle="Review and process parishioner sacramental document requests."
       />
 
-      {/* Filter Bar */}
+      {!canManage && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-xs text-blue-800">
+          <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>You have read-only access to document requests.</span>
+        </div>
+      )}
+
+      {/* Filter and Search Card */}
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <SearchBar
@@ -1000,6 +1029,7 @@ export function DocumentRequestsPage() {
           request={selectedRequest}
           onClose={() => setSelectedRequest(null)}
           onStatusChange={handleStatusUpdate}
+          canManage={canManage}
         />
       )}
 

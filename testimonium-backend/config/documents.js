@@ -157,3 +157,107 @@ export function normalizeAvailableDocumentsForSave(docsInput) {
   // Return in stable canonical order
   return CANONICAL_DOCUMENT_TYPES.filter((type) => seen.has(type));
 }
+
+export const CANONICAL_REQUIREMENT_IDS = [
+  "valid_id",
+  "baptismal_cert",
+  "confirmation_cert",
+  "marriage_license",
+  "precana_proof",
+  "cenomar",
+  "banns_clearance",
+  "canonical_interview",
+];
+
+export const CANONICAL_REQUIREMENT_IDS_SET = new Set(CANONICAL_REQUIREMENT_IDS);
+export const CANONICAL_DOCUMENT_TYPES_SET = new Set(CANONICAL_DOCUMENT_TYPES);
+
+/**
+ * Validates and normalizes documentSettings payload for persistence.
+ * Enforces canonical document types, object structure, canonical requirement IDs, and strict boolean values.
+ * Throws a controlled 400 Error on any invalid input.
+ * @param {any} settingsInput
+ * @returns {object}
+ */
+export function validateDocumentSettingsForSave(settingsInput) {
+  let settings = settingsInput;
+  if (typeof settings === "string") {
+    try {
+      settings = JSON.parse(settings);
+    } catch {
+      const err = new Error("Invalid JSON format for documentSettings.");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
+    const err = new Error("documentSettings must be a valid JSON object.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const validated = {};
+
+  for (const [docKey, docVal] of Object.entries(settings)) {
+    // Preserve legacy/unrelated top-level metadata if present
+    if (docKey === "paymentMethods") {
+      validated[docKey] = docVal;
+      continue;
+    }
+
+    if (!CANONICAL_DOCUMENT_TYPES_SET.has(docKey)) {
+      const err = new Error(
+        `Invalid document type "${docKey}" in documentSettings. Supported types: ${CANONICAL_DOCUMENT_TYPES.join(", ")}`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (typeof docVal !== "object" || docVal === null || Array.isArray(docVal)) {
+      const err = new Error(`Configuration for document type "${docKey}" must be an object.`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const docConfig = { ...docVal };
+
+    if (docVal.requirements !== undefined) {
+      if (
+        typeof docVal.requirements !== "object" ||
+        docVal.requirements === null ||
+        Array.isArray(docVal.requirements)
+      ) {
+        const err = new Error(`requirements for document type "${docKey}" must be an object.`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const validatedReqs = {};
+      for (const [reqId, reqVal] of Object.entries(docVal.requirements)) {
+        if (!CANONICAL_REQUIREMENT_IDS_SET.has(reqId)) {
+          const err = new Error(
+            `Invalid requirement ID "${reqId}" for document type "${docKey}". Supported requirements: ${CANONICAL_REQUIREMENT_IDS.join(", ")}`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+
+        if (typeof reqVal !== "boolean") {
+          const err = new Error(
+            `Requirement value for "${reqId}" in "${docKey}" must be strictly boolean (true or false). Received: ${JSON.stringify(reqVal)}`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+
+        validatedReqs[reqId] = reqVal;
+      }
+      docConfig.requirements = validatedReqs;
+    }
+
+    validated[docKey] = docConfig;
+  }
+
+  return validated;
+}

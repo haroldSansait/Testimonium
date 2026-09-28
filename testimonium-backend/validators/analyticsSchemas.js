@@ -12,7 +12,7 @@ const strictCalendarDate = z
 const statuses = [
   "PENDING", "UNDER_REVIEW", "NEEDS_CORRECTION", "PAYMENT_PENDING",
   "PAYMENT_UNDER_REVIEW", "PAYMENT_NEEDS_CORRECTION", "PAYMENT_VERIFIED",
-  "PROCESSING", "READY_FOR_PICKUP", "REQUESTED", "PROPOSED_RESCHEDULE",
+  "PROCESSING", "READY_FOR_SIGNING", "READY_FOR_PICKUP", "REQUESTED", "PROPOSED_RESCHEDULE",
   "WAITING_PARISHIONER_RESPONSE", "CONFIRMED", "COMPLETED", "REJECTED", "CANCELLED",
 ];
 
@@ -100,4 +100,3 @@ export const verifiedPaymentsQuerySchema = z
     message: "Analytics date range must be between 1 and 366 days.",
     path: ["to"],
   });
-

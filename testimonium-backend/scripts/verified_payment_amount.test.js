@@ -118,9 +118,9 @@ test("3. Successful staff verification: PaymentTransaction.amount = associated r
           status: "PAYMENT_UNDER_REVIEW",
           fee: 120.00,
         }),
-        update: async ({ data }) => {
+        updateMany: async ({ data }) => {
           persistedRequestStatus = data.status;
-          return { id: 50, status: data.status, paymentStatus: data.paymentStatus };
+          return { count: 1 };
         },
       },
       paymentTransaction: {
@@ -176,7 +176,7 @@ test("4. Request fee snapshot 150.00: verified transaction amount = 150.00", asy
           status: "PAYMENT_UNDER_REVIEW",
           fee: 150.00,
         }),
-        update: async () => ({ id: 51, status: "PAYMENT_VERIFIED" }),
+        updateMany: async () => ({ count: 1 }),
       },
       paymentTransaction: {
         findFirst: async () => ({
@@ -226,9 +226,9 @@ test("5. Legitimate Decimal 0.00 fee snapshot: verification proceeds and persist
           status: "PAYMENT_UNDER_REVIEW",
           fee: 0.00,
         }),
-        update: async () => {
+        updateMany: async () => {
           statusUpdated = true;
-          return { id: 54, status: "PAYMENT_VERIFIED" };
+          return { count: 1 };
         },
       },
       paymentTransaction: {
@@ -341,7 +341,7 @@ test("7. OCR amount differs from request fee: verified transaction amount still 
           status: "PAYMENT_UNDER_REVIEW",
           fee: 150.00, // Authoritative fee snapshot
         }),
-        update: async () => ({ id: 52, status: "PAYMENT_VERIFIED" }),
+        updateMany: async () => ({ count: 1 }),
       },
       paymentTransaction: {
         findFirst: async () => ({
@@ -399,7 +399,7 @@ test("8. Changing current parish/document pricing after request creation: does N
           status: "PAYMENT_UNDER_REVIEW",
           fee: 100.00, // Snapshot at creation time
         }),
-        update: async () => ({ id: 53, status: "PAYMENT_VERIFIED" }),
+        updateMany: async () => ({ count: 1 }),
       },
       paymentTransaction: {
         findFirst: async () => ({

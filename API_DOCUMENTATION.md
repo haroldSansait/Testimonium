@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 14 September 2026
+**Last reconciled:** 28 September 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -9,7 +9,7 @@
 Public unauthenticated endpoints are:
 - `GET /` (service info)
 - `GET /health` (API and database health status)
-- `GET /document-requirements` and `GET /document-requirements/:type` (document metadata and requirement checklists)
+- `GET /document-requirements` and `GET /document-requirements/:type` (document metadata, fee matrix, and requirement checklists with parish overrides)
 - `POST /auth/resend-verification` (rate-limited email verification trigger)
 
 All other endpoints require a verified Firebase ID token in the authorization header:
@@ -20,7 +20,11 @@ Authorization: Bearer <firebase-id-token>
 
 In local development only, `ENABLE_DEV_AUTH=true` enables the backend’s development-auth bypass. It must never be enabled in production.
 
-The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`. Staff access is parish-scoped where applicable; the coordinator is cross-parish. Parishioners are required to have a completed user profile (`fullName` and `contactNumber`) before creating document or schedule requests; incomplete profiles receive `403 PROFILE_INCOMPLETE`.
+The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`:
+- `PARISHIONER`: Access to own profile, document requests, receipt uploads, schedule requests with preferred priest selection, in-app notifications, and Caloy assistant queries. Incomplete profiles (`fullName` and `contactNumber`) receive `403 PROFILE_INCOMPLETE` on request creation.
+- `SECRETARY`: Parish-scoped operations, document request processing (including drafting, advancing to `READY_FOR_SIGNING`, and `READY_FOR_PICKUP`), document settings/requirement configuration, payment review, verified payment analytics, mass templates, weekday/date rules, daily reports, parish events, council officer photos, and emergency rescheduling.
+- `PRIEST`: Personal commitment calendar management (`/priest/personal-schedules`), parish-scoped operational schedule/event views, parish-scoped read-only document request review (`GET /document-requests` and attachment download streaming; status mutations strictly rejected with `403 FORBIDDEN`), read-only scheduling rules, and liturgical assignment responses.
+- `DIOCESE_COORDINATOR`: Cross-parish administration, parish directory management (including Mother Parish designation), interactive map configuration, parish settings and document requirements governance, weekday/date rules, daily reports, system analytics, verified payment feeds, Caloy Control Center management, Knowledge Base governance, and audit log retention.
 
 A successful response is normally `{ "success": true, "data": ... }`; errors provide `success`, `message`, and optional `errors` or `code`. List endpoints return pagination metadata alongside items.
 
@@ -44,47 +48,96 @@ All REST API endpoints are mounted under `/api/v1` across 22 functional modules:
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/parishes` | Authenticated | List active/visible parish directory records with optional search and type filtering. (Council data omitted from list for performance). |
-| GET | `/parishes/:id` | Authenticated | Get parish details, including structured `councils` (Parish Pastoral Council and conditional Parish Finance Council). |
+| GET | `/parishes` | Authenticated | List active/visible parish directory records with optional search and type filtering. Includes the parish-level `isMotherParish` designation, primary `priest`, and `assistantPriests` array (`[{ id, name }]`). (Council data omitted from list for performance). |
+| GET | `/parishes/:id` | Authenticated | Get parish details, including the parish-level `isMotherParish` designation, primary `priest`, `assistantPriests`, and structured `councils` (Parish Pastoral Council and conditional Parish Finance Council). |
 | GET | `/parishes/selector` | Staff / Coordinator | Fast active parish listing for dropdown selectors (`id`, `parishName`, `municipalityCity`, `province`). |
 | GET | `/parishes/:id/councils` | Staff / Coordinator | Fetch Parish Pastoral Council and Parish Finance Council configuration and members. |
 | PUT | `/parishes/:id/councils` | Staff / Coordinator | Atomically update PPC/PFC members and toggle PFC status; requires `expectedVersion` (returns `409 COUNCIL_CONFIGURATION_STALE` on conflict). |
 | POST | `/parishes/:id/councils/members/:memberId/photo` | Staff / Coordinator (Rate-limited) | Upload an officer portrait photo (`photo`, 2 MB max, JPEG/PNG/WebP). |
 | DELETE | `/parishes/:id/councils/members/:memberId/photo` | Staff / Coordinator | Remove an officer portrait photo. |
-| POST | `/parishes` | Coordinator | Create a parish. |
-| PUT | `/parishes/:id` | Coordinator | Update general parish data. |
-| DELETE | `/parishes/:id` | Coordinator | Archive a parish. |
+| POST | `/parishes` | Coordinator | Create a parish, including the optional `isMotherParish` boolean designation (defaults to `false`). Enforces single Mother Parish per diocese invariant. |
+| PUT | `/parishes/:id` | Coordinator | Update general parish data, including `isMotherParish`. Only Diocese Coordinators may modify the designation. Conflicts return `409` if another parish already holds the designation. |
+| DELETE | `/parishes/:id` | Coordinator | Archive a parish using the standard soft-archive behavior. |
 | POST | `/parishes/:id/restore` | Coordinator | Restore an archived parish. |
 | GET | `/parishes/map-config` | Coordinator | Retrieve map configuration. |
 | PATCH | `/parishes/map-config/batch` | Coordinator (Rate-limited) | Save a validated, rate-limited map configuration batch. |
-| PATCH | `/parishes/:id/settings` | Staff / Coordinator | Update parish settings (event/document settings validated strictly via `SchedulingConfiguration`). |
-| PUT | `/parishes/:id/settings` | Staff / Coordinator | Settings update path for clients using PUT. |
+| PATCH | `/parishes/:id/settings` | Staff / Coordinator | Update parish settings (event/document settings validated strictly via `SchedulingConfiguration` and `validateDocumentSettingsForSave`). `documentSettings` and `availableDocuments` mutations are restricted to Secretary and Coordinator (`PRIEST` receives `403`). Supports custom requirement assignments and base prices. |
+| PUT | `/parishes/:id/settings` | Staff / Coordinator | Settings update path for clients using PUT (same authorization restrictions and schema validation as PATCH). |
 | POST | `/parishes/:id/payment-qr` | Staff / Coordinator | Upload a payment QR image (`qrImage`, 2 MB limit). |
 | DELETE | `/parishes/:id/payment-qr` | Staff / Coordinator | Remove the payment QR image. |
 | POST | `/parishes/:id/images` | Coordinator (Rate-limited) | Upload a directory image (`image`, 5 MB limit). |
-| GET | `/document-requirements` | Public | List all document metadata and checklist requirements, optionally filtered by `type` and/or `parishId`. |
-| GET | `/document-requirements/:type` | Public | Get specific document requirement metadata by document type. |
+| GET | `/document-requirements` | Public | List all document metadata and checklist requirements, optionally filtered by `type` and/or `parishId` (which resolves effective parish-specific base fees and custom requirements). |
+| GET | `/document-requirements/:type` | Public | Get specific document requirement metadata by document type, supporting optional `parishId` query to resolve effective parish overrides. |
 
-## Parishioner document requests and payment
+## Parishioner document requests, requirements, and payment
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | POST | `/requests` | Parishioner | Create a validated document-request draft (requires completed user profile). |
-| POST | `/requests/:id/submit` | Owner | Submit a draft request. |
+| POST | `/requests/:id/submit` | Owner | Submit a draft request; validates all required documents for the document type and parish have been uploaded. |
 | POST | `/requests/:id/cancel` | Owner | Cancel an eligible request. |
 | GET | `/requests` | Owner | List the caller’s document requests. |
 | GET | `/requests/:id` | Owner | Get request detail by ID. |
 | GET | `/requests/tracking/:trackingNumber` | Owner | Get request detail by tracking number. |
-| POST | `/requests/:id/files` | Owner | Upload up to five supporting files in `files` (PDF, PNG, JPEG, WebP, 5 MB max each). |
+| POST | `/requests/:id/files` | Owner | Upload up to five supporting files in `files` (PDF, PNG, JPEG, WebP, 5 MB max each) under canonical requirement category IDs. |
 | GET | `/requests/:id/attachments/:attachmentId/download` | Owner | Authenticated private attachment download streaming. |
 | POST | `/requests/:id/receipt` | Owner (Rate-limited) | Upload payment receipt in `receipt` (JPEG/PNG only, 5 MB max, rate-limited; allocates incremented `attemptVersion`, supersedes prior attempts). |
 | POST | `/requests/:id/resubmit-corrections` | Owner | Resubmit a corrected request after staff request. |
 | GET | `/payment/configuration` | Authenticated | Resolve payment settings and QR data for the caller’s context. |
-| GET | `/document-requests` | Staff / Coordinator | List processable document requests. |
-| PATCH | `/document-requests/:id/status` | Staff / Coordinator | Apply a validated workflow/status change. |
-| GET | `/document-requests/:id/attachments/:attachmentId/download` | Staff / Coordinator | Authenticated staff attachment download streaming. |
+| GET | `/document-requests` | Staff / Coordinator / Priest | List processable document requests. Priests have parish-scoped read-only access. |
+| PATCH | `/document-requests/:id/status` | Secretary / Coordinator | Apply a validated workflow/status change. Priests are strictly rejected with `403` (read-only). Canonical workflow: `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`. Transitioning to `READY_FOR_SIGNING` dispatches an in-app notification to the active primary parish priest. |
+| GET | `/document-requests/:id/attachments/:attachmentId/download` | Staff / Coordinator / Priest | Authenticated staff attachment download streaming (includes parish-assigned Priests for review). |
 
-Supporting uploads allow PDF, PNG, JPEG, and WebP, up to 5 MB each (maximum 5 files per request). Receipts accept JPEG or PNG only, up to 5 MB; HEIC/HEIF and PDFs are rejected by the backend (mobile converts HEIC locally before upload). A receipt upload allocates an atomic `attemptVersion`, supersedes previous non-superseded receipts, records SHA-256 duplicate image hashes, and moves the request to `PAYMENT_UNDER_REVIEW`. OCR enriches the evidence asynchronously; staff verification remains mandatory.
+### Sacramental Document Types and Configurable Requirements Matrix
+
+The system governs seven canonical document types and eight canonical requirement items:
+
+**7 Canonical Document Types (`CANONICAL_DOCUMENT_TYPES`):**
+1. `BAPTISMAL_CERTIFICATE`: Official copy of Sacrament of Baptism registry entry (default base fee ₱100.00).
+2. `CONFIRMATION_CERTIFICATE`: Official record of Sacrament of Confirmation (default base fee ₱100.00).
+3. `MARRIAGE_CERTIFICATE`: Official sacramental record of Holy Matrimony (default base fee ₱150.00).
+4. `FIRST_COMMUNION_CERTIFICATE`: Official record of First Holy Communion (default base fee ₱75.00).
+5. `MARRIAGE_BANNS`: Public notification of prospective marriage posted across parishes (default base fee ₱200.00).
+6. `PERMIT_TO_MARRY`: Canonical clearance granted to marry in another parish or jurisdiction (default base fee ₱150.00).
+7. `STATUS_OF_LIBERTY`: Attestation of canonical freedom to marry / Status Liber (default base fee ₱150.00).
+
+**8 Canonical Requirement IDs (`CANONICAL_REQUIREMENT_IDS`):**
+- `valid_id`: Valid Government / Student ID (category: `primary`)
+- `baptismal_cert`: Baptismal Certificate (category: `supporting`)
+- `confirmation_cert`: Confirmation Certificate (category: `supporting`)
+- `marriage_license`: Civil Marriage License / Marriage Contract (category: `supporting`)
+- `precana_proof`: Pre-Cana Seminar Certificate (category: `supporting`)
+- `cenomar`: PSA CENOMAR (category: `supporting`)
+- `banns_clearance`: Banns Clearance Form (category: `supporting`)
+- `canonical_interview`: Canonical Interview Form / Document (category: `supporting`)
+
+**Configurable Requirements Behavior:**
+- Each document type has default required documents in `DOCUMENT_REQUIREMENTS_MATRIX`.
+- Parishes can customize requirement assignments per document type in `Parish.documentSettings`:
+  ```json
+  {
+    "BAPTISMAL_CERTIFICATE": {
+      "price": 100,
+      "requirements": {
+        "valid_id": true,
+        "cenomar": true,
+        "baptismal_cert": false
+      }
+    }
+  }
+  ```
+  - An override of `false` removes a default requirement.
+  - An override of `true` enables any canonical requirement for that document type.
+  - Setting updates are strictly validated by `validateDocumentSettingsForSave` against canonical IDs; unknown IDs, non-boolean values, or malformed JSON return `400 Bad Request`.
+  - When `parishId` is passed to `GET /document-requirements` or `GET /document-requirements/:type`, the service dynamically overlays the parish's custom pricing and requirements.
+  - During request submission (`POST /requests/:id/submit`), the backend validates that attachments exist for every resolved required document.
+
+**Document Request Lifecycle & Presentation Mapping:**
+- Canonical workflow: `PENDING` → `UNDER_REVIEW` → `PAYMENT_PENDING` → `PAYMENT_UNDER_REVIEW` → `PAYMENT_VERIFIED` → `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`.
+- Correction workflows: `UNDER_REVIEW` → `NEEDS_CORRECTION` → `UNDER_REVIEW`; `PAYMENT_UNDER_REVIEW` → `PAYMENT_NEEDS_CORRECTION` → `PAYMENT_UNDER_REVIEW`.
+- `READY_FOR_SIGNING`: Internal stage indicating document certificate drafting is complete and awaiting the physical signature of the parish's primary priest before pickup. Transitioning to `READY_FOR_SIGNING` automatically dispatches an in-app notification to the active primary parish priest (`DOCUMENT_REQUEST_READY_FOR_SIGNING`). If no active primary priest is assigned, it proceeds gracefully.
+- Client presentation: Parishioner-facing clients (web portal and mobile app) map `READY_FOR_SIGNING` to "Processing" ("Document is prepared and awaiting the parish priest's signature before release"), shielding internal operational workflows from parishioner confusion while providing full transparency.
+- Supporting uploads allow PDF, PNG, JPEG, and WebP, up to 5 MB each (maximum 5 files per request). Receipts accept JPEG or PNG only, up to 5 MB; HEIC/HEIF and PDFs are rejected by the backend (mobile converts HEIC locally before upload). A receipt upload allocates an atomic `attemptVersion`, supersedes previous non-superseded receipts, records SHA-256 duplicate image hashes, and moves the request to `PAYMENT_UNDER_REVIEW`. OCR enriches the evidence asynchronously; staff verification remains mandatory.
 
 ## Scheduling, availability, and calendar
 

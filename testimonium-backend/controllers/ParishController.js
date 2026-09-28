@@ -33,7 +33,7 @@ export const getById = async (req, res, next) => {
 
 export const create = async (req, res, next) => {
   try {
-    const data = await parishService.createParish(req.body, req.user?.id);
+    const data = await parishService.createParish(req.body, req.user?.id, req.user?.role);
     return res.status(201).json({ success: true, data });
   } catch (err) {
     return next(err);
@@ -43,7 +43,7 @@ export const create = async (req, res, next) => {
 export const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const data = await parishService.editParish(id, req.body, req.user?.id);
+    const data = await parishService.editParish(id, req.body, req.user?.id, req.user?.role);
     return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);
@@ -76,9 +76,22 @@ export const updateSettings = async (req, res, next) => {
 
     if (
       req.user.role === "PRIEST" &&
-      (req.body.eventSettings !== undefined || req.body.officeHours !== undefined)
+      (req.body.eventSettings !== undefined ||
+        req.body.officeHours !== undefined ||
+        req.body.documentSettings !== undefined ||
+        req.body.availableDocuments !== undefined)
     ) {
-      const error = new Error("Priests cannot modify authoritative scheduling configuration.");
+      const error = new Error("Priests cannot modify authoritative parish configuration.");
+      error.statusCode = 403;
+      error.code = "FORBIDDEN";
+      throw error;
+    }
+
+    if (
+      req.body.isMotherParish !== undefined &&
+      req.user.role !== "DIOCESE_COORDINATOR"
+    ) {
+      const error = new Error("Only Diocese Coordinators can modify the Mother Parish designation.");
       error.statusCode = 403;
       error.code = "FORBIDDEN";
       throw error;
@@ -87,7 +100,7 @@ export const updateSettings = async (req, res, next) => {
     // Strict multi-tenant guard
     await validateParishAccess(req, id, "Parish Settings");
 
-    const data = await parishService.editParish(id, req.body, req.user?.id);
+    const data = await parishService.editParish(id, req.body, req.user?.id, req.user?.role);
     return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);

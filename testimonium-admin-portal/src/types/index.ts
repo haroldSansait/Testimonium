@@ -8,6 +8,7 @@ export type DocumentStatus =
   | 'Payment Needs Correction'
   | 'Payment Verified'
   | 'Processing'
+  | 'Ready for Signing'
   | 'Ready for Pickup'
   | 'Released'
   | 'Completed'
@@ -381,6 +382,8 @@ export interface Parish {
   availableDocuments?: string[] | null;
   venueCapacity?: number | null;
   schedulingConfigVersion?: number;
+  isMotherParish?: boolean;
+  assistantPriests?: { id: string; name: string }[];
 }
 
 // ─── Parish Councils ──────────────────────────────────────────────────────────
@@ -505,4 +508,3 @@ export interface VerifiedPaymentItem {
     name: string;
   } | null;
 }
-

@@ -2,6 +2,7 @@ import { DocumentRequestRepository } from "../repositories/DocumentRequestReposi
 import { prisma } from "../config/db.js";
 import { canTransition } from "./RequestStateMachine.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
+import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { DocumentRequirementService } from "./DocumentRequirementService.js";
 import { env } from "../config/env.js";
@@ -38,6 +39,12 @@ export class DocumentRequestService {
    * Updates the status of a document request.
    */
   async updateStatus(requestId, targetStatus, remarks = "", actorId, actorRole, actorParishId, correctionRequirementIds = []) {
+    if (actorRole === "PRIEST") {
+      const error = new Error("Priests have read-only access to document requests.");
+      error.statusCode = 403;
+      throw error;
+    }
+
     return prisma.$transaction(async (tx) => {
       const request = await tx.documentRequest.findUnique({
         where: { id: requestId },
@@ -51,11 +58,6 @@ export class DocumentRequestService {
 
       const currentStatus = request.status;
 
-      // Idempotency: if request is already in targetStatus, no-op
-      if (currentStatus === targetStatus) {
-        return request;
-      }
-
       // Authorization & Ownership checks
       if (actorRole === "PARISHIONER") {
         if (targetStatus !== "CANCELLED" || request.userId !== actorId) {
@@ -63,7 +65,7 @@ export class DocumentRequestService {
           error.statusCode = 403;
           throw error;
         }
-      } else if (actorRole === "SECRETARY" || actorRole === "PRIEST") {
+      } else if (actorRole === "SECRETARY") {
         if (request.parishId !== actorParishId) {
           const error = new Error("Unauthorized: Request belongs to a different parish.");
           error.statusCode = 403;
@@ -73,6 +75,11 @@ export class DocumentRequestService {
         const error = new Error("Unauthorized role.");
         error.statusCode = 403;
         throw error;
+      }
+
+      // Idempotency is only safe after role and tenant ownership authorization.
+      if (currentStatus === targetStatus) {
+        return request;
       }
 
       // Verify status change legality
@@ -116,6 +123,8 @@ export class DocumentRequestService {
         status: targetStatus,
         remarks: remarks || request.remarks,
       };
+      let paymentTransactionUpdate = null;
+      let duplicateOverrideAudit = null;
 
       if (targetStatus === "NEEDS_CORRECTION") {
         updatePayload.correctionNote = remarks;
@@ -136,14 +145,14 @@ export class DocumentRequestService {
         });
 
         if (pendingTx) {
-          await tx.paymentTransaction.update({
+          paymentTransactionUpdate = {
             where: { id: pendingTx.id },
             data: {
               status: "REJECTED",
               verifiedById: actorId,
               verifiedAt: new Date(),
             },
-          });
+          };
         }
         updatePayload.paymentStatus = "UNPAID";
       }
@@ -242,24 +251,18 @@ export class DocumentRequestService {
               throw error;
             }
 
-            await AuditLogService.log(
-              actorId,
-              "Duplicate Payment Warning Overridden",
-              tx,
-              false,
-              {
-                affectedTable: "payment_transactions",
-                affectedRecordId: pendingTx.id,
-                parishId: request.parishId,
-                metadata: {
-                  conflictingRequestId: duplicateReceipt.ocrResult.duplicateRequestId || "Unknown",
-                  duplicateReason: duplicateReceipt.ocrResult.duplicateReason || null,
-                },
-              }
-            );
+            duplicateOverrideAudit = {
+              affectedTable: "payment_transactions",
+              affectedRecordId: pendingTx.id,
+              parishId: request.parishId,
+              metadata: {
+                conflictingRequestId: duplicateReceipt.ocrResult.duplicateRequestId || "Unknown",
+                duplicateReason: duplicateReceipt.ocrResult.duplicateReason || null,
+              },
+            };
           }
 
-          await tx.paymentTransaction.update({
+          paymentTransactionUpdate = {
             where: { id: pendingTx.id },
             data: {
               status: "VERIFIED",
@@ -267,7 +270,7 @@ export class DocumentRequestService {
               verifiedById: actorId,
               verifiedAt: new Date(),
             },
-          });
+          };
         }
         updatePayload.paymentStatus = "CONFIRMED";
       } else if (targetStatus === "PAYMENT_PENDING" && currentStatus === "PAYMENT_VERIFIED") {
@@ -278,14 +281,14 @@ export class DocumentRequestService {
         });
 
         if (verifiedTx) {
-          await tx.paymentTransaction.update({
+          paymentTransactionUpdate = {
             where: { id: verifiedTx.id },
             data: {
               status: "REJECTED",
               verifiedById: actorId,
               verifiedAt: new Date(),
             },
-          });
+          };
         }
         updatePayload.paymentStatus = "UNPAID";
         updatePayload.paymentProofObjectKey = null; // Clear proof
@@ -296,22 +299,48 @@ export class DocumentRequestService {
         });
 
         if (pendingTx) {
-          await tx.paymentTransaction.update({
+          paymentTransactionUpdate = {
             where: { id: pendingTx.id },
             data: {
               status: "REJECTED",
               verifiedById: actorId,
               verifiedAt: new Date(),
             },
-          });
+          };
         }
         updatePayload.paymentStatus = "UNPAID";
       }
 
-      const updatedRequest = await tx.documentRequest.update({
-        where: { id: requestId },
+      const transitionClaim = await tx.documentRequest.updateMany({
+        where: { id: requestId, status: currentStatus },
         data: updatePayload,
       });
+
+      if (transitionClaim.count !== 1) {
+        const latestRequest = await tx.documentRequest.findUnique({ where: { id: requestId } });
+        if (latestRequest?.status === targetStatus) {
+          return latestRequest;
+        }
+        const error = new Error("Document request status changed elsewhere. Reload and try again.");
+        error.statusCode = 409;
+        error.code = "DOCUMENT_REQUEST_CONCURRENCY_CONFLICT";
+        throw error;
+      }
+
+      if (duplicateOverrideAudit) {
+        await AuditLogService.log(
+          actorId,
+          "Duplicate Payment Warning Overridden",
+          tx,
+          false,
+          duplicateOverrideAudit
+        );
+      }
+      if (paymentTransactionUpdate) {
+        await tx.paymentTransaction.update(paymentTransactionUpdate);
+      }
+
+      const updatedRequest = await tx.documentRequest.findUnique({ where: { id: requestId } });
 
       // Log request history
       const history = await tx.requestHistory.create({
@@ -338,6 +367,19 @@ export class DocumentRequestService {
         history.id
       );
 
+      // When entering READY_FOR_SIGNING: notify active primary parish priest
+      if (targetStatus === "READY_FOR_SIGNING") {
+        await NotificationDispatcher.notifyPriestReadyForSigning(
+          {
+            parishId: request.parishId,
+            requestId: request.id,
+            trackingNumber: request.trackingNumber,
+            documentType: request.documentType,
+          },
+          tx
+        );
+      }
+
       await AuditLogService.log(
         actorId,
         "Document Request Status Updated",
@@ -363,4 +405,3 @@ export class DocumentRequestService {
     });
   }
 }
-

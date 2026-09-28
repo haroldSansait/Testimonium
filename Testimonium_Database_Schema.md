@@ -1,6 +1,6 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 14 September 2026
+**Last reconciled:** 28 September 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
@@ -14,7 +14,7 @@ This reference summarizes the 33 physical models and 26 enums implemented in the
 | `UserStatus` | `ACTIVE`, `INACTIVE` |
 | `ParishType` | `PARISH`, `QUASI_PARISH`, `MISSION_STATION` |
 | `DocumentType` | `BAPTISMAL_CERTIFICATE`, `CONFIRMATION_CERTIFICATE`, `MARRIAGE_CERTIFICATE`, `FIRST_COMMUNION_CERTIFICATE`, `MARRIAGE_BANNS`, `PERMIT_TO_MARRY`, `STATUS_OF_LIBERTY` |
-| `DocumentRequestStatus` | `PENDING`, `UNDER_REVIEW`, `NEEDS_CORRECTION`, `PAYMENT_PENDING`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_NEEDS_CORRECTION`, `PAYMENT_VERIFIED`, `PROCESSING`, `READY_FOR_PICKUP`, `COMPLETED`, `REJECTED`, `CANCELLED` |
+| `DocumentRequestStatus` | `PENDING`, `UNDER_REVIEW`, `NEEDS_CORRECTION`, `PAYMENT_PENDING`, `PAYMENT_UNDER_REVIEW`, `PAYMENT_NEEDS_CORRECTION`, `PAYMENT_VERIFIED`, `PROCESSING`, `READY_FOR_SIGNING`, `READY_FOR_PICKUP`, `COMPLETED`, `REJECTED`, `CANCELLED` |
 | `PaymentStatus` | `UNPAID`, `PROOF_SUBMITTED`, `CONFIRMED` |
 | `PaymentVerificationStatus` | `PENDING`, `VERIFIED`, `REJECTED` |
 | `ScheduleEventType` | `WEDDING`, `BAPTISM`, `CONFIRMATION`, `PRIVATE_MASS`, `MASS_INTENTION`, `MARRIAGE_SPECIAL`, `WAKE_MASS`, `FUNERAL`, `ANOINTING_OF_THE_SICK`, `FIESTA`, `BLESSING`, `DELIVERANCE`, `THANKSGIVING`, `FIRST_COMMUNION`, `MASS_OF_HOLY_SPIRIT`, `CONFESSION` |
@@ -42,7 +42,7 @@ This reference summarizes the 33 physical models and 26 enums implemented in the
 | Table | Primary key | Important columns | Relations/indexes |
 | --- | --- | --- | --- |
 | `roles` | `role_id` | unique `role_name`, `description` | One role to many users. |
-| `parishes` | `parish_id` | unique `parish_name`, optional unique `slug`; type, contact/location/patron/email; coordinates (`latitude`, `longitude`), map zoom, pin color, show label; cover/logo/gallery; active flag; document/event/office/payment settings; available-documents JSON; venue capacity; `scheduling_config_version`; timestamps | One parish to users, requests, schedules, availabilities, templates, events, weekday/date rules, daily reports, activity logs, and one optional `councilConfiguration`. Indexed by type, active status, municipality. |
+| `parishes` | `parish_id` | unique `parish_name`, optional unique `slug`; `is_mother_parish` boolean (default `false`); type, contact/location/patron/email; coordinates (`latitude`, `longitude`), map zoom, pin color, show label; cover/logo/gallery; active flag; document/event/office/payment settings; available-documents JSON; venue capacity; `scheduling_config_version`; timestamps | One parish to users, requests, schedules, availabilities, templates, events, weekday/date rules, daily reports, activity logs, and one optional `councilConfiguration`. Partial unique index `parishes_single_mother_parish_idx` on `(is_mother_parish)` WHERE `is_mother_parish = true`. Indexed by type, active status, and municipality. |
 | `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; `email_notifications_enabled` (Boolean, default `true`); timestamps | Required role; optional parish. Relations to document requests, schedules, priest commitments, notifications, and logs. Indexed by role, parish, status, creation date. |
 
 ## Parish council governance
@@ -56,8 +56,8 @@ This reference summarizes the 33 physical models and 26 enums implemented in the
 
 | Table | Primary key | Important columns | Relations/indexes |
 | --- | --- | --- | --- |
-| `document_requests` | `request_id` | owner/parish/processor IDs; unique tracking number; applicant, relationship, draft flag, document type, purpose; request and payment statuses; R2 proof key/QR reference; fee snapshot (`Decimal(10,2)`); remarks/correction fields (`correction_note`, `payment_correction_note`, `correction_requirement_ids`); processing dates | Required submitter and parish; optional processor. One-to-many attachments, transactions, history. Indexed by owner, parish, processor, type, status, payment status, date, composite `[parish_id, date_requested]`, tracking number. |
-| `request_attachments` | `attachment_id` | request ID, original name, R2 key, type, size, category (`primary`, `supporting`, `authorization_letter`, `receipt`), upload time | Cascades when request is deleted; indexed by request. |
+| `document_requests` | `request_id` | owner/parish/processor IDs; unique tracking number; applicant, relationship, draft flag, document type, purpose; request status (including `READY_FOR_SIGNING`) and payment statuses; R2 proof key/QR reference; fee snapshot (`Decimal(10,2)`); remarks/correction fields (`correction_note`, `payment_correction_note`, `correction_requirement_ids`); processing dates | Required submitter and parish; optional processor. One-to-many attachments, transactions, history. Indexed by owner, parish, processor, type, status, payment status, date, composite `[parish_id, date_requested]`, tracking number. |
+| `request_attachments` | `attachment_id` | request ID, original name, R2 key, type, size, category (`primary`, `supporting`, `authorization_letter`, `receipt`, or canonical requirement ID), upload time | Cascades when request is deleted; indexed by request. |
 | `payment_transactions` | `payment_id` | request ID, amount (`Decimal(10,2)`), provider/reference, verification status, verifier/date, creation time | Cascades with request; one-to-many receipts; indexed by request, verifier, composite `[status, created_at]`. |
 | `receipt_uploads` | `receipt_id` | payment transaction ID, R2 key, name, MIME type, size, SHA-256 image hash, `attempt_version` (Int, default 1, CHECK > 0), `is_superseded` (Boolean, default false), upload time | Cascades with transaction; one-to-one OCR result; unique compound constraint on `[payment_transaction_id, attempt_version]`; unique partial index on `payment_transaction_id` WHERE `is_superseded = false`; indexed by transaction, image hash, upload time. |
 | `ocr_results` | `ocr_id` | unique receipt ID; parsed reference/amount/date/provider/merchant/account; raw text; status/confidences (`ocr_confidence`, `parser_confidence`, `final_confidence`); compression/engine metadata; duplicate flags (`is_duplicate`, `duplicate_request_id`, `duplicate_reason`) | Cascades with receipt; indexed by reference number. |
@@ -129,7 +129,10 @@ EmailOutbox (Standalone transactional outbox ledger)
 
 - PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, council types, and workflow boundaries.
 - `Decimal(10,2)` is used for all fee snapshots and payment amounts.
-- `DocumentRequest.correctionRequirementIds` and `Parish.gallery` are PostgreSQL string arrays; `Parish.availableDocuments` and `EmailOutbox.payload` are JSON.
+- `DocumentRequest.correctionRequirementIds` and `Parish.gallery` are PostgreSQL string arrays; `Parish.availableDocuments`, `Parish.documentSettings`, and `EmailOutbox.payload` are JSON.
+- `Parish.is_mother_parish` is a non-null boolean with a safe default of `false`. A PostgreSQL partial unique index `parishes_single_mother_parish_idx` ON `parishes ("is_mother_parish") WHERE "is_mother_parish" = true` guarantees at most one Mother Parish exists per diocese at the database engine level.
+- `DocumentRequestStatus` includes `READY_FOR_SIGNING` between `PROCESSING` and `READY_FOR_PICKUP`. Transitioning to `READY_FOR_SIGNING` represents the internal completion of drafting awaiting the active primary priest's physical signature, triggering an in-app notification to the active primary priest. Priests have parish-scoped read-only access to document requests, and mutations are restricted to Secretary and Coordinator (`PRIEST` receives `403 FORBIDDEN`).
+- Document requirements are dynamically resolved by merging the system-wide `DOCUMENT_REQUIREMENTS_MATRIX` with parish-specific `documentSettings.requirements` (supporting both adding canonical requirements and disabling default requirements).
 - `ReceiptUpload` enforces `attempt_version > 0`, uniqueness on `[payment_transaction_id, attempt_version]`, and at most ONE active attempt (`is_superseded = false`) per payment transaction via a unique partial index.
 - `PriestPersonalSchedule` enforces an interval check constraint (`end_at > start_at`) and optimistic versioning (`version`).
 - `Schedule` maintains optimistic concurrency control via integer `version`, references optional `requested_priest_id` for parishioner priest preferences, and generates append-only `ScheduleHistory` records across transitions.

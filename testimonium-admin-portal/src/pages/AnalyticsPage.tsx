@@ -15,6 +15,7 @@ import {
 import api from '@/api/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { AnalyticsSelect, type SelectOptionGroup } from '@/components/ui/AnalyticsSelect';
+import { documentStatusGroups } from '@/shared/documentAnalytics';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -171,41 +172,6 @@ const documentTypeGroups: SelectOptionGroup[] = [
       { value: 'MARRIAGE_BANNS', label: 'Marriage Banns' },
       { value: 'PERMIT_TO_MARRY', label: 'Permit to Marry' },
       { value: 'STATUS_OF_LIBERTY', label: 'Status of Liberty' },
-    ],
-  },
-];
-
-const documentStatusGroups: SelectOptionGroup[] = [
-  {
-    groupName: 'Review & Correction',
-    options: [
-      { value: 'PENDING', label: 'Pending Review' },
-      { value: 'UNDER_REVIEW', label: 'Under Review' },
-      { value: 'NEEDS_CORRECTION', label: 'Needs Correction' },
-    ],
-  },
-  {
-    groupName: 'Payment Stages',
-    options: [
-      { value: 'PAYMENT_PENDING', label: 'Payment Pending' },
-      { value: 'PAYMENT_UNDER_REVIEW', label: 'Payment Under Review' },
-      { value: 'PAYMENT_NEEDS_CORRECTION', label: 'Payment Needs Correction' },
-      { value: 'PAYMENT_VERIFIED', label: 'Payment Verified' },
-    ],
-  },
-  {
-    groupName: 'Processing & Fulfillment',
-    options: [
-      { value: 'PROCESSING', label: 'Processing' },
-      { value: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
-    ],
-  },
-  {
-    groupName: 'Final / Resolved',
-    options: [
-      { value: 'COMPLETED', label: 'Completed' },
-      { value: 'REJECTED', label: 'Rejected' },
-      { value: 'CANCELLED', label: 'Cancelled' },
     ],
   },
 ];

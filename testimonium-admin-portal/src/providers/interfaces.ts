@@ -89,6 +89,7 @@ export interface CreateParishPayload {
     contactNumber?: string;
     email?: string;
     venueCapacity?: number | null;
+    isMotherParish?: boolean;
   };
   priest?: StaffAssignmentConfig;
   secretary?: StaffAssignmentConfig;

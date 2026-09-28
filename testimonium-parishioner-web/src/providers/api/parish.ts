@@ -37,6 +37,7 @@ const mapParish = (p: any): Parish => {
     description: p.directoryDescription || p.description || `${lookupData.name || "Parish"} of Canlaon Vicariate.`,
     assignedPriest: p.priest || "Unassigned",
     assignedSecretary: p.secretary || "Unassigned",
+    assistantPriests: Array.isArray(p.assistantPriests) ? p.assistantPriests : [],
     massSchedules: p.massSchedules || [],
     upcomingEvents: p.upcomingEvents || [],
     services: p.services || [],
@@ -58,6 +59,7 @@ const mapParish = (p: any): Parish => {
         : p.eventSettings
       : null,
     councils: p.councils !== undefined ? p.councils : null,
+    isMotherParish: Boolean(p.isMotherParish),
   };
 };
 

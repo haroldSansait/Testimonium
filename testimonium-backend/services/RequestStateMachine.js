@@ -7,6 +7,7 @@ export const DocumentRequestStatus = {
   PAYMENT_NEEDS_CORRECTION: "PAYMENT_NEEDS_CORRECTION",
   PAYMENT_VERIFIED: "PAYMENT_VERIFIED",
   PROCESSING: "PROCESSING",
+  READY_FOR_SIGNING: "READY_FOR_SIGNING",
   READY_FOR_PICKUP: "READY_FOR_PICKUP",
   COMPLETED: "COMPLETED",
   REJECTED: "REJECTED",
@@ -53,6 +54,9 @@ const TRANSITIONS = {
     DocumentRequestStatus.PAYMENT_PENDING, // allow rolling back to pending if proof was bad
   ],
   [DocumentRequestStatus.PROCESSING]: [
+    DocumentRequestStatus.READY_FOR_SIGNING,
+  ],
+  [DocumentRequestStatus.READY_FOR_SIGNING]: [
     DocumentRequestStatus.READY_FOR_PICKUP,
   ],
   [DocumentRequestStatus.READY_FOR_PICKUP]: [

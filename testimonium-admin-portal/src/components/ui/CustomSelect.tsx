@@ -36,6 +36,8 @@ export interface CustomSelectProps {
   className?: string;
   triggerClassName?: string;
   dropdownClassName?: string;
+  defaultOpen?: boolean;
+  onClose?: () => void;
   'aria-label'?: string;
 }
 
@@ -58,9 +60,11 @@ export function CustomSelect({
   className,
   triggerClassName,
   dropdownClassName,
+  defaultOpen = false,
+  onClose,
   'aria-label': ariaLabel,
 }: CustomSelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [search, setSearch] = useState('');
   const [activeIndex, setActiveIndex] = useState<number>(-1);
 
@@ -144,11 +148,12 @@ export function CustomSelect({
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        onClose?.();
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [onClose]);
 
   // Focus search input or initialize active index on open
   useEffect(() => {
@@ -206,6 +211,7 @@ export function CustomSelect({
       e.preventDefault();
       setIsOpen(false);
       triggerRef.current?.focus();
+      onClose?.();
       return;
     }
 

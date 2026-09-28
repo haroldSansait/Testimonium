@@ -58,7 +58,7 @@ const DocumentRequestTemplates = {
         message: `Your payment receipt for request (Tracking #: ${trackingNumber}) has been verified successfully.`,
       };
     }
-    if (newStatus === "PROCESSING") {
+    if (newStatus === "PROCESSING" || newStatus === "READY_FOR_SIGNING") {
       return {
         title: "Processing Document",
         message: `Your sacramental certificate (Tracking #: ${trackingNumber}) is now being prepared.`,
@@ -337,6 +337,57 @@ export class NotificationDispatcher {
 
     await NotificationDispatcher._persist(payloads, client);
     await EmailOutboxService.enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId }, client);
+  }
+
+  /**
+   * Dispatches an IN_APP notification to the active primary parish priest
+   * when a document request transitions to READY_FOR_SIGNING.
+   * Graceful no-op if no active primary priest is assigned.
+   *
+   * @param {object} event
+   * @param {number} event.parishId
+   * @param {number} event.requestId
+   * @param {string} event.trackingNumber
+   * @param {string} [event.documentType]
+   * @param {object|null} tx
+   */
+  static async notifyPriestReadyForSigning(
+    { parishId, requestId, trackingNumber, documentType },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const priestId = await RecipientResolver.getPrimaryPriest(parishId, client);
+    if (!priestId) {
+      logger.info(
+        { parishId, requestId },
+        "[NotificationDispatcher] No active primary priest found; skipping signing notification."
+      );
+      return;
+    }
+
+    const docTypeLabels = {
+      BAPTISMAL_CERTIFICATE: "Baptismal Certificate",
+      CONFIRMATION_CERTIFICATE: "Confirmation Certificate",
+      MARRIAGE_CERTIFICATE: "Marriage Certificate",
+      FIRST_COMMUNION_CERTIFICATE: "First Communion Certificate",
+      MARRIAGE_BANNS: "Marriage Banns",
+      PERMIT_TO_MARRY: "Permit to Marry",
+      STATUS_OF_LIBERTY: "Status of Liberty Certificate",
+    };
+    const humanizedDoc = docTypeLabels[documentType] || (documentType ? documentType.replace(/_/g, " ") : "Document");
+    const title = "Document Ready for Signing";
+    const message = `Request #${trackingNumber} (${humanizedDoc}) is ready for your signature.`;
+
+    const payload = {
+      userId: priestId,
+      title,
+      message,
+      type: "IN_APP",
+      referenceType: "DOCUMENT_REQUEST",
+      referenceId: requestId,
+    };
+
+    await NotificationDispatcher._persist([payload], client, { throwOnError: true });
   }
 
   // -------------------------------------------------------------------------
@@ -688,8 +739,9 @@ export class NotificationDispatcher {
    *
    * @param {object[]} payloads - Array of Notification create data objects
    * @param {object} client     - Prisma client or transaction client
+   * @param {{throwOnError?: boolean}} options
    */
-  static async _persist(payloads, client) {
+  static async _persist(payloads, client, { throwOnError = false } = {}) {
     if (!payloads || payloads.length === 0) return;
 
     // Deduplicate by userId: keep the first payload per userId in this batch.
@@ -707,6 +759,7 @@ export class NotificationDispatcher {
       await client.notification.createMany({ data: unique });
     } catch (err) {
       logger.error({ err }, "[NotificationDispatcher] Failed to persist notifications");
+      if (throwOnError) throw err;
     }
   }
 }

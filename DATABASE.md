@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 14 September 2026
+**Last reconciled:** 28 September 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -17,7 +17,7 @@ Keep connection strings in backend deployment secrets. Do not expose any databas
 
 ## Schema management
 
-The migration history is stored in `testimonium-backend/prisma/migrations/`. Current committed migrations include:
+The migration history is stored in `testimonium-backend/prisma/migrations/`. Current working-tree migrations include:
 - `20260704123959_init_testimonium_relational_schema`
 - `20260704140000_rename_vicariate_admin_to_diocese_coordinator`
 - `20260705113749_make_firebase_uid_optional`
@@ -32,6 +32,9 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260908214500_add_schedule_requested_priest_id`
 - `20260910120000_add_rag_chatbot`
 - `20260913150000_add_caloy_control_center`
+- `20260919120000_add_mother_parish_and_ready_for_signing`
+- `20260928120000_correct_mother_parish_designation`
+- `20260928180000_enforce_single_mother_parish`
 
 ### Development change flow
 
@@ -91,6 +94,10 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `CaloyRuntimeConfig` manages diocesan assistant operational settings as a singleton row (`config_id = 1`). The table is unseeded on migration, allowing deployments to operate against validated `.env` values until the Diocese Coordinator saves settings (`expectedVersion = 0` creates the initial row). Stale updates are rejected via `409 CONFIG_VERSION_CONFLICT`. Check constraints enforce bounded limits (`ai_ten_minute_max >= 5`, `ai_daily_max >= ai_ten_minute_max`, `chatbot_request_deadline_ms BETWEEN 5000 AND 28000`, `log_retention_days BETWEEN 14 AND 365`). Settings updates and corresponding audit entries in `activity_logs` execute within a single atomic database transaction.
 - `SystemLease` provides distributed atomic coordination using PostgreSQL database time (`NOW()`). The automated retention worker contends for the daily key `CALOY_TELEMETRY_RETENTION:YYYY-MM-DD` (eligible 03:00-03:59 Asia/Manila, executed at most once per Manila day). Both automated and manual telemetry purges contend for and periodically renew `CALOY_TELEMETRY_PURGE` while executing bounded 5,000-row batch deletions; lease loss immediately halts subsequent batches.
 - `AiUsageEvent` captures privacy-safe, non-blocking telemetry for every external AI generation and embedding attempt (including retries) with latency, token consumption (`input_tokens`, `output_tokens`, `total_tokens`), and sanitized error categories. Telemetry rows correlate with `ChatbotLog` via `trace_id` without persisting user questions, responses, or API credentials.
+- `Parish.is_mother_parish` is a non-null boolean designation with a safe default of `false`. It describes the parish itself; there is no parent/child parish relationship. Migration `20260928180000_enforce_single_mother_parish` establishes a PostgreSQL partial unique index `parishes_single_mother_parish_idx` ON `parishes ("is_mother_parish") WHERE "is_mother_parish" = true`, strictly guaranteeing at most one Mother Parish per diocese at the database engine level.
+- `Parish.document_settings` persists JSON-structured document settings with per-type base prices (`price`) and custom requirement configuration (`requirements` map of canonical requirement IDs to boolean values).
+- `DocumentRequestStatus` includes `READY_FOR_SIGNING` between `PROCESSING` and `READY_FOR_PICKUP`. Transition to `READY_FOR_SIGNING` represents the internal completion of drafting awaiting the active primary priest's physical signature and triggers an in-app notification to the active primary priest.
+- Document request mutations (`PATCH /document-requests/:id/status`) are strictly restricted to Secretary and Diocese Coordinator; Priests have parish-scoped read-only access. Similarly, parish document settings and available documents mutations (`PATCH /parishes/:id/settings`) are restricted to Secretary and Diocese Coordinator (`PRIEST` receives `403 FORBIDDEN`).
 - Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; optional actor/processor assignments set null.
 
 ## Backup and recovery
@@ -120,4 +127,3 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
 See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (33 models and 26 enums).
-
