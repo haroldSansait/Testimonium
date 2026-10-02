@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 28 September 2026
+**Last reconciled:** 2 October 2026
 
 Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -10,7 +10,7 @@ Deploy the backend, the two Vite web applications, and the Expo mobile applicati
 app.example.org   -> parishioner-web/dist (SPA)
 admin.example.org -> admin-portal/dist (SPA)
 api.example.org   -> reverse proxy -> Node/Express :5000
-                                   -> PostgreSQL/Supabase, Firebase Admin, R2, OCR.Space, SMTP, Gemini AI
+                                   -> PostgreSQL/Supabase, Firebase Admin, R2 (Public & Private Identity), OCR.Space, SMTP, Gemini AI
 Mobile App        -> Expo Native / EAS -> api.example.org/api/v1
 ```
 
@@ -68,7 +68,7 @@ Client variables are public configuration. Never put service-account keys, R2 se
    npx prisma generate
    ```
 
-   *Note: Ensure recent migrations through `20260928180000_enforce_single_mother_parish` (which creates the partial unique index `parishes_single_mother_parish_idx`) are fully applied before running application services.*
+   *Note: Ensure all recent migrations through `20260928180000_enforce_single_mother_parish` and `20260929210000_add_government_id_verification` (which provisions the `government_id_verifications` table, indexes, and enums) are fully applied before running application services.*
 
 3. Start or restart the backend with a process manager. Example PM2 command:
 
@@ -94,14 +94,16 @@ Client variables are public configuration. Never put service-account keys, R2 se
    eas build --platform android --profile preview
    ```
 
-6. Verify `GET /api/v1/health`, an authenticated portal session, an R2 upload in a non-production test request, secure attachment downloads, and reverse-proxy SPA fallbacks.
+   *Note: The mobile app requires native camera permissions (`permissions: ["CAMERA"]`, `minSdkVersion: 26` configured in `app.config.ts`) to operate the interactive camera scanner and card detector (`GovernmentIdCameraScanner`). Verify EAS build profiles configure these native permissions correctly.*
+
+6. Verify `GET /api/v1/health`, an authenticated portal session, an R2 upload in a non-production test request, secure attachment downloads, Government ID verification flow, and reverse-proxy SPA fallbacks.
 
 ## Reverse-proxy requirements
 
 - Proxy `/api/` to the backend; preserve `Authorization`, `Host`, and forwarding headers.
-- Support unbuffered streaming for file downloads (`/requests/:id/attachments/:attachmentId/download` and `/document-requests/:id/attachments/:attachmentId/download`).
+- Support unbuffered streaming for file downloads (`/requests/:id/attachments/:attachmentId/download`, `/document-requests/:id/attachments/:attachmentId/download`, `/users/:id/identity/front-image`, and `/users/:id/identity/back-image`).
 - Serve each Vite `dist/` directory with `try_files $uri $uri/ /index.html` so client-side routes work after refresh.
-- Set a body-size limit of at least 5 MB. Current general attachment and receipt limits are 5 MB per file; payment QR uploads and council officer portrait uploads are limited to 2 MB.
+- Set a body-size limit of at least 5 MB. Current general attachment, receipt, and Government ID limits are 5 MB per file; payment QR uploads and council officer portrait uploads are limited to 2 MB.
 - Enable `TRUST_PROXY=1` only when the proxy correctly supplies forwarding headers.
 
 ## Background workers (Email Outbox, Knowledge Embedding & Caloy Telemetry Retention)
@@ -133,6 +135,8 @@ The additive migration `20260913150000_add_caloy_control_center` must be applied
 - Keep database backups and verify a restore path before migrations; see [DATABASE.md](DATABASE.md).
 - Back out an application release by serving the previous frontend build and restarting the previous backend release. Do not reverse a migration unless a tested down-migration or restore plan exists.
 - Monitor API health, structured backend logs, R2 upload errors, OCR failures, and rate-limit behavior after release.
+- Ensure that `R2_IDENTITY_BUCKET_NAME` is configured as a dedicated private bucket distinct from `R2_BUCKET_NAME` with no public domain or R2.dev access.
+- For production identity verification, ensure `OCR_ENABLED=true`, `OCR_PROVIDER=ocrspace`, and `OCR_SPACE_API_KEY` are valid; the stub OCR provider is strictly rejected for Government ID verification.
 - `RATE_LIMIT_STORE=memory` is process-local; use a shared strategy before horizontally scaling rate-limited API instances.
 - Ensure that the single Mother Parish invariant (`parishes_single_mother_parish_idx`) is respected during seed operations and parish modifications.
 - Note that Priests have parish-scoped read-only access to document requests, and document status changes to `READY_FOR_SIGNING` trigger an in-app notification to the active primary priest.

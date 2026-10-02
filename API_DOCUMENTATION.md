@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 28 September 2026
+**Last reconciled:** 2 October 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -21,24 +21,24 @@ Authorization: Bearer <firebase-id-token>
 In local development only, `ENABLE_DEV_AUTH=true` enables the backend’s development-auth bypass. It must never be enabled in production.
 
 The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`:
-- `PARISHIONER`: Access to own profile, document requests, receipt uploads, schedule requests with preferred priest selection, in-app notifications, and Caloy assistant queries. Incomplete profiles (`fullName` and `contactNumber`) receive `403 PROFILE_INCOMPLETE` on request creation.
+- `PARISHIONER`: Access to own profile, Government ID verification submission/status, document requests, receipt uploads, schedule requests with preferred priest selection, in-app notifications, and Caloy assistant queries. Incomplete profiles (`fullName` and `contactNumber`) receive `403 PROFILE_INCOMPLETE`. Unverified accounts receive `403 IDENTITY_NOT_VERIFIED` when creating or submitting document requests and appointments. Verified Government ID automatically fulfills the `valid_id` requirement for document requests.
 - `SECRETARY`: Parish-scoped operations, document request processing (including drafting, advancing to `READY_FOR_SIGNING`, and `READY_FOR_PICKUP`), document settings/requirement configuration, payment review, verified payment analytics, mass templates, weekday/date rules, daily reports, parish events, council officer photos, and emergency rescheduling.
 - `PRIEST`: Personal commitment calendar management (`/priest/personal-schedules`), parish-scoped operational schedule/event views, parish-scoped read-only document request review (`GET /document-requests` and attachment download streaming; status mutations strictly rejected with `403 FORBIDDEN`), read-only scheduling rules, and liturgical assignment responses.
-- `DIOCESE_COORDINATOR`: Cross-parish administration, parish directory management (including Mother Parish designation), interactive map configuration, parish settings and document requirements governance, weekday/date rules, daily reports, system analytics, verified payment feeds, Caloy Control Center management, Knowledge Base governance, and audit log retention.
+- `DIOCESE_COORDINATOR`: Cross-parish administration, parish directory management (including Mother Parish designation), user management and Government ID verification inspection/image streaming, interactive map configuration, parish settings and document requirements governance, weekday/date rules, daily reports, system analytics, verified payment feeds, Caloy Control Center management, Knowledge Base governance, and audit log retention.
 
 A successful response is normally `{ "success": true, "data": ... }`; errors provide `success`, `message`, and optional `errors` or `code`. List endpoints return pagination metadata alongside items.
 
-### Registered Route Modules (22 Modules)
-All REST API endpoints are mounted under `/api/v1` across 22 functional modules:
-`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, and `chatbot` (including `/chatbot/admin/*` Caloy management and telemetry endpoints).
+### Registered Route Modules (23 Modules)
+All REST API endpoints are mounted under `/api/v1` across 23 functional modules:
+`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, `chatbot` (including `/chatbot/admin/*` Caloy management and telemetry endpoints), and `identity-verification` (`/identity-verification`).
 
 ## Public and authentication routes
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | GET | `/health` | Public | API and database health status. |
-| GET | `/auth/profile` | Authenticated | Get the signed-in user profile (includes `emailNotificationsEnabled`). |
-| PUT | `/auth/profile` | Authenticated | Update the signed-in profile (supports name fields, contact number, address, and `emailNotificationsEnabled` boolean). |
+| GET | `/auth/profile` | Authenticated | Get the signed-in user profile (includes `emailNotificationsEnabled`, `isGovernmentIdVerified`, `governmentIdVerificationStatus`, `governmentIdRejectionReason`, `governmentIdVerifiedAt`, `governmentIdExpiresAt`, and `governmentIdType`). |
+| PUT | `/auth/profile` | Authenticated | Update the signed-in profile (supports name fields, contact number, address, and `emailNotificationsEnabled` boolean). If `fullName` is materially changed after verification, existing Government ID verification is automatically invalidated under a concurrency lease lock. |
 | POST | `/auth/login` | Authenticated (Rate-limited) | Provision or resolve the Firebase-authenticated user session (supports Google JIT legal payload). |
 | POST | `/auth/register` | Authenticated (Rate-limited) | Register/complete a user record after Firebase authentication. |
 | POST | `/auth/legal-acceptance` | Authenticated | Record accepted terms and privacy policy versions. |
@@ -69,12 +69,53 @@ All REST API endpoints are mounted under `/api/v1` across 22 functional modules:
 | GET | `/document-requirements` | Public | List all document metadata and checklist requirements, optionally filtered by `type` and/or `parishId` (which resolves effective parish-specific base fees and custom requirements). |
 | GET | `/document-requirements/:type` | Public | Get specific document requirement metadata by document type, supporting optional `parishId` query to resolve effective parish overrides. |
 
+## Government ID verification
+
+Mounted under `/api/v1/identity-verification` for parishioners and `/api/v1/users/:id/identity/*` for Diocese Coordinators.
+
+The system automates the verification of Philippine government-issued card IDs using real-time OCR extraction, image quality analysis, fuzzy name matching, and expiration detection. Successful verification is required for parishioners before submitting sacramental document requests or scheduling parish appointments.
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| POST | `/identity-verification/submit` | Parishioner (Rate-limited) | Submit front and back images of a supported Philippine Government ID for synchronous verification. Handled by `governmentIdRateLimiter` (~3 attempts / 10m). Multipart fields: `front` (file) and `back` (file) (JPEG/PNG/WebP, 5 MB max each). |
+| GET | `/identity-verification/status` | Parishioner | Query caller's Government ID verification status and metadata (`status`, `isGovernmentIdVerified`, `idType`, `verifiedAt`, `expiresAt`, `rejectionReason`, `lastAttemptAt`). |
+| GET | `/users/:id/identity/status` | Diocese Coordinator | Query Government ID verification status for any user. |
+| GET | `/users/:id/identity/front-image` | Diocese Coordinator | Stream private front ID card image directly from `R2_IDENTITY_BUCKET_NAME` with `Cache-Control: private, no-store`. |
+| GET | `/users/:id/identity/back-image` | Diocese Coordinator | Stream private back ID card image directly from `R2_IDENTITY_BUCKET_NAME` with `Cache-Control: private, no-store`. |
+
+### Government ID Verification Architecture & Invariants
+
+1. **Supported Philippine Government IDs:**
+   - `PHIL_SYS`: PhilSys / Philippine National ID (no expiry)
+   - `DRIVERS_LICENSE`: LTO Driver's License (has expiry; checked against current date)
+   - `UMID`: Unified Multi-Purpose ID (no expiry)
+   - `VOTER_ID`: COMELEC Voter's ID (no expiry)
+   - `POSTAL_ID`: PhilPost Postal ID (has expiry; checked against current date)
+   - *Note: Passports, student IDs, and company IDs are explicitly unsupported and rejected.*
+
+2. **Rejection Codes and Diagnostics:**
+   - `IMAGE_BLURRY`: Sharpness evaluation via Laplacian variance fails threshold (`sharpnessThreshold` default 15) or dimensions are under minimum limits (1000x600 px).
+   - `FRONT_BACK_INCOMPLETE`: Missing front or back image, or front and back files are identical (evaluated via SHA-256 binary hash comparison).
+   - `NAME_MISMATCH`: OCR extracted name tokens do not match user's legal profile name (`fullName`) within allowed Levenshtein distance and token order variations.
+   - `ID_EXPIRED`: The card's extracted expiry date is in the past.
+   - `UNSUPPORTED_OR_INVALID_DOCUMENT`: Document header and identification markers do not match any supported Philippine government card layout.
+
+3. **Storage Isolation & Concurrency Control:**
+   - Stored in a dedicated private Cloudflare R2 bucket (`R2_IDENTITY_BUCKET_NAME`). The service fails closed (`503 IDENTITY_STORAGE_UNAVAILABLE`) if this bucket is unconfigured or points to the public asset bucket.
+   - Concurrent submissions and profile modifications are guarded by `SystemLeaseService` under lease key `GOVERNMENT_ID_VERIFICATION:<userId>`.
+   - Idempotency protection immediately returns existing verification if the user is already effectively verified.
+
+4. **Integration with Profile, Requests, and Scheduling:**
+   - **Profile Invalidation:** If a user materially modifies their legal `fullName` in `PUT /auth/profile` or `PUT /users/:id`, existing verification is automatically invalidated under a concurrency lease lock.
+   - **Request & Booking Gating:** `POST /requests`, `POST /requests/:id/submit`, and `POST /schedule-requests` require `isEffectivelyVerified(user.governmentIdVerification)`. Unverified parishioners receive `403 IDENTITY_NOT_VERIFIED`.
+   - **Checklist Auto-fulfillment:** An effective verified Government ID automatically satisfies the canonical `valid_id` requirement during document request submission without requiring duplicate ID re-uploads.
+
 ## Parishioner document requests, requirements, and payment
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| POST | `/requests` | Parishioner | Create a validated document-request draft (requires completed user profile). |
-| POST | `/requests/:id/submit` | Owner | Submit a draft request; validates all required documents for the document type and parish have been uploaded. |
+| POST | `/requests` | Parishioner | Create a validated document-request draft (requires completed user profile and verified Government ID). |
+| POST | `/requests/:id/submit` | Owner | Submit a draft request; validates all required documents for the document type and parish have been uploaded (verified Government ID automatically fulfills `valid_id`). Requires completed profile and verified Government ID. |
 | POST | `/requests/:id/cancel` | Owner | Cancel an eligible request. |
 | GET | `/requests` | Owner | List the caller’s document requests. |
 | GET | `/requests/:id` | Owner | Get request detail by ID. |
@@ -153,7 +194,7 @@ Every rule mutation requires `expectedVersion`. A stale configuration returns `4
 | GET | `/schedule-requests/available-slots` | Authenticated | Calculate real-time available slots for a parish, date, and event type. |
 | GET | `/schedule-requests/eligible-priests` | Authenticated | Query active priests assigned to a parish (for preferred priest selection). |
 | POST | `/schedule-requests/recommendations` | Authenticated | Constraint-based recommendation algorithm with heuristic ranking (body: `parishId`, `eventType`, `preferredDate`, optional `dateFrom`, `dateTo`, `preferredTimeSlot`, `requestedPriestId`). |
-| POST | `/schedule-requests` | Authenticated | Create a validated schedule request (supports `requestedPriestId` and `Idempotency-Key` header; requires completed profile). |
+| POST | `/schedule-requests` | Authenticated | Create a validated schedule request (supports `requestedPriestId` and `Idempotency-Key` header; requires completed profile and verified Government ID). |
 | GET | `/schedule-requests/tracking/:reference` | Authenticated | Get schedule request details by tracking reference number. |
 | GET | `/schedule-requests/:id` | Authorized participant | Get schedule request details. |
 | GET | `/schedule-requests/:id/priest-availability` | Staff / Coordinator / Priest | Query priest availability for candidate schedule date and time slot. |
@@ -219,10 +260,13 @@ Parish events accept `PUBLIC` or `PARISH_PRIVATE` visibility. Public discovery e
 | PATCH | `/notifications/:id/read` | Authenticated | Mark one notification read. |
 | GET | `/users` | Coordinator; staff for priest directory | List users. |
 | POST | `/users` | Coordinator (Rate-limited) | Create a user. |
-| PUT | `/users/:id` | Coordinator | Update a user. |
+| PUT | `/users/:id` | Coordinator | Update a user. Material name changes automatically invalidate Government ID verification. |
 | PUT | `/users/:id/color` | Coordinator / Secretary | Update user calendar/display color. |
 | POST | `/users/:id/disable`, `/users/:id/enable` | Coordinator | Change user active status. |
 | POST | `/users/:id/reset-password` | Coordinator (Rate-limited) | Trigger password reset, rate-limited. |
+| GET | `/users/:id/identity/status` | Coordinator | Inspect user Government ID verification record and audit metadata. |
+| GET | `/users/:id/identity/front-image` | Coordinator | Stream user front Government ID image directly from private identity bucket (`private, no-store`). |
+| GET | `/users/:id/identity/back-image` | Coordinator | Stream user back Government ID image directly from private identity bucket (`private, no-store`). |
 | GET | `/diocese/stats`, `/diocese/activity`, `/diocese/notifications` | Coordinator | Diocese dashboard data. |
 | GET | `/analytics/descriptive` | Secretary / Coordinator | Multi-domain descriptive analytics dataset with Manila payment boundaries. |
 | GET | `/analytics/payments/verified` | Secretary / Coordinator | Paginated, privacy-safe verified payment detail records with server search. |

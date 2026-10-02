@@ -1,10 +1,10 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 28 September 2026
+**Last reconciled:** 2 October 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
-This reference summarizes the 33 physical models and 26 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
+This reference summarizes the 34 physical models and 28 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
 
 ## Enums
 
@@ -30,6 +30,8 @@ This reference summarizes the 33 physical models and 26 enums implemented in the
 | `EmailOutboxStatus` | `QUEUED`, `PROCESSING`, `SENT`, `RETRY`, `FAILED` |
 | `EmailType` | `DOCUMENT_SUBMITTED`, `DOCUMENT_NEEDS_CORRECTION`, `DOCUMENT_PAYMENT_NEEDS_CORRECTION`, `DOCUMENT_READY_FOR_PICKUP`, `SCHEDULE_SUBMITTED`, `SCHEDULE_PROPOSED_RESCHEDULE`, `SCHEDULE_CONFIRMED` |
 | `OcrStatus` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `GovernmentIdVerificationStatus` | `NOT_SUBMITTED`, `VERIFIED`, `REJECTED` |
+| `GovernmentIdRejectionReason` | `IMAGE_BLURRY`, `FRONT_BACK_INCOMPLETE`, `NAME_MISMATCH`, `ID_EXPIRED`, `UNSUPPORTED_OR_INVALID_DOCUMENT` |
 | `ParishCouncilType` | `PASTORAL`, `FINANCE` |
 | `KnowledgeScope` | `DIOCESE`, `PARISH` |
 | `KnowledgeAuthority` | `CONFIRMED`, `PROVISIONAL` |
@@ -43,7 +45,8 @@ This reference summarizes the 33 physical models and 26 enums implemented in the
 | --- | --- | --- | --- |
 | `roles` | `role_id` | unique `role_name`, `description` | One role to many users. |
 | `parishes` | `parish_id` | unique `parish_name`, optional unique `slug`; `is_mother_parish` boolean (default `false`); type, contact/location/patron/email; coordinates (`latitude`, `longitude`), map zoom, pin color, show label; cover/logo/gallery; active flag; document/event/office/payment settings; available-documents JSON; venue capacity; `scheduling_config_version`; timestamps | One parish to users, requests, schedules, availabilities, templates, events, weekday/date rules, daily reports, activity logs, and one optional `councilConfiguration`. Partial unique index `parishes_single_mother_parish_idx` on `(is_mother_parish)` WHERE `is_mother_parish = true`. Indexed by type, active status, and municipality. |
-| `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; `email_notifications_enabled` (Boolean, default `true`); timestamps | Required role; optional parish. Relations to document requests, schedules, priest commitments, notifications, and logs. Indexed by role, parish, status, creation date. |
+| `users` | `user_id` | optional unique Firebase UID; unique email; profile/contact; role/parish IDs; assistant/verified/status/color; legal-acceptance (`terms_accepted_at`, `privacy_accepted_at`, `terms_version`, `privacy_version`) and verification-resend fields; `email_notifications_enabled` (Boolean, default `true`); timestamps | Required role; optional parish. Relations to document requests, schedules, priest commitments, notifications, logs, and one-to-one `governmentIdVerification`. Indexed by role, parish, status, creation date. |
+| `government_id_verifications` | `verification_id` | `user_id` (Int, unique FK users), `status` (`GovernmentIdVerificationStatus`, default `NOT_SUBMITTED`), `front_object_key` (VarChar(255), optional), `back_object_key` (VarChar(255), optional), `id_type` (VarChar(50), optional), `verified_at` (Timestamp, optional), `expires_at` (Timestamp, optional), `rejection_reason` (`GovernmentIdRejectionReason`, optional), `last_attempt_at` (Timestamp, optional), `created_at`, `updated_at` | Belongs to `User` (1-to-1, cascades on user delete). Unique index on `user_id`. Indexed by `status` and `expires_at`. |
 
 ## Parish council governance
 
@@ -104,6 +107,7 @@ This reference summarizes the 33 physical models and 26 enums implemented in the
 
 ```text
 Role 1 ── * User * ── 0..1 Parish
+User 1 ── 0..1 GovernmentIdVerification
 Parish 1 ── 0..1 ParishCouncilConfiguration 1 ── * ParishCouncilMember
 User 1 ── * DocumentRequest * ── 1 Parish
 DocumentRequest 1 ── * RequestAttachment
@@ -127,12 +131,13 @@ EmailOutbox (Standalone transactional outbox ledger)
 
 ## Data integrity and constraints
 
-- PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, council types, and workflow boundaries.
+- PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, council types, government ID statuses/reasons, and workflow boundaries.
 - `Decimal(10,2)` is used for all fee snapshots and payment amounts.
 - `DocumentRequest.correctionRequirementIds` and `Parish.gallery` are PostgreSQL string arrays; `Parish.availableDocuments`, `Parish.documentSettings`, and `EmailOutbox.payload` are JSON.
 - `Parish.is_mother_parish` is a non-null boolean with a safe default of `false`. A PostgreSQL partial unique index `parishes_single_mother_parish_idx` ON `parishes ("is_mother_parish") WHERE "is_mother_parish" = true` guarantees at most one Mother Parish exists per diocese at the database engine level.
 - `DocumentRequestStatus` includes `READY_FOR_SIGNING` between `PROCESSING` and `READY_FOR_PICKUP`. Transitioning to `READY_FOR_SIGNING` represents the internal completion of drafting awaiting the active primary priest's physical signature, triggering an in-app notification to the active primary priest. Priests have parish-scoped read-only access to document requests, and mutations are restricted to Secretary and Coordinator (`PRIEST` receives `403 FORBIDDEN`).
 - Document requirements are dynamically resolved by merging the system-wide `DOCUMENT_REQUIREMENTS_MATRIX` with parish-specific `documentSettings.requirements` (supporting both adding canonical requirements and disabling default requirements).
+- `GovernmentIdVerification` enforces 1-to-1 uniqueness on `user_id` and cascades on user deletion. Images are stored exclusively in dedicated private bucket `R2_IDENTITY_BUCKET_NAME`. Sharp-based Laplacian variance sharpness (threshold >= 15) and distinct SHA-256 binary hash validation prevent blurry or duplicate uploads. Multi-marker regexes identify 5 supported Philippine card types (`PHIL_SYS`, `DRIVERS_LICENSE`, `UMID`, `VOTER_ID`, `POSTAL_ID`). Fuzzy Levenshtein token matching against legal profile `fullName` and expiration checks protect identity integrity. Concurrency is guarded via `SystemLease` key `GOVERNMENT_ID_VERIFICATION:<userId>`, and any material profile name change automatically invalidates active verification. Effective verification gates document requests and appointments, and automatically satisfies the canonical `valid_id` checklist requirement.
 - `ReceiptUpload` enforces `attempt_version > 0`, uniqueness on `[payment_transaction_id, attempt_version]`, and at most ONE active attempt (`is_superseded = false`) per payment transaction via a unique partial index.
 - `PriestPersonalSchedule` enforces an interval check constraint (`end_at > start_at`) and optimistic versioning (`version`).
 - `Schedule` maintains optimistic concurrency control via integer `version`, references optional `requested_priest_id` for parishioner priest preferences, and generates append-only `ScheduleHistory` records across transitions.

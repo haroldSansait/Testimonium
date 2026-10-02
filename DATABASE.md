@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 28 September 2026
+**Last reconciled:** 2 October 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -35,6 +35,7 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260919120000_add_mother_parish_and_ready_for_signing`
 - `20260928120000_correct_mother_parish_designation`
 - `20260928180000_enforce_single_mother_parish`
+- `20260929210000_add_government_id_verification`
 
 ### Development change flow
 
@@ -98,7 +99,10 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `Parish.document_settings` persists JSON-structured document settings with per-type base prices (`price`) and custom requirement configuration (`requirements` map of canonical requirement IDs to boolean values).
 - `DocumentRequestStatus` includes `READY_FOR_SIGNING` between `PROCESSING` and `READY_FOR_PICKUP`. Transition to `READY_FOR_SIGNING` represents the internal completion of drafting awaiting the active primary priest's physical signature and triggers an in-app notification to the active primary priest.
 - Document request mutations (`PATCH /document-requests/:id/status`) are strictly restricted to Secretary and Diocese Coordinator; Priests have parish-scoped read-only access. Similarly, parish document settings and available documents mutations (`PATCH /parishes/:id/settings`) are restricted to Secretary and Diocese Coordinator (`PRIEST` receives `403 FORBIDDEN`).
-- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; optional actor/processor assignments set null.
+- `GovernmentIdVerification` maintains a 1-to-1 unique relationship with `User` (`user_id`). It persists verification lifecycle state (`status`: `NOT_SUBMITTED`, `VERIFIED`, `REJECTED`), card type (`id_type`), verification timestamp (`verified_at`), expiration timestamp (`expires_at`), rejection reason (`rejection_reason`: `IMAGE_BLURRY`, `FRONT_BACK_INCOMPLETE`, `NAME_MISMATCH`, `ID_EXPIRED`, `UNSUPPORTED_OR_INVALID_DOCUMENT`), private R2 object keys (`front_object_key`, `back_object_key`), and `last_attempt_at`. Deleting a user cascades to delete their verification record.
+- Government ID verification concurrency is coordinated via `SystemLease` key `GOVERNMENT_ID_VERIFICATION:<userId>`. Any material change to `User.fullName` automatically invalidates active verification under the lease lock.
+- Verified Government ID status (`isEffectivelyVerified`) is checked before creating or submitting sacramental document requests (`DocumentRequest`) and schedule appointments (`Schedule`), returning 403 `IDENTITY_NOT_VERIFIED` when unverified. Effective Government ID verification automatically fulfills the canonical `valid_id` requirement during document request submission.
+- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; government ID verification cascades with user deletion; optional actor/processor assignments set null.
 
 ## Backup and recovery
 
@@ -126,4 +130,4 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Restrict database credentials to the backend/migration runner and rotate them through the secret manager.
 - Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
-See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (33 models and 26 enums).
+See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (34 models and 28 enums).
