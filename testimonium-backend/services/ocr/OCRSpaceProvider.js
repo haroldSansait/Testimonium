@@ -9,7 +9,7 @@ import { OcrProviderInterface } from "./OcrProviderInterface.js";
  * Requirements:
  *   - Performs exactly ONE HTTP request (no retry logic, no backoff).
  *   - No business logic, no parsing, no logging.
- *   - Returns: rawText, ocrSuccess, failureReason, httpStatusCode.
+ *   - Returns: rawText, ocrSuccess, failureReason, failureType, httpStatusCode.
  *
  * Note: Uses native fetch (Node.js 18+) with AbortController for timeout.
  */
@@ -25,6 +25,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
    *   rawText: string,
    *   ocrSuccess: boolean,
    *   failureReason: string|null,
+   *   failureType: "INFRASTRUCTURE"|"UNREADABLE"|null,
    *   httpStatusCode: number|null
    * }>}
    */
@@ -36,6 +37,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
         rawText: "",
         ocrSuccess: false,
         failureReason: "OCR_SPACE_API_KEY is not configured",
+        failureType: "INFRASTRUCTURE",
         httpStatusCode: null,
       };
     }
@@ -80,6 +82,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
           rawText: "",
           ocrSuccess: false,
           failureReason: `Invalid JSON response from OCR.space`,
+          failureType: "INFRASTRUCTURE",
           httpStatusCode: response.status,
         };
       }
@@ -91,6 +94,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
           rawText: "",
           ocrSuccess: false,
           failureReason: `OCR request timed out after ${env.ocr.timeout ?? 10000}ms`,
+          failureType: "INFRASTRUCTURE",
           httpStatusCode: 408, // Request Timeout HTTP code
         };
       }
@@ -100,6 +104,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
         rawText: "",
         ocrSuccess: false,
         failureReason: `Network error contacting OCR.space: ${err.message}`,
+        failureType: "INFRASTRUCTURE",
         httpStatusCode: null,
       };
     }
@@ -115,11 +120,19 @@ export class OCRSpaceProvider extends OcrProviderInterface {
 
       // Redact any API key leakage
       const safeReason = OCRSpaceProvider._redactApiKey(reason, apiKey);
+      const exitCode = Number(responseJson.OCRExitCode);
+      const isInfrastructureFailure =
+        statusCode === 408 ||
+        statusCode === 429 ||
+        statusCode >= 500 ||
+        exitCode === 4 ||
+        /api\s*key|quota|rate\s*limit|maximum|timeout|temporar|server|service/i.test(safeReason);
 
       return {
         rawText: "",
         ocrSuccess: false,
         failureReason: safeReason,
+        failureType: isInfrastructureFailure ? "INFRASTRUCTURE" : "UNREADABLE",
         httpStatusCode: statusCode,
       };
     }
@@ -131,6 +144,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
         rawText: "",
         ocrSuccess: false,
         failureReason: "OCR.space returned no parsed results",
+        failureType: statusCode >= 400 ? "INFRASTRUCTURE" : "UNREADABLE",
         httpStatusCode: statusCode,
       };
     }
@@ -145,6 +159,7 @@ export class OCRSpaceProvider extends OcrProviderInterface {
         rawText: "",
         ocrSuccess: false,
         failureReason: "OCR.space returned empty text",
+        failureType: "UNREADABLE",
         httpStatusCode: statusCode,
       };
     }
@@ -153,8 +168,16 @@ export class OCRSpaceProvider extends OcrProviderInterface {
       rawText,
       ocrSuccess: true,
       failureReason: null,
+      failureType: null,
       httpStatusCode: statusCode,
     };
+  }
+
+  /**
+   * Generic text extraction alias for extractFromReceipt.
+   */
+  async extractText(imageBuffer, mimeType) {
+    return this.extractFromReceipt(imageBuffer, mimeType);
   }
 
   /**

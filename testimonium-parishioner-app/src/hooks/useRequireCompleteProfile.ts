@@ -40,3 +40,46 @@ export const useRequireCompleteProfile = () => {
     requireCompleteProfile,
   };
 };
+
+export const checkGovernmentIdRequirement = (
+  profile: { needsProfileCompletion?: boolean | null; isGovernmentIdVerified?: boolean | null } | null | undefined,
+  router: { push: (href: any) => void },
+  onAllowed: () => void
+): boolean => {
+  if (profile?.needsProfileCompletion) {
+    return checkProfileRequirement(profile, router, onAllowed);
+  }
+
+  if (!profile?.isGovernmentIdVerified) {
+    Alert.alert(
+      "Government ID Verification Required",
+      "Please verify your Philippine government-issued ID to access document and schedule requests.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Verify ID",
+          onPress: () => router.push("/(app)/profile/id-verification" as any),
+        },
+      ]
+    );
+    return false;
+  }
+
+  onAllowed();
+  return true;
+};
+
+export const useRequireGovernmentId = () => {
+  const { profile } = useAuth();
+  const router = useRouter();
+  const isGovernmentIdVerified = Boolean(profile?.isGovernmentIdVerified);
+
+  const requireGovernmentId = (onAllowed: () => void): boolean => {
+    return checkGovernmentIdRequirement(profile, router, onAllowed);
+  };
+
+  return {
+    isGovernmentIdVerified,
+    requireGovernmentId,
+  };
+};

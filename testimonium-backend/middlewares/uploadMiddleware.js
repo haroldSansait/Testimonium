@@ -231,3 +231,62 @@ export const uploadReceiptFile = (req, res, next) => {
   });
 };
 
+// Government ID front and back upload handler
+const idUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit per file
+    files: 2,
+  },
+  fileFilter: (req, file, cb) => {
+    const rawMime = (file.mimetype || "").trim().toLowerCase();
+    const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+    if (normalizedMime !== "image/jpeg" && normalizedMime !== "image/png") {
+      const err = new Error(
+        `Invalid file format for ${file.fieldname}: ${file.mimetype}. Only JPEG and PNG images are allowed.`
+      );
+      err.statusCode = 400;
+      err.code = "INVALID_FILE_FORMAT";
+      return cb(err, false);
+    }
+    file.mimetype = normalizedMime;
+    return cb(null, true);
+  },
+});
+
+export const uploadGovernmentIdFiles = (req, res, next) => {
+  const fields = idUpload.fields([
+    { name: "front", maxCount: 1 },
+    { name: "back", maxCount: 1 },
+  ]);
+
+  fields(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            success: false,
+            message: "ID image file exceeds the allowable 10MB limit.",
+            errors: [{ message: "File exceeds 10MB." }],
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+          errors: [],
+        });
+      }
+
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        success: false,
+        code: err.code || "INVALID_UPLOAD",
+        message: err.message,
+        errors: [],
+      });
+    }
+
+    return next();
+  });
+};
+

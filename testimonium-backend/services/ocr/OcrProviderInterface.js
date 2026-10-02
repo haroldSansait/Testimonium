@@ -26,10 +26,21 @@ export class OcrProviderInterface {
    *   rawText: string,
    *   ocrSuccess: boolean,
    *   failureReason: string|null,
+   *   failureType: "INFRASTRUCTURE"|"UNREADABLE"|null,
    *   httpStatusCode: number|null
    * }>}
    */
   async extractFromReceipt(_imageBuffer, _mimeType) {
     throw new Error("Method 'extractFromReceipt()' must be implemented.");
+  }
+
+  /**
+   * Generic text extraction from an image buffer.
+   * @param {Buffer} imageBuffer
+   * @param {string} mimeType
+   * @returns {Promise<{ rawText: string, ocrSuccess: boolean, failureReason: string|null, failureType?: "INFRASTRUCTURE"|"UNREADABLE"|null, httpStatusCode: number|null }>}
+   */
+  async extractText(imageBuffer, mimeType) {
+    return this.extractFromReceipt(imageBuffer, mimeType);
   }
 }

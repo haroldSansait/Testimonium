@@ -14,6 +14,8 @@ import { validateBody } from "../middlewares/validateRequest.js";
 import { createUserSchema, updateUserSchema } from "../validators/userSchemas.js";
 import { userCreationRateLimiter, passwordResetRateLimiter } from "../middlewares/rateLimit.js";
 
+import { defaultGovernmentIdVerificationController } from "../controllers/GovernmentIdVerificationController.js";
+
 const router = Router();
 
 // Apply authentication middleware
@@ -40,6 +42,11 @@ router.put("/:id", checkRole(["DIOCESE_COORDINATOR"]), validateBody(updateUserSc
 router.post("/:id/disable", checkRole(["DIOCESE_COORDINATOR"]), disable);
 router.post("/:id/enable", checkRole(["DIOCESE_COORDINATOR"]), enable);
 router.post("/:id/reset-password", passwordResetRateLimiter, checkRole(["DIOCESE_COORDINATOR"]), resetPassword);
+
+// Coordinator Government ID verification inspection routes
+router.get("/:id/identity/status", checkRole(["DIOCESE_COORDINATOR"]), defaultGovernmentIdVerificationController.getCoordinatorUserStatus);
+router.get("/:id/identity/front-image", checkRole(["DIOCESE_COORDINATOR"]), defaultGovernmentIdVerificationController.getCoordinatorFrontImage);
+router.get("/:id/identity/back-image", checkRole(["DIOCESE_COORDINATOR"]), defaultGovernmentIdVerificationController.getCoordinatorBackImage);
 
 export default router;
 

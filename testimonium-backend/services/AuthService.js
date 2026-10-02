@@ -6,6 +6,7 @@ import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION, isValidLegalVersion } f
 
 import { normalizeAndConstructFullName } from "../utils/nameUtils.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
+import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 
 export class AuthService {
   constructor(
@@ -251,6 +252,13 @@ export class AuthService {
     // Backend is sole authority for profile completion state
     const needsProfileCompletion = isProfileIncomplete(user);
 
+    const isGovIdVerified = isEffectivelyVerified(user.governmentIdVerification);
+    const govIdStatus = user.governmentIdVerification?.status || "NOT_SUBMITTED";
+    const govIdRejectionReason = user.governmentIdVerification?.rejectionReason || null;
+    const govIdVerifiedAt = user.governmentIdVerification?.verifiedAt || null;
+    const govIdExpiresAt = user.governmentIdVerification?.expiresAt || null;
+    const govIdType = user.governmentIdVerification?.idType || null;
+
     return {
       id: user.id,
       firebaseUid: user.firebaseUid,
@@ -260,6 +268,12 @@ export class AuthService {
       address: user.address || null,
       isVerified: emailVerified,
       emailVerified,
+      governmentIdVerificationStatus: govIdStatus,
+      governmentIdRejectionReason: govIdRejectionReason,
+      governmentIdVerifiedAt: govIdVerifiedAt,
+      governmentIdExpiresAt: govIdExpiresAt,
+      governmentIdType: govIdType,
+      isGovernmentIdVerified: isGovIdVerified,
       termsAccepted,
       privacyAccepted,
       needsProfileCompletion,

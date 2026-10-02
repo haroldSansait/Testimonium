@@ -25,7 +25,7 @@ Create `testimonium-backend/.env` using its `.env.example`. The application requ
 | Runtime | `NODE_ENV=production`, `PORT`, `TRUST_PROXY=1`, `CORS_ORIGINS` |
 | Database | `DATABASE_URL` or `SUPABASE_DATABASE_URL`; set `DATABASE_URL` for Prisma CLI compatibility |
 | Firebase Admin | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` |
-| R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` |
+| R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, public-asset `R2_BUCKET_NAME`, distinct non-public `R2_IDENTITY_BUCKET_NAME`, `R2_PUBLIC_URL` |
 | OCR | `OCR_ENABLED`, `OCR_PROVIDER`; when `ocrspace`, also `OCR_SPACE_API_KEY` and optional size/timeout/retry settings |
 | Transactional Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`, `SMTP_CONNECTION_TIMEOUT_MS`, `SMTP_GREETING_TIMEOUT_MS`, `SMTP_SOCKET_TIMEOUT_MS` |
 | Email Worker | `EMAIL_WORKER_POLL_MS`, `EMAIL_WORKER_BATCH_SIZE`, `EMAIL_WORKER_LEASE_SECONDS`, `EMAIL_MAX_ATTEMPTS` |

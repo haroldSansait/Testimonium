@@ -16,11 +16,12 @@ import {
 } from "./IdempotencyService.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { buildApplicantName } from "../utils/nameUtils.js";
+import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 
 export async function assertParishionerOwnerRole(userId, client = prisma) {
   const user = await client.user.findUnique({
     where: { id: userId },
-    include: { role: true },
+    include: { role: true, governmentIdVerification: true },
   });
   const isParishioner = Boolean(
     user && (
@@ -86,6 +87,12 @@ export class ParishionerRequestService {
       const error = new Error("Please complete your profile details (full name and contact number) before requesting documents.");
       error.statusCode = 403;
       error.code = "PROFILE_INCOMPLETE";
+      throw error;
+    }
+    if (!isEffectivelyVerified(user.governmentIdVerification)) {
+      const error = new Error("Please verify your Government ID before requesting documents.");
+      error.statusCode = 403;
+      error.code = "IDENTITY_NOT_VERIFIED";
       throw error;
     }
 
@@ -352,6 +359,12 @@ export class ParishionerRequestService {
         error.code = "PROFILE_INCOMPLETE";
         throw error;
       }
+      if (!isEffectivelyVerified(user.governmentIdVerification)) {
+        const error = new Error("Please verify your Government ID before submitting document requests.");
+        error.statusCode = 403;
+        error.code = "IDENTITY_NOT_VERIFIED";
+        throw error;
+      }
 
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
@@ -401,6 +414,11 @@ export class ParishionerRequestService {
           where: { requestId },
         });
         const uploadedRequirementIds = new Set(attachments.map((a) => a.category));
+
+        // Effective Government ID verification automatically satisfies valid_id requirement
+        if (isEffectivelyVerified(user.governmentIdVerification)) {
+          uploadedRequirementIds.add("valid_id");
+        }
 
         const missing = [];
         for (const reqDoc of requiredDocs) {

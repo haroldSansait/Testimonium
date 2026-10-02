@@ -7,32 +7,32 @@ import { r2Client } from "../config/r2.js";
 import { env } from "../config/env.js";
 
 export class R2Service {
-  async upload({ key, body, contentType }) {
+  async upload({ key, body, contentType, bucketName = env.r2.bucketName }) {
     await r2Client.send(
       new PutObjectCommand({
-        Bucket: env.r2.bucketName,
+        Bucket: bucketName,
         Key: key,
         Body: body,
         ContentType: contentType,
       }),
     );
 
-    return `${env.r2.publicUrl}/${key}`;
+    return bucketName === env.r2.bucketName ? `${env.r2.publicUrl}/${key}` : null;
   }
 
-  async download(key) {
+  async download(key, { bucketName = env.r2.bucketName } = {}) {
     return r2Client.send(
       new GetObjectCommand({
-        Bucket: env.r2.bucketName,
+        Bucket: bucketName,
         Key: key,
       }),
     );
   }
 
-  async delete(key) {
+  async delete(key, { bucketName = env.r2.bucketName } = {}) {
     await r2Client.send(
       new DeleteObjectCommand({
-        Bucket: env.r2.bucketName,
+        Bucket: bucketName,
         Key: key,
       }),
     );

@@ -4,6 +4,8 @@ import { AuditLogService } from "../services/AuditLogService.js";
 import { logger } from "../config/logger.js";
 import { env } from "../config/env.js";
 import { shouldRequireEmailVerification } from "../utils/emailVerificationPolicy.js";
+import { defaultGovernmentIdVerificationService } from "../services/GovernmentIdVerificationService.js";
+import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
 
 const userRepository = new UserRepository();
 const authService = new AuthService();
@@ -185,8 +187,14 @@ export const register = async (req, res, next) => {
     // If structured name fields provided, normalize and update user profile
     if (nameParts.firstName && nameParts.lastName) {
       const fullName = normalizeAndConstructFullName(nameParts);
-      if (fullName !== req.user.fullName) {
-        const updated = await userRepository.update(req.user.id, { fullName });
+      if (isMaterialGovernmentIdNameChange(req.user.fullName, fullName)) {
+        const updated = await defaultGovernmentIdVerificationService.withUserVerificationLease(
+          req.user.id,
+          async () => {
+            await defaultGovernmentIdVerificationService.invalidateVerification(req.user.id);
+            return userRepository.update(req.user.id, { fullName });
+          }
+        );
         userProfile = authService.toApplicationProfile(updated, req.firebaseUser, Boolean(req.user?.isNewUser));
         logger.debug({ userId: req.user.id, fullName }, "[AuthController] Updated user registration fullName");
       }
@@ -220,14 +228,22 @@ export const updateProfile = async (req, res, next) => {
     }
 
     const updatePayload = {};
+    let materialNameChanged = false;
 
     if (fullName !== undefined || (firstName && lastName)) {
       let finalFullName = fullName;
       if (firstName && lastName) {
         finalFullName = normalizeAndConstructFullName({ firstName, middleName, lastName, suffix });
       }
-      if (finalFullName !== undefined) {
-        updatePayload.fullName = finalFullName;
+      if (finalFullName !== undefined && finalFullName.trim() !== "") {
+        const trimmedName = finalFullName.trim();
+        updatePayload.fullName = trimmedName;
+
+        // If the identity-relevant name is materially changed, invalidate Government ID verification
+        materialNameChanged = Boolean(
+          req.user?.fullName &&
+          isMaterialGovernmentIdNameChange(req.user.fullName, trimmedName)
+        );
       }
     }
 
@@ -243,7 +259,15 @@ export const updateProfile = async (req, res, next) => {
       updatePayload.emailNotificationsEnabled = emailNotificationsEnabled;
     }
 
-    const updated = await userRepository.update(userId, updatePayload);
+    const updated = materialNameChanged
+      ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
+          userId,
+          async () => {
+            await defaultGovernmentIdVerificationService.invalidateVerification(userId);
+            return userRepository.update(userId, updatePayload);
+          }
+        )
+      : await userRepository.update(userId, updatePayload);
 
     const profile = authService.toApplicationProfile(updated, req.firebaseUser);
 
@@ -255,4 +279,3 @@ export const updateProfile = async (req, res, next) => {
     return next(err);
   }
 };
-

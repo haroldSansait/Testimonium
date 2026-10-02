@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -18,6 +18,9 @@ import {
   Phone,
   MapPin,
   Mail,
+  ShieldCheck,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -31,6 +34,8 @@ import { ParishManagementService } from '@/services/ParishManagementService';
 import { cn } from '@/utils/cn';
 import type { ManagedUser, ManagedUserRole, ManagedUserStatus } from '@/types';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { useAuth } from '@/hooks/useAuth';
+import api from '@/api/api';
 
 
 // ─── Shared form helpers ──────────────────────────────────────────────────────
@@ -507,15 +512,117 @@ function ParishionerEditModal({ user, onSave, onClose, isSaving }: ParishionerEd
   );
 }
 
+// ─── Government ID Labels ───────────────────────────────────────────────────
+
+const ID_TYPE_LABELS: Record<string, string> = {
+  PHIL_SYS: 'Philippine Identification (PhilSys / National ID)',
+  DRIVERS_LICENSE: "Driver's License (LTO)",
+  UMID: 'Unified Multi-Purpose ID (UMID)',
+  VOTER_ID: 'Voter ID (COMELEC)',
+  POSTAL_ID: 'Postal ID (PhilPost)',
+};
+
+const REJECTION_LABELS: Record<string, string> = {
+  IMAGE_BLURRY: 'The ID photo is too blurry or low quality.',
+  FRONT_BACK_INCOMPLETE: 'Both front and back ID sides are required.',
+  NAME_MISMATCH: 'Name on ID does not match registered profile.',
+  ID_EXPIRED: 'The submitted Government ID has expired.',
+  UNSUPPORTED_OR_INVALID_DOCUMENT: 'Unsupported or invalid Philippine card ID.',
+};
+
+interface IdentityStatusData {
+  status: 'NOT_SUBMITTED' | 'VERIFIED' | 'REJECTED';
+  idType?: string | null;
+  verifiedAt?: string | null;
+  expiresAt?: string | null;
+  rejectionReason?: string | null;
+  isGovernmentIdVerified?: boolean;
+}
+
 // ─── Parishioner Profile Detail Modal (View Profile) ──────────────────────────
 
 interface ParishionerProfileModalProps {
   user: ManagedUser;
+  isCoordinator: boolean;
   onEdit: () => void;
   onClose: () => void;
 }
 
-function ParishionerProfileModal({ user, onEdit, onClose }: ParishionerProfileModalProps) {
+function ParishionerProfileModal({ user, isCoordinator, onEdit, onClose }: ParishionerProfileModalProps) {
+  const [identityStatus, setIdentityStatus] = useState<IdentityStatusData | null>(null);
+  const [loadingIdentity, setLoadingIdentity] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+
+  const [viewingImage, setViewingImage] = useState<{ side: 'front' | 'back'; url: string } | null>(null);
+  const [loadingImage, setLoadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+
+  const activeBlobUrlRef = useRef<string | null>(null);
+
+  const cleanupBlob = useCallback(() => {
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cleanupBlob();
+    };
+  }, [cleanupBlob]);
+
+  useEffect(() => {
+    if (!isCoordinator) return;
+    let cancelled = false;
+    setLoadingIdentity(true);
+    setIdentityError(null);
+
+    api
+      .get(`/api/v1/users/${user.id}/identity/status`)
+      .then((res) => {
+        if (!cancelled) setIdentityStatus(res.data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setIdentityError(err?.message || 'Failed to load Government ID status');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingIdentity(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id, isCoordinator]);
+
+  const handleViewImage = async (side: 'front' | 'back') => {
+    cleanupBlob();
+    setViewingImage(null);
+    setLoadingImage(true);
+    setImageError(null);
+
+    try {
+      const res = await api.get(`/api/v1/users/${user.id}/identity/${side}-image`, {
+        responseType: 'blob',
+      });
+      const objectUrl = URL.createObjectURL(res.data);
+      activeBlobUrlRef.current = objectUrl;
+      setViewingImage({ side, url: objectUrl });
+    } catch (err: any) {
+      setImageError(err?.message || `Failed to retrieve ${side} image.`);
+    } finally {
+      setLoadingImage(false);
+    }
+  };
+
+  const handleCloseImageViewer = () => {
+    cleanupBlob();
+    setViewingImage(null);
+    setImageError(null);
+  };
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
@@ -543,7 +650,7 @@ function ParishionerProfileModal({ user, onEdit, onClose }: ParishionerProfileMo
         </div>
 
         {/* Profile Content */}
-        <div className="p-6 space-y-4 text-sm">
+        <div className="p-6 space-y-4 text-sm max-h-[75vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-4 pb-3 border-b border-gray-100">
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">
@@ -592,6 +699,131 @@ function ParishionerProfileModal({ user, onEdit, onClose }: ParishionerProfileMo
                 <span className="leading-relaxed">{user.address || 'No address registered'}</span>
               </div>
             </div>
+
+            {/* Government ID Verification Section (Coordinator Only) */}
+            {isCoordinator && (
+              <div className="pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-gray-400" />
+                    Government ID Verification
+                  </span>
+                  {identityStatus && (
+                    <span
+                      className={cn(
+                        'px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide',
+                        identityStatus.isGovernmentIdVerified
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : identityStatus.status === 'VERIFIED'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : identityStatus.status === 'REJECTED'
+                          ? 'bg-red-50 text-red-700 border border-red-200'
+                          : 'bg-gray-100 text-gray-600 border border-gray-200'
+                      )}
+                    >
+                      {identityStatus.isGovernmentIdVerified
+                        ? 'Verified'
+                        : identityStatus.status === 'VERIFIED'
+                        ? 'Expired'
+                        : identityStatus.status === 'REJECTED'
+                        ? 'Rejected'
+                        : 'Not Submitted'}
+                    </span>
+                  )}
+                </div>
+
+                {loadingIdentity ? (
+                  <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-500 animate-pulse flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                    Checking government ID verification record...
+                  </div>
+                ) : identityError ? (
+                  <div className="p-3 bg-red-50 rounded-lg text-xs text-red-600 border border-red-100 flex items-center gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    {identityError}
+                  </div>
+                ) : identityStatus ? (
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 space-y-2 text-xs">
+                    {identityStatus.isGovernmentIdVerified ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-semibold">ID Type</span>
+                            <span className="font-semibold text-gray-800">
+                              {identityStatus.idType && ID_TYPE_LABELS[identityStatus.idType]
+                                ? ID_TYPE_LABELS[identityStatus.idType]
+                                : identityStatus.idType || 'Government ID'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-semibold">Verified Date</span>
+                            <span className="font-medium text-gray-700">
+                              {identityStatus.verifiedAt ? formatDate(identityStatus.verifiedAt) : '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {identityStatus.expiresAt ? (
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-semibold">Valid Until</span>
+                            <span className="font-medium text-gray-700">
+                              {formatDate(identityStatus.expiresAt)}
+                            </span>
+                          </div>
+                        ) : null}
+
+                        <div className="pt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleViewImage('front')}
+                            disabled={loadingImage}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                            id="view-front-id-btn"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-gray-500" />
+                            View Front ID
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleViewImage('back')}
+                            disabled={loadingImage}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                            id="view-back-id-btn"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-gray-500" />
+                            View Back ID
+                          </button>
+                        </div>
+                      </>
+                    ) : identityStatus.status === 'VERIFIED' ? (
+                      <div className="text-amber-800 font-medium">
+                        This verification has expired
+                        {identityStatus.expiresAt ? ` (${formatDate(identityStatus.expiresAt)})` : ''}.
+                        The parishioner must submit a current Government ID before protected actions are allowed.
+                      </div>
+                    ) : identityStatus.status === 'REJECTED' ? (
+                      <div>
+                        <span className="text-gray-400 block text-[10px] uppercase font-semibold mb-0.5">Rejection Reason</span>
+                        <span className="text-red-700 font-medium">
+                          {identityStatus.rejectionReason && REJECTION_LABELS[identityStatus.rejectionReason]
+                            ? REJECTION_LABELS[identityStatus.rejectionReason]
+                            : identityStatus.rejectionReason || 'Verification rejected'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500 italic">No government ID has been submitted for this account.</span>
+                    )}
+                  </div>
+                ) : null}
+
+                {imageError && (
+                  <div className="mt-2 p-2.5 bg-red-50 text-red-600 rounded-lg text-xs border border-red-100 flex items-center gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    {imageError}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -615,6 +847,49 @@ function ParishionerProfileModal({ user, onEdit, onClose }: ParishionerProfileMo
           </button>
         </div>
       </div>
+
+      {/* Authenticated Image Viewer Modal */}
+      {viewingImage &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={(e) => e.target === e.currentTarget && handleCloseImageViewer()}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+              <div className="bg-gray-900 text-white px-5 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="font-semibold text-sm">
+                    {viewingImage.side === 'front' ? 'Front of Government ID' : 'Back of Government ID'}
+                  </span>
+                </div>
+                <button
+                  onClick={handleCloseImageViewer}
+                  className="p-1 text-gray-400 hover:text-white rounded-md transition-colors"
+                  aria-label="Close image viewer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 bg-gray-100 flex items-center justify-center min-h-[240px]">
+                <img
+                  src={viewingImage.url}
+                  alt={`${viewingImage.side} of government ID`}
+                  className="max-h-[60vh] max-w-full rounded-lg shadow-sm object-contain"
+                />
+              </div>
+              <div className="px-5 py-3 bg-white border-t border-gray-100 flex justify-end">
+                <button
+                  onClick={handleCloseImageViewer}
+                  className="px-4 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>,
     document.body
   );
@@ -918,6 +1193,7 @@ interface ToastState {
 }
 
 export function UserManagementPage() {
+  const { role } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('parishioners');
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [search, setSearch] = useState('');
@@ -1403,6 +1679,7 @@ export function UserManagementPage() {
       {modal.type === 'viewParishioner' && (
         <ParishionerProfileModal
           user={modal.user}
+          isCoordinator={role === 'DIOCESE_COORDINATOR'}
           onEdit={() => setModal({ type: 'editParishioner', user: modal.user })}
           onClose={() => setModal({ type: 'none' })}
         />

@@ -3,6 +3,7 @@ import { prisma } from "../config/db.js";
 const profileInclude = {
   role: true,
   parish: true,
+  governmentIdVerification: true,
 };
 
 export class UserRepository {
@@ -200,10 +201,7 @@ export class UserRepository {
   async findById(id) {
     return prisma.user.findUnique({
       where: { id },
-      include: {
-        role: true,
-        parish: true,
-      },
+      include: profileInclude,
     });
   }
 
@@ -235,10 +233,7 @@ export class UserRepository {
     return prisma.user.update({
       where: { id },
       data: updateData,
-      include: {
-        role: true,
-        parish: true,
-      },
+      include: profileInclude,
     });
   }
 

@@ -38,6 +38,7 @@ import reportRoutes from "./routes/reportRoutes.js";
 import priestPersonalScheduleRoutes from "./routes/priestPersonalScheduleRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
 import caloyAdminRoutes from "./routes/caloyAdminRoutes.js";
+import governmentIdVerificationRoutes from "./routes/governmentIdVerificationRoutes.js";
 import { EmailOutboxWorker } from "./services/EmailOutboxWorker.js";
 import { knowledgeEmbeddingWorker } from "./services/KnowledgeEmbeddingWorker.js";
 import { caloyTelemetryRetentionWorker } from "./services/CaloyTelemetryRetentionWorker.js";
@@ -120,6 +121,7 @@ app.use(`${apiVersion}/parish-events`, parishEventRoutes);
 app.use(`${apiVersion}/priest/personal-schedules`, priestPersonalScheduleRoutes);
 app.use(`${apiVersion}/chatbot/admin`, caloyAdminRoutes);
 app.use(`${apiVersion}/chatbot`, chatbotRoutes);
+app.use(`${apiVersion}/identity-verification`, governmentIdVerificationRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

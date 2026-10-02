@@ -169,6 +169,20 @@ enum OcrStatus {
   FAILED
 }
 
+enum GovernmentIdVerificationStatus {
+  NOT_SUBMITTED
+  VERIFIED
+  REJECTED
+}
+
+enum GovernmentIdRejectionReason {
+  IMAGE_BLURRY
+  FRONT_BACK_INCOMPLETE
+  NAME_MISMATCH
+  ID_EXPIRED
+  UNSUPPORTED_OR_INVALID_DOCUMENT
+}
+
 model Role {
   id          Int      @id @default(autoincrement()) @map("role_id")
   roleName    RoleName @unique @map("role_name")
@@ -272,54 +286,55 @@ model ParishCouncilMember {
 }
 
 model User {
-  id                        Int                      @id @default(autoincrement()) @map("user_id")
-  firebaseUid               String?                  @unique @map("firebase_uid") @db.VarChar(128)
-  fullName                  String                   @map("full_name") @db.VarChar(150)
-  email                     String                   @unique @db.VarChar(150)
-  contactNumber             String?                  @map("contact_number") @db.VarChar(20)
-  address                   String?                  @db.Text
-  roleId                    Int                      @map("role_id")
-  parishId                  Int?                     @map("parish_id")
-  isAssistant               Boolean                  @default(false) @map("is_assistant")
-  isVerified                Boolean                  @default(false) @map("is_verified")
-  status                    UserStatus               @default(ACTIVE)
-  color                     String?                  @db.VarChar(50)
-  termsAcceptedAt           DateTime?                @map("terms_accepted_at")
-  privacyAcceptedAt         DateTime?                @map("privacy_accepted_at")
-  termsVersion              String?                  @map("terms_version") @db.VarChar(20)
-  privacyVersion            String?                  @map("privacy_version") @db.VarChar(20)
-  lastVerificationResentAt  DateTime?                @map("last_verification_resent_at")
-  verificationResentCount   Int                      @default(0) @map("verification_resent_count")
-  emailNotificationsEnabled Boolean                  @default(true) @map("email_notifications_enabled")
-  createdAt                 DateTime                 @default(now()) @map("created_at")
-  updatedAt                 DateTime                 @updatedAt @map("updated_at")
-  role                      Role                     @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  parish                    Parish?                  @relation(fields: [parishId], references: [id], onDelete: SetNull)
-  documentRequests          DocumentRequest[]        @relation("DocumentRequestSubmitter")
-  processedDocumentRequests DocumentRequest[]        @relation("DocumentRequestProcessor")
-  schedules                 Schedule[]               @relation("ScheduleRequester")
-  processedSchedules        Schedule[]               @relation("ScheduleProcessor")
-  assignedSchedules         Schedule[]               @relation("SchedulePriestAssignment")
-  requestedSchedules        Schedule[]               @relation("ScheduleRequestedPriest")
+  id                        Int                       @id @default(autoincrement()) @map("user_id")
+  firebaseUid               String?                   @unique @map("firebase_uid") @db.VarChar(128)
+  fullName                  String                    @map("full_name") @db.VarChar(150)
+  email                     String                    @unique @db.VarChar(150)
+  contactNumber             String?                   @map("contact_number") @db.VarChar(20)
+  address                   String?                   @db.Text
+  roleId                    Int                       @map("role_id")
+  parishId                  Int?                      @map("parish_id")
+  isAssistant               Boolean                   @default(false) @map("is_assistant")
+  isVerified                Boolean                   @default(false) @map("is_verified")
+  status                    UserStatus                @default(ACTIVE)
+  color                     String?                   @db.VarChar(50)
+  termsAcceptedAt           DateTime?                 @map("terms_accepted_at")
+  privacyAcceptedAt         DateTime?                 @map("privacy_accepted_at")
+  termsVersion              String?                   @map("terms_version") @db.VarChar(20)
+  privacyVersion            String?                   @map("privacy_version") @db.VarChar(20)
+  lastVerificationResentAt  DateTime?                 @map("last_verification_resent_at")
+  verificationResentCount   Int                       @default(0) @map("verification_resent_count")
+  emailNotificationsEnabled Boolean                   @default(true) @map("email_notifications_enabled")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @map("updated_at")
+  role                      Role                      @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  parish                    Parish?                   @relation(fields: [parishId], references: [id], onDelete: SetNull)
+  documentRequests          DocumentRequest[]         @relation("DocumentRequestSubmitter")
+  processedDocumentRequests DocumentRequest[]         @relation("DocumentRequestProcessor")
+  schedules                 Schedule[]                @relation("ScheduleRequester")
+  processedSchedules        Schedule[]                @relation("ScheduleProcessor")
+  assignedSchedules         Schedule[]                @relation("SchedulePriestAssignment")
+  requestedSchedules        Schedule[]                @relation("ScheduleRequestedPriest")
   availabilities            ParishAvailability[]
   notifications             Notification[]
-  updatedFaqEntries         FaqKnowledgeBase[]       @relation("FaqUpdater")
+  updatedFaqEntries         FaqKnowledgeBase[]        @relation("FaqUpdater")
   chatbotLogs               ChatbotLog[]
   activityLogs              ActivityLog[]
-  requestHistory            RequestHistory[]         @relation("RequestHistoryActor")
-  paymentTransactions       PaymentTransaction[]     @relation("PaymentTransactionVerifier")
-  createdParishEvents       ParishEvent[]            @relation("ParishEventCreator")
-  assignedParishEvents      ParishEvent[]            @relation("ParishEventPriest")
-  massTemplates             MassScheduleTemplate[]   @relation("MassTemplatePriest")
+  requestHistory            RequestHistory[]          @relation("RequestHistoryActor")
+  paymentTransactions       PaymentTransaction[]      @relation("PaymentTransactionVerifier")
+  createdParishEvents       ParishEvent[]             @relation("ParishEventCreator")
+  assignedParishEvents      ParishEvent[]             @relation("ParishEventPriest")
+  massTemplates             MassScheduleTemplate[]    @relation("MassTemplatePriest")
   idempotencyKeys           IdempotencyKey[]
-  createdScheduleDateRules  ParishScheduleDateRule[] @relation("ScheduleDateRuleCreator")
-  createdDailyReports       DailyReport[]            @relation("DailyReportCreator")
-  archivedDailyReports      DailyReport[]            @relation("DailyReportArchiver")
-  personalSchedules         PriestPersonalSchedule[] @relation("PriestPersonalSchedules")
-  scheduleHistoryActor      ScheduleHistory[]        @relation("ScheduleHistoryActor")
-  approvedKnowledgeSources  KnowledgeSource[]        @relation("KnowledgeSourceApprovedBy")
-  updatedKnowledgeSources   KnowledgeSource[]        @relation("KnowledgeSourceUpdatedBy")
-  updatedCaloyConfigs       CaloyRuntimeConfig[]     @relation("CaloyRuntimeConfigUpdater")
+  createdScheduleDateRules  ParishScheduleDateRule[]  @relation("ScheduleDateRuleCreator")
+  createdDailyReports       DailyReport[]             @relation("DailyReportCreator")
+  archivedDailyReports      DailyReport[]             @relation("DailyReportArchiver")
+  personalSchedules         PriestPersonalSchedule[]  @relation("PriestPersonalSchedules")
+  scheduleHistoryActor      ScheduleHistory[]         @relation("ScheduleHistoryActor")
+  approvedKnowledgeSources  KnowledgeSource[]         @relation("KnowledgeSourceApprovedBy")
+  updatedKnowledgeSources   KnowledgeSource[]         @relation("KnowledgeSourceUpdatedBy")
+  updatedCaloyConfigs       CaloyRuntimeConfig[]      @relation("CaloyRuntimeConfigUpdater")
+  governmentIdVerification  GovernmentIdVerification?
 
   @@index([roleId])
   @@index([parishId])
@@ -1028,4 +1043,24 @@ model IdempotencyKey {
   @@unique([userId, key, resourceType])
   @@index([userId, key])
   @@map("idempotency_keys")
+}
+
+model GovernmentIdVerification {
+  id              Int                            @id @default(autoincrement()) @map("verification_id")
+  userId          Int                            @unique @map("user_id")
+  status          GovernmentIdVerificationStatus @default(NOT_SUBMITTED)
+  frontObjectKey  String?                        @map("front_object_key") @db.VarChar(255)
+  backObjectKey   String?                        @map("back_object_key") @db.VarChar(255)
+  idType          String?                        @map("id_type") @db.VarChar(50)
+  verifiedAt      DateTime?                      @map("verified_at")
+  expiresAt       DateTime?                      @map("expires_at")
+  rejectionReason GovernmentIdRejectionReason?   @map("rejection_reason")
+  lastAttemptAt   DateTime?                      @map("last_attempt_at")
+  createdAt       DateTime                       @default(now()) @map("created_at")
+  updatedAt       DateTime                       @updatedAt @map("updated_at")
+  user            User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([expiresAt])
+  @@map("government_id_verifications")
 }

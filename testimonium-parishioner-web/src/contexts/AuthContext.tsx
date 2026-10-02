@@ -55,6 +55,12 @@ export interface BackendUserProfile {
   role: string;
   emailNotificationsEnabled?: boolean;
   parish?: any;
+  governmentIdVerificationStatus?: 'NOT_SUBMITTED' | 'VERIFIED' | 'REJECTED';
+  governmentIdRejectionReason?: string | null;
+  governmentIdVerifiedAt?: string | null;
+  governmentIdExpiresAt?: string | null;
+  governmentIdType?: string | null;
+  isGovernmentIdVerified?: boolean;
 }
 
 interface AuthContextType {

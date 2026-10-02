@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, CheckCircle, Users, AlertCircle } from 'lucide-react';
+import { Check, CheckCircle, Users, AlertCircle, ShieldCheck } from 'lucide-react';
 import services from '../../providers/factory';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
+import { useAuth } from '../../contexts/AuthContext';
 import type {
   AvailabilityDates,
   EligiblePriest,
@@ -54,6 +55,8 @@ export const EventSchedulerPage: React.FC = () => {
   const navigate = useNavigate();
   const parishesQuery = useParishes();
   const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
+  const { appProfile } = useAuth();
+  const isGovIdVerified = Boolean(appProfile?.isGovernmentIdVerified);
 
   useEffect(() => {
     if (isProfileIncomplete) {
@@ -481,6 +484,49 @@ export const EventSchedulerPage: React.FC = () => {
                 onClick={() => navigate('/dashboard/profile')}
               >
                 Complete Profile
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isGovIdVerified) {
+    return (
+      <div className="space-y-6 pb-12" aria-live="polite">
+        <PageHeader
+          title="Schedule an Appointment"
+          description="Book canonical interviews, confessions, or blessings."
+          breadcrumbs={['Home', 'Schedule Appointment']}
+        />
+
+        <Card className="bg-white border-border shadow-sm">
+          <CardContent className="py-12 px-6 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-full bg-crimson/10 text-crimson flex items-center justify-center">
+              <ShieldCheck size={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-serif font-bold text-text-primary">
+                Government ID Verification Required
+              </h2>
+              <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
+                You must verify your Government ID before scheduling parish appointments. Parish offices require an official Philippine government-issued card (PhilSys, Driver's License, UMID, Voter's ID, or Postal ID).
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/dashboard/home')}
+              >
+                Return to Dashboard
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => navigate('/dashboard/profile')}
+              >
+                Verify Government ID
               </Button>
             </div>
           </CardContent>

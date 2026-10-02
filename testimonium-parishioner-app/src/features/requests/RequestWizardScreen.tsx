@@ -195,6 +195,32 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     );
   }
 
+  if (!profile?.isGovernmentIdVerified) {
+    return (
+      <Screen testID="request-wizard-id-blocked">
+        <AppHeader
+          title="Request Document"
+          onBack={() => {
+            navigateBackOrReplace(
+              () => router.canGoBack(),
+              () => router.back(),
+              () => router.replace("/(app)/(tabs)/(requests)" as any)
+            );
+          }}
+        />
+        <View style={{ flex: 1, padding: spacing.lg, justifyContent: "center" }}>
+          <EmptyState
+            title="Government ID Verification Required"
+            description="Please verify your Philippine government-issued ID to request official sacramental documents."
+            icon="shield-checkmark-outline"
+            actionLabel="Verify Government ID"
+            onAction={() => router.push("/(app)/profile/id-verification" as any)}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
   // Step 1 -> Step 2
   const handleSelectParish = (parish: ParishDto) => {
     if (selectedParish?.id !== parish.id) {
@@ -221,6 +247,18 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         {
           confirmText: "Complete Profile",
           onConfirm: () => router.push("/(app)/(tabs)/profile" as any),
+        }
+      );
+      return;
+    }
+
+    if (!profile?.isGovernmentIdVerified) {
+      feedback.showWarning(
+        "Government ID Required",
+        "Please verify your Philippine government-issued ID before requesting documents.",
+        {
+          confirmText: "Verify ID",
+          onConfirm: () => router.push("/(app)/profile/id-verification" as any),
         }
       );
       return;
@@ -256,7 +294,12 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
     const requiredDocs = (requirements?.requiredDocuments || []).filter((d) => d.required);
-    const missing = requiredDocs.filter((d) => !selectedFiles[d.id]);
+    const missing = requiredDocs.filter((d) => {
+      if (d.id === "valid_id" && profile?.isGovernmentIdVerified) {
+        return false;
+      }
+      return !selectedFiles[d.id];
+    });
 
     if (missing.length > 0) {
       const names = missing.map((m) => m.label).join(", ");
@@ -362,6 +405,18 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     } catch (err: any) {
       inFlightGuard.current = false;
       setIsSubmitting(false);
+
+      if (err?.code === "IDENTITY_NOT_VERIFIED") {
+        feedback.showWarning(
+          "Government ID Required",
+          "Please verify your Philippine government-issued ID before submitting a document request.",
+          {
+            confirmText: "Verify ID",
+            onConfirm: () => router.push("/(app)/profile/id-verification" as any),
+          }
+        );
+        return;
+      }
 
       if (createdDraftId) {
         feedback.showConfirm(
@@ -644,23 +699,35 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 description="Unable to load authoritative document requirements for this parish."
               />
             ) : requirements?.requiredDocuments && requirements.requiredDocuments.length > 0 ? (
-              requirements.requiredDocuments.map((reqDoc) => (
-                <SupportingFilePicker
-                  key={reqDoc.id}
-                  requirement={reqDoc}
-                  selectedFile={selectedFiles[reqDoc.id]}
-                  onFileSelected={(file) =>
-                    setSelectedFiles((prev) => ({ ...prev, [reqDoc.id]: file }))
-                  }
-                  onFileRemoved={(id) =>
-                    setSelectedFiles((prev) => {
-                      const updated = { ...prev };
-                      delete updated[id];
-                      return updated;
-                    })
-                  }
-                />
-              ))
+              requirements.requiredDocuments.map((reqDoc) =>
+                reqDoc.id === "valid_id" && profile?.isGovernmentIdVerified ? (
+                  <View key={reqDoc.id} style={styles.verifiedIdBanner}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" style={{ marginRight: 6 }} />
+                      <Text style={styles.verifiedIdTitle}>Valid Government ID</Text>
+                    </View>
+                    <Text style={styles.verifiedIdSubtext}>
+                      Verified through your TESTIMONIUM profile ({profile?.governmentIdType || "Government ID"}). No additional upload required.
+                    </Text>
+                  </View>
+                ) : (
+                  <SupportingFilePicker
+                    key={reqDoc.id}
+                    requirement={reqDoc}
+                    selectedFile={selectedFiles[reqDoc.id]}
+                    onFileSelected={(file) =>
+                      setSelectedFiles((prev) => ({ ...prev, [reqDoc.id]: file }))
+                    }
+                    onFileRemoved={(id) =>
+                      setSelectedFiles((prev) => {
+                        const updated = { ...prev };
+                        delete updated[id];
+                        return updated;
+                      })
+                    }
+                  />
+                )
+              )
             ) : (
               <View style={styles.noReqContainer}>
                 <Text style={styles.noReqText} allowFontScaling>
@@ -741,6 +808,9 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               title="Supporting Attachments"
               fields={[
                 { label: "Attached Files", value: `${Object.keys(selectedFiles).length} file(s) attached` },
+                ...(profile?.isGovernmentIdVerified
+                  ? [{ label: "Government ID", value: "Verified on Profile (Auto-satisfied)" }]
+                  : []),
                 ...(relationship === "Authorized Representative"
                   ? [
                       {
@@ -966,5 +1036,23 @@ const styles = StyleSheet.create({
   },
   fullWidthAction: {
     width: "100%",
+  },
+  verifiedIdBanner: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  verifiedIdTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#065F46",
+  },
+  verifiedIdSubtext: {
+    fontSize: 12,
+    color: "#047857",
+    lineHeight: 17,
   },
 });

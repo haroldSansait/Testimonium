@@ -10,6 +10,8 @@ import {
   lockPriestForScheduling,
   normalizePriestId,
 } from "./SchedulingAvailability.js";
+import { defaultGovernmentIdVerificationService } from "./GovernmentIdVerificationService.js";
+import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
 
 export class UserService {
   constructor(
@@ -173,11 +175,23 @@ export class UserService {
     if (isParishioner) {
       // Parishioner security enforcement:
       // Email, role, parish, and Firebase identity are immutable for parishioners
-      const updated = await this.userRepository.update(numericId, {
-        fullName: finalName || user.fullName,
-        contactNumber: data.contactNumber !== undefined ? data.contactNumber : user.contactNumber,
-        address: data.address !== undefined ? data.address : user.address,
-      });
+      const updateParishioner = () => this.userRepository.update(numericId, {
+          fullName: finalName || user.fullName,
+          contactNumber: data.contactNumber !== undefined ? data.contactNumber : user.contactNumber,
+          address: data.address !== undefined ? data.address : user.address,
+        });
+      const materialNameChanged = Boolean(
+        finalName && isMaterialGovernmentIdNameChange(user.fullName, finalName)
+      );
+      const updated = materialNameChanged
+        ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
+            numericId,
+            async () => {
+              await defaultGovernmentIdVerificationService.invalidateVerification(numericId);
+              return updateParishioner();
+            }
+          )
+        : await updateParishioner();
 
       await AuditLogService.log(actorId, "User Updated", null, false, {
         affectedTable: "users",

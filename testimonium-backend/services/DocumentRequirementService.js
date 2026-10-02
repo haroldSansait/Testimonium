@@ -19,7 +19,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
       { id: "purpose", label: "Purpose / Reason for Request", type: "text", required: true },
     ],
     requiredDocuments: [
-      { id: "valid_id", label: "Valid Government / Student ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
+      { id: "valid_id", label: "Valid Government ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
     ],
   },
 
@@ -33,7 +33,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
       { id: "purpose", label: "Purpose / Reason for Request", type: "text", required: true },
     ],
     requiredDocuments: [
-      { id: "valid_id", label: "Valid Government / Student ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
+      { id: "valid_id", label: "Valid Government ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
     ],
   },
 

@@ -17,6 +17,8 @@ Expo/React Native foundation for the parishioner mobile application.
 2. Run `npm install`.
 3. Run `npm start` to start Metro, then use a native development build for Firebase authentication.
 
+The Government ID scanner uses VisionCamera, VisionCamera Worklets, Nitro Modules, and on-device OpenCV. After installing or changing these native dependencies, create and install a fresh Android development build (for example, the existing EAS `development` APK profile) before testing; Expo Go and an older installed development client cannot load the scanner.
+
 Phase 0 supports email/password sign-in only. Google Sign-In is deferred because the committed Android Firebase configuration does not yet contain OAuth clients; enable Google auth, register signing fingerprints, and download refreshed platform configuration before Phase 1.
 
 `EXPO_PUBLIC_*` configuration is embedded in a client build. Never add server secrets, service-account JSON, database URLs, or storage credentials to this project.

@@ -3,6 +3,7 @@ import { resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatal
 import { CANONICAL_SCHEDULE_EVENT_TYPES } from "../services/BookingValidator.js";
 import { prisma } from "../config/db.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
+import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 import {
   getScheduleRecommendations,
   getEligiblePriestsForParish,
@@ -110,12 +111,22 @@ export const create = async (req, res, next) => {
 
     // Profile completion requirement for parishioners
     if (req.user.role === "PARISHIONER") {
-      const user = await prisma.user.findUnique({ where: { id: userId } });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { governmentIdVerification: true },
+      });
       if (isProfileIncomplete(user)) {
         return res.status(403).json({
           success: false,
           code: "PROFILE_INCOMPLETE",
           message: "Please complete your profile details (full name and contact number) before scheduling an appointment.",
+        });
+      }
+      if (!isEffectivelyVerified(user?.governmentIdVerification)) {
+        return res.status(403).json({
+          success: false,
+          code: "IDENTITY_NOT_VERIFIED",
+          message: "Please verify your Government ID before scheduling an appointment.",
         });
       }
     }

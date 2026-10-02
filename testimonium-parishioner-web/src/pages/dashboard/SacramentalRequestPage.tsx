@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Copy, FileText, AlertCircle } from 'lucide-react';
+import { CheckCircle, Copy, FileText, AlertCircle, ShieldCheck } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes, usePausePolling } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
+import { useAuth } from '../../contexts/AuthContext';
 import type { SacramentalRequest } from '../../types';
 import {
   CANONICAL_DOCUMENT_TYPES,
@@ -29,6 +30,8 @@ export const SacramentalRequestPage: React.FC = () => {
   const { loading, error, refetch } = parishesQuery;
 
   const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
+  const { appProfile } = useAuth();
+  const isGovIdVerified = Boolean(appProfile?.isGovernmentIdVerified);
 
   const [submitting, setSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -227,6 +230,8 @@ export const SacramentalRequestPage: React.FC = () => {
       console.error("Request submission error:", err);
       if (err?.code === "PROFILE_INCOMPLETE") {
         openProfileModal('request certificates');
+      } else if (err?.code === "IDENTITY_NOT_VERIFIED") {
+        setSubmissionError("Please verify your Government ID in your profile before submitting requests.");
       } else if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
         setSubmissionError("An authorization letter is required when requesting documents as an Authorized Representative.");
       } else {
@@ -293,8 +298,11 @@ export const SacramentalRequestPage: React.FC = () => {
   }
 
   const isAuthLetterRequired = relationship === 'Authorized Representative';
-  const allReqsUploaded = requirementsList.every(req => !req.required || !!uploadedFilesByReq[req.id]) &&
-    (!isAuthLetterRequired || !!authLetterFile);
+  const allReqsUploaded = requirementsList.every(req => {
+    if (!req.required) return true;
+    if (req.id === 'valid_id' && isGovIdVerified) return true;
+    return !!uploadedFilesByReq[req.id];
+  }) && (!isAuthLetterRequired || !!authLetterFile);
 
   if (isProfileIncomplete) {
     return (
@@ -332,6 +340,50 @@ export const SacramentalRequestPage: React.FC = () => {
                 onClick={() => navigate('/dashboard/profile')}
               >
                 Complete Profile
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isGovIdVerified) {
+    return (
+      <div className="space-y-6" aria-live="polite">
+        <PageHeader
+          title="Sacramental Request Wizard"
+          description="Submit requirements and request official certificates from canonical registries."
+          onRefresh={refetch}
+          breadcrumbs={['Home', 'Request Document']}
+        />
+
+        <Card className="bg-white border-border shadow-sm">
+          <CardContent className="py-12 px-6 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-full bg-crimson/10 text-crimson flex items-center justify-center">
+              <ShieldCheck size={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-serif font-bold text-text-primary">
+                Government ID Verification Required
+              </h2>
+              <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
+                You must verify your Government ID before requesting sacramental certificates. Parish offices require an official Philippine government-issued card (PhilSys, Driver's License, UMID, Voter's ID, or Postal ID).
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/dashboard/home')}
+              >
+                Return to Dashboard
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => navigate('/dashboard/profile')}
+              >
+                Verify Government ID
               </Button>
             </div>
           </CardContent>
@@ -534,7 +586,15 @@ export const SacramentalRequestPage: React.FC = () => {
                           )}
                         </div>
 
-                        {file ? (
+                        {req.id === 'valid_id' && isGovIdVerified ? (
+                          <div className="flex items-center gap-3 p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-button">
+                            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                            <div>
+                              <span className="text-xs font-semibold text-emerald-950 block">Valid Government ID</span>
+                              <p className="text-[11px] text-emerald-700">Verified through your TESTIMONIUM profile</p>
+                            </div>
+                          </div>
+                        ) : file ? (
                           <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
                             <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
                               {file.name} ({(file.size / 1024).toFixed(1)} KB)

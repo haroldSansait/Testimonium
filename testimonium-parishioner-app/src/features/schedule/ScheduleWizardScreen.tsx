@@ -250,6 +250,19 @@ export const ScheduleWizardScreen: React.FC = () => {
       return;
     }
 
+    if (!profile?.isGovernmentIdVerified) {
+      feedback.showWarning({
+        title: "Government ID Required",
+        message: "Please verify your Philippine government-issued ID before scheduling an appointment.",
+        confirmText: "Verify ID",
+        cancelText: "Cancel",
+        onConfirm: () => {
+          router.push("/(app)/profile/id-verification" as any);
+        },
+      });
+      return;
+    }
+
     if (!selectedParishId || !selectedEventType || !selectedDate || !selectedSlot || !selectedService) {
       setErrorMessage("Please complete each scheduling step before submitting.");
       return;
@@ -288,6 +301,19 @@ export const ScheduleWizardScreen: React.FC = () => {
           cancelText: "Cancel",
           onConfirm: () => {
             router.push("/(app)/(tabs)/profile" as any);
+          },
+        });
+        return;
+      }
+
+      if (code === "IDENTITY_NOT_VERIFIED") {
+        feedback.showWarning({
+          title: "Government ID Verification Required",
+          message: "Please verify your Philippine government-issued ID before scheduling.",
+          confirmText: "Verify ID",
+          cancelText: "Cancel",
+          onConfirm: () => {
+            router.push("/(app)/profile/id-verification" as any);
           },
         });
         return;
@@ -422,6 +448,32 @@ export const ScheduleWizardScreen: React.FC = () => {
             icon="person-circle-outline"
             actionLabel="Complete Profile"
             onAction={() => router.push("/(app)/(tabs)/profile" as any)}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (!profile?.isGovernmentIdVerified) {
+    return (
+      <Screen safeArea style={styles.screen} testID="schedule-wizard-id-blocked">
+        <AppHeader
+          title="New Schedule"
+          onBack={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(app)/(tabs)/(schedule)" as any);
+            }
+          }}
+        />
+        <View style={styles.centerContainer}>
+          <EmptyState
+            title="Government ID Verification Required"
+            description="Please verify your Philippine government-issued ID before scheduling a parish appointment."
+            icon="shield-checkmark-outline"
+            actionLabel="Verify Government ID"
+            onAction={() => router.push("/(app)/profile/id-verification" as any)}
           />
         </View>
       </Screen>

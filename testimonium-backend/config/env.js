@@ -7,6 +7,7 @@ const requiredKeys = [
   "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY",
   "R2_BUCKET_NAME",
+  "R2_IDENTITY_BUCKET_NAME",
   "R2_PUBLIC_URL",
 ];
 
@@ -109,6 +110,7 @@ export const env = {
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     bucketName: process.env.R2_BUCKET_NAME,
+    identityBucketName: process.env.R2_IDENTITY_BUCKET_NAME,
     publicUrl: process.env.R2_PUBLIC_URL,
   },
   ocr: {
@@ -217,6 +219,14 @@ export const getMissingRequiredConfig = () => {
     if (!process.env[key]) {
       missing.push(key);
     }
+  }
+
+  if (
+    env.r2.identityBucketName &&
+    env.r2.bucketName &&
+    env.r2.identityBucketName === env.r2.bucketName
+  ) {
+    missing.push("R2_IDENTITY_BUCKET_NAME must differ from R2_BUCKET_NAME");
   }
 
   if (env.chatbot?.enabled) {

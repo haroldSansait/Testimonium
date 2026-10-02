@@ -13,6 +13,7 @@ import { Input } from '../../components/ui/Input';
 import { Avatar } from '../../components/ui/Avatar';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { GovernmentIdSection } from '../../components/profile/GovernmentIdSection';
 
 export const ProfilePage: React.FC = () => {
   const { user, appProfile, logout, refreshProfile } = useAuth();
@@ -242,6 +243,9 @@ export const ProfilePage: React.FC = () => {
                 />
               </CardContent>
             </Card>
+
+            {/* Government ID Verification Section */}
+            <GovernmentIdSection />
 
             {/* Notification Preferences */}
             <Card>

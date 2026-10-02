@@ -19,6 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: "com.testimonium.app",
     googleServicesFile: "./google-services.json",
+    permissions: ["CAMERA"],
   },
 
   extra: {
@@ -31,6 +32,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
 
   plugins: [
     "expo-router",
+    [
+      "expo-build-properties",
+      {
+        android: {
+          minSdkVersion: 26,
+        },
+      },
+    ],
     "@react-native-firebase/app",
     "@react-native-firebase/auth",
     "@react-native-google-signin/google-signin",

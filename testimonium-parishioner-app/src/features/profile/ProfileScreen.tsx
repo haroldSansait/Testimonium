@@ -21,12 +21,16 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { ID_TYPE_LABELS, REJECTION_REASON_MESSAGES } from "./types/governmentId";
 
 export const ProfileScreen: React.FC = () => {
   const router = useRouter();
   const { contentBottomInset } = useAppLayoutMetrics();
   const { profile, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  const isGovernmentIdExpired =
+    !profile?.isGovernmentIdVerified &&
+    profile?.governmentIdVerificationStatus === "VERIFIED";
 
   const handleLogout = () => {
     Alert.alert(
@@ -154,6 +158,125 @@ export const ProfileScreen: React.FC = () => {
                 status="APPROVED"
                 showDot={true}
               />
+            </View>
+          </View>
+        </View>
+
+        {/* Government ID Verification Section */}
+        <View style={styles.idVerificationCard}>
+          <View style={styles.idCardHeader}>
+            <View
+              style={[
+                styles.idCardIconWrap,
+                profile?.isGovernmentIdVerified
+                  ? styles.idCardIconWrapVerified
+                  : profile?.governmentIdVerificationStatus === "REJECTED"
+                  ? styles.idCardIconWrapRejected
+                  : styles.idCardIconWrapPending,
+              ]}
+            >
+              <Ionicons
+                name={
+                  profile?.isGovernmentIdVerified
+                    ? "shield-checkmark"
+                    : profile?.governmentIdVerificationStatus === "REJECTED"
+                    ? "alert-circle"
+                    : "shield-outline"
+                }
+                size={22}
+                color={
+                  profile?.isGovernmentIdVerified
+                    ? "#059669"
+                    : profile?.governmentIdVerificationStatus === "REJECTED"
+                    ? "#DC2626"
+                    : colors.primary
+                }
+              />
+            </View>
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={styles.idCardTitle}>Government ID</Text>
+                <StatusLabel
+                  label={
+                    profile?.isGovernmentIdVerified
+                      ? "Verified"
+                      : isGovernmentIdExpired
+                      ? "Expired"
+                      : profile?.governmentIdVerificationStatus === "REJECTED"
+                      ? "Rejected"
+                      : "Not Verified"
+                  }
+                  status={
+                    profile?.isGovernmentIdVerified
+                      ? "APPROVED"
+                      : profile?.governmentIdVerificationStatus === "REJECTED"
+                      ? "REJECTED"
+                      : "default"
+                  }
+                  showDot={true}
+                />
+              </View>
+
+              {profile?.isGovernmentIdVerified ? (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.idCardSubtitle}>
+                    {profile.governmentIdType && ID_TYPE_LABELS[profile.governmentIdType]
+                      ? ID_TYPE_LABELS[profile.governmentIdType]
+                      : profile.governmentIdType || "Philippine Government ID"}
+                  </Text>
+                  {profile.governmentIdVerifiedAt ? (
+                    <Text style={styles.idCardMeta}>
+                      Verified on {new Date(profile.governmentIdVerifiedAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                    </Text>
+                  ) : null}
+                  {profile.governmentIdExpiresAt ? (
+                    <Text style={styles.idCardMeta}>
+                      Valid until {new Date(profile.governmentIdExpiresAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : isGovernmentIdExpired ? (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.idCardErrorText}>
+                    Your previous Government ID verification has expired. Submit a current ID to verify again.
+                  </Text>
+                  <Button
+                    title="Verify Current ID"
+                    variant="primary"
+                    size="sm"
+                    onPress={() => handleNavigate("/(app)/profile/id-verification")}
+                    style={{ marginTop: 8, alignSelf: "flex-start" }}
+                  />
+                </View>
+              ) : profile?.governmentIdVerificationStatus === "REJECTED" ? (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.idCardErrorText}>
+                    {profile.governmentIdRejectionReason && REJECTION_REASON_MESSAGES[profile.governmentIdRejectionReason]
+                      ? REJECTION_REASON_MESSAGES[profile.governmentIdRejectionReason]
+                      : profile.governmentIdRejectionReason || "Verification failed. Please retry with clearer photos."}
+                  </Text>
+                  <Button
+                    title="Retry Verification"
+                    variant="outline"
+                    size="sm"
+                    onPress={() => handleNavigate("/(app)/profile/id-verification")}
+                    style={{ marginTop: 8, alignSelf: "flex-start" }}
+                  />
+                </View>
+              ) : (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.idCardSubtitle}>
+                    Verify your Philippine Government ID card to request documents and schedule parish appointments.
+                  </Text>
+                  <Button
+                    title="Verify Government ID"
+                    variant="primary"
+                    size="sm"
+                    onPress={() => handleNavigate("/(app)/profile/id-verification")}
+                    style={{ marginTop: 8, alignSelf: "flex-start" }}
+                  />
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -357,6 +480,54 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: spacing.md,
     textAlign: "center",
+    lineHeight: 18,
+  },
+  idVerificationCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  idCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  idCardIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  idCardIconWrapVerified: {
+    backgroundColor: "#ECFDF5",
+  },
+  idCardIconWrapRejected: {
+    backgroundColor: "#FEF2F2",
+  },
+  idCardIconWrapPending: {
+    backgroundColor: colors.primarySoft,
+  },
+  idCardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  idCardSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  idCardMeta: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  idCardErrorText: {
+    fontSize: 13,
+    color: "#DC2626",
     lineHeight: 18,
   },
 });

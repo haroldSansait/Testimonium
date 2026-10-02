@@ -48,4 +48,11 @@ export class StubOcrProvider extends OcrProviderInterface {
       httpStatusCode: 200,
     };
   }
+
+  /**
+   * Generic text extraction alias for extractFromReceipt.
+   */
+  async extractText(imageBuffer, mimeType, fileName = "") {
+    return this.extractFromReceipt(imageBuffer, mimeType, fileName);
+  }
 }

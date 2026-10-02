@@ -566,6 +566,7 @@ test("17. Newly assigned required item is enforced at submission", async () => {
           role: { roleName: "PARISHIONER" },
           fullName: "Test Parishioner",
           contactNumber: "09170000000",
+          governmentIdVerification: { status: "VERIFIED" },
         }),
       },
       documentRequest: {
@@ -630,6 +631,7 @@ test("18. Removed requirement is no longer enforced at submission", async () => 
           role: { roleName: "PARISHIONER" },
           fullName: "Test Parishioner",
           contactNumber: "09170000000",
+          governmentIdVerification: { status: "VERIFIED" },
         }),
       },
       documentRequest: {

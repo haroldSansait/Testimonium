@@ -14,10 +14,11 @@ R2_ACCOUNT_ID=your_cloudflare_account_id
 R2_ACCESS_KEY_ID=your_r2_access_key
 R2_SECRET_ACCESS_KEY=your_r2_secret
 R2_BUCKET_NAME=testimonium-documents
+R2_IDENTITY_BUCKET_NAME=testimonium-private-identity
 R2_PUBLIC_URL=https://assets.example.org
 ```
 
-The backend constructs its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, uses region `auto`, and resolves public URLs as `<R2_PUBLIC_URL>/<object-key>`. `R2_PUBLIC_URL` must point to a configured Cloudflare custom domain or public R2.dev endpoint mapped to the bucket.
+The backend constructs its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, uses region `auto`, and resolves public URLs as `<R2_PUBLIC_URL>/<object-key>`. `R2_PUBLIC_URL` must point to a configured Cloudflare custom domain or public R2.dev endpoint mapped only to `R2_BUCKET_NAME`. `R2_IDENTITY_BUCKET_NAME` must be a distinct bucket with neither an R2.dev public endpoint nor a public custom domain.
 
 ## Object-key layout
 
@@ -30,6 +31,7 @@ The backend constructs its S3 endpoint as `https://<R2_ACCOUNT_ID>.r2.cloudflare
 | `parishes/parish_<parishId>/logo/<uuid>_<name>` | Parish image service | `parishes.logo_image` |
 | `parishes/parish_<parishId>/qr/<uuid>_<name>` | Parish payment QR service | `parishes.payment_qr_image` |
 | `councils/parish_<parishId>/officers/<uuid>.<ext>` | Council officer photo service | `parish_council_members.photo_object_key`, `parish_council_members.photo_url` |
+| `identity/user_<userId>/<front-or-back>/<uuid>.jpg` | Government ID verification service, in the dedicated private identity bucket | `government_id_verifications.front_object_key`, `government_id_verifications.back_object_key` |
 
 Object filenames are sanitized to prevent directory traversal or malformed characters. Parish cover, logo, QR, and council officer photo writes utilize UUID prefixes to prevent cache collisions across updates. When replacing attachments or photos, prior objects are pruned from R2 only after successful database commit.
 
@@ -49,6 +51,8 @@ All uploads pass through `FileValidator` which performs strict binary magic-byte
 Receipt uploads intentionally reject HEIC/HEIF at the API boundary because the backend image optimization and OCR pipeline only accept standard JPEG and PNG inputs. The parishioner mobile app detects iOS HEIC images and converts them client-side into valid JPEG buffers prior to transmission.
 
 ## Secure file access and downloads
+
+Government ID images are always written to `R2_IDENTITY_BUCKET_NAME`. The service fails closed if that bucket is missing or equals the public asset bucket. Only Diocese Coordinators can retrieve these images, through authenticated `private, no-store` backend streaming routes; object keys and direct URLs are never returned to clients.
 
 Confidential document attachments stored in R2 are not accessible through public URLs:
 - Direct client access to private bucket objects is disabled.

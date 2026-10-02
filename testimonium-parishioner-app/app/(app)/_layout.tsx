@@ -45,6 +45,10 @@ export default function AppRootStackLayout() {
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
       <Stack.Screen
+        name="profile/id-verification"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
         name="profile/settings"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />

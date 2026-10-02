@@ -19,6 +19,12 @@ export interface BackendUserProfile {
     parishName: string;
     type: string;
   } | null;
+  governmentIdVerificationStatus?: 'NOT_SUBMITTED' | 'VERIFIED' | 'REJECTED' | null;
+  governmentIdRejectionReason?: string | null;
+  governmentIdVerifiedAt?: string | null;
+  governmentIdExpiresAt?: string | null;
+  governmentIdType?: string | null;
+  isGovernmentIdVerified?: boolean;
 }
 
 export type AuthBootstrapState =

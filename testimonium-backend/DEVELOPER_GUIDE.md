@@ -105,6 +105,7 @@ copy .env.example .env
 | `R2_ACCESS_KEY_ID` | Cloudflare R2 access key | ✅ Yes |
 | `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret key | ✅ Yes |
 | `R2_BUCKET_NAME` | Cloudflare R2 bucket name | ✅ Yes |
+| `R2_IDENTITY_BUCKET_NAME` | Distinct non-public R2 bucket for Government ID images | ✅ Yes |
 | `R2_PUBLIC_URL` | Cloudflare R2 public CDN base URL | ✅ Yes |
 | `PORT` | Express server port (default: `5000`) | Optional |
 | `NODE_ENV` | `development` or `production` | Optional |
