@@ -21,12 +21,14 @@ import { useAuth } from "@/providers/AuthProvider";
 import { colors, radii, spacing } from "@/theme/tokens";
 import { GovernmentIdCameraScanner } from "./components/GovernmentIdCameraScanner";
 import {
-  getSafeVerificationErrorMessage,
+  getGovernmentIdErrorPresentation,
+  getGovernmentIdRejectionPresentation,
   submitGovernmentIdVerification,
+  type GovernmentIdFailureKind,
+  type GovernmentIdFailurePresentation,
 } from "./api/governmentIdVerification";
 import {
   ID_TYPE_LABELS,
-  REJECTION_REASON_MESSAGES,
   type GovernmentIdVerificationStatusResponse,
 } from "./types/governmentId";
 
@@ -36,8 +38,32 @@ type VerificationState =
   | "VERIFYING"
   | "VERIFIED"
   | "REJECTED"
-  | "RETRYABLE_ERROR";
+  | "RETRYABLE_ERROR"
+  | "RATE_LIMITED";
 type RetakeTarget = "front" | "back" | "both";
+
+const getFailureVisual = (
+  kind: GovernmentIdFailureKind
+): {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  accent: string;
+  text: string;
+} => {
+  switch (kind) {
+    case "BUSINESS_REJECTION":
+      return { icon: "alert-circle", accent: "#DC2626", text: "#7F1D1D" };
+    case "CONNECTION":
+      return { icon: "cloud-offline-outline", accent: "#C2410C", text: "#7C2D12" };
+    case "TEMPORARY":
+      return { icon: "time-outline", accent: "#6D28D9", text: "#4C1D95" };
+    case "IN_PROGRESS":
+      return { icon: "hourglass-outline", accent: "#1D4ED8", text: "#1E3A8A" };
+    case "RATE_LIMIT":
+      return { icon: "timer-outline", accent: "#B45309", text: "#78350F" };
+    default:
+      return { icon: "help-circle-outline", accent: "#475569", text: "#334155" };
+  }
+};
 
 interface IdVerificationScreenProps {
   /** Test/custom override; production uses the scanner's bounded default. */
@@ -60,12 +86,18 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
     useState<VerificationState>("REVIEW_READY");
   const [verificationResult, setVerificationResult] =
     useState<GovernmentIdVerificationStatusResponse | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [failurePresentation, setFailurePresentation] =
+    useState<GovernmentIdFailurePresentation | null>(null);
   const [retakeTarget, setRetakeTarget] = useState<RetakeTarget>("both");
   const [retryNonce, setRetryNonce] = useState(0);
   const attemptedPairRef = useRef<string | null>(null);
+  const verificationAttemptRef = useRef(0);
+  const mountedRef = useRef(true);
   const [scanProgress] = useState(() => new Animated.Value(0));
   const isSubmitting = verificationState === "VERIFYING";
+  const failureVisual = failurePresentation
+    ? getFailureVisual(failurePresentation.kind)
+    : null;
   const scanLineTranslateY = scanProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 160],
@@ -90,7 +122,14 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
     setBackUri(null);
   }, [deleteLocalCapture]);
 
-  useEffect(() => clearLocalCaptures, [clearLocalCaptures]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      verificationAttemptRef.current += 1;
+      clearLocalCaptures();
+    };
+  }, [clearLocalCaptures]);
 
   const handleBack = () => {
     if (isSubmitting) return;
@@ -108,12 +147,14 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
   };
 
   const handleFrontCaptured = (uri: string) => {
+    verificationAttemptRef.current += 1;
+    attemptedPairRef.current = null;
     if (frontUriRef.current && frontUriRef.current !== uri) {
       deleteLocalCapture(frontUriRef.current);
     }
     frontUriRef.current = uri;
     setFrontUri(uri);
-    setErrorMessage(null);
+    setFailurePresentation(null);
     setVerificationResult(null);
     setVerificationState("REVIEW_READY");
     if (!backUri) {
@@ -124,12 +165,14 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
   };
 
   const handleBackCaptured = (uri: string) => {
+    verificationAttemptRef.current += 1;
+    attemptedPairRef.current = null;
     if (backUriRef.current && backUriRef.current !== uri) {
       deleteLocalCapture(backUriRef.current);
     }
     backUriRef.current = uri;
     setBackUri(uri);
-    setErrorMessage(null);
+    setFailurePresentation(null);
     setVerificationResult(null);
     setVerificationState("REVIEW_READY");
     setStep("REVIEW");
@@ -139,32 +182,47 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
     const pairKey = `${front}|${back}`;
     if (attemptedPairRef.current === pairKey) return;
     attemptedPairRef.current = pairKey;
+    const attemptId = verificationAttemptRef.current + 1;
+    verificationAttemptRef.current = attemptId;
     setVerificationState("VERIFYING");
-    setErrorMessage(null);
+    setFailurePresentation(null);
     setVerificationResult(null);
 
     try {
       const res = await submitGovernmentIdVerification(front, back);
+      if (!mountedRef.current || verificationAttemptRef.current !== attemptId) return;
       setVerificationResult(res);
 
       if (res.status === "VERIFIED") {
         setVerificationState("VERIFIED");
       } else if (res.status === "REJECTED") {
-        const reason = res.rejectionReason;
-        setErrorMessage(
-          (reason && REJECTION_REASON_MESSAGES[reason]) ||
-            "We couldn't verify this ID. Please retake the photos and try again."
+        const presentation = getGovernmentIdRejectionPresentation(
+          res.rejectionReason,
+          res.failedSide,
+          res.sideIssue
         );
-        setRetakeTarget(res.failedSide || "both");
-        setVerificationState("REJECTED");
+        setFailurePresentation(presentation);
+        setRetakeTarget(presentation.retakeTarget || "both");
+        setVerificationState(
+          presentation.kind === "BUSINESS_REJECTION" ? "REJECTED" : "RETRYABLE_ERROR"
+        );
         await Promise.resolve().then(refreshProfile).catch(() => undefined);
       } else {
-        setErrorMessage("We couldn't verify your ID right now. Please try again.");
+        setFailurePresentation(getGovernmentIdErrorPresentation(null));
         setVerificationState("RETRYABLE_ERROR");
       }
     } catch (error: unknown) {
-      setErrorMessage(getSafeVerificationErrorMessage(error));
-      setVerificationState("RETRYABLE_ERROR");
+      if (!mountedRef.current || verificationAttemptRef.current !== attemptId) return;
+      const presentation = getGovernmentIdErrorPresentation(error);
+      setFailurePresentation(presentation);
+      setRetakeTarget(presentation.retakeTarget || "both");
+      setVerificationState(
+        presentation.kind === "BUSINESS_REJECTION"
+          ? "REJECTED"
+          : presentation.kind === "RATE_LIMIT"
+          ? "RATE_LIMITED"
+          : "RETRYABLE_ERROR"
+      );
     }
   }, [refreshProfile]);
 
@@ -203,19 +261,25 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
   }, [isSubmitting, scanProgress]);
 
   const retake = (target: RetakeTarget) => {
-    attemptedPairRef.current = null;
-    setVerificationResult(null);
-    setErrorMessage(null);
-    setVerificationState("REVIEW_READY");
+    if (isSubmitting) return;
+    verificationAttemptRef.current += 1;
     if (target === "both") {
+      attemptedPairRef.current = null;
+      setVerificationResult(null);
+      setFailurePresentation(null);
+      setVerificationState("REVIEW_READY");
       clearLocalCaptures();
       setStep("CAMERA_FRONT");
       return;
     }
+    // Keep the rejected pair identity and diagnostic until a replacement capture
+    // arrives. Cancelling a targeted retake therefore cannot resubmit stale photos.
     setStep(target === "front" ? "CAMERA_FRONT" : "CAMERA_BACK");
   };
 
   const retryVerification = () => {
+    if (isSubmitting) return;
+    verificationAttemptRef.current += 1;
     attemptedPairRef.current = null;
     setRetryNonce((value) => value + 1);
   };
@@ -283,34 +347,63 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
               </View>
             </View>
 
-            {/* Rejection / Error Alert */}
-            {errorMessage ? (
-              <View style={styles.errorAlert}>
-                <Ionicons name="alert-circle" size={22} color="#DC2626" />
+            {/* Backend-authoritative rejection / transport / infrastructure state */}
+            {failurePresentation && failureVisual ? (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.failureAlert,
+                  failurePresentation.kind === "BUSINESS_REJECTION" &&
+                    styles.failureAlertBusiness,
+                  failurePresentation.kind === "CONNECTION" &&
+                    styles.failureAlertConnection,
+                  failurePresentation.kind === "TEMPORARY" &&
+                    styles.failureAlertTemporary,
+                  failurePresentation.kind === "IN_PROGRESS" &&
+                    styles.failureAlertInProgress,
+                  failurePresentation.kind === "RATE_LIMIT" &&
+                    styles.failureAlertRateLimit,
+                  failurePresentation.kind === "UNKNOWN" &&
+                    styles.failureAlertUnknown,
+                ]}
+              >
+                <Ionicons name={failureVisual.icon} size={22} color={failureVisual.accent} />
                 <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                  <Text style={styles.errorAlertTitle}>Verification Unsuccessful</Text>
-                  <Text style={styles.errorAlertText}>{errorMessage}</Text>
-                  {verificationState === "RETRYABLE_ERROR" ? (
+                  <Text style={[styles.failureAlertTitle, { color: failureVisual.accent }]}>
+                    {failurePresentation.title}
+                  </Text>
+                  <Text style={[styles.failureAlertText, { color: failureVisual.text }]}>
+                    {failurePresentation.message}
+                  </Text>
+                  {failurePresentation.action === "retry" ? (
                     <TouchableOpacity
                       onPress={retryVerification}
-                      style={styles.errorAction}
+                      style={[styles.failureAction, { backgroundColor: failureVisual.accent }]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.errorActionText}>Try Again</Text>
+                      <Text style={styles.failureActionText}>Try Again</Text>
                     </TouchableOpacity>
-                  ) : verificationState === "REJECTED" ? (
+                  ) : failurePresentation.action === "retake" ? (
                     <TouchableOpacity
                       onPress={() => retake(retakeTarget)}
-                      style={styles.errorAction}
+                      style={[styles.failureAction, { backgroundColor: failureVisual.accent }]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.errorActionText}>
+                      <Text style={styles.failureActionText}>
                         {retakeTarget === "front"
                           ? "Retake Front"
                           : retakeTarget === "back"
                           ? "Retake Back"
-                          : "Retake Both"}
+                          : "Retake Photos"}
                       </Text>
+                    </TouchableOpacity>
+                  ) : failurePresentation.action === "dismiss" ? (
+                    <TouchableOpacity
+                      onPress={() => setFailurePresentation(null)}
+                      style={[styles.failureAction, { backgroundColor: failureVisual.accent }]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.failureActionText}>Got It</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -462,7 +555,7 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
               variant="primary"
               size="lg"
               onPress={finishSuccess}
-              style={styles.fullWidthBtn}
+              style={[styles.fullWidthBtn, styles.successDoneBtn]}
             />
           </View>
         </View>
@@ -502,36 +595,55 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 17,
   },
-  errorAlert: {
+  failureAlert: {
     flexDirection: "row",
-    backgroundColor: "#FEF2F2",
     borderWidth: 1,
-    borderColor: "#FCA5A5",
     padding: spacing.md,
     borderRadius: radii.lg,
     marginBottom: spacing.md,
     alignItems: "flex-start",
   },
-  errorAlertTitle: {
+  failureAlertBusiness: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FCA5A5",
+  },
+  failureAlertConnection: {
+    backgroundColor: "#FFF7ED",
+    borderColor: "#FDBA74",
+  },
+  failureAlertTemporary: {
+    backgroundColor: "#F5F3FF",
+    borderColor: "#C4B5FD",
+  },
+  failureAlertInProgress: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#93C5FD",
+  },
+  failureAlertRateLimit: {
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+  },
+  failureAlertUnknown: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#CBD5E1",
+  },
+  failureAlertTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#DC2626",
     marginBottom: 2,
   },
-  errorAlertText: {
+  failureAlertText: {
     fontSize: 13,
-    color: "#7F1D1D",
     lineHeight: 18,
   },
-  errorAction: {
+  failureAction: {
     alignSelf: "flex-start",
     marginTop: spacing.sm,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: radii.md,
-    backgroundColor: "#DC2626",
   },
-  errorActionText: {
+  failureActionText: {
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
@@ -671,6 +783,9 @@ const styles = StyleSheet.create({
   },
   fullWidthBtn: {
     width: "100%",
+  },
+  successDoneBtn: {
+    backgroundColor: colors.success,
   },
   successCard: {
     backgroundColor: "#ECFDF5",

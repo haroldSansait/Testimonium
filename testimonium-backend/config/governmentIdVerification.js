@@ -25,6 +25,18 @@ export const GOVERNMENT_ID_REJECTION_REASONS = Object.freeze({
   UNSUPPORTED_OR_INVALID_DOCUMENT: "UNSUPPORTED_OR_INVALID_DOCUMENT",
 });
 
+// Safe machine-readable infrastructure codes that the HTTP layer may expose.
+// Human-readable 5xx details remain hidden by the global error handler.
+export const GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES = Object.freeze({
+  IDENTITY_STORAGE_UNAVAILABLE: "IDENTITY_STORAGE_UNAVAILABLE",
+  OCR_SERVICE_UNAVAILABLE: "OCR_SERVICE_UNAVAILABLE",
+  OCR_PROVIDER_UNAVAILABLE: "OCR_PROVIDER_UNAVAILABLE",
+  OCR_UPSTREAM_ERROR: "OCR_UPSTREAM_ERROR",
+  OCR_TIMEOUT_OR_UNAVAILABLE: "OCR_TIMEOUT_OR_UNAVAILABLE",
+  STORAGE_ERROR: "STORAGE_ERROR",
+  IDENTITY_PERSISTENCE_ERROR: "IDENTITY_PERSISTENCE_ERROR",
+});
+
 export const REJECTION_MESSAGES = Object.freeze({
   IMAGE_BLURRY: "The uploaded ID image is blurry or unreadable. Please ensure the card is in focus with good lighting.",
   FRONT_BACK_INCOMPLETE: "Both the front and back of the Government ID are required and must be distinct images.",
@@ -53,7 +65,21 @@ export const SUPPORTED_GOVERNMENT_IDS = Object.freeze({
       },
     ],
     backMarkers: [
-      /PHILIPPINE\s+STATISTICS\s+AUTHORITY|PSA|PAMBANSANG\s+PAGKAKAKILANLAN|DATE\s+OF\s+ISSUANCE/i,
+      {
+        description: "PSA Issuing Authority",
+        pattern: /PHILIPPINE\s+STATISTICS\s+AUTHORITY/i,
+        strength: "STRONG",
+      },
+      {
+        description: "Issuance Date Label",
+        pattern: /DATE\s+OF\s+ISSUANCE/i,
+        strength: "STRONG",
+      },
+      {
+        description: "Shared PhilSys Terms",
+        pattern: /PSA|PAMBANSANG\s+PAGKAKAKILANLAN/i,
+        strength: "SHARED",
+      },
     ],
   },
   DRIVERS_LICENSE: {
@@ -71,7 +97,26 @@ export const SUPPORTED_GOVERNMENT_IDS = Object.freeze({
       },
     ],
     backMarkers: [
-      /CONDITIONS|RESTRICTIONS|ORGAN\s+DONOR|BLOOD\s+TYPE|LTO/i,
+      {
+        description: "Organ Donor or Blood Type",
+        pattern: /ORGAN\s+DONOR|BLOOD\s+TYPE/i,
+        strength: "STRONG",
+      },
+      {
+        description: "Conditions Label",
+        pattern: /CONDITIONS/i,
+        strength: "SUPPORTING",
+      },
+      {
+        description: "Restrictions Label",
+        pattern: /RESTRICTIONS/i,
+        strength: "SUPPORTING",
+      },
+      {
+        description: "Shared LTO Term",
+        pattern: /LTO/i,
+        strength: "SHARED",
+      },
     ],
   },
   UMID: {
@@ -89,7 +134,21 @@ export const SUPPORTED_GOVERNMENT_IDS = Object.freeze({
       },
     ],
     backMarkers: [
-      /SOCIAL\s+SECURITY\s+SYSTEM|GSIS|PHILHEALTH|PAG-?IBIG/i,
+      {
+        description: "PhilHealth Agency Marker",
+        pattern: /PHILHEALTH/i,
+        strength: "STRONG",
+      },
+      {
+        description: "Pag-IBIG Agency Marker",
+        pattern: /PAG-?IBIG/i,
+        strength: "STRONG",
+      },
+      {
+        description: "Shared SSS or GSIS Terms",
+        pattern: /SOCIAL\s+SECURITY\s+SYSTEM|GSIS/i,
+        strength: "SHARED",
+      },
     ],
   },
   VOTER_ID: {
@@ -107,7 +166,16 @@ export const SUPPORTED_GOVERNMENT_IDS = Object.freeze({
       },
     ],
     backMarkers: [
-      /REPUBLIC\s+OF\s+THE\s+PHILIPPINES|COMMISSION\s+ON\s+ELECTIONS|COMELEC|CHAIRMAN/i,
+      {
+        description: "Chairman Label",
+        pattern: /CHAIRMAN/i,
+        strength: "SUPPORTING",
+      },
+      {
+        description: "Shared Republic or COMELEC Terms",
+        pattern: /REPUBLIC\s+OF\s+THE\s+PHILIPPINES|COMMISSION\s+ON\s+ELECTIONS|COMELEC/i,
+        strength: "SHARED",
+      },
     ],
   },
   POSTAL_ID: {
@@ -125,7 +193,16 @@ export const SUPPORTED_GOVERNMENT_IDS = Object.freeze({
       },
     ],
     backMarkers: [
-      /POSTMASTER|PHILPOST|PHLPOST|POSTAL/i,
+      {
+        description: "Postmaster Marker",
+        pattern: /POSTMASTER/i,
+        strength: "STRONG",
+      },
+      {
+        description: "Shared Postal Terms",
+        pattern: /PHILPOST|PHLPOST|POSTAL/i,
+        strength: "SHARED",
+      },
     ],
   },
 });

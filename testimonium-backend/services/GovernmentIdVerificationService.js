@@ -13,7 +13,11 @@ import {
   normalizeForR2Storage,
 } from "../utils/governmentIdImageValidator.js";
 import {
+  classifyGovernmentIdSide,
+  getGovernmentIdSideIssue,
   identifyGovernmentIdType,
+  identifyGovernmentIdTypeFromSubmission,
+  GOVERNMENT_ID_SIDE_ISSUES,
   extractExpiryDate,
 } from "../utils/governmentIdOcrParser.js";
 import { matchProfileNameToIdText } from "../utils/governmentIdNameMatcher.js";
@@ -53,6 +57,55 @@ export class GovernmentIdVerificationService {
       return this._injectedOcrProvider;
     }
     return OcrProviderFactory.create();
+  }
+
+  async _canReuseExistingVerification(userId, verification) {
+    if (!isEffectivelyVerified(verification)) {
+      return false;
+    }
+
+    const frontObjectKey = verification.frontObjectKey;
+    const backObjectKey = verification.backObjectKey;
+    if (!frontObjectKey || !backObjectKey) {
+      logger.warn(
+        {
+          userId,
+          frontObjectKeyPresent: Boolean(frontObjectKey),
+          backObjectKeyPresent: Boolean(backObjectKey),
+        },
+        '[GovernmentIdVerification] Verified record has incomplete private ID object references. Running fresh verification.'
+      );
+      return false;
+    }
+
+    let frontObjectExists;
+    let backObjectExists;
+    try {
+      const identityBucket = this._identityBucketOptions();
+      [frontObjectExists, backObjectExists] = await Promise.all([
+        this.r2Service.exists(frontObjectKey, identityBucket),
+        this.r2Service.exists(backObjectKey, identityBucket),
+      ]);
+    } catch (storageCheckError) {
+      logger.error(
+        { err: storageCheckError, userId },
+        '[GovernmentIdVerification] Failed to confirm existing private ID objects'
+      );
+      const storageError = new Error('Government ID storage is temporarily unavailable.');
+      storageError.statusCode = 503;
+      storageError.code = 'IDENTITY_STORAGE_UNAVAILABLE';
+      throw storageError;
+    }
+
+    if (!frontObjectExists || !backObjectExists) {
+      logger.warn(
+        { userId, frontObjectPresent: frontObjectExists, backObjectPresent: backObjectExists },
+        '[GovernmentIdVerification] Verified record has stale private ID object references. Running fresh verification.'
+      );
+      return false;
+    }
+
+    return true;
   }
 
   async withUserVerificationLease(userId, operation) {
@@ -115,7 +168,7 @@ export class GovernmentIdVerificationService {
 
       // 3. Double-tap / Already-verified idempotency protection
       // If the user already has an effective verified ID, return it immediately
-      if (isEffectivelyVerified(user.governmentIdVerification)) {
+      if (await this._canReuseExistingVerification(userId, user.governmentIdVerification)) {
         logger.info({ userId }, "[GovernmentIdVerification] User already effectively verified. Returning current status.");
         return {
           status: GOVERNMENT_ID_STATUS.VERIFIED,
@@ -244,7 +297,9 @@ export class GovernmentIdVerificationService {
       }
 
       // 10. Multi-marker ID Type Identification
-      const identifiedIdConfig = identifyGovernmentIdType(frontText, backText);
+      const identifiedIdConfig =
+        identifyGovernmentIdType(frontText, backText) ||
+        identifyGovernmentIdTypeFromSubmission(frontText, backText);
       if (!identifiedIdConfig) {
         await this._persistRejection(userId, GOVERNMENT_ID_REJECTION_REASONS.UNSUPPORTED_OR_INVALID_DOCUMENT);
         return {
@@ -255,7 +310,44 @@ export class GovernmentIdVerificationService {
         };
       }
 
-      // 11. Deterministic Name Matching
+      // 11. Independently classify both submitted sides from the OCR text already obtained.
+      // Ambiguous evidence continues; only strong contradictory evidence is rejected.
+      const frontSideClassification = classifyGovernmentIdSide({
+        idType: identifiedIdConfig.idType,
+        text: frontText,
+      });
+      const backSideClassification = classifyGovernmentIdSide({
+        idType: identifiedIdConfig.idType,
+        text: backText,
+      });
+      const sideIssue = getGovernmentIdSideIssue(
+        frontSideClassification,
+        backSideClassification
+      );
+      if (sideIssue) {
+        await this._persistRejection(
+          userId,
+          GOVERNMENT_ID_REJECTION_REASONS.FRONT_BACK_INCOMPLETE
+        );
+        const failedSide =
+          sideIssue === GOVERNMENT_ID_SIDE_ISSUES.BACK_IS_FRONT ||
+          sideIssue === GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_FRONT
+            ? "back"
+            : sideIssue === GOVERNMENT_ID_SIDE_ISSUES.FRONT_IS_BACK ||
+                sideIssue === GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_BACK
+              ? "front"
+              : "both";
+        return {
+          status: GOVERNMENT_ID_STATUS.REJECTED,
+          isGovernmentIdVerified: false,
+          rejectionReason: GOVERNMENT_ID_REJECTION_REASONS.FRONT_BACK_INCOMPLETE,
+          sideIssue,
+          failedSide,
+          message: getRejectionMessage(GOVERNMENT_ID_REJECTION_REASONS.FRONT_BACK_INCOMPLETE),
+        };
+      }
+
+      // 12. Deterministic Name Matching
       const fullOcrText = `${frontText}\n${backText}`;
       const nameMatchResult = matchProfileNameToIdText(user.fullName, fullOcrText);
       if (!nameMatchResult.matches) {
@@ -268,7 +360,7 @@ export class GovernmentIdVerificationService {
         };
       }
 
-      // 12. Expiry Validation
+      // 13. Expiry Validation
       let expiresAt = null;
       if (identifiedIdConfig.hasExpiry) {
         const expiryResult = extractExpiryDate(fullOcrText);
@@ -295,7 +387,7 @@ export class GovernmentIdVerificationService {
         expiresAt = expiryResult.expiresAt;
       }
 
-      // 13. Verification Accepted — Normalize for R2 storage
+      // 14. Verification Accepted — Normalize for R2 storage
       const [normalizedFront, normalizedBack] = await Promise.all([
         normalizeForR2Storage(frontBuffer),
         normalizeForR2Storage(backBuffer),
@@ -342,7 +434,7 @@ export class GovernmentIdVerificationService {
         throw r2Err;
       }
 
-      // 14. Persist VERIFIED state atomically in PostgreSQL
+      // 15. Persist VERIFIED state atomically in PostgreSQL
       const oldVerification = user.governmentIdVerification;
       const verifiedAt = new Date();
 
@@ -381,7 +473,7 @@ export class GovernmentIdVerificationService {
         throw dbErr;
       }
 
-      // 15. Best-effort cleanup of previous R2 objects if replacing an expired/invalidated verification
+      // 16. Best-effort cleanup of previous R2 objects if replacing an expired/invalidated verification
       if (oldVerification) {
         if (oldVerification.frontObjectKey && oldVerification.frontObjectKey !== frontKey) {
           this.r2Service.delete(oldVerification.frontObjectKey, identityBucket).catch((delErr) => {
@@ -409,7 +501,7 @@ export class GovernmentIdVerificationService {
         message: "Government ID verified successfully.",
       };
     } finally {
-      // 16. Always release the per-user lease in finally
+      // 17. Always release the per-user lease in finally
       try {
         await this.leaseService.releaseLease(leaseKey, ownerToken);
       } catch (leaseReleaseErr) {
@@ -571,7 +663,27 @@ export class GovernmentIdVerificationService {
       throw err;
     }
 
-    const r2Response = await this.r2Service.download(key, this._identityBucketOptions());
+    let r2Response;
+    try {
+      r2Response = await this.r2Service.download(key, this._identityBucketOptions());
+    } catch (storageError) {
+      const storageStatus = storageError?.$metadata?.httpStatusCode;
+      if (
+        storageStatus === 404 ||
+        storageError?.name === 'NotFound' ||
+        storageError?.name === 'NoSuchKey'
+      ) {
+        const missingImageError = new Error('The requested Government ID image is unavailable.');
+        missingImageError.statusCode = 404;
+        missingImageError.code = 'IDENTITY_IMAGE_NOT_FOUND';
+        throw missingImageError;
+      }
+
+      const unavailableError = new Error('Government ID image storage is temporarily unavailable.');
+      unavailableError.statusCode = 503;
+      unavailableError.code = 'IDENTITY_STORAGE_UNAVAILABLE';
+      throw unavailableError;
+    }
 
     res.set({
       "Content-Type": "image/jpeg",

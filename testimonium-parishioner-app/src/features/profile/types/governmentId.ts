@@ -17,6 +17,13 @@ export type GovernmentIdRejectionReason =
   | 'ID_EXPIRED'
   | 'UNSUPPORTED_OR_INVALID_DOCUMENT';
 
+export type GovernmentIdSideIssue =
+  | 'FRONT_IS_BACK'
+  | 'BACK_IS_FRONT'
+  | 'BOTH_APPEAR_FRONT'
+  | 'BOTH_APPEAR_BACK'
+  | 'SIDES_SWAPPED';
+
 export interface GovernmentIdVerificationStatusResponse {
   status: GovernmentIdVerificationStatus;
   rejectionReason: GovernmentIdRejectionReason | null;
@@ -25,6 +32,8 @@ export interface GovernmentIdVerificationStatusResponse {
   message?: string | null;
   /** Optional future-safe targeting hint; current backend may omit it. */
   failedSide?: 'front' | 'back' | 'both' | null;
+  /** Non-persisted diagnostic emitted only for strong backend OCR side evidence. */
+  sideIssue?: GovernmentIdSideIssue | null;
   verifiedAt: string | null;
   expiresAt: string | null;
   idType: string | null;
@@ -41,13 +50,13 @@ export const ID_TYPE_LABELS: Record<string, string> = {
 
 export const REJECTION_REASON_MESSAGES: Record<string, string> = {
   IMAGE_BLURRY:
-    'The ID photo is too blurry or low quality. Please retake the photo in good lighting with clear focus.',
+    'We couldn\'t read the ID clearly. Retake the affected photo with the card flat, fully visible, and in clear lighting.',
   FRONT_BACK_INCOMPLETE:
-    'Both the front and back of the ID card are required and must be distinct sides.',
+    'We couldn\'t verify both sides of the ID. Make sure the front and back photos are different and clearly show both sides of the same ID.',
   NAME_MISMATCH:
     'The name on the ID does not match your registered TESTIMONIUM profile name.',
   ID_EXPIRED:
-    'The submitted Government ID has expired. Please provide a currently valid ID.',
+    'This ID appears to be expired. Please use a valid, unexpired supported ID.',
   UNSUPPORTED_OR_INVALID_DOCUMENT:
-    'The document provided is not an accepted Philippine Government-issued card ID (PhilSys, Driver\'s License, UMID, Voter ID, or Postal ID).',
+    'We couldn\'t recognize this as one of the supported Government IDs. Please use a PhilSys / National ID, Driver\'s License, UMID, Voter ID, or Postal ID and make sure the document is clearly visible.',
 };

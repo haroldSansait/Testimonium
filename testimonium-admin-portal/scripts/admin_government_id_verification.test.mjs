@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseIdentityStatusResponse } from '../src/utils/governmentIdStatus.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,94 @@ const srcDir = path.resolve(__dirname, '../src');
 test('Admin Portal — Government ID Verification & Secure Viewing Suite (Requirements 91 - 98)', async (t) => {
   const pagePath = path.join(srcDir, 'pages/UserManagementPage.tsx');
   const pageContent = fs.readFileSync(pagePath, 'utf8');
+  const apiPath = path.join(srcDir, 'api/api.ts');
+  const apiContent = fs.readFileSync(apiPath, 'utf8');
+
+  await t.test('89. Standard API envelopes are unwrapped and validated before display', () => {
+    const verified = parseIdentityStatusResponse({
+      success: true,
+      data: {
+        status: 'VERIFIED',
+        isGovernmentIdVerified: true,
+        idType: 'PHIL_SYS',
+        verifiedAt: '2026-10-02T12:06:43.714Z',
+        expiresAt: null,
+        rejectionReason: null,
+      },
+    });
+    assert.equal(verified.status, 'VERIFIED');
+    assert.equal(verified.isGovernmentIdVerified, true);
+    assert.equal(verified.idType, 'PHIL_SYS');
+    assert.ok(pageContent.includes('Verified'));
+    assert.ok(pageContent.includes('Philippine Identification (PhilSys / National ID)'));
+    assert.ok(pageContent.includes('View Front ID'));
+    assert.ok(pageContent.includes('View Back ID'));
+
+    const notSubmitted = parseIdentityStatusResponse({
+      success: true,
+      data: { status: 'NOT_SUBMITTED', isGovernmentIdVerified: false },
+    });
+    assert.equal(notSubmitted.status, 'NOT_SUBMITTED');
+    assert.equal(notSubmitted.isGovernmentIdVerified, false);
+
+    const rejected = parseIdentityStatusResponse({
+      success: true,
+      data: {
+        status: 'REJECTED',
+        isGovernmentIdVerified: false,
+        rejectionReason: 'NAME_MISMATCH',
+      },
+    });
+    assert.equal(rejected.status, 'REJECTED');
+    assert.equal(rejected.rejectionReason, 'NAME_MISMATCH');
+
+    const expired = parseIdentityStatusResponse({
+      success: true,
+      data: {
+        status: 'VERIFIED',
+        isGovernmentIdVerified: false,
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    assert.equal(expired.status, 'VERIFIED');
+    assert.equal(expired.isGovernmentIdVerified, false);
+
+    for (const malformed of [
+      { success: true },
+      { success: true, data: null },
+      { success: true, data: {} },
+      { success: true, data: { status: 'UNKNOWN', isGovernmentIdVerified: false } },
+      { success: true, data: { status: 'VERIFIED' } },
+    ]) {
+      assert.throws(
+        () => parseIdentityStatusResponse(malformed),
+        /Invalid Government ID status response/
+      );
+    }
+
+    assert.ok(pageContent.includes('parseIdentityStatusResponse(res.data)'));
+    assert.ok(!pageContent.includes('setIdentityStatus(res.data)'));
+    assert.ok(pageContent.includes('setIdentityStatus(null)'));
+  });
+
+  await t.test('90. Government ID requests use the shared API base URL exactly once', () => {
+    assert.ok(
+      apiContent.includes('baseURL: import.meta.env.VITE_API_URL'),
+      'Government ID requests must use the shared API client base URL'
+    );
+    assert.ok(
+      pageContent.includes('.get(`/users/${user.id}/identity/status`)'),
+      'Status must use the API-client-relative route'
+    );
+    assert.ok(
+      pageContent.includes('api.get(`/users/${user.id}/identity/${side}-image`'),
+      'Front and back images must use the API-client-relative route'
+    );
+    assert.ok(
+      !pageContent.includes('/api/v1/users/${user.id}/identity/'),
+      'Government ID requests must not duplicate the /api/v1 base path'
+    );
+  });
 
   await t.test('91. Coordinator sees Government ID verification status in User Management', () => {
     // Verifies the coordinator condition and status badge rendering
@@ -115,7 +204,7 @@ test('Admin Portal — Government ID Verification & Secure Viewing Suite (Requir
       'Must request binary blob through authenticated api client'
     );
     assert.ok(
-      pageContent.includes('`/api/v1/users/${user.id}/identity/${side}-image`'),
+      pageContent.includes('`/users/${user.id}/identity/${side}-image`'),
       'Must use authenticated REST endpoint rather than public URL'
     );
 

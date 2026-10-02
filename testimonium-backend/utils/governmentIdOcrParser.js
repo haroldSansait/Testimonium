@@ -1,7 +1,108 @@
 import {
   SUPPORTED_GOVERNMENT_IDS,
-  GOVERNMENT_ID_REJECTION_REASONS,
 } from "../config/governmentIdVerification.js";
+
+export const GOVERNMENT_ID_SIDE_CLASSIFICATIONS = Object.freeze({
+  FRONT_LIKELY: "FRONT_LIKELY",
+  BACK_LIKELY: "BACK_LIKELY",
+  AMBIGUOUS: "AMBIGUOUS",
+});
+
+export const GOVERNMENT_ID_SIDE_ISSUES = Object.freeze({
+  FRONT_IS_BACK: "FRONT_IS_BACK",
+  BACK_IS_FRONT: "BACK_IS_FRONT",
+  BOTH_APPEAR_FRONT: "BOTH_APPEAR_FRONT",
+  BOTH_APPEAR_BACK: "BOTH_APPEAR_BACK",
+  SIDES_SWAPPED: "SIDES_SWAPPED",
+});
+
+const markerPattern = (marker) => marker?.pattern || marker;
+
+const markerMatches = (marker, text) => {
+  const pattern = markerPattern(marker);
+  if (!(pattern instanceof RegExp)) return false;
+  pattern.lastIndex = 0;
+  return pattern.test(text);
+};
+
+const collectSideEvidence = (idConfig, text) => {
+  const normalizedText =
+    typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
+  if (!normalizedText) {
+    return { frontStrong: false, backStrong: false };
+  }
+
+  const frontMatchCount = idConfig.frontMarkers.filter((marker) =>
+    markerMatches(marker, normalizedText)
+  ).length;
+  const matchedBackMarkers = idConfig.backMarkers.filter((marker) =>
+    markerMatches(marker, normalizedText)
+  );
+  const strongBackCount = matchedBackMarkers.filter(
+    (marker) => marker.strength === "STRONG"
+  ).length;
+  const supportingBackCount = matchedBackMarkers.filter(
+    (marker) => marker.strength === "SUPPORTING"
+  ).length;
+
+  return {
+    frontStrong:
+      idConfig.frontMarkers.length >= 2 && frontMatchCount === idConfig.frontMarkers.length,
+    backStrong: strongBackCount >= 1 || supportingBackCount >= 2,
+  };
+};
+
+export function classifyGovernmentIdSide({ idType, text }) {
+  const idConfig = SUPPORTED_GOVERNMENT_IDS[idType];
+  if (!idConfig) return GOVERNMENT_ID_SIDE_CLASSIFICATIONS.AMBIGUOUS;
+
+  const { frontStrong, backStrong } = collectSideEvidence(idConfig, text);
+  if (frontStrong === backStrong) {
+    return GOVERNMENT_ID_SIDE_CLASSIFICATIONS.AMBIGUOUS;
+  }
+  return frontStrong
+    ? GOVERNMENT_ID_SIDE_CLASSIFICATIONS.FRONT_LIKELY
+    : GOVERNMENT_ID_SIDE_CLASSIFICATIONS.BACK_LIKELY;
+}
+
+export function identifyGovernmentIdTypeFromSubmission(frontText, backText) {
+  const candidates = Object.values(SUPPORTED_GOVERNMENT_IDS).filter((idConfig) => {
+    const frontClassification = classifyGovernmentIdSide({
+      idType: idConfig.idType,
+      text: frontText,
+    });
+    const backClassification = classifyGovernmentIdSide({
+      idType: idConfig.idType,
+      text: backText,
+    });
+    return (
+      frontClassification !== GOVERNMENT_ID_SIDE_CLASSIFICATIONS.AMBIGUOUS ||
+      backClassification !== GOVERNMENT_ID_SIDE_CLASSIFICATIONS.AMBIGUOUS
+    );
+  });
+
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+export function getGovernmentIdSideIssue(frontClassification, backClassification) {
+  const { FRONT_LIKELY, BACK_LIKELY } = GOVERNMENT_ID_SIDE_CLASSIFICATIONS;
+  if (frontClassification === BACK_LIKELY && backClassification === FRONT_LIKELY) {
+    return GOVERNMENT_ID_SIDE_ISSUES.SIDES_SWAPPED;
+  }
+  if (frontClassification === FRONT_LIKELY && backClassification === FRONT_LIKELY) {
+    return GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_FRONT;
+  }
+  if (frontClassification === BACK_LIKELY && backClassification === BACK_LIKELY) {
+    return GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_BACK;
+  }
+  if (frontClassification === BACK_LIKELY) {
+    return GOVERNMENT_ID_SIDE_ISSUES.FRONT_IS_BACK;
+  }
+  if (backClassification === FRONT_LIKELY) {
+    return GOVERNMENT_ID_SIDE_ISSUES.BACK_IS_FRONT;
+  }
+  return null;
+}
 
 /**
  * Identifies the Government ID type from OCR text using deterministic multi-marker rules.
@@ -29,7 +130,7 @@ export function identifyGovernmentIdType(frontText, backText = "") {
       let backScore = 0;
       if (idConfig.backMarkers && idConfig.backMarkers.length > 0 && combinedBack) {
         for (const backMarker of idConfig.backMarkers) {
-          if (backMarker.test(combinedBack)) {
+          if (markerMatches(backMarker, combinedBack)) {
             backScore += 1;
           }
         }

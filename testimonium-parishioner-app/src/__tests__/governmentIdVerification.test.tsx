@@ -1,9 +1,13 @@
 import React from "react";
-import { Alert, Dimensions } from "react-native";
+import { Alert, Dimensions, StyleSheet } from "react-native";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react-native";
 import { GovernmentIdCameraScanner as ProductionGovernmentIdCameraScanner } from "../features/profile/components/GovernmentIdCameraScanner";
 import { IdVerificationScreen } from "../features/profile/IdVerificationScreen";
-import { getSafeVerificationErrorMessage } from "../features/profile/api/governmentIdVerification";
+import {
+  getGovernmentIdErrorPresentation,
+  getSafeVerificationErrorMessage,
+} from "../features/profile/api/governmentIdVerification";
+import { colors } from "../theme/tokens";
 import {
   checkGovernmentIdRequirement,
 } from "../hooks/useRequireCompleteProfile";
@@ -194,6 +198,13 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     };
   });
 
+  const captureBothSides = async () => {
+    await fireEvent.press(screen.getByLabelText("Capture front of ID card manually"));
+    await fireEvent.press(screen.getByText("Use Photo"));
+    await fireEvent.press(screen.getByLabelText("Capture back of ID card manually"));
+    await fireEvent.press(screen.getByText("Use Photo"));
+  };
+
   // 72. camera permission request
   it("72. requests camera permission when grant button is clicked", async () => {
     mockPermissionState = { granted: false, canAskAgain: true };
@@ -378,69 +389,145 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     expect(mockOnCancel).toHaveBeenCalledTimes(1);
   });
 
-  // 82, 83, 84, 85. backend rejections & infrastructure failures
-  it("82. displays canonical IMAGE_BLURRY rejection message", async () => {
+  // 82-85. Authoritative business, transport, infrastructure, concurrency, and fallback states
+  it.each([
+    ["IMAGE_BLURRY", "ID Photo Unclear"],
+    ["FRONT_BACK_INCOMPLETE", "Front and Back Required"],
+    ["NAME_MISMATCH", "Name Does Not Match"],
+    ["ID_EXPIRED", "ID Appears Expired"],
+    ["UNSUPPORTED_OR_INVALID_DOCUMENT", "ID Could Not Be Recognized"],
+  ])("displays the canonical %s business rejection", async (code, title) => {
     (apiClient.request as jest.Mock).mockResolvedValueOnce({
       status: "REJECTED",
-      rejectionReason: "IMAGE_BLURRY",
-      rejectionMessage: REJECTION_REASON_MESSAGES.IMAGE_BLURRY,
+      rejectionReason: code,
+      rejectionMessage: "Backend prose is not used for branching.",
       isGovernmentIdVerified: false,
     });
 
     await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
 
-    // Step 1: Front
-    await fireEvent.press(screen.getByLabelText("Capture front of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
+    expect(await screen.findByText(title)).toBeTruthy();
+    expect(screen.getByText(REJECTION_REASON_MESSAGES[code])).toBeTruthy();
+    expect(screen.getByText("Retake Photos")).toBeTruthy();
+    if (code === "FRONT_BACK_INCOMPLETE") {
+      expect(screen.queryByText(/front side twice/i)).toBeNull();
+      expect(screen.queryByText(/back photo is actually the front/i)).toBeNull();
+    }
+    if (code === "UNSUPPORTED_OR_INVALID_DOCUMENT") {
+      expect(screen.queryByText(/fake|forged|counterfeit/i)).toBeNull();
+    }
+  });
 
-    // Step 2: Back
+  it.each([
+    [
+      "BOTH_APPEAR_FRONT",
+      "Back Side Needed",
+      "Both photos appear to show the front of the ID. Retake the back side of your Government ID.",
+      "Retake Back",
+    ],
+    [
+      "BOTH_APPEAR_BACK",
+      "Front Side Needed",
+      "Both photos appear to show the back of the ID. Retake the front side of your Government ID.",
+      "Retake Front",
+    ],
+    [
+      "FRONT_IS_BACK",
+      "Front Side Needed",
+      "The photo submitted as the front appears to show the back of the ID.",
+      "Retake Front",
+    ],
+    [
+      "BACK_IS_FRONT",
+      "Back Side Needed",
+      "The photo submitted as the back appears to show the front of the ID.",
+      "Retake Back",
+    ],
+    [
+      "SIDES_SWAPPED",
+      "Front and Back Are Reversed",
+      "The front and back photos appear to be reversed. Retake them in the correct order.",
+      "Retake Photos",
+    ],
+  ])(
+    "renders the backend-authoritative %s side correction",
+    async (sideIssue, title, message, cta) => {
+      (apiClient.request as jest.Mock).mockResolvedValueOnce({
+        status: "REJECTED",
+        rejectionReason: "FRONT_BACK_INCOMPLETE",
+        sideIssue,
+        isGovernmentIdVerified: false,
+      });
+
+      await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+      await captureBothSides();
+
+      expect(await screen.findByText(title)).toBeTruthy();
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(screen.getAllByText(cta).length).toBeGreaterThan(0);
+      expect(screen.queryByText("Front and Back Required")).toBeNull();
+    }
+  );
+
+  it("retains a rejected pair on targeted-retake cancel and clears its side diagnostic after replacement", async () => {
+    (apiClient.request as jest.Mock)
+      .mockResolvedValueOnce({
+        status: "REJECTED",
+        rejectionReason: "FRONT_BACK_INCOMPLETE",
+        sideIssue: "BOTH_APPEAR_FRONT",
+        isGovernmentIdVerified: false,
+      })
+      .mockResolvedValueOnce({
+        status: "VERIFIED",
+        idType: "PHIL_SYS",
+        verifiedAt: "2026-10-02T00:00:00.000Z",
+        expiresAt: null,
+        isGovernmentIdVerified: true,
+      });
+
+    await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
+
+    expect(await screen.findByText("Back Side Needed")).toBeTruthy();
+    await fireEvent.press(screen.getAllByText("Retake Back")[0]);
+    await fireEvent.press(screen.getByLabelText("Close scanner"));
+
+    expect(screen.getByText("Back Side Needed")).toBeTruthy();
+    expect(apiClient.request).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getAllByText("Retake Back")[0]);
     await fireEvent.press(screen.getByLabelText("Capture back of ID card manually"));
     await fireEvent.press(screen.getByText("Use Photo"));
 
-    // Step 3: Review automatically verifies exactly once.
-    expect(await screen.findByText("Verification Unsuccessful")).toBeTruthy();
-    expect(await screen.findByText(REJECTION_REASON_MESSAGES.IMAGE_BLURRY)).toBeTruthy();
+    expect(await screen.findByText("Government ID Verified")).toBeTruthy();
+    expect(screen.queryByText("Back Side Needed")).toBeNull();
+    expect(apiClient.request).toHaveBeenCalledTimes(2);
   });
 
-  it("83. displays canonical NAME_MISMATCH rejection message", async () => {
-    (apiClient.request as jest.Mock).mockResolvedValueOnce({
-      status: "REJECTED",
-      rejectionReason: "NAME_MISMATCH",
-      rejectionMessage: REJECTION_REASON_MESSAGES.NAME_MISMATCH,
-      isGovernmentIdVerified: false,
+  it("displays a connection problem without rejecting the ID or discarding captures", async () => {
+    (apiClient.request as jest.Mock).mockRejectedValueOnce({
+      kind: "NETWORK",
+      code: "API_CONNECTION_FAILED",
+      message: "Network request failed",
     });
 
     await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
 
-    await fireEvent.press(screen.getByLabelText("Capture front of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
-
-    await fireEvent.press(screen.getByLabelText("Capture back of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
-
-    expect(await screen.findByText(REJECTION_REASON_MESSAGES.NAME_MISMATCH)).toBeTruthy();
+    expect(await screen.findByText("Connection Problem")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Unable to connect to TESTIMONIUM. Check your internet connection and try again."
+      )
+    ).toBeTruthy();
+    expect(screen.getByText("Try Again")).toBeTruthy();
+    expect(screen.getByText("Front Captured")).toBeTruthy();
+    expect(screen.getByText("Back Captured")).toBeTruthy();
+    expect(screen.queryByText("Retake Photos")).toBeNull();
   });
 
-  it("84. displays canonical ID_EXPIRED rejection message", async () => {
-    (apiClient.request as jest.Mock).mockResolvedValueOnce({
-      status: "REJECTED",
-      rejectionReason: "ID_EXPIRED",
-      rejectionMessage: REJECTION_REASON_MESSAGES.ID_EXPIRED,
-      isGovernmentIdVerified: false,
-    });
-
-    await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
-
-    await fireEvent.press(screen.getByLabelText("Capture front of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
-
-    await fireEvent.press(screen.getByLabelText("Capture back of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
-
-    expect(await screen.findByText(REJECTION_REASON_MESSAGES.ID_EXPIRED)).toBeTruthy();
-  });
-
-  it("85. displays retryable temporary error on OCR service failure", async () => {
+  it("displays retryable temporary state on OCR service failure", async () => {
     (apiClient.request as jest.Mock).mockRejectedValueOnce({
       status: 503,
       code: "OCR_PROVIDER_UNAVAILABLE",
@@ -448,16 +535,95 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     });
 
     await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
 
-    await fireEvent.press(screen.getByLabelText("Capture front of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
-
-    await fireEvent.press(screen.getByLabelText("Capture back of ID card manually"));
-    await fireEvent.press(screen.getByText("Use Photo"));
-
+    expect(await screen.findByText("Verification Temporarily Unavailable")).toBeTruthy();
     expect(
-      await screen.findByText("We couldn't verify your ID right now. Please try again.")
+      screen.getByText(
+        "We couldn't process your ID right now. Your ID was not rejected. Please try again."
+      )
     ).toBeTruthy();
+    expect(screen.getByText("Try Again")).toBeTruthy();
+    expect(screen.getByText("Front Captured")).toBeTruthy();
+    expect(screen.getByText("Back Captured")).toBeTruthy();
+  });
+
+  it("displays verification-in-progress without launching an automatic retry", async () => {
+    (apiClient.request as jest.Mock).mockRejectedValueOnce({
+      status: 409,
+      code: "GOVERNMENT_ID_VERIFICATION_IN_PROGRESS",
+    });
+
+    await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
+
+    expect(await screen.findByText("Verification Already in Progress")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Your Government ID is already being checked. Please wait for the current attempt to finish."
+      )
+    ).toBeTruthy();
+    expect(screen.queryByText("Try Again")).toBeNull();
+    await waitFor(() => expect(apiClient.request).toHaveBeenCalledTimes(1));
+  });
+
+  it("displays rate-limit alert with wait-a-few-minutes guidance and preserves captures without retrying", async () => {
+    (apiClient.request as jest.Mock).mockRejectedValueOnce({
+      status: 429,
+      kind: "RATE_LIMIT",
+      message:
+        "Too many Government ID verification attempts. Maximum 3 attempts per 10 minutes allowed.",
+    });
+
+    await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
+
+    expect(await screen.findByText("Too Many Verification Attempts")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "You've reached the Government ID verification attempt limit. Please wait a few minutes before trying again."
+      )
+    ).toBeTruthy();
+    expect(screen.queryByText("Unable to Verify ID")).toBeNull();
+    expect(screen.queryByText("Try Again")).toBeNull();
+
+    // Captured Front and Back photos remain intact
+    expect(screen.getByText("Front Captured")).toBeTruthy();
+    expect(screen.getByText("Back Captured")).toBeTruthy();
+
+    // Not classified as rejected
+    expect(screen.queryByText(/blurry|wrong side|expired|fake/i)).toBeNull();
+    expect(mockRefreshProfile).not.toHaveBeenCalled();
+
+    // No automatic retry occurred
+    expect(apiClient.request).toHaveBeenCalledTimes(1);
+
+    // "Got It" action dismisses the alert without clearing captures or triggering resubmission
+    const gotItButton = screen.getByRole("button", { name: "Got It" });
+    expect(gotItButton).toBeTruthy();
+    await fireEvent.press(gotItButton);
+
+    expect(screen.queryByText("Too Many Verification Attempts")).toBeNull();
+    expect(screen.getByText("Front Captured")).toBeTruthy();
+    expect(screen.getByText("Back Captured")).toBeTruthy();
+    expect(apiClient.request).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the neutral fallback for an unknown machine code", async () => {
+    (apiClient.request as jest.Mock).mockRejectedValueOnce({
+      status: 500,
+      code: "UNRECOGNIZED_INTERNAL_CODE",
+      message: "Do not show this provider detail.",
+    });
+
+    await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
+
+    expect(await screen.findByText("Unable to Verify ID")).toBeTruthy();
+    expect(
+      screen.getByText("Something went wrong while verifying your ID. Please try again.")
+    ).toBeTruthy();
+    expect(screen.queryByText(/blurry|wrong side|expired|fake/i)).toBeNull();
   });
 
   // 86. successful verification refreshes profile state
@@ -481,6 +647,16 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     expect(await screen.findByText("Government ID Verified")).toBeTruthy();
     expect(await screen.findByText(ID_TYPE_LABELS.PHIL_SYS)).toBeTruthy();
     expect(mockRefreshProfile).not.toHaveBeenCalled();
+
+    // Verify Done button uses success green styling (colors.success)
+    const doneButton = screen.getByRole("button", { name: "Done" });
+    const resolvedStyle =
+      typeof doneButton.props.style === "function"
+        ? doneButton.props.style({ pressed: false })
+        : doneButton.props.style;
+    const flattened = StyleSheet.flatten(resolvedStyle);
+    expect(flattened.backgroundColor).toBe(colors.success);
+
     await fireEvent.press(screen.getByText("Done"));
     await waitFor(() => expect(mockRefreshProfile).toHaveBeenCalledTimes(1));
   });
@@ -518,7 +694,7 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
       });
       await Promise.resolve();
     });
-    expect(await screen.findByText("Verification Unsuccessful")).toBeTruthy();
+    expect(await screen.findByText("ID Photo Unclear")).toBeTruthy();
   });
 
   it("86b. uses a side-specific retake action when the backend identifies the side", async () => {
@@ -536,7 +712,7 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     await fireEvent.press(screen.getByLabelText("Capture back of ID card manually"));
     await fireEvent.press(screen.getByText("Use Photo"));
 
-    expect(await screen.findByText("Verification Unsuccessful")).toBeTruthy();
+    expect(await screen.findByText("ID Photo Unclear")).toBeTruthy();
     const frontActions = screen.getAllByText("Retake Front");
     expect(frontActions).toHaveLength(2);
     await fireEvent.press(frontActions[0]);
@@ -1534,10 +1710,68 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
           code: "SOMETHING_INTERNAL",
           message: "POST /api/v1/api/v1/identity-verification/submit",
         })
-      ).toBe("We couldn't verify this ID. Please retake the photos and try again.");
+      ).toBe("Something went wrong while verifying your ID. Please try again.");
       expect(
         getSafeVerificationErrorMessage({ kind: "NETWORK", message: "socket failed" })
-      ).toBe("We couldn't verify your ID right now. Please try again.");
+      ).toBe(
+        "Unable to connect to TESTIMONIUM. Check your internet connection and try again."
+      );
     });
+
+    it("maps HTTP 429 / RATE_LIMIT to safe attempt limit guidance without raw message or fixed 10-minute wait", () => {
+      const errorFromBackend = {
+        status: 429,
+        kind: "RATE_LIMIT",
+        message:
+          "Too many Government ID verification attempts. Maximum 3 attempts per 10 minutes allowed.",
+      };
+
+      const presentation = getGovernmentIdErrorPresentation(errorFromBackend);
+      expect(presentation).toEqual({
+        kind: "RATE_LIMIT",
+        title: "Too Many Verification Attempts",
+        message:
+          "You've reached the Government ID verification attempt limit. Please wait a few minutes before trying again.",
+        action: "dismiss",
+      });
+
+      expect(presentation.message).not.toContain("10 minutes");
+      expect(presentation.message).not.toContain("Maximum 3 attempts");
+
+      expect(getSafeVerificationErrorMessage(errorFromBackend)).toBe(
+        "You've reached the Government ID verification attempt limit. Please wait a few minutes before trying again."
+      );
+
+      expect(getGovernmentIdErrorPresentation({ status: 429 }).kind).toBe("RATE_LIMIT");
+      expect(getGovernmentIdErrorPresentation({ status: "429" }).kind).toBe("RATE_LIMIT");
+      expect(getGovernmentIdErrorPresentation({ kind: "RATE_LIMIT" }).kind).toBe("RATE_LIMIT");
+      expect(getGovernmentIdErrorPresentation({ code: "RATE_LIMIT_EXCEEDED" }).kind).toBe("RATE_LIMIT");
+    });
+  });
+
+  it("86c. ignores an older verification response after the screen unmounts", async () => {
+    let resolveVerification!: (value: unknown) => void;
+    (apiClient.request as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveVerification = resolve;
+        })
+    );
+
+    const view = await render(<IdVerificationScreen scannerFallbackDelayMs={0} />);
+    await captureBothSides();
+    expect(await screen.findByText("Verifying your Government ID…")).toBeTruthy();
+
+    view.unmount();
+    await act(async () => {
+      resolveVerification({
+        status: "REJECTED",
+        rejectionReason: "IMAGE_BLURRY",
+        isGovernmentIdVerified: false,
+      });
+      await Promise.resolve();
+    });
+
+    expect(mockRefreshProfile).not.toHaveBeenCalled();
   });
 });

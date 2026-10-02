@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { r2Client } from "../config/r2.js";
@@ -27,6 +28,24 @@ export class R2Service {
         Key: key,
       }),
     );
+  }
+
+  async exists(key, { bucketName = env.r2.bucketName } = {}) {
+    try {
+      await r2Client.send(
+        new HeadObjectCommand({
+          Bucket: bucketName,
+          Key: key,
+        }),
+      );
+      return true;
+    } catch (error) {
+      const statusCode = error?.$metadata?.httpStatusCode;
+      if (statusCode === 404 || error?.name === 'NotFound' || error?.name === 'NoSuchKey') {
+        return false;
+      }
+      throw error;
+    }
   }
 
   async delete(key, { bucketName = env.r2.bucketName } = {}) {

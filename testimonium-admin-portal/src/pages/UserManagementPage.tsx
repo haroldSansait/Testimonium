@@ -32,6 +32,10 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { UserManagementService, type AddUserPayload } from '@/services/UserManagementService';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { cn } from '@/utils/cn';
+import {
+  parseIdentityStatusResponse,
+  type IdentityStatusData,
+} from '@/utils/governmentIdStatus';
 import type { ManagedUser, ManagedUserRole, ManagedUserStatus } from '@/types';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useAuth } from '@/hooks/useAuth';
@@ -530,15 +534,6 @@ const REJECTION_LABELS: Record<string, string> = {
   UNSUPPORTED_OR_INVALID_DOCUMENT: 'Unsupported or invalid Philippine card ID.',
 };
 
-interface IdentityStatusData {
-  status: 'NOT_SUBMITTED' | 'VERIFIED' | 'REJECTED';
-  idType?: string | null;
-  verifiedAt?: string | null;
-  expiresAt?: string | null;
-  rejectionReason?: string | null;
-  isGovernmentIdVerified?: boolean;
-}
-
 // ─── Parishioner Profile Detail Modal (View Profile) ──────────────────────────
 
 interface ParishionerProfileModalProps {
@@ -577,14 +572,17 @@ function ParishionerProfileModal({ user, isCoordinator, onEdit, onClose }: Paris
     let cancelled = false;
     setLoadingIdentity(true);
     setIdentityError(null);
+    setIdentityStatus(null);
 
     api
-      .get(`/api/v1/users/${user.id}/identity/status`)
+      .get(`/users/${user.id}/identity/status`)
       .then((res) => {
-        if (!cancelled) setIdentityStatus(res.data);
+        const statusData = parseIdentityStatusResponse(res.data);
+        if (!cancelled) setIdentityStatus(statusData);
       })
       .catch((err) => {
         if (!cancelled) {
+          setIdentityStatus(null);
           setIdentityError(err?.message || 'Failed to load Government ID status');
         }
       })
@@ -604,7 +602,7 @@ function ParishionerProfileModal({ user, isCoordinator, onEdit, onClose }: Paris
     setImageError(null);
 
     try {
-      const res = await api.get(`/api/v1/users/${user.id}/identity/${side}-image`, {
+      const res = await api.get(`/users/${user.id}/identity/${side}-image`, {
         responseType: 'blob',
       });
       const objectUrl = URL.createObjectURL(res.data);
@@ -856,7 +854,7 @@ function ParishionerProfileModal({ user, isCoordinator, onEdit, onClose }: Paris
             onClick={(e) => e.target === e.currentTarget && handleCloseImageViewer()}
           >
             <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
-              <div className="bg-gray-900 text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="bg-[#7B1C2A] text-white px-5 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   <span className="font-semibold text-sm">
@@ -865,7 +863,7 @@ function ParishionerProfileModal({ user, isCoordinator, onEdit, onClose }: Paris
                 </div>
                 <button
                   onClick={handleCloseImageViewer}
-                  className="p-1 text-gray-400 hover:text-white rounded-md transition-colors"
+                  className="p-1 text-white/80 hover:text-white rounded-md transition-colors"
                   aria-label="Close image viewer"
                 >
                   <X className="w-5 h-5" />

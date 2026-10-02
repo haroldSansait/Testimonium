@@ -1,4 +1,9 @@
 import { logger } from "../config/logger.js";
+import { GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES } from "../config/governmentIdVerification.js";
+
+const PUBLIC_SERVER_ERROR_CODES = new Set(
+  Object.values(GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES)
+);
 
 
 export const notFoundHandler = (req, res) => {
@@ -68,10 +73,12 @@ export const errorHandler = (err, req, res, _next) => {
     errors: statusCode >= 500 ? [] : err.errors || [],
   };
 
-  if (statusCode < 500 && typeof err.code === "string") {
+  if (
+    typeof err.code === "string" &&
+    (statusCode < 500 || PUBLIC_SERVER_ERROR_CODES.has(err.code))
+  ) {
     responseBody.code = err.code;
   }
 
   res.status(statusCode).json(responseBody);
 };
-

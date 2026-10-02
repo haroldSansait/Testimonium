@@ -10,7 +10,12 @@ import {
   normalizeForR2Storage,
 } from "../utils/governmentIdImageValidator.js";
 import {
+  classifyGovernmentIdSide,
+  getGovernmentIdSideIssue,
   identifyGovernmentIdType,
+  identifyGovernmentIdTypeFromSubmission,
+  GOVERNMENT_ID_SIDE_CLASSIFICATIONS,
+  GOVERNMENT_ID_SIDE_ISSUES,
   extractExpiryDate,
   parseDateString,
 } from "../utils/governmentIdOcrParser.js";
@@ -29,6 +34,7 @@ import { GovernmentIdVerificationController } from "../controllers/GovernmentIdV
 import { ParishionerRequestService } from "../services/ParishionerRequestService.js";
 import { updateProfile } from "../controllers/AuthController.js";
 import { AuthService } from "../services/AuthService.js";
+import { errorHandler } from "../middlewares/errorHandler.js";
 
 // Helper to create test images
 async function createTestImage({ width = 800, height = 500, sharpNoise = true, format = "jpeg" } = {}) {
@@ -97,6 +103,46 @@ test("1 & 9. User.isVerified semantics and effective verification helper", () =>
     expiresAt: null,
   };
   assert.equal(isEffectivelyVerified(nonExpiringVerification), true);
+});
+
+test("Government ID infrastructure errors expose only safe machine-readable codes", () => {
+  const makeResponse = () => {
+    const response = {
+      statusCode: null,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body) {
+        this.body = body;
+        return this;
+      },
+    };
+    return response;
+  };
+  const request = {
+    method: "POST",
+    originalUrl: "/api/v1/identity-verification/submit",
+    headers: {},
+  };
+
+  const publicError = new Error("Provider detail must remain private.");
+  publicError.statusCode = 503;
+  publicError.code = "OCR_PROVIDER_UNAVAILABLE";
+  const publicResponse = makeResponse();
+  errorHandler(publicError, request, publicResponse, () => {});
+  assert.equal(publicResponse.statusCode, 503);
+  assert.equal(publicResponse.body.code, "OCR_PROVIDER_UNAVAILABLE");
+  assert.equal(publicResponse.body.message, "TESTIMONIUM encountered an internal server error.");
+
+  const internalError = new Error("Sensitive internal failure.");
+  internalError.statusCode = 500;
+  internalError.code = "DATABASE_PASSWORD_LEAK";
+  const internalResponse = makeResponse();
+  errorHandler(internalError, request, internalResponse, () => {});
+  assert.equal(internalResponse.statusCode, 500);
+  assert.equal(Object.hasOwn(internalResponse.body, "code"), false);
 });
 
 // --------------------------------------------------------------------------
@@ -192,6 +238,174 @@ test("21, 22, 23. ID type recognition with deterministic multi-marker matching",
   assert.equal(identifyGovernmentIdType(studentCard), null);
 });
 
+test("Government ID side classification is conservative, type-specific, and deterministic", () => {
+  const philSysFront =
+    "REPUBLIKA NG PILIPINAS PHILIPPINE IDENTIFICATION SYSTEM PHILSYS JUAN DELA CRUZ";
+  const philSysBack =
+    "PHILIPPINE STATISTICS AUTHORITY DATE OF ISSUANCE JUAN DELA CRUZ";
+  const driverFront =
+    "LAND TRANSPORTATION OFFICE DRIVER'S LICENSE JUAN DELA CRUZ";
+  const driverBack = "CONDITIONS RESTRICTIONS ORGAN DONOR BLOOD TYPE";
+  const { FRONT_LIKELY, BACK_LIKELY, AMBIGUOUS } = GOVERNMENT_ID_SIDE_CLASSIFICATIONS;
+
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "PHIL_SYS", text: philSysFront }),
+    FRONT_LIKELY
+  );
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "PHIL_SYS", text: philSysBack }),
+    BACK_LIKELY
+  );
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "DRIVERS_LICENSE", text: driverFront }),
+    FRONT_LIKELY
+  );
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "DRIVERS_LICENSE", text: driverBack }),
+    BACK_LIKELY
+  );
+
+  for (const genericText of ["PHILIPPINES", "NAME", "DATE", "ADDRESS", "SEX", "LTO"]) {
+    assert.equal(
+      classifyGovernmentIdSide({ idType: "DRIVERS_LICENSE", text: genericText }),
+      AMBIGUOUS,
+      `${genericText} must not classify a side`
+    );
+  }
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "DRIVERS_LICENSE", text: "CONDITIONS" }),
+    AMBIGUOUS,
+    "One supporting word is insufficient"
+  );
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "DRIVERS_LICENSE", text: philSysBack }),
+    AMBIGUOUS,
+    "Side evidence must be ID-type-specific"
+  );
+  assert.equal(
+    classifyGovernmentIdSide({ idType: "VOTER_ID", text: "CHAIRMAN" }),
+    AMBIGUOUS,
+    "The current Voter ID back catalog has no strong standalone evidence"
+  );
+
+  assert.equal(
+    getGovernmentIdSideIssue(FRONT_LIKELY, FRONT_LIKELY),
+    GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_FRONT
+  );
+  assert.equal(
+    getGovernmentIdSideIssue(BACK_LIKELY, BACK_LIKELY),
+    GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_BACK
+  );
+  assert.equal(
+    getGovernmentIdSideIssue(BACK_LIKELY, FRONT_LIKELY),
+    GOVERNMENT_ID_SIDE_ISSUES.SIDES_SWAPPED
+  );
+  assert.equal(getGovernmentIdSideIssue(FRONT_LIKELY, AMBIGUOUS), null);
+  assert.equal(getGovernmentIdSideIssue(AMBIGUOUS, BACK_LIKELY), null);
+  assert.equal(getGovernmentIdSideIssue(AMBIGUOUS, AMBIGUOUS), null);
+
+  assert.equal(
+    identifyGovernmentIdTypeFromSubmission(philSysBack, philSysFront)?.idType,
+    "PHIL_SYS"
+  );
+});
+
+test("Government ID production pipeline rejects only strong side contradictions before R2", async () => {
+  const philSysFront =
+    "REPUBLIKA NG PILIPINAS PHILIPPINE IDENTIFICATION SYSTEM PHILSYS JUAN DELA CRUZ 1234-5678";
+  const philSysBack =
+    "PHILIPPINE STATISTICS AUTHORITY DATE OF ISSUANCE JUAN DELA CRUZ 1234-5678";
+  const ambiguous = "JUAN DELA CRUZ DOCUMENT NUMBER 1234-5678";
+  const frontBuffer = await createTestImage({ width: 810, height: 500, sharpNoise: true });
+  const backBuffer = await createTestImage({ width: 820, height: 500, sharpNoise: true });
+
+  const runCase = async (frontText, backText) => {
+    let ocrCall = 0;
+    let storedVerification = null;
+    const uploads = [];
+    const service = new GovernmentIdVerificationService({
+      prismaClient: {
+        user: {
+          findUnique: async () => ({
+            id: 42,
+            fullName: "Juan Dela Cruz",
+            governmentIdVerification: null,
+          }),
+        },
+        governmentIdVerification: {
+          findUnique: async () => storedVerification,
+          upsert: async ({ create, update }) => {
+            storedVerification = { ...(storedVerification ? update : create) };
+            return storedVerification;
+          },
+        },
+      },
+      r2Service: {
+        upload: async ({ key }) => {
+          uploads.push(key);
+        },
+        delete: async () => {},
+      },
+      leaseService: {
+        acquireLease: async () => true,
+        releaseLease: async () => true,
+      },
+      ocrProvider: {
+        providerName: "ocrspace",
+        extractText: async () => ({
+          ocrSuccess: true,
+          rawText: ocrCall++ === 0 ? frontText : backText,
+          httpStatusCode: 200,
+          failureReason: null,
+        }),
+      },
+      identityBucketName: "identity-private-test",
+    });
+
+    const result = await service.submitForVerification(42, frontBuffer, backBuffer);
+    return { result, uploads, storedVerification };
+  };
+
+  const valid = await runCase(philSysFront, philSysBack);
+  assert.equal(valid.result.status, GOVERNMENT_ID_STATUS.VERIFIED);
+  assert.equal(valid.uploads.length, 2);
+
+  const bothFront = await runCase(philSysFront, `${philSysFront} SECOND PHOTO`);
+  assert.equal(bothFront.result.sideIssue, GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_FRONT);
+  assert.equal(bothFront.result.rejectionReason, GOVERNMENT_ID_REJECTION_REASONS.FRONT_BACK_INCOMPLETE);
+  assert.equal(bothFront.uploads.length, 0);
+
+  const bothBack = await runCase(philSysBack, `${philSysBack} SECOND PHOTO`);
+  assert.equal(bothBack.result.sideIssue, GOVERNMENT_ID_SIDE_ISSUES.BOTH_APPEAR_BACK);
+  assert.equal(bothBack.uploads.length, 0);
+
+  const swapped = await runCase(philSysBack, philSysFront);
+  assert.equal(swapped.result.sideIssue, GOVERNMENT_ID_SIDE_ISSUES.SIDES_SWAPPED);
+  assert.equal(swapped.uploads.length, 0);
+
+  const frontIsBack = await runCase(philSysBack, ambiguous);
+  assert.equal(frontIsBack.result.sideIssue, GOVERNMENT_ID_SIDE_ISSUES.FRONT_IS_BACK);
+  assert.equal(frontIsBack.result.failedSide, "front");
+  assert.equal(frontIsBack.uploads.length, 0);
+
+  const backIsFront = await runCase(ambiguous, philSysFront);
+  assert.equal(backIsFront.result.sideIssue, GOVERNMENT_ID_SIDE_ISSUES.BACK_IS_FRONT);
+  assert.equal(backIsFront.result.failedSide, "back");
+  assert.equal(backIsFront.uploads.length, 0);
+
+  const ambiguousBack = await runCase(philSysFront, ambiguous);
+  assert.equal(ambiguousBack.result.status, GOVERNMENT_ID_STATUS.VERIFIED);
+  assert.equal(ambiguousBack.uploads.length, 2);
+
+  const ambiguousFront = await runCase(ambiguous, philSysBack);
+  assert.equal(ambiguousFront.result.status, GOVERNMENT_ID_STATUS.VERIFIED);
+  assert.equal(ambiguousFront.uploads.length, 2);
+
+  const bothAmbiguous = await runCase(ambiguous, `${ambiguous} SECOND PHOTO`);
+  assert.equal(bothAmbiguous.result.rejectionReason, GOVERNMENT_ID_REJECTION_REASONS.UNSUPPORTED_OR_INVALID_DOCUMENT);
+  assert.equal(bothAmbiguous.uploads.length, 0);
+});
+
 // --------------------------------------------------------------------------
 // 4. Expiry Parsing and Validation
 // --------------------------------------------------------------------------
@@ -272,6 +486,7 @@ test("18, 19, 20, 30-38, 42-44. GovernmentIdVerificationService end-to-end pipel
   let dbUpserts = [];
 
   const mockR2 = {
+    exists: async () => true,
     upload: async ({ key, body, bucketName }) => {
       uploadedObjects.push({ key, length: body.length, bucketName });
       return `https://mock-r2/${key}`;
@@ -390,12 +605,16 @@ test("18, 19, 20, 30-38, 42-44. GovernmentIdVerificationService end-to-end pipel
   );
 
   // Successful verification (PhilSys)
+  let successOcrCall = 0;
   const successOcr = {
     providerName: "ocrspace",
-    extractText: async (buf) => {
+    extractText: async () => {
       return {
         ocrSuccess: true,
-        rawText: "REPUBLIKA NG PILIPINAS PHILIPPINE IDENTIFICATION SYSTEM PHILSYS JUAN DELA CRUZ 1234-5678-9012\nPHILIPPINE STATISTICS AUTHORITY",
+        rawText:
+          successOcrCall++ % 2 === 0
+            ? "REPUBLIKA NG PILIPINAS PHILIPPINE IDENTIFICATION SYSTEM PHILSYS JUAN DELA CRUZ 1234-5678-9012"
+            : "PHILIPPINE STATISTICS AUTHORITY DATE OF ISSUANCE JUAN DELA CRUZ",
         httpStatusCode: 200,
         failureReason: null,
       };
@@ -495,6 +714,78 @@ test("18, 19, 20, 30-38, 42-44. GovernmentIdVerificationService end-to-end pipel
   );
 });
 
+test('Verified shortcut requires complete, live private ID objects', async () => {
+  const frontBuffer = await createTestImage({ width: 800, height: 500, sharpNoise: true });
+  const backBuffer = await createTestImage({ width: 801, height: 500, sharpNoise: true });
+  const privateBucket = 'identity-private-test';
+  const frontKey = 'identity/user_42/front/existing.jpg';
+  const backKey = 'identity/user_42/back/existing.jpg';
+
+  const runCase = async (record, missingObjectKey = null) => {
+    const uploads = [];
+    let ocrCalls = 0;
+    let saved = null;
+    const service = new GovernmentIdVerificationService({
+      prismaClient: {
+        user: { findUnique: async () => ({ id: 42, fullName: 'Juan Dela Cruz', governmentIdVerification: record }) },
+        governmentIdVerification: {
+          upsert: async ({ update }) => {
+            saved = update;
+            return update;
+          },
+        },
+      },
+      r2Service: {
+        exists: async (key) => key !== missingObjectKey,
+        upload: async ({ key, bucketName }) => uploads.push({ key, bucketName }),
+        delete: async () => {},
+      },
+      leaseService: { acquireLease: async () => true, releaseLease: async () => true },
+      ocrProvider: {
+        providerName: 'ocrspace',
+        extractText: async () => ({
+          ocrSuccess: true,
+          rawText: ocrCalls++ % 2 === 0
+            ? 'REPUBLIKA NG PILIPINAS PHILIPPINE IDENTIFICATION SYSTEM PHILSYS JUAN DELA CRUZ 1234-5678-9012'
+            : 'PHILIPPINE STATISTICS AUTHORITY DATE OF ISSUANCE JUAN DELA CRUZ',
+          httpStatusCode: 200,
+          failureReason: null,
+        }),
+      },
+      identityBucketName: privateBucket,
+    });
+    const result = await service.submitForVerification(42, frontBuffer, backBuffer);
+    return { result, uploads, ocrCalls, saved };
+  };
+
+  const verifiedRecord = {
+    status: GOVERNMENT_ID_STATUS.VERIFIED,
+    frontObjectKey: frontKey,
+    backObjectKey: backKey,
+    idType: 'PHIL_SYS',
+    verifiedAt: new Date('2026-10-01T00:00:00.000Z'),
+    expiresAt: null,
+  };
+  const complete = await runCase(verifiedRecord);
+  assert.equal(complete.result.status, GOVERNMENT_ID_STATUS.VERIFIED);
+  assert.equal(complete.ocrCalls, 0);
+  assert.equal(complete.uploads.length, 0);
+
+  const repairCases = [
+    [{ ...verifiedRecord, frontObjectKey: null }, null, 'missing front key'],
+    [{ ...verifiedRecord, backObjectKey: null }, null, 'missing back key'],
+    [{ ...verifiedRecord, frontObjectKey: null, backObjectKey: null }, null, 'both keys missing'],
+    [verifiedRecord, backKey, 'stale back object'],
+  ];
+  for (const [record, missingObjectKey, label] of repairCases) {
+    const fresh = await runCase(record, missingObjectKey);
+    assert.equal(fresh.ocrCalls, 2, `${label} reruns OCR`);
+    assert.equal(fresh.uploads.length, 2, `${label} uploads both images`);
+    assert.ok(fresh.uploads.every(({ bucketName }) => bucketName === privateBucket));
+    assert.ok(fresh.saved.frontObjectKey && fresh.saved.backObjectKey, `${label} persists new keys`);
+  }
+});
+
 // --------------------------------------------------------------------------
 // 7. Route Authorization & Secure Image Streaming
 // --------------------------------------------------------------------------
@@ -571,6 +862,21 @@ test("45, 46, 47, 48, 49, 50. Coordinator streaming & secure headers", async () 
     () => service.streamIdImage(99, "front", streamRes),
     (err) => err.statusCode === 404,
     "Expired verification images must not remain streamable"
+  );
+  mockRecord.expiresAt = new Date('2099-01-01T00:00:00.000Z');
+  mockR2.download = async () => {
+    const error = new Error('NoSuchKey: internal object path');
+    error.name = 'NoSuchKey';
+    error.$metadata = { httpStatusCode: 404 };
+    throw error;
+  };
+  await assert.rejects(
+    () => service.streamIdImage(99, 'front', streamRes),
+    (error) =>
+      error.statusCode === 404 &&
+      error.code === 'IDENTITY_IMAGE_NOT_FOUND' &&
+      !error.message.includes('object path'),
+    'Missing R2 objects return a controlled safe error'
   );
 });
 
