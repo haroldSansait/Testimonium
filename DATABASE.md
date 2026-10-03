@@ -1,6 +1,6 @@
 # PostgreSQL and Prisma Operations
 
-**Last reconciled:** 2 October 2026
+**Last reconciled:** 3 October 2026
 **Canonical schema:** `testimonium-backend/prisma/schema.prisma`
 
 TESTIMONIUM uses PostgreSQL through Prisma 7 and the `@prisma/adapter-pg` driver adapter. Application code accepts `SUPABASE_DATABASE_URL` or `DATABASE_URL`; Prisma CLI configuration uses `DATABASE_URL` first, so set that value in deployment environments that run migrations.
@@ -100,7 +100,7 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `DocumentRequestStatus` includes `READY_FOR_SIGNING` between `PROCESSING` and `READY_FOR_PICKUP`. Transition to `READY_FOR_SIGNING` represents the internal completion of drafting awaiting the active primary priest's physical signature and triggers an in-app notification to the active primary priest.
 - Document request mutations (`PATCH /document-requests/:id/status`) are strictly restricted to Secretary and Diocese Coordinator; Priests have parish-scoped read-only access. Similarly, parish document settings and available documents mutations (`PATCH /parishes/:id/settings`) are restricted to Secretary and Diocese Coordinator (`PRIEST` receives `403 FORBIDDEN`).
 - `GovernmentIdVerification` maintains a 1-to-1 unique relationship with `User` (`user_id`). It persists verification lifecycle state (`status`: `NOT_SUBMITTED`, `VERIFIED`, `REJECTED`), card type (`id_type`), verification timestamp (`verified_at`), expiration timestamp (`expires_at`), rejection reason (`rejection_reason`: `IMAGE_BLURRY`, `FRONT_BACK_INCOMPLETE`, `NAME_MISMATCH`, `ID_EXPIRED`, `UNSUPPORTED_OR_INVALID_DOCUMENT`), private R2 object keys (`front_object_key`, `back_object_key`), and `last_attempt_at`. Deleting a user cascades to delete their verification record.
-- Government ID verification concurrency is coordinated via `SystemLease` key `GOVERNMENT_ID_VERIFICATION:<userId>`. Any material change to `User.fullName` automatically invalidates active verification under the lease lock.
+- Government ID verification concurrency is coordinated via `SystemLease` key `GOVERNMENT_ID_VERIFICATION:<userId>`. Any material change to `User.fullName` in `PUT /auth/profile` or `PUT /users/:id` automatically invalidates active verification under the lease lock and purges old R2 images. Rate limiting is isolated per authenticated account via `governmentIdRateLimiter` (default 6 attempts / 10m).
 - Verified Government ID status (`isEffectivelyVerified`) is checked before creating or submitting sacramental document requests (`DocumentRequest`) and schedule appointments (`Schedule`), returning 403 `IDENTITY_NOT_VERIFIED` when unverified. Effective Government ID verification automatically fulfills the canonical `valid_id` requirement during document request submission.
 - Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; government ID verification cascades with user deletion; optional actor/processor assignments set null.
 

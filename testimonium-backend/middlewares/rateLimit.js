@@ -372,10 +372,10 @@ export const chatGeneralAbuseLimiter = rateLimit({
 export const chatbotUserTenMinuteLimiter = chatGeneralAbuseLimiter;
 export const chatbotUserDailyLimiter = (req, res, next) => next();
 
-// 5.1 Government ID Verification Limiter (~3 attempts per 10 minutes per authenticated user)
+// 5.1 Government ID Verification Limiter (6 attempts per 10 minutes per authenticated user by default)
 export const governmentIdRateLimiter = rateLimit({
-  windowMs: env.identity?.rateLimitWindowMs || 10 * 60 * 1000,
-  max: env.identity?.rateLimitMax || 3,
+  windowMs: env.identity.rateLimitWindowMs,
+  max: env.identity.rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   store: createRateLimitStore("rl:id_verify:"),
@@ -385,7 +385,7 @@ export const governmentIdRateLimiter = rateLimit({
       req,
       res,
       "governmentIdRateLimiter",
-      "Too many Government ID verification attempts. Maximum 3 attempts per 10 minutes allowed."
+      "Too many Government ID verification attempts. Please wait before trying again."
     );
   },
 });

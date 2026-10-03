@@ -1,13 +1,23 @@
-import { client } from "./client";
+import { client } from './client';
+import type {
+  GovernmentIdFailedSide,
+  GovernmentIdRejectionReason,
+  GovernmentIdSideIssue,
+  GovernmentIdType,
+  GovernmentIdVerificationStatus,
+} from '../utils/governmentIdVerificationPresentation';
 
 export interface GovernmentIdVerificationStatusResponse {
-  status: 'NOT_SUBMITTED' | 'VERIFIED' | 'REJECTED';
+  status: GovernmentIdVerificationStatus;
   isGovernmentIdVerified: boolean;
-  rejectionReason?: string | null;
+  rejectionReason?: GovernmentIdRejectionReason | null;
   rejectionMessage?: string | null;
+  message?: string | null;
+  failedSide?: GovernmentIdFailedSide | null;
+  sideIssue?: GovernmentIdSideIssue | null;
   verifiedAt?: string | null;
   expiresAt?: string | null;
-  idType?: string | null;
+  idType?: GovernmentIdType | null;
   lastAttemptAt?: string | null;
 }
 
@@ -21,7 +31,8 @@ export const ID_TYPE_LABELS: Record<string, string> = {
 
 export const submitGovernmentIdVerification = async (
   frontFile: File,
-  backFile: File
+  backFile: File,
+  options?: { signal?: AbortSignal }
 ): Promise<GovernmentIdVerificationStatusResponse> => {
   const formData = new FormData();
   formData.append("front", frontFile);
@@ -29,7 +40,8 @@ export const submitGovernmentIdVerification = async (
 
   return client.post<GovernmentIdVerificationStatusResponse>(
     "/identity-verification/submit",
-    formData
+    formData,
+    { signal: options?.signal }
   );
 };
 

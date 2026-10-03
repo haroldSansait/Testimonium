@@ -9,7 +9,7 @@ const router = Router();
 // Require authentication for all identity verification endpoints
 router.use(authenticateFirebaseToken);
 
-// Parishioner ID verification submission (multipart: front, back) with rate limiter (~3 attempts / 10m)
+// Parishioner ID verification submission (multipart: front, back) with rate limiter (6 attempts / 10m by default)
 router.post(
   "/submit",
   governmentIdRateLimiter,

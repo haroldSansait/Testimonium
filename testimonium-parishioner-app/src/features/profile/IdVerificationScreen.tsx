@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, radii, spacing } from "@/theme/tokens";
 import { GovernmentIdCameraScanner } from "./components/GovernmentIdCameraScanner";
+import { GovernmentIdVerifyingAnimation } from "./components/GovernmentIdVerifyingAnimation";
 import {
   getGovernmentIdErrorPresentation,
   getGovernmentIdRejectionPresentation,
@@ -431,6 +432,10 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
                   <Image source={{ uri: frontUri }} style={styles.idThumbnail} resizeMode="contain" />
                   {isSubmitting ? (
                     <View style={styles.scanOverlay} pointerEvents="none">
+                      <View style={[styles.previewBracket, styles.bracketTopLeft]} />
+                      <View style={[styles.previewBracket, styles.bracketTopRight]} />
+                      <View style={[styles.previewBracket, styles.bracketBottomLeft]} />
+                      <View style={[styles.previewBracket, styles.bracketBottomRight]} />
                       <Animated.View
                         style={[styles.scanLine, { transform: [{ translateY: scanLineTranslateY }] }]}
                       />
@@ -475,6 +480,10 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
                   <Image source={{ uri: backUri }} style={styles.idThumbnail} resizeMode="contain" />
                   {isSubmitting ? (
                     <View style={styles.scanOverlay} pointerEvents="none">
+                      <View style={[styles.previewBracket, styles.bracketTopLeft]} />
+                      <View style={[styles.previewBracket, styles.bracketTopRight]} />
+                      <View style={[styles.previewBracket, styles.bracketBottomLeft]} />
+                      <View style={[styles.previewBracket, styles.bracketBottomRight]} />
                       <Animated.View
                         style={[styles.scanLine, { transform: [{ translateY: scanLineTranslateY }] }]}
                       />
@@ -513,17 +522,7 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
             {/* Authoritative verification request state */}
             <View style={styles.submitSection}>
               {isSubmitting ? (
-                <View style={styles.submittingBox}>
-                  <View style={styles.verifyingIcon}>
-                    <Ionicons name="scan-outline" size={28} color={colors.primary} />
-                  </View>
-                  <Text style={styles.submittingText}>
-                    Verifying your Government ID…
-                  </Text>
-                  <Text style={styles.submittingSubtext}>
-                    Checking image quality and ID details.
-                  </Text>
-                </View>
+                <GovernmentIdVerifyingAnimation />
               ) : null}
             </View>
           </>
@@ -694,16 +693,50 @@ const styles = StyleSheet.create({
   },
   scanOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(5, 150, 105, 0.08)",
+    backgroundColor: "rgba(5, 150, 105, 0.05)",
   },
   scanLine: {
-    height: 3,
+    height: 2.5,
     marginHorizontal: 4,
-    backgroundColor: "#34D399",
-    shadowColor: "#10B981",
+    backgroundColor: "#10B981",
+    shadowColor: "#059669",
     shadowOpacity: 0.9,
     shadowRadius: 8,
     elevation: 5,
+  },
+  previewBracket: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderColor: "#059669",
+  },
+  bracketTopLeft: {
+    top: 4,
+    left: 4,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderTopLeftRadius: 4,
+  },
+  bracketTopRight: {
+    top: 4,
+    right: 4,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+    borderTopRightRadius: 4,
+  },
+  bracketBottomLeft: {
+    bottom: 4,
+    left: 4,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderBottomLeftRadius: 4,
+  },
+  bracketBottomRight: {
+    bottom: 4,
+    right: 4,
+    borderBottomWidth: 2,
+    borderRightWidth: 2,
+    borderBottomRightRadius: 4,
   },
   readyBadge: {
     position: "absolute",

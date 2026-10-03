@@ -3,6 +3,7 @@ import { Alert, Dimensions, StyleSheet } from "react-native";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react-native";
 import { GovernmentIdCameraScanner as ProductionGovernmentIdCameraScanner } from "../features/profile/components/GovernmentIdCameraScanner";
 import { IdVerificationScreen } from "../features/profile/IdVerificationScreen";
+import { GovernmentIdVerifyingAnimation } from "../features/profile/components/GovernmentIdVerifyingAnimation";
 import {
   getGovernmentIdErrorPresentation,
   getSafeVerificationErrorMessage,
@@ -1762,7 +1763,7 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     await captureBothSides();
     expect(await screen.findByText("Verifying your Government ID…")).toBeTruthy();
 
-    view.unmount();
+    await view.unmount();
     await act(async () => {
       resolveVerification({
         status: "REJECTED",
@@ -1773,5 +1774,23 @@ describe("Android Mobile Government ID Verification Suite (Requirements 72 - 90)
     });
 
     expect(mockRefreshProfile).not.toHaveBeenCalled();
+  });
+
+  describe("GovernmentIdVerifyingAnimation Component", () => {
+    it("renders the polished scanning animation with ID card silhouette, brackets, and required status copy", async () => {
+      const view = await render(<GovernmentIdVerifyingAnimation />);
+      expect(view.getByTestId("government-id-verifying-animation")).toBeTruthy();
+      expect(view.getByText(/Verifying your Government ID/)).toBeTruthy();
+      expect(
+        view.getByText(
+          /Please keep this screen open while we securely check your ID details/
+        )
+      ).toBeTruthy();
+      expect(view.getByText(/Checking image quality and ID details/)).toBeTruthy();
+      expect(view.getByText("PHILIPPINES IDENTIFICATION CARD")).toBeTruthy();
+      expect(view.getByText("SECURE ID")).toBeTruthy();
+      expect(view.queryByText(/25%|50%|75%|100%/)).toBeNull();
+      expect(view.queryByText(/Checking image\.\.\.|Reading name\.\.\./)).toBeNull();
+    });
   });
 });

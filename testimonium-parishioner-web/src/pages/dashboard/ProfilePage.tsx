@@ -129,14 +129,20 @@ export const ProfilePage: React.FC = () => {
         />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Avatar Skeleton */}
-          <div className="lg:col-span-4 text-center">
-            <Card>
+          <div className="lg:col-span-4 space-y-6">
+            <Card className="text-center">
               <CardContent className="pt-8 space-y-4">
                 <div className="flex justify-center">
                   <Skeleton className="w-24 h-24 rounded-full animate-pulse" />
                 </div>
                 <Skeleton className="h-5 w-1/2 mx-auto rounded animate-pulse" />
                 <Skeleton className="h-4 w-3/4 mx-auto rounded animate-pulse" />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <Skeleton className="h-5 w-2/3 rounded animate-pulse" />
+                <Skeleton className="h-4 w-full rounded animate-pulse" />
               </CardContent>
             </Card>
           </div>
@@ -180,9 +186,9 @@ export const ProfilePage: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Side: Avatar Card */}
-        <div className="lg:col-span-4 text-center">
-          <Card>
+        {/* Left Side: Avatar Card & Notification Preferences */}
+        <div className="lg:col-span-4 space-y-6">
+          <Card className="text-center">
             <CardContent className="pt-8 space-y-4">
               <div className="flex justify-center">
                 <Avatar name={displayName || profile?.email || 'User'} size="lg" className="w-24 h-24" />
@@ -194,10 +200,39 @@ export const ProfilePage: React.FC = () => {
                 <p className="text-xs text-text-muted mt-0.5">{profile?.email}</p>
               </div>
               <div className="pt-2">
-                <Button variant="ghost" onClick={() => logout()} className="w-full flex items-center justify-center space-x-2 text-status-rejected hover:bg-red-50/50">
+                <Button variant="ghost" type="button" onClick={() => logout()} className="w-full flex items-center justify-center space-x-2 text-status-rejected hover:bg-red-50/50">
                   <LogOut size={16} />
                   <span>Log Out of Profile</span>
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notification Preferences */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center space-x-2">
+                <Bell size={16} className="text-crimson" />
+                <span>Notification Preferences</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <label htmlFor="email-notifications-checkbox" className="text-xs font-semibold text-text-primary cursor-pointer">
+                    Email Notifications
+                  </label>
+                  <p className="text-[10px] text-text-muted">Receive status logs and confirmation reports on your email.</p>
+                </div>
+                <input
+                  id="email-notifications-checkbox"
+                  form="profile-form"
+                  type="checkbox"
+                  checked={emailNotifications}
+                  onChange={e => setEmailNotifications(e.target.checked)}
+                  aria-label="Email Notifications"
+                  className="w-4 h-4 rounded text-crimson border-border focus-ring cursor-pointer"
+                />
               </div>
             </CardContent>
           </Card>
@@ -205,7 +240,7 @@ export const ProfilePage: React.FC = () => {
 
         {/* Right Side: Details forms */}
         <div className="lg:col-span-8 space-y-6">
-          <form onSubmit={handleSave} className="space-y-6">
+          <form onSubmit={handleSave} id="profile-form" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center space-x-2">
@@ -246,34 +281,6 @@ export const ProfilePage: React.FC = () => {
 
             {/* Government ID Verification Section */}
             <GovernmentIdSection />
-
-            {/* Notification Preferences */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center space-x-2">
-                  <Bell size={16} className="text-crimson" />
-                  <span>Notification Preferences</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <label htmlFor="email-notifications-checkbox" className="text-xs font-semibold text-text-primary cursor-pointer">
-                      Email Notifications
-                    </label>
-                    <p className="text-[10px] text-text-muted">Receive status logs and confirmation reports on your email.</p>
-                  </div>
-                  <input
-                    id="email-notifications-checkbox"
-                    type="checkbox"
-                    checked={emailNotifications}
-                    onChange={e => setEmailNotifications(e.target.checked)}
-                    aria-label="Email Notifications"
-                    className="w-4 h-4 rounded text-crimson border-border focus-ring cursor-pointer"
-                  />
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Security Preferences */}
             <Card>

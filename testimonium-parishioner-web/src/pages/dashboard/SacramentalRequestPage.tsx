@@ -330,13 +330,15 @@ export const SacramentalRequestPage: React.FC = () => {
             <div className="pt-2 flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
               <Button
                 variant="outline"
-                size="sm"
+                size="md"
+                className="px-5"
                 onClick={() => navigate('/dashboard/home')}
               >
                 Return to Dashboard
               </Button>
               <Button
-                size="sm"
+                size="md"
+                className="px-5"
                 onClick={() => navigate('/dashboard/profile')}
               >
                 Complete Profile
@@ -374,13 +376,15 @@ export const SacramentalRequestPage: React.FC = () => {
             <div className="pt-2 flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
               <Button
                 variant="outline"
-                size="sm"
+                size="md"
+                className="px-5"
                 onClick={() => navigate('/dashboard/home')}
               >
                 Return to Dashboard
               </Button>
               <Button
-                size="sm"
+                size="md"
+                className="px-5"
                 onClick={() => navigate('/dashboard/profile')}
               >
                 Verify Government ID

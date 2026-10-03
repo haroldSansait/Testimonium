@@ -35,6 +35,8 @@ import { ParishionerRequestService } from "../services/ParishionerRequestService
 import { updateProfile } from "../controllers/AuthController.js";
 import { AuthService } from "../services/AuthService.js";
 import { errorHandler } from "../middlewares/errorHandler.js";
+import { env } from "../config/env.js";
+import { governmentIdRateLimiter } from "../middlewares/rateLimit.js";
 
 // Helper to create test images
 async function createTestImage({ width = 800, height = 500, sharpNoise = true, format = "jpeg" } = {}) {
@@ -60,6 +62,55 @@ async function createTestImage({ width = 800, height = 500, sharpNoise = true, f
     return format === "png" ? img.png().toBuffer() : img.jpeg().toBuffer();
   }
 }
+
+async function invokeGovernmentIdRateLimiter(userId, ip) {
+  return new Promise((resolve, reject) => {
+    const headers = {};
+    const request = {
+      ip,
+      headers: {},
+      socket: { remoteAddress: ip },
+      user: { id: userId, role: "PARISHIONER" },
+      originalUrl: "/api/v1/identity-verification/submit",
+    };
+    const response = {
+      setHeader(name, value) {
+        headers[name] = value;
+      },
+      status(statusCode) {
+        this.statusCode = statusCode;
+        return this;
+      },
+      json(body) {
+        resolve({ allowed: false, statusCode: this.statusCode, body, headers });
+        return this;
+      },
+    };
+
+    Promise.resolve(
+      governmentIdRateLimiter(request, response, () => resolve({ allowed: true, headers }))
+    ).catch(reject);
+  });
+}
+
+test("Government ID limiter allows 6 submissions, blocks the 7th, and isolates authenticated users", async () => {
+  assert.equal(env.identity.rateLimitMax, 6);
+  assert.equal(env.identity.rateLimitWindowMs, 10 * 60 * 1000);
+
+  const firstUserId = `rate-limit-user-a-${Date.now()}`;
+  const secondUserId = `rate-limit-user-b-${Date.now()}`;
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    const result = await invokeGovernmentIdRateLimiter(firstUserId, "192.0.2.10");
+    assert.equal(result.allowed, true, `attempt ${attempt} should be allowed`);
+  }
+
+  const blocked = await invokeGovernmentIdRateLimiter(firstUserId, "192.0.2.10");
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.statusCode, 429);
+
+  const independentUser = await invokeGovernmentIdRateLimiter(secondUserId, "192.0.2.10");
+  assert.equal(independentUser.allowed, true);
+});
 
 // --------------------------------------------------------------------------
 // 1. Invariance of User.isVerified & Effective Verification Helper

@@ -163,6 +163,18 @@ export const env = {
     imageUploadMax: parsePositiveInt(process.env.PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX ?? process.env.IMAGE_UPLOAD_RATE_LIMIT_MAX, 5, "PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX"),
     mapSaveMax: parsePositiveInt(process.env.MAP_SAVE_RATE_LIMIT_MAX, 20, "MAP_SAVE_RATE_LIMIT_MAX"),
   },
+  identity: {
+    rateLimitMax: parsePositiveInt(
+      process.env.GOVERNMENT_ID_RATE_LIMIT_MAX,
+      6,
+      "GOVERNMENT_ID_RATE_LIMIT_MAX"
+    ),
+    rateLimitWindowMs: parsePositiveInt(
+      process.env.GOVERNMENT_ID_RATE_LIMIT_WINDOW_MS,
+      10 * 60 * 1000,
+      "GOVERNMENT_ID_RATE_LIMIT_WINDOW_MS"
+    ),
+  },
   chatbot: {
     enabled: parseBoolean(process.env.CHATBOT_ENABLED, false, "CHATBOT_ENABLED"),
     logRawText: parseBoolean(process.env.CHATBOT_LOG_RAW_TEXT, false, "CHATBOT_LOG_RAW_TEXT"),

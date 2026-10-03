@@ -69,6 +69,39 @@ body {
   background: #9ca3af;
 }
 
+/* Government ID Scanning Animation */
+@keyframes idScanSweep {
+  0% {
+    top: 6%;
+    opacity: 0.85;
+  }
+  50% {
+    top: 88%;
+    opacity: 1;
+  }
+  100% {
+    top: 6%;
+    opacity: 0.85;
+  }
+}
+
+@keyframes idScanPulse {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.animate-id-scan {
+  animation: idScanSweep 2.4s ease-in-out infinite;
+}
+
+.animate-id-pulse {
+  animation: idScanPulse 2.4s ease-in-out infinite;
+}
+
 /* Reduced Motion Support */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {

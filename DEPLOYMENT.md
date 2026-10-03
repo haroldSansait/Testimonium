@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 2 October 2026
+**Last reconciled:** 3 October 2026
 
 Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -30,7 +30,7 @@ Create `testimonium-backend/.env` using its `.env.example`. The application requ
 | Transactional Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`, `SMTP_CONNECTION_TIMEOUT_MS`, `SMTP_GREETING_TIMEOUT_MS`, `SMTP_SOCKET_TIMEOUT_MS` |
 | Email Worker | `EMAIL_WORKER_POLL_MS`, `EMAIL_WORKER_BATCH_SIZE`, `EMAIL_WORKER_LEASE_SECONDS`, `EMAIL_MAX_ATTEMPTS` |
 | AI / RAG Chatbot | `CHATBOT_ENABLED` (boolean, default `false` until verified), `GEMINI_API_KEY`, `AI_GENERATION_PROVIDER` (`gemini`), `AI_GENERATION_MODEL` (`gemini-3.5-flash-lite`), `CALOY_ALLOWED_GENERATION_MODELS` (optional allowlist), `AI_SEMANTIC_ROUTER_MODEL` (`gemini-3.5-flash-lite`), `AI_EMBEDDING_PROVIDER` (`gemini`), `AI_EMBEDDING_MODEL` (`gemini-embedding-2`), `AI_EMBEDDING_DIMENSIONS` (`768`), `CHATBOT_MIN_SIMILARITY` (default `0.65`), `CHATBOT_MAX_CONTEXT_CHUNKS` (`4`), `CHATBOT_WORKER_POLL_MS`, `CHATBOT_WORKER_BATCH_SIZE`, `CHATBOT_WORKER_LEASE_SECONDS`, `CHATBOT_LOG_RAW_TEXT` (`false` for privacy) |
-| Protection & Policy | `ADMIN_EMAIL_VERIFICATION_REQUIRED`, rate-limit maxima, and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
+| Protection & Policy | `ADMIN_EMAIL_VERIFICATION_REQUIRED`, `GOVERNMENT_ID_RATE_LIMIT_MAX` (default `6`), `GOVERNMENT_ID_RATE_LIMIT_WINDOW_MS` (default `600000`), general rate-limit maxima, and `RATE_LIMIT_STORE` as appropriate for the deployment topology |
 | Maintenance | `ENABLE_ACTIVITY_PURGE=false`, `ACTIVITY_LOG_RETENTION_DAYS=365` |
 
 Never set `ENABLE_DEV_AUTH=true` in production. It bypasses Firebase token verification.
@@ -135,8 +135,8 @@ The additive migration `20260913150000_add_caloy_control_center` must be applied
 - Keep database backups and verify a restore path before migrations; see [DATABASE.md](DATABASE.md).
 - Back out an application release by serving the previous frontend build and restarting the previous backend release. Do not reverse a migration unless a tested down-migration or restore plan exists.
 - Monitor API health, structured backend logs, R2 upload errors, OCR failures, and rate-limit behavior after release.
-- Ensure that `R2_IDENTITY_BUCKET_NAME` is configured as a dedicated private bucket distinct from `R2_BUCKET_NAME` with no public domain or R2.dev access.
-- For production identity verification, ensure `OCR_ENABLED=true`, `OCR_PROVIDER=ocrspace`, and `OCR_SPACE_API_KEY` are valid; the stub OCR provider is strictly rejected for Government ID verification.
+- Ensure that `R2_IDENTITY_BUCKET_NAME` is configured as a dedicated private bucket distinct from `R2_BUCKET_NAME` with no public domain or R2.dev access. Verify that coordinator image streaming routes (`/users/:id/identity/front-image` and `/users/:id/identity/back-image`) stream securely and return `404 IDENTITY_IMAGE_NOT_FOUND` on missing files and `503 IDENTITY_STORAGE_UNAVAILABLE` on storage errors.
+- For production identity verification, ensure `OCR_ENABLED=true`, `OCR_PROVIDER=ocrspace`, and `OCR_SPACE_API_KEY` are valid; the stub OCR provider is strictly rejected for Government ID verification. Verify that card side diagnostics (`FRONT_IS_BACK`, `BACK_IS_FRONT`, `SIDES_SWAPPED`, etc.) and rate limits operate correctly.
 - `RATE_LIMIT_STORE=memory` is process-local; use a shared strategy before horizontally scaling rate-limited API instances.
 - Ensure that the single Mother Parish invariant (`parishes_single_mother_parish_idx`) is respected during seed operations and parish modifications.
 - Note that Priests have parish-scoped read-only access to document requests, and document status changes to `READY_FOR_SIGNING` trigger an in-app notification to the active primary priest.

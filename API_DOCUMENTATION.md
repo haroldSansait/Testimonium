@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 2 October 2026
+**Last reconciled:** 3 October 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -77,11 +77,11 @@ The system automates the verification of Philippine government-issued card IDs u
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| POST | `/identity-verification/submit` | Parishioner (Rate-limited) | Submit front and back images of a supported Philippine Government ID for synchronous verification. Handled by `governmentIdRateLimiter` (~3 attempts / 10m). Multipart fields: `front` (file) and `back` (file) (JPEG/PNG/WebP, 5 MB max each). |
+| POST | `/identity-verification/submit` | Parishioner (Rate-limited) | Submit front and back images of a supported Philippine Government ID for synchronous verification. Handled by `governmentIdRateLimiter` (default 6 attempts / 10m per authenticated account, configurable via `GOVERNMENT_ID_RATE_LIMIT_MAX` and `GOVERNMENT_ID_RATE_LIMIT_WINDOW_MS`). Multipart fields: `front` (file) and `back` (file) (JPEG/PNG/WebP, 5 MB max each). |
 | GET | `/identity-verification/status` | Parishioner | Query caller's Government ID verification status and metadata (`status`, `isGovernmentIdVerified`, `idType`, `verifiedAt`, `expiresAt`, `rejectionReason`, `lastAttemptAt`). |
-| GET | `/users/:id/identity/status` | Diocese Coordinator | Query Government ID verification status for any user. |
-| GET | `/users/:id/identity/front-image` | Diocese Coordinator | Stream private front ID card image directly from `R2_IDENTITY_BUCKET_NAME` with `Cache-Control: private, no-store`. |
-| GET | `/users/:id/identity/back-image` | Diocese Coordinator | Stream private back ID card image directly from `R2_IDENTITY_BUCKET_NAME` with `Cache-Control: private, no-store`. |
+| GET | `/users/:id/identity/status` | Diocese Coordinator | Query Government ID verification status for any user. Typed client parser enforces null-safety. |
+| GET | `/users/:id/identity/front-image` | Diocese Coordinator | Stream private front ID card image directly from `R2_IDENTITY_BUCKET_NAME` with `Cache-Control: private, no-store`. Returns `404 IDENTITY_IMAGE_NOT_FOUND` if image is missing, or `503 IDENTITY_STORAGE_UNAVAILABLE` on storage errors. |
+| GET | `/users/:id/identity/back-image` | Diocese Coordinator | Stream private back ID card image directly from `R2_IDENTITY_BUCKET_NAME` with `Cache-Control: private, no-store`. Returns `404 IDENTITY_IMAGE_NOT_FOUND` if image is missing, or `503 IDENTITY_STORAGE_UNAVAILABLE` on storage errors. |
 
 ### Government ID Verification Architecture & Invariants
 
@@ -100,13 +100,34 @@ The system automates the verification of Philippine government-issued card IDs u
    - `ID_EXPIRED`: The card's extracted expiry date is in the past.
    - `UNSUPPORTED_OR_INVALID_DOCUMENT`: Document header and identification markers do not match any supported Philippine government card layout.
 
-3. **Storage Isolation & Concurrency Control:**
-   - Stored in a dedicated private Cloudflare R2 bucket (`R2_IDENTITY_BUCKET_NAME`). The service fails closed (`503 IDENTITY_STORAGE_UNAVAILABLE`) if this bucket is unconfigured or points to the public asset bucket.
-   - Concurrent submissions and profile modifications are guarded by `SystemLeaseService` under lease key `GOVERNMENT_ID_VERIFICATION:<userId>`.
+3. **Card Side Classification & Orientation Diagnostics:**
+   - Evaluates OCR text markers on both images against candidate ID configurations with marker strength classifications (`STRONG`, `SUPPORTING`, `SHARED`).
+   - Uses `classifyGovernmentIdSide` and `getGovernmentIdSideIssue` to detect specific side orientation mismatches:
+     - `FRONT_IS_BACK`: Photo uploaded as front matches back markers (prompts user to retake front).
+     - `BACK_IS_FRONT`: Photo uploaded as back matches front markers (prompts user to retake back).
+     - `BOTH_APPEAR_FRONT`: Both photos exhibit front markers (prompts user to retake back).
+     - `BOTH_APPEAR_BACK`: Both photos exhibit back markers (prompts user to retake front).
+     - `SIDES_SWAPPED`: Front and back images are completely reversed (prompts user to swap/retake both).
+   - Enables frontends to render targeted retake instructions (`retakeTarget`: `'front'`, `'back'`, or `'both'`) instead of generic failure messages.
+
+4. **Machine-Readable Infrastructure Error Codes:**
+   - Safe error codes (`GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES`) are emitted to distinguish temporary infrastructure problems from business rejections:
+     - `IDENTITY_STORAGE_UNAVAILABLE`: Cloudflare R2 identity bucket unreachable or unconfigured (503).
+     - `OCR_SERVICE_UNAVAILABLE` / `OCR_PROVIDER_UNAVAILABLE` / `OCR_UPSTREAM_ERROR` / `OCR_TIMEOUT_OR_UNAVAILABLE`: Upstream OCR Space outages or network timeouts (503).
+     - `STORAGE_ERROR` / `IDENTITY_PERSISTENCE_ERROR`: Database transaction or storage write failures (503).
+     - `GOVERNMENT_ID_VERIFICATION_IN_PROGRESS`: Concurrent verification already underway for the user account (409).
+     - `IDENTITY_IMAGE_NOT_FOUND`: Coordinator image streaming target missing in storage (404).
+   - Global error handler preserves client safety by suppressing raw backend stack traces while exposing these actionable error codes.
+
+5. **Storage Isolation & Concurrency Control:**
+   - Stored exclusively in a dedicated private Cloudflare R2 bucket (`R2_IDENTITY_BUCKET_NAME`). The service fails closed (`503 IDENTITY_STORAGE_UNAVAILABLE`) if this bucket is unconfigured or points to the public asset bucket.
+   - Images are normalized through Sharp to JPEG with standard orientation prior to storage.
+   - Concurrent submissions and profile modifications are serialized via `SystemLeaseService` under lease key `GOVERNMENT_ID_VERIFICATION:<userId>`.
+   - Single-attempt tracking (`GovernmentIdAttemptTracker`) on web and mobile prevents stale async completions from overwriting active state.
    - Idempotency protection immediately returns existing verification if the user is already effectively verified.
 
-4. **Integration with Profile, Requests, and Scheduling:**
-   - **Profile Invalidation:** If a user materially modifies their legal `fullName` in `PUT /auth/profile` or `PUT /users/:id`, existing verification is automatically invalidated under a concurrency lease lock.
+6. **Integration with Profile, Requests, and Scheduling:**
+   - **Profile Invalidation:** If a user materially modifies their legal `fullName` in `PUT /auth/profile` or `PUT /users/:id`, existing verification is automatically invalidated under a concurrency lease lock, and prior R2 images are pruned.
    - **Request & Booking Gating:** `POST /requests`, `POST /requests/:id/submit`, and `POST /schedule-requests` require `isEffectivelyVerified(user.governmentIdVerification)`. Unverified parishioners receive `403 IDENTITY_NOT_VERIFIED`.
    - **Checklist Auto-fulfillment:** An effective verified Government ID automatically satisfies the canonical `valid_id` requirement during document request submission without requiring duplicate ID re-uploads.
 
