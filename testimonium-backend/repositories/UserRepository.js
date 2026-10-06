@@ -1,6 +1,6 @@
 import { prisma } from "../config/db.js";
 
-const profileInclude = {
+export const profileInclude = {
   role: true,
   parish: true,
   governmentIdVerification: true,

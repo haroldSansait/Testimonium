@@ -448,7 +448,9 @@ test("NF-01: updateStatus authorizes tenant ownership before same-status idempot
       documentRequest: {
         findUnique: async () => {
           findCount += 1;
-          return findCount === 1 ? request : { ...request, status: "READY_FOR_SIGNING" };
+          return findCount === 1
+            ? request
+            : { ...request, status: counts.transition ? "READY_FOR_SIGNING" : status, hydrated: true };
         },
         updateMany: async () => {
           counts.transition += 1;
@@ -472,7 +474,8 @@ test("NF-01: updateStatus authorizes tenant ownership before same-status idempot
     const ownSameStatus = makeTx({ parishId: 1 });
     prisma.$transaction = async (callback) => callback(ownSameStatus);
     const idempotentResult = await documentRequestService.updateStatus(77, "PROCESSING", "", 5, "SECRETARY", 1);
-    assert.equal(idempotentResult, ownSameStatus.request);
+    assert.equal(idempotentResult.status, "PROCESSING");
+    assert.equal(idempotentResult.hydrated, true);
     assert.deepEqual(ownSameStatus.counts, { transition: 0, history: 0 });
     assert.equal(statusNotificationCount, 0);
     assert.equal(signingNotificationCount, 0);

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { X, Lock } from 'lucide-react';
 import { PrivacyContent } from '../legal/PrivacyContent';
+import { useLegalPolicies } from '../../services/legalPolicyService';
 
 interface PrivacyModalProps {
   isOpen: boolean;
@@ -9,6 +10,11 @@ interface PrivacyModalProps {
 
 export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const { policies } = useLegalPolicies();
+  const version = policies?.privacyPolicy?.version || 'Unavailable';
+  const effectiveDate = policies?.privacyPolicy?.effectiveAt
+    ? new Date(policies.privacyPolicy.effectiveAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : 'Unavailable';
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -49,7 +55,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
               <h2 id="privacy-modal-title" className="text-base sm:text-lg font-serif font-bold text-gray-900">
                 Privacy Policy
               </h2>
-              <p className="text-xs text-gray-500 font-medium">Version 1.0 — August 2026</p>
+              <p className="text-xs text-gray-500 font-medium">Version {version} — {effectiveDate}</p>
             </div>
           </div>
           <button

@@ -41,3 +41,25 @@ export const DocumentType = {
   PERMIT_TO_MARRY: 'PERMIT_TO_MARRY',
   STATUS_OF_LIBERTY: 'STATUS_OF_LIBERTY',
 };
+
+export const CorrectionReasonCode = {
+  UNCLEAR_OR_BLURRY: 'UNCLEAR_OR_BLURRY',
+  WRONG_DOCUMENT: 'WRONG_DOCUMENT',
+  INCOMPLETE_DOCUMENT: 'INCOMPLETE_DOCUMENT',
+  CROPPED_INFORMATION: 'CROPPED_INFORMATION',
+  APPLICANT_MISMATCH: 'APPLICANT_MISMATCH',
+  EXPIRED_OR_INVALID: 'EXPIRED_OR_INVALID',
+  INCORRECT_REQUIREMENT_FILE: 'INCORRECT_REQUIREMENT_FILE',
+  OTHER: 'OTHER',
+};
+
+export const CORRECTION_REASONS = {
+  UNCLEAR_OR_BLURRY: 'Unclear / blurry / unreadable document',
+  WRONG_DOCUMENT: 'Wrong document uploaded',
+  INCOMPLETE_DOCUMENT: 'Incomplete document / missing page or side',
+  CROPPED_INFORMATION: 'Cropped document / important information not visible',
+  APPLICANT_MISMATCH: 'Information does not match applicant/request',
+  EXPIRED_OR_INVALID: 'Expired / invalid document',
+  INCORRECT_REQUIREMENT_FILE: 'Incorrect file uploaded for this requirement',
+  OTHER: 'Other',
+};

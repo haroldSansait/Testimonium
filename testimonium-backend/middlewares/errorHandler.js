@@ -1,9 +1,10 @@
 import { logger } from "../config/logger.js";
 import { GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES } from "../config/governmentIdVerification.js";
 
-const PUBLIC_SERVER_ERROR_CODES = new Set(
-  Object.values(GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES)
-);
+const PUBLIC_SERVER_ERROR_CODES = new Set([
+  ...Object.values(GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES),
+  "LEGAL_POLICY_CONFIGURATION_UNAVAILABLE",
+]);
 
 
 export const notFoundHandler = (req, res) => {

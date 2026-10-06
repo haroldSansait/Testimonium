@@ -27,7 +27,7 @@ export class EmailOutboxService {
     return this.enqueueDocumentTransition({ requestId, oldStatus, newStatus }, tx);
   }
 
-  static async enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId = null, request = null }, tx = null) {
+  static async enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId = null, request = null, correctionContext = null }, tx = null) {
     const client = tx || prisma;
     let emailType = null;
     let transitionKey = null;
@@ -81,6 +81,7 @@ export class EmailOutboxService {
         parishName: full.parish.parishName,
         trackingNumber: full.trackingNumber,
         documentType: full.documentType,
+        correctionContext: correctionContext || null,
       },
     }, client);
   }

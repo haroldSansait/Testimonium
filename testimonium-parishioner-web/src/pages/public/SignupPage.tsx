@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldAlert, Eye, EyeOff, CheckCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Eye, EyeOff, CheckCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -10,6 +10,7 @@ import { PrivacyModal } from '../../components/modals/PrivacyModal';
 import { mapAuthError } from '../../utils/authErrorMapper';
 import { evaluatePasswordStrength } from '../../utils/passwordStrength';
 import { cn } from '../../utils/cn';
+import { useLegalPolicies } from '../../services/legalPolicyService';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 export const SignupPage: React.FC = () => {
@@ -30,6 +31,8 @@ export const SignupPage: React.FC = () => {
 
   const passwordStrength = evaluatePasswordStrength(password);
 
+  const { policies, loading: policiesLoading, error: policiesError, refetch: refetchPolicies } = useLegalPolicies();
+
   // Legal compliance checkboxes
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -49,6 +52,11 @@ export const SignupPage: React.FC = () => {
     e.preventDefault();
 
     if (submitCooldown || loading) return;
+
+    if (!policies) {
+      setError('Authoritative legal policies are currently unavailable. Please retry loading them.');
+      return;
+    }
 
     if (!firstName.trim() || !lastName.trim()) {
       setError('First Name and Last Name are required.');
@@ -95,8 +103,8 @@ export const SignupPage: React.FC = () => {
         {
           termsAccepted: true,
           privacyAccepted: true,
-          termsVersion: 'v1.0',
-          privacyVersion: 'v1.0',
+          termsVersion: policies.termsOfService.version,
+          privacyVersion: policies.privacyPolicy.version,
         }
       );
 
@@ -105,7 +113,14 @@ export const SignupPage: React.FC = () => {
         navigate('/verify-email');
       }, 1000);
     } catch (err: any) {
-      setError(mapAuthError(err, 'Registration failed. Please check your inputs.'));
+      if (err?.code === 'LEGAL_ACCEPTANCE_VERSION_CONFLICT' || err?.status === 409) {
+        setTermsAccepted(false);
+        setPrivacyAccepted(false);
+        await refetchPolicies();
+        setError('The legal policies changed while you were registering. Please review and accept the updated versions.');
+      } else {
+        setError(mapAuthError(err, 'Registration failed. Please check your inputs.'));
+      }
     } finally {
       setLoading(false);
     }
@@ -126,7 +141,7 @@ export const SignupPage: React.FC = () => {
       // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
-      if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED') {
+      if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED' || err?.code === 'LEGAL_ACCEPTANCE_VERSION_CONFLICT') {
         setIsLegalModalOpen(true);
       } else {
         setError(mapAuthError(err, 'Google Sign-In failed.'));
@@ -136,7 +151,7 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  const isFormValid = termsAccepted && privacyAccepted && firstName.trim() !== '' && lastName.trim() !== '' && email.trim() !== '' && password.length >= 6 && confirmPassword === password && !loading && !submitCooldown;
+  const isFormValid = termsAccepted && privacyAccepted && Boolean(policies) && firstName.trim() !== '' && lastName.trim() !== '' && email.trim() !== '' && password.length >= 6 && confirmPassword === password && !loading && !submitCooldown && !policiesLoading;
 
   const brandingPoints = [
     'Immediate Access to Certificate Requests',
@@ -350,48 +365,74 @@ export const SignupPage: React.FC = () => {
 
             {/* Mandatory Legal Compliance Checkboxes */}
             <div className="p-4 bg-app-page rounded-card border border-border space-y-3 shadow-xs">
-              <div className="flex items-center gap-1.5 pb-1 border-b border-border/40">
-                <span className="text-xs font-bold text-text-primary">Legal Terms &amp; Privacy Consent</span>
-                <span className="text-crimson text-xs font-bold">*</span>
+              <div className="flex items-center justify-between pb-1 border-b border-border/40">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-text-primary">Legal Terms &amp; Privacy Consent</span>
+                  <span className="text-crimson text-xs font-bold">*</span>
+                </div>
+                {policies && (
+                  <span className="text-[10px] font-mono text-text-muted">
+                    Terms {policies.termsOfService.version} • Privacy {policies.privacyPolicy.version}
+                  </span>
+                )}
               </div>
 
-              <label className="flex items-start space-x-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={termsAccepted}
-                  onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus-ring cursor-pointer"
-                />
-                <span className="text-xs text-text-primary font-medium leading-snug">
-                  I agree to the{' '}
-                  <button
+              {policiesError ? (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg space-y-2">
+                  <p className="text-xs text-red-700">{policiesError}</p>
+                  <Button
                     type="button"
-                    onClick={() => setIsTermsModalOpen(true)}
-                    className="font-bold text-crimson hover:underline focus-ring rounded px-0.5"
+                    variant="outline"
+                    onClick={() => refetchPolicies()}
+                    className="text-xs flex items-center space-x-1.5 py-1 px-3"
                   >
-                    Terms of Service
-                  </button>
-                </span>
-              </label>
+                    <RefreshCw size={12} />
+                    <span>Retry Loading Policies</span>
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <label className="flex items-start space-x-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                      disabled={policiesLoading || !policies}
+                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus-ring cursor-pointer disabled:opacity-50"
+                    />
+                    <span className="text-xs text-text-primary font-medium leading-snug">
+                      I agree to the{' '}
+                      <button
+                        type="button"
+                        onClick={() => setIsTermsModalOpen(true)}
+                        className="font-bold text-crimson hover:underline focus-ring rounded px-0.5"
+                      >
+                        Terms of Service {policies ? `(${policies.termsOfService.version})` : ''}
+                      </button>
+                    </span>
+                  </label>
 
-              <label className="flex items-start space-x-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={privacyAccepted}
-                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus-ring cursor-pointer"
-                />
-                <span className="text-xs text-text-primary font-medium leading-snug">
-                  I acknowledge the{' '}
-                  <button
-                    type="button"
-                    onClick={() => setIsPrivacyModalOpen(true)}
-                    className="font-bold text-crimson hover:underline focus-ring rounded px-0.5"
-                  >
-                    Privacy Policy
-                  </button>
-                </span>
-              </label>
+                  <label className="flex items-start space-x-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={privacyAccepted}
+                      onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                      disabled={policiesLoading || !policies}
+                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus-ring cursor-pointer disabled:opacity-50"
+                    />
+                    <span className="text-xs text-text-primary font-medium leading-snug">
+                      I acknowledge the{' '}
+                      <button
+                        type="button"
+                        onClick={() => setIsPrivacyModalOpen(true)}
+                        className="font-bold text-crimson hover:underline focus-ring rounded px-0.5"
+                      >
+                        Privacy Policy {policies ? `(${policies.privacyPolicy.version})` : ''}
+                      </button>
+                    </span>
+                  </label>
+                </>
+              )}
             </div>
 
             <Button
@@ -452,7 +493,7 @@ export const SignupPage: React.FC = () => {
       <LegalAcceptanceModal
         isOpen={isLegalModalOpen}
         onClose={() => setIsLegalModalOpen(false)}
-        onAccept={handleExecuteGoogleSignIn}
+        onAccept={(payload) => handleExecuteGoogleSignIn(payload)}
       />
     </div>
   );

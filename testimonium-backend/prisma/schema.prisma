@@ -335,6 +335,7 @@ model User {
   updatedKnowledgeSources   KnowledgeSource[]         @relation("KnowledgeSourceUpdatedBy")
   updatedCaloyConfigs       CaloyRuntimeConfig[]      @relation("CaloyRuntimeConfigUpdater")
   governmentIdVerification  GovernmentIdVerification?
+  updatedLegalPolicies      LegalPolicy[]             @relation("LegalPolicyUpdater")
 
   @@index([roleId])
   @@index([parishId])
@@ -1063,4 +1064,23 @@ model GovernmentIdVerification {
   @@index([status])
   @@index([expiresAt])
   @@map("government_id_verifications")
+}
+
+enum LegalPolicyType {
+  TERMS_OF_SERVICE
+  PRIVACY_POLICY
+}
+
+model LegalPolicy {
+  policyType  LegalPolicyType @id @map("policy_type")
+  content     String          @db.Text
+  revision    Int             @default(1)
+  effectiveAt DateTime        @map("effective_at") @db.Timestamptz(6)
+  updatedById Int?            @map("updated_by_id")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  updatedBy User? @relation("LegalPolicyUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("legal_policies")
 }

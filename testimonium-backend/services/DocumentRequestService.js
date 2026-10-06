@@ -1,4 +1,4 @@
-import { DocumentRequestRepository } from "../repositories/DocumentRequestRepository.js";
+import { DocumentRequestRepository, listInclude } from "../repositories/DocumentRequestRepository.js";
 import { prisma } from "../config/db.js";
 import { canTransition } from "./RequestStateMachine.js";
 import { RequestNotificationService } from "./RequestNotificationService.js";
@@ -6,6 +6,7 @@ import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { DocumentRequirementService } from "./DocumentRequirementService.js";
 import { env } from "../config/env.js";
+import { CORRECTION_REASONS } from "../shared/constants.js";
 
 export class DocumentRequestService {
   constructor(documentRequestRepository = new DocumentRequestRepository()) {
@@ -38,7 +39,17 @@ export class DocumentRequestService {
   /**
    * Updates the status of a document request.
    */
-  async updateStatus(requestId, targetStatus, remarks = "", actorId, actorRole, actorParishId, correctionRequirementIds = []) {
+  async updateStatus(
+    requestId,
+    targetStatus,
+    remarks = "",
+    actorId,
+    actorRole,
+    actorParishId,
+    correctionRequirementIds = [],
+    correctionReasonCode = null,
+    correctionNote = null
+  ) {
     if (actorRole === "PRIEST") {
       const error = new Error("Priests have read-only access to document requests.");
       error.statusCode = 403;
@@ -79,7 +90,10 @@ export class DocumentRequestService {
 
       // Idempotency is only safe after role and tenant ownership authorization.
       if (currentStatus === targetStatus) {
-        return request;
+        return tx.documentRequest.findUnique({
+          where: { id: requestId },
+          include: listInclude,
+        });
       }
 
       // Verify status change legality
@@ -89,8 +103,23 @@ export class DocumentRequestService {
         throw error;
       }
 
-      // If Needs Correction, validate requirement IDs
+      let updatePayload = {
+        status: targetStatus,
+        remarks: remarks || request.remarks,
+      };
+      let paymentTransactionUpdate = null;
+      let duplicateOverrideAudit = null;
+      let effectiveRemarks = remarks || `Status updated from ${currentStatus} to ${targetStatus}`;
+      let correctionContext = null;
+
+      // If Needs Correction, strictly validate reason, requirement IDs, and optional note
       if (targetStatus === "NEEDS_CORRECTION") {
+        if (!correctionReasonCode || !CORRECTION_REASONS[correctionReasonCode]) {
+          const error = new Error("A valid correction reason is required.");
+          error.statusCode = 400;
+          throw error;
+        }
+
         if (!correctionRequirementIds || !Array.isArray(correctionRequirementIds) || correctionRequirementIds.length === 0) {
           const error = new Error("At least one requirement must be selected for correction.");
           error.statusCode = 400;
@@ -107,28 +136,49 @@ export class DocumentRequestService {
 
         // Fetch valid requirements for this document type
         const requirementsConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
-        const validRequirementIds = (requirementsConfig.requiredDocuments || []).map(r => r.id);
+        const validReqs = requirementsConfig.requiredDocuments || [];
+        const reqMap = new Map(validReqs.map(r => [r.id, r.label]));
 
         for (const id of correctionRequirementIds) {
-          if (!validRequirementIds.includes(id)) {
+          if (!reqMap.has(id)) {
             const error = new Error(`Invalid requirement ID: "${id}" does not belong to document type "${request.documentType}".`);
             error.statusCode = 400;
             throw error;
           }
         }
-      }
 
-      // Handle side-effects on Payment Transactions and Request paymentStatus
-      let updatePayload = {
-        status: targetStatus,
-        remarks: remarks || request.remarks,
-      };
-      let paymentTransactionUpdate = null;
-      let duplicateOverrideAudit = null;
+        if (correctionNote !== null && correctionNote !== undefined) {
+          if (typeof correctionNote !== "string") {
+            const error = new Error("Correction note must be a string.");
+            error.statusCode = 400;
+            throw error;
+          }
+          if (correctionNote.trim().length > 1000) {
+            const error = new Error("Correction note must not exceed 1000 characters.");
+            error.statusCode = 400;
+            throw error;
+          }
+        }
 
-      if (targetStatus === "NEEDS_CORRECTION") {
-        updatePayload.correctionNote = remarks;
+        const reasonLabel = CORRECTION_REASONS[correctionReasonCode];
+        const affectedLabels = correctionRequirementIds.map(id => reqMap.get(id)).join(", ");
+        const trimmedNote = (correctionNote || "").trim();
+
+        let snapshot = `Reason: ${reasonLabel}\nAffected requirements: ${affectedLabels}`;
+        if (trimmedNote) {
+          snapshot += `\nAdditional note: ${trimmedNote}`;
+        }
+
+        updatePayload.correctionNote = snapshot;
         updatePayload.correctionRequirementIds = correctionRequirementIds;
+        updatePayload.remarks = snapshot;
+        effectiveRemarks = snapshot;
+
+        correctionContext = {
+          reason: reasonLabel,
+          affectedRequirements: affectedLabels,
+          note: trimmedNote || null,
+        };
       }
 
       if (targetStatus === "PAYMENT_NEEDS_CORRECTION") {
@@ -317,7 +367,10 @@ export class DocumentRequestService {
       });
 
       if (transitionClaim.count !== 1) {
-        const latestRequest = await tx.documentRequest.findUnique({ where: { id: requestId } });
+        const latestRequest = await tx.documentRequest.findUnique({
+          where: { id: requestId },
+          include: listInclude,
+        });
         if (latestRequest?.status === targetStatus) {
           return latestRequest;
         }
@@ -340,7 +393,10 @@ export class DocumentRequestService {
         await tx.paymentTransaction.update(paymentTransactionUpdate);
       }
 
-      const updatedRequest = await tx.documentRequest.findUnique({ where: { id: requestId } });
+      const updatedRequest = await tx.documentRequest.findUnique({
+        where: { id: requestId },
+        include: listInclude,
+      });
 
       // Log request history
       const history = await tx.requestHistory.create({
@@ -350,7 +406,7 @@ export class DocumentRequestService {
           action: "STATUS_UPDATED",
           oldStatus: currentStatus,
           newStatus: targetStatus,
-          remarks: remarks || `Status updated from ${currentStatus} to ${targetStatus}`,
+          remarks: effectiveRemarks,
         },
       });
 
@@ -364,7 +420,8 @@ export class DocumentRequestService {
         targetStatus,
         tx,
         false, // notifyAdmins: staff is performing this action, no admin fan-out
-        history.id
+        history.id,
+        correctionContext
       );
 
       // When entering READY_FOR_SIGNING: notify active primary parish priest

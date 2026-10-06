@@ -18,6 +18,7 @@ import { CustomSelect } from '../../components/ui/CustomSelect';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
 
 export const SacramentalRequestPage: React.FC = () => {
   usePausePolling(true);
@@ -57,6 +58,7 @@ export const SacramentalRequestPage: React.FC = () => {
   const [requirementsList, setRequirementsList] = useState<Array<{ id: string; label: string; required: boolean; description?: string }>>([]);
   const [loadingReqs, setLoadingReqs] = useState(false);
   const [uploadedFilesByReq, setUploadedFilesByReq] = useState<Record<string, File>>({});
+  const [reqErrors, setReqErrors] = useState<Record<string, string>>({});
 
   // Authorization Letter for Authorized Representatives
   const [authLetterFile, setAuthLetterFile] = useState<File | null>(null);
@@ -149,24 +151,28 @@ export const SacramentalRequestPage: React.FC = () => {
 
   const handleAuthLetterUpload = (file: File) => {
     setAuthLetterError(null);
-    const allowedExts = ['.pdf', '.jpg', '.jpeg', '.png'];
-    const name = file.name.toLowerCase();
-    const hasValidExt = allowedExts.some(ext => name.endsWith(ext));
-    const validMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    const hasValidMime = !file.type || validMimes.includes(file.type.toLowerCase());
-
-    if (!hasValidExt || !hasValidMime) {
-      setAuthLetterError("Unsupported file type. Please upload a PDF, JPEG, or PNG file.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setAuthLetterError("File is too large. Maximum size allowed is 5 MB.");
+    const result = validateUploadFile(file, UPLOAD_POLICIES.AUTHORIZATION_LETTER);
+    if (!result.valid) {
+      setAuthLetterError(result.error || "Unsupported file format. Accepted formats: PDF, JPG, or PNG — up to 5 MB.");
       return;
     }
     setAuthLetterFile(file);
   };
 
   const handleUploadForReq = (reqId: string, file: File) => {
+    const result = validateUploadFile(file, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+    if (!result.valid) {
+      setReqErrors(prev => ({
+        ...prev,
+        [reqId]: result.error || "Unsupported file format. Accepted formats: PDF, JPG, PNG, or WebP — up to 5 MB.",
+      }));
+      return;
+    }
+    setReqErrors(prev => {
+      const copy = { ...prev };
+      delete copy[reqId];
+      return copy;
+    });
     setUploadedFilesByReq(prev => ({
       ...prev,
       [reqId]: file
@@ -174,6 +180,11 @@ export const SacramentalRequestPage: React.FC = () => {
   };
 
   const handleRemoveFileForReq = (reqId: string) => {
+    setReqErrors(prev => {
+      const copy = { ...prev };
+      delete copy[reqId];
+      return copy;
+    });
     setUploadedFilesByReq(prev => {
       const copy = { ...prev };
       delete copy[reqId];
@@ -555,7 +566,7 @@ export const SacramentalRequestPage: React.FC = () => {
                   Provide credentials supporting this request.
                 </h4>
                 <p className="text-[11px] text-text-muted">
-                  Upload file formats (PNG, JPG, PDF) under 5MB for each field.
+                  Upload file formats (PDF, JPG, PNG, or WebP) under 5MB for each field.
                 </p>
               </div>
 
@@ -590,6 +601,12 @@ export const SacramentalRequestPage: React.FC = () => {
                           )}
                         </div>
 
+                        {reqErrors[req.id] && (
+                          <div className="p-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">
+                            {reqErrors[req.id]}
+                          </div>
+                        )}
+
                         {req.id === 'valid_id' && isGovIdVerified ? (
                           <div className="flex items-center gap-3 p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-button">
                             <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -612,17 +629,32 @@ export const SacramentalRequestPage: React.FC = () => {
                             </button>
                           </div>
                         ) : (
-                          <div className="relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white">
+                          <div
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const dropped = e.dataTransfer.files?.[0];
+                              if (dropped) handleUploadForReq(req.id, dropped);
+                            }}
+                            className="relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white cursor-pointer"
+                          >
                             <input
                               type="file"
                               onChange={(e) => {
                                 const selected = e.target.files?.[0];
                                 if (selected) handleUploadForReq(req.id, selected);
+                                e.target.value = '';
                               }}
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              accept=".png,.jpg,.jpeg,.pdf"
+                              accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute}
                             />
-                            <span className="text-xs text-text-muted">Click or drag a file to upload</span>
+                            <span className="text-xs text-text-muted block">
+                              Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB.
+                            </span>
                           </div>
                         )}
                       </div>
@@ -642,9 +674,6 @@ export const SacramentalRequestPage: React.FC = () => {
                       <p className="text-[11px] text-text-muted mt-0.5">
                         Upload the signed authorization letter from the person you are representing.
                       </p>
-                      <span className="text-[10px] text-text-muted mt-1 block">
-                        Accepted formats: PDF, JPEG, PNG (Max 5 MB)
-                      </span>
                     </div>
                     <span className="text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                       Required
@@ -674,17 +703,32 @@ export const SacramentalRequestPage: React.FC = () => {
                       </button>
                     </div>
                   ) : (
-                    <div className="relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white">
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const dropped = e.dataTransfer.files?.[0];
+                        if (dropped) handleAuthLetterUpload(dropped);
+                      }}
+                      className="relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white cursor-pointer"
+                    >
                       <input
                         type="file"
                         onChange={(e) => {
                           const selected = e.target.files?.[0];
                           if (selected) handleAuthLetterUpload(selected);
+                          e.target.value = '';
                         }}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        accept=".png,.jpg,.jpeg,.pdf"
+                        accept={UPLOAD_POLICIES.AUTHORIZATION_LETTER.acceptAttribute}
                       />
-                      <span className="text-xs text-text-muted">Click or drag signed authorization letter to upload</span>
+                      <span className="text-xs text-text-muted block">
+                        Drag and drop files here, or click to upload. PDF, JPG, or PNG — up to 5 MB.
+                      </span>
                     </div>
                   )}
                 </div>

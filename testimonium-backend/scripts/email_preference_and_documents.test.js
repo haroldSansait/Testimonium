@@ -5,11 +5,21 @@ import { renderEmail } from "../services/email/EmailTemplates.js";
 import { updateProfile } from "../controllers/AuthController.js";
 import { AuthService } from "../services/AuthService.js";
 import { NotificationDispatcher } from "../services/NotificationDispatcher.js";
+import { LegalPolicyService } from "../services/LegalPolicyService.js";
 
 import { prisma } from "../config/db.js";
 
 test("1 & 2. profile emailNotificationsEnabled true/false persists through updateProfile", async () => {
   const originalUpdate = prisma.user.update;
+  const originalLegalDb = LegalPolicyService.db;
+  LegalPolicyService.db = {
+    legalPolicy: {
+      findMany: async () => [
+        { policyType: "TERMS_OF_SERVICE", revision: 1, content: "Terms", effectiveAt: new Date("2026-08-01T00:00:00.000Z") },
+        { policyType: "PRIVACY_POLICY", revision: 1, content: "Privacy", effectiveAt: new Date("2026-08-01T00:00:00.000Z") },
+      ],
+    },
+  };
   let updatedPayload = null;
   prisma.user.update = async ({ where, data }) => {
     updatedPayload = data;
@@ -61,6 +71,7 @@ test("1 & 2. profile emailNotificationsEnabled true/false persists through updat
     assert.equal(updatedPayload.emailNotificationsEnabled, true);
   } finally {
     prisma.user.update = originalUpdate;
+    LegalPolicyService.db = originalLegalDb;
   }
 });
 

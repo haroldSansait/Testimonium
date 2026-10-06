@@ -171,7 +171,17 @@ export const recordLegalAcceptance = async (req, res, next) => {
 
 export const register = async (req, res, next) => {
   try {
-    const { termsAccepted, privacyAccepted, registrationProfile, firstName, middleName, lastName, suffix } = req.body;
+    const {
+      termsAccepted,
+      privacyAccepted,
+      termsVersion,
+      privacyVersion,
+      registrationProfile,
+      firstName,
+      middleName,
+      lastName,
+      suffix,
+    } = req.body;
 
     if (!termsAccepted || !privacyAccepted) {
       return res.status(400).json({
@@ -181,22 +191,41 @@ export const register = async (req, res, next) => {
       });
     }
 
+    if (!termsVersion || !privacyVersion) {
+      return res.status(400).json({
+        success: false,
+        code: "LEGAL_ACCEPTANCE_REQUIRED",
+        message: "Explicit legal policy versions are required for registration.",
+      });
+    }
+
     let userProfile = req.user;
     const nameParts = registrationProfile || { firstName, middleName, lastName, suffix };
 
-    // If structured name fields provided, normalize and update user profile
-    if (nameParts.firstName && nameParts.lastName) {
-      const fullName = normalizeAndConstructFullName(nameParts);
-      if (isMaterialGovernmentIdNameChange(req.user.fullName, fullName)) {
-        const updated = await defaultGovernmentIdVerificationService.withUserVerificationLease(
-          req.user.id,
-          async () => {
-            await defaultGovernmentIdVerificationService.invalidateVerification(req.user.id);
-            return userRepository.update(req.user.id, { fullName });
+    if (req.user?.id) {
+      const existingDbUser = await userRepository.findById(req.user.id);
+      if (existingDbUser) {
+        let updated = existingDbUser;
+        if (nameParts.firstName && nameParts.lastName) {
+          const fullName = normalizeAndConstructFullName(nameParts);
+          if (fullName !== existingDbUser.fullName) {
+            updated = isMaterialGovernmentIdNameChange(existingDbUser.fullName, fullName)
+              ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
+                  req.user.id,
+                  async () => {
+                    await defaultGovernmentIdVerificationService.invalidateVerification(req.user.id);
+                    return userRepository.update(req.user.id, { fullName });
+                  },
+                )
+              : await userRepository.update(req.user.id, { fullName });
+            logger.debug({ userId: req.user.id, fullName }, "[AuthController] Updated user registration fullName");
           }
+        }
+        userProfile = await authService.toCurrentApplicationProfile(
+          updated,
+          req.firebaseUser,
+          Boolean(req.user?.isNewUser),
         );
-        userProfile = authService.toApplicationProfile(updated, req.firebaseUser, Boolean(req.user?.isNewUser));
-        logger.debug({ userId: req.user.id, fullName }, "[AuthController] Updated user registration fullName");
       }
     }
 
@@ -269,7 +298,7 @@ export const updateProfile = async (req, res, next) => {
         )
       : await userRepository.update(userId, updatePayload);
 
-    const profile = authService.toApplicationProfile(updated, req.firebaseUser);
+    const profile = await authService.toCurrentApplicationProfile(updated, req.firebaseUser);
 
     return res.status(200).json({
       success: true,

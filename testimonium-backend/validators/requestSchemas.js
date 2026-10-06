@@ -75,5 +75,25 @@ export const updateRequestStatusSchema = z.object({
   ),
   remarks: z.string().optional().nullable(),
   correctionRequirementIds: z.array(z.string()).optional().nullable(),
+  correctionReasonCode: z.enum([
+    "UNCLEAR_OR_BLURRY",
+    "WRONG_DOCUMENT",
+    "INCOMPLETE_DOCUMENT",
+    "CROPPED_INFORMATION",
+    "APPLICANT_MISMATCH",
+    "EXPIRED_OR_INVALID",
+    "INCORRECT_REQUIREMENT_FILE",
+    "OTHER",
+  ]).optional().nullable(),
+  correctionNote: z.string().trim().max(1000).optional().nullable(),
+}).superRefine((payload, ctx) => {
+  if (payload.status !== DocumentRequestStatus.NEEDS_CORRECTION) return;
+  if (!payload.correctionReasonCode) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["correctionReasonCode"], message: "A valid correction reason is required" });
+  }
+  if (!payload.correctionRequirementIds?.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["correctionRequirementIds"], message: "At least one requirement must be selected" });
+  } else if (new Set(payload.correctionRequirementIds).size !== payload.correctionRequirementIds.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["correctionRequirementIds"], message: "Duplicate requirement IDs are not allowed" });
+  }
 });
-

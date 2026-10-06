@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from './ui/Spinner';
+import { LegalGate } from './legal/LegalGate';
 
 export const ProtectedRoute: React.FC = () => {
   const { user, appProfile, loading } = useAuth();
@@ -30,7 +31,14 @@ export const ProtectedRoute: React.FC = () => {
     return <Navigate to="/verify-email" replace />;
   }
 
-  // 2. Profile completion is enforced at request action boundaries (Document/Schedule requests),
+  // 2. Legal compliance gating for authenticated parishioners
+  // If either Terms or Privacy acceptance is missing or stale relative to authoritative DB, gate protected content
+  if (appProfile?.role === 'PARISHIONER' && (!appProfile.termsAccepted || !appProfile.privacyAccepted)) {
+    console.debug('[ProtectedRoute] Legal compliance missing or stale. Displaying LegalGate');
+    return <LegalGate />;
+  }
+
+  // 3. Profile completion is enforced at request action boundaries (Document/Schedule requests),
   // allowing normal browsing of Home, Directory, Help, and Profile.
   console.debug('[ProtectedRoute] Access granted to route:', location.pathname);
   return <Outlet />;

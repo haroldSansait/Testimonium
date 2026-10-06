@@ -24,10 +24,10 @@ export interface RegistrationProfile {
 }
 
 export interface LegalPayload {
-  termsAccepted: boolean;
-  privacyAccepted: boolean;
-  termsVersion: string;
-  privacyVersion: string;
+  termsAccepted?: boolean;
+  privacyAccepted?: boolean;
+  termsVersion?: string;
+  privacyVersion?: string;
 }
 
 export interface SignInOptions {
@@ -99,7 +99,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionState, setSessionState] = useState<SessionState>(SessionService.getState());
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
 
-  const refreshPromiseRef = useRef<Promise<BackendUserProfile | null> | null>(null);
+  const refreshPromiseRef = useRef<{ uid: string; promise: Promise<BackendUserProfile | null> } | null>(null);
+  const authGenerationRef = useRef(0);
   const { isBusy } = useSubmissionProtection();
 
   // Listen to FSM state updates
@@ -158,7 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     console.debug('[AuthContext] Backend login successful:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion, isNewUser });
-    setAppProfile(profile);
+    if (auth.currentUser?.uid === currentUser.uid) setAppProfile(profile);
     return profile;
   };
 
@@ -195,13 +196,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Malformed backend profile response: user profile missing.');
     }
 
-    console.debug('[AuthContext] Profile fetched & committed to context:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion });
-    setAppProfile(profile);
+    console.debug('[AuthContext] Profile fetched:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion });
     return profile;
   };
 
   const recordLegalAcceptance = async (legal: LegalPayload): Promise<BackendUserProfile | null> => {
     if (!auth.currentUser) return null;
+    const expectedUid = auth.currentUser.uid;
     const idToken = await auth.currentUser.getIdToken();
     const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
@@ -214,34 +215,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body: JSON.stringify(legal),
     });
 
-    const result = await response.json();
+    const result = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(result?.message || 'Failed to record legal acceptance.');
+      const err = new Error(result?.message || 'Failed to record legal acceptance.');
+      if (result?.code) {
+        (err as any).code = result.code;
+      }
+      (err as any).status = response.status;
+      throw err;
     }
     const profile = result?.data as BackendUserProfile;
-    if (profile) {
-      setAppProfile(profile);
-      return profile;
-    }
-    return null;
+    if (!profile) throw new Error('Malformed legal acceptance response: user profile missing.');
+    if (auth.currentUser?.uid === expectedUid) setAppProfile(profile);
+    return profile;
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      const generation = ++authGenerationRef.current;
       setUser(currentUser);
+      setAppProfile(null);
       if (currentUser) {
         if (!localStorage.getItem(SESSION_CONFIG.SESSION_START_KEY)) {
           localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
         }
         try {
-          await fetchCurrentBackendProfile(currentUser);
+          const profile = await fetchCurrentBackendProfile(currentUser);
+          if (authGenerationRef.current === generation && auth.currentUser?.uid === currentUser.uid) {
+            setAppProfile(profile);
+          }
         } catch {
           // Unverified email or backend rejection
         }
-      } else {
-        setAppProfile(null);
       }
-      setLoading(false);
+      if (authGenerationRef.current === generation) setLoading(false);
     });
     return unsubscribe;
   }, []);
@@ -297,18 +304,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     registrationProfile: RegistrationProfile,
     legal: LegalPayload
   ) => {
-    setLoading(true);
+      setLoading(true);
     try {
       await SessionService.enforceSessionPersistence(true);
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const existingPendingUser = auth.currentUser?.email?.toLowerCase() === email.trim().toLowerCase()
+        ? auth.currentUser
+        : null;
+      const firebaseUser = existingPendingUser || (await createUserWithEmailAndPassword(auth, email, password)).user;
       const displayName = [registrationProfile.firstName, registrationProfile.lastName].filter(Boolean).join(' ');
-      await updateProfile(userCredential.user, { displayName });
+      await updateProfile(firebaseUser, { displayName });
       
       // Trigger email verification
-      await sendEmailVerification(userCredential.user);
+      if (!existingPendingUser) await sendEmailVerification(firebaseUser);
 
       // Register with backend passing legal compliance and structured registrationProfile
-      const idToken = await userCredential.user.getIdToken(true);
+      const idToken = await firebaseUser.getIdToken(true);
       const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
       
       console.debug('[AuthContext] Registering user with structured registrationProfile:', registrationProfile);
@@ -324,16 +334,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }),
       });
 
-      const resData = await response.json();
-      if (resData?.data) {
-        setAppProfile(resData.data as BackendUserProfile);
+      const resData = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = resData?.message || 'Failed to complete registration.';
+        const err = new Error(message);
+        if (resData?.code) {
+          (err as any).code = resData.code;
+        }
+        (err as any).status = response.status;
+        throw err;
       }
+      if (!resData?.data || typeof resData.data !== 'object') {
+        throw new Error('Malformed registration response: user profile missing.');
+      }
+      if (auth.currentUser?.uid === firebaseUser.uid) setAppProfile(resData.data as BackendUserProfile);
 
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
       // Registration journey authoritative establish: new email/password account created
       sessionStorage.setItem('testimonium_registration_session', 'true');
       logSessionEvent('Session Started', { email });
-      setUser({ ...userCredential.user, displayName } as User);
+      setUser({ ...firebaseUser, displayName } as User);
 
       return { needsProfileCompletion: true };
     } finally {
@@ -364,6 +384,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async (reason = 'manual') => {
     setLoading(true);
+    authGenerationRef.current += 1;
+    refreshPromiseRef.current = null;
     try {
       sessionStorage.removeItem('testimonium_registration_session');
       await SessionService.logout(reason as any);
@@ -376,24 +398,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async (): Promise<BackendUserProfile | null> => {
     if (!auth.currentUser) return null;
+    const expectedUser = auth.currentUser;
 
-    if (refreshPromiseRef.current) {
+    if (refreshPromiseRef.current?.uid === expectedUser.uid) {
       console.debug('[AuthContext] Single-flight refreshProfile reusing existing request promise');
-      return refreshPromiseRef.current;
+      return refreshPromiseRef.current.promise;
     }
 
     console.debug('[AuthContext] refreshProfile start');
-    refreshPromiseRef.current = (async () => {
+    const promise = (async () => {
       try {
-        const profile = await fetchCurrentBackendProfile(auth.currentUser!);
+        const profile = await fetchCurrentBackendProfile(expectedUser);
+        if (auth.currentUser?.uid === expectedUser.uid) setAppProfile(profile);
         console.debug('[AuthContext] refreshProfile completed cleanly');
         return profile;
       } finally {
-        refreshPromiseRef.current = null;
+        if (refreshPromiseRef.current?.uid === expectedUser.uid) refreshPromiseRef.current = null;
       }
     })();
+    refreshPromiseRef.current = { uid: expectedUser.uid, promise };
 
-    return refreshPromiseRef.current;
+    return promise;
   };
 
   return (

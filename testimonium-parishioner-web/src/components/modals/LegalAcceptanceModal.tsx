@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Scale, ShieldCheck, ExternalLink, X } from 'lucide-react';
+import { Scale, ShieldCheck, ExternalLink, X, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Spinner } from '../ui/Spinner';
+import { useLegalPolicies } from '../../services/legalPolicyService';
 
 interface LegalAcceptanceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAccept: () => void;
+  onAccept: (payload: {
+    termsAccepted: boolean;
+    privacyAccepted: boolean;
+    termsVersion: string;
+    privacyVersion: string;
+  }) => void;
 }
 
 export const LegalAcceptanceModal: React.FC<LegalAcceptanceModalProps> = ({
@@ -13,6 +20,7 @@ export const LegalAcceptanceModal: React.FC<LegalAcceptanceModalProps> = ({
   onClose,
   onAccept,
 }) => {
+  const { policies, loading: policiesLoading, error: policiesError, refetch } = useLegalPolicies();
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
@@ -24,7 +32,10 @@ export const LegalAcceptanceModal: React.FC<LegalAcceptanceModalProps> = ({
     if (isOpen) {
       setTermsAccepted(false);
       setPrivacyAccepted(false);
+      void refetch();
     }
+    // Refetch is intentionally tied to the closed-to-open transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Accessibility: Handle Escape key to close modal & focus trap
@@ -42,12 +53,17 @@ export const LegalAcceptanceModal: React.FC<LegalAcceptanceModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isFormValid = termsAccepted && privacyAccepted;
+  const isFormValid = termsAccepted && privacyAccepted && Boolean(policies);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isFormValid) {
-      onAccept();
+    if (isFormValid && policies) {
+      onAccept({
+        termsAccepted: true,
+        privacyAccepted: true,
+        termsVersion: policies.termsOfService.version,
+        privacyVersion: policies.privacyPolicy.version,
+      });
     }
   };
 
@@ -94,51 +110,71 @@ export const LegalAcceptanceModal: React.FC<LegalAcceptanceModalProps> = ({
             Before proceeding with Google authentication, you must review and accept the official Vicariate Terms of Service and Data Privacy Policy.
           </p>
 
-          <div className="space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm">
-            {/* Terms Checkbox */}
-            <label className="flex items-start space-x-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus:ring-crimson cursor-pointer"
-              />
-              <span className="text-xs sm:text-sm text-gray-900 font-medium leading-snug">
-                I agree to the{' '}
-                <a
-                  href="/terms"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-bold text-crimson hover:underline inline-flex items-center space-x-1"
-                >
-                  <span>Terms of Service</span>
-                  <ExternalLink size={12} className="inline ml-0.5" />
-                </a>
-              </span>
-            </label>
+          {policiesLoading ? (
+            <div className="p-6 flex flex-col items-center justify-center space-y-2 bg-slate-50 rounded-xl border border-slate-200">
+              <Spinner size="md" className="text-crimson" />
+              <p className="text-xs text-gray-600 font-medium">Loading current legal policies...</p>
+            </div>
+          ) : policiesError ? (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+              <p className="text-xs text-red-700">{policiesError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => refetch()}
+                className="text-xs flex items-center space-x-1.5 py-1 px-3"
+              >
+                <RefreshCw size={12} />
+                <span>Retry</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm">
+              {/* Terms Checkbox */}
+              <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus:ring-crimson cursor-pointer"
+                />
+                <span className="text-xs sm:text-sm text-gray-900 font-medium leading-snug">
+                  I agree to the{' '}
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-crimson hover:underline inline-flex items-center space-x-1"
+                  >
+                    <span>Terms of Service ({policies?.termsOfService.version || 'Current'})</span>
+                    <ExternalLink size={12} className="inline ml-0.5" />
+                  </a>
+                </span>
+              </label>
 
-            {/* Privacy Checkbox */}
-            <label className="flex items-start space-x-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={privacyAccepted}
-                onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus:ring-crimson cursor-pointer"
-              />
-              <span className="text-xs sm:text-sm text-gray-900 font-medium leading-snug">
-                I acknowledge the{' '}
-                <a
-                  href="/privacy"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-bold text-crimson hover:underline inline-flex items-center space-x-1"
-                >
-                  <span>Privacy Policy</span>
-                  <ExternalLink size={12} className="inline ml-0.5" />
-                </a>
-              </span>
-            </label>
-          </div>
+              {/* Privacy Checkbox */}
+              <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson focus:ring-crimson cursor-pointer"
+                />
+                <span className="text-xs sm:text-sm text-gray-900 font-medium leading-snug">
+                  I acknowledge the{' '}
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-crimson hover:underline inline-flex items-center space-x-1"
+                  >
+                    <span>Privacy Policy ({policies?.privacyPolicy.version || 'Current'})</span>
+                    <ExternalLink size={12} className="inline ml-0.5" />
+                  </a>
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex items-center justify-end space-x-3 pt-2">
@@ -153,9 +189,9 @@ export const LegalAcceptanceModal: React.FC<LegalAcceptanceModalProps> = ({
             <button
               ref={acceptButtonRef}
               type="submit"
-              disabled={!isFormValid}
+              disabled={!isFormValid || policiesLoading}
               className={`px-5 py-2.5 rounded-button font-medium text-xs flex items-center space-x-2 transition-colors ${
-                isFormValid
+                isFormValid && !policiesLoading
                   ? 'bg-crimson text-white hover:bg-crimson-dark shadow-sm cursor-pointer'
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
               }`}

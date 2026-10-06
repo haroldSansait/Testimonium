@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { X, Check, AlertCircle, FileText, User } from 'lucide-react';
@@ -61,75 +61,164 @@ const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
   { label: 'Needs Correction', value: 'Needs Correction' },
 ];
 
+export const CANONICAL_CORRECTION_REASONS = [
+  { code: 'UNCLEAR_OR_BLURRY', label: 'Unclear / blurry / unreadable document' },
+  { code: 'WRONG_DOCUMENT', label: 'Wrong document uploaded' },
+  { code: 'INCOMPLETE_DOCUMENT', label: 'Incomplete document / missing page or side' },
+  { code: 'CROPPED_INFORMATION', label: 'Cropped document / important information not visible' },
+  { code: 'APPLICANT_MISMATCH', label: 'Information does not match applicant/request' },
+  { code: 'EXPIRED_OR_INVALID', label: 'Expired / invalid document' },
+  { code: 'INCORRECT_REQUIREMENT_FILE', label: 'Incorrect file uploaded for this requirement' },
+  { code: 'OTHER', label: 'Other' },
+];
+
 // ─── Details Modal ────────────────────────────────────────────────────────────
 
 interface DetailsModalProps {
   request: DocumentRequest;
   onClose: () => void;
-  onStatusChange: (status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => Promise<void>;
+  onStatusChange: (
+    status: DocumentStatus,
+    remarks?: string,
+    correctionRequirementIds?: string[],
+    correctionReasonCode?: string,
+    correctionNote?: string
+  ) => Promise<void>;
+  onRefetchRequest?: () => Promise<void>;
   canManage?: boolean;
 }
 
-function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = true }: DetailsModalProps) {
+function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchRequest, canManage = true }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionReasonCode, setCorrectionReasonCode] = useState('');
   const [correctionNotes, setCorrectionNotes] = useState('');
+  const [correctionModalError, setCorrectionModalError] = useState<string | null>(null);
   const [showPaymentCorrectionModal, setShowPaymentCorrectionModal] = useState(false);
   const [paymentCorrectionNotes, setPaymentCorrectionNotes] = useState('');
   const [requirements, setRequirements] = useState<{ id: string; label: string; description?: string }[]>([]);
   const [loadingReqs, setLoadingReqs] = useState(false);
   const [selectedReqs, setSelectedReqs] = useState<Record<string, boolean>>({});
+  const updateInFlightRef = useRef(false);
 
-  useEffect(() => {
-    if (showCorrectionModal) {
-      setLoadingReqs(true);
-      const backendType = mapFrontendToBackendDocType(request.documentType);
-      api.get(`/document-requirements`, { params: { type: backendType, parishId: request.parishId } })
-        .then(res => {
-          const reqs = res.data?.data?.requiredDocuments || res.data?.requiredDocuments || [];
-          setRequirements(reqs);
+  const loadRequirements = useCallback(() => {
+    setLoadingReqs(true);
+    setCorrectionModalError(null);
+    const backendType = mapFrontendToBackendDocType(request.documentType);
+    api.get(`/document-requirements`, { params: { type: backendType, parishId: request.parishId } })
+      .then(res => {
+        const reqs = res.data?.data?.requiredDocuments || res.data?.requiredDocuments || [];
+        setRequirements(reqs);
+        setSelectedReqs(prev => {
+          if (Object.keys(prev).length > 0) return prev;
           const initialSelect: Record<string, boolean> = {};
           reqs.forEach((r: any) => {
             initialSelect[r.id] = false;
           });
-          setSelectedReqs(initialSelect);
-        })
-        .catch(err => {
-          console.error("Failed to fetch document requirements:", err);
-        })
-        .finally(() => {
-          setLoadingReqs(false);
+          return initialSelect;
         });
-    }
-  }, [showCorrectionModal, request.documentType, request.parishId]);
+      })
+      .catch(err => {
+        console.error("Failed to fetch document requirements:", err);
+        setCorrectionModalError("Failed to fetch document requirements. Please retry.");
+      })
+      .finally(() => {
+        setLoadingReqs(false);
+      });
+  }, [request.documentType, request.parishId]);
 
-  const handleAction = async (status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => {
+  useEffect(() => {
+    if (showCorrectionModal) {
+      loadRequirements();
+    }
+  }, [showCorrectionModal, loadRequirements]);
+
+  const handleAction = async (
+    status: DocumentStatus,
+    remarks?: string,
+    correctionRequirementIds?: string[],
+    correctionReasonCode?: string,
+    correctionNote?: string
+  ) => {
+    if (updateInFlightRef.current) return;
+    updateInFlightRef.current = true;
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      await onStatusChange(status, remarks, correctionRequirementIds);
+      await onStatusChange(status, remarks, correctionRequirementIds, correctionReasonCode, correctionNote);
       onClose();
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.message || err.message || 'Failed to update status.';
-      setErrorMessage(msg);
+      const is409 = err.response?.status === 409 || err.code === 'DOCUMENT_REQUEST_CONCURRENCY_CONFLICT' || err.response?.data?.code === 'DOCUMENT_REQUEST_CONCURRENCY_CONFLICT';
+      if (is409) {
+        setErrorMessage('Another staff member has already modified this request. The latest request state has been reloaded. Please review the updated request before submitting again.');
+        if (onRefetchRequest) {
+          try {
+            await onRefetchRequest();
+          } catch {
+            setErrorMessage('Another staff member modified this request, and the latest state could not be reloaded. Close and reopen the request before trying again.');
+          }
+        }
+      } else {
+        const msg = err.response?.data?.message || err.message || 'Failed to update status.';
+        setErrorMessage(msg);
+      }
     } finally {
+      updateInFlightRef.current = false;
       setIsUpdating(false);
     }
   };
 
   const handleSendCorrection = async () => {
-    if (!correctionNotes.trim()) {
-      setErrorMessage('Please provide specific correction instructions for the parishioner.');
+    if (updateInFlightRef.current) return;
+    if (!correctionReasonCode) {
+      setCorrectionModalError('Please select a reason for rejection.');
       return;
     }
     const selectedIds = Object.keys(selectedReqs).filter(id => selectedReqs[id]);
     if (selectedIds.length === 0) {
-      setErrorMessage('Please select at least one document requirement that requires correction.');
+      setCorrectionModalError('Please select at least one affected document requirement.');
       return;
     }
-    await handleAction('Needs Correction', correctionNotes, selectedIds);
+    if (correctionNotes && correctionNotes.trim().length > 1000) {
+      setCorrectionModalError('Additional note must not exceed 1000 characters.');
+      return;
+    }
+
+    updateInFlightRef.current = true;
+    setIsUpdating(true);
+    setCorrectionModalError(null);
+    try {
+      await onStatusChange(
+        'Needs Correction',
+        undefined,
+        selectedIds,
+        correctionReasonCode,
+        correctionNotes.trim() || undefined
+      );
+      setShowCorrectionModal(false);
+      onClose();
+    } catch (err: any) {
+      console.error('Correction submission error:', err);
+      const is409 = err.response?.status === 409 || err.code === 'DOCUMENT_REQUEST_CONCURRENCY_CONFLICT' || err.response?.data?.code === 'DOCUMENT_REQUEST_CONCURRENCY_CONFLICT';
+      if (is409) {
+        setCorrectionModalError('Another staff member has already modified this request. The latest request state has been reloaded. Please review the updated request before submitting again.');
+        if (onRefetchRequest) {
+          try {
+            await onRefetchRequest();
+          } catch {
+            setCorrectionModalError('Another staff member modified this request, and the latest state could not be reloaded. Close and reopen the request before trying again.');
+          }
+        }
+      } else {
+        const msg = err.response?.data?.message || err.message || 'Failed to submit correction.';
+        setCorrectionModalError(msg);
+      }
+    } finally {
+      updateInFlightRef.current = false;
+      setIsUpdating(false);
+    }
   };
 
   const handleSendPaymentCorrection = async () => {
@@ -144,22 +233,13 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
     switch (request.status) {
       case 'Pending Review':
         return (
-          <>
-            <button
-              onClick={() => void handleAction('Under Review')}
-              disabled={isUpdating}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              Start Review
-            </button>
-            <button
-              onClick={() => void handleAction('Rejected')}
-              disabled={isUpdating}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              Reject
-            </button>
-          </>
+          <button
+            onClick={() => void handleAction('Under Review')}
+            disabled={isUpdating}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+          >
+            Start Review
+          </button>
         );
       case 'Under Review':
         return (
@@ -172,14 +252,10 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
               Request Payment
             </button>
             <button
-              onClick={() => setShowCorrectionModal(true)}
-              disabled={isUpdating}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              Needs Correction
-            </button>
-            <button
-              onClick={() => void handleAction('Rejected')}
+              onClick={() => {
+                setCorrectionModalError(null);
+                setShowCorrectionModal(true);
+              }}
               disabled={isUpdating}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
             >
@@ -283,9 +359,9 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !isUpdating && onClose()}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-[#7B1C2A] text-white">
           <div className="flex items-center gap-3">
@@ -297,7 +373,8 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+            disabled={isUpdating}
+            className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-md transition-colors disabled:opacity-40"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -718,24 +795,55 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
           <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between overflow-y-auto animate-in fade-in duration-150">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-                <h3 className="text-base font-bold text-gray-900">Request Document Correction</h3>
-                <button onClick={() => setShowCorrectionModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Reject Document &amp; Request Correction</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Select a canonical reason and affected requirement(s). The request will transition to Needs Correction.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !isUpdating && setShowCorrectionModal(false)}
+                  disabled={isUpdating}
+                  className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
+                  aria-label="Close"
+                >
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              <p className="text-xs text-gray-600">
-                Specify what needs to be corrected by the parishioner (e.g. illegible ID scan, missing GKK signature, incorrect registrant name).
-              </p>
-              <textarea
-                value={correctionNotes}
-                onChange={(e) => setCorrectionNotes(e.target.value)}
-                placeholder="Enter detailed correction notes and instructions for the parishioner..."
-                rows={4}
-                className="w-full p-3 border border-gray-200 rounded-xl text-xs text-gray-800 outline-none focus:border-[#7B1C2A] focus:ring-1 focus:ring-[#7B1C2A]"
-              />
 
+              {correctionModalError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-800">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <span>{correctionModalError}</span>
+                </div>
+              )}
+
+              {/* Canonical Reason Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                  Rejection Reason <span className="text-red-500">*</span>
+                </label>
+                <CustomSelect
+                  id="rejection-reason"
+                  value={correctionReasonCode}
+                  onChange={(val) => setCorrectionReasonCode(val ? String(val) : '')}
+                  options={CANONICAL_CORRECTION_REASONS.map((r) => ({
+                    value: r.code,
+                    label: r.label,
+                  }))}
+                  placeholder="-- Select a reason --"
+                  disabled={isUpdating}
+                  searchable={false}
+                  aria-label="Rejection Reason"
+                />
+              </div>
+
+              {/* Affected Requirements Checklist */}
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Select requirements requiring correction</span>
+                <span className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                  Affected Requirements <span className="text-red-500">*</span>
+                </span>
                 {loadingReqs ? (
                   <p className="text-xs text-gray-400">Loading requirements...</p>
                 ) : requirements.length === 0 ? (
@@ -748,6 +856,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
                           type="checkbox"
                           checked={!!selectedReqs[req.id]}
                           onChange={(e) => setSelectedReqs(prev => ({ ...prev, [req.id]: e.target.checked }))}
+                          disabled={isUpdating}
                           className="mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                         />
                         <div>
@@ -759,20 +868,45 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, canManage = tr
                   </div>
                 )}
               </div>
+
+              {/* Optional Parishioner-Visible Note */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                    Parishioner-Visible Note (Optional)
+                  </label>
+                  <span className="text-[10px] text-gray-400 font-mono">
+                    {correctionNotes.length} / 1000
+                  </span>
+                </div>
+                <textarea
+                  value={correctionNotes}
+                  onChange={(e) => setCorrectionNotes(e.target.value.slice(0, 1000))}
+                  disabled={isUpdating}
+                  placeholder="Provide clear, helpful instructions for the parishioner on how to correct the affected documents..."
+                  rows={3}
+                  maxLength={1000}
+                  className="w-full p-3 border border-gray-200 rounded-xl text-xs text-gray-800 outline-none focus:border-[#7B1C2A] focus:ring-1 focus:ring-[#7B1C2A]"
+                />
+              </div>
             </div>
+
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 flex-shrink-0">
               <button
-                onClick={() => setShowCorrectionModal(false)}
-                className="px-4 py-2 text-xs font-semibold border rounded-lg hover:bg-gray-50"
+                type="button"
+                onClick={() => !isUpdating && setShowCorrectionModal(false)}
+                disabled={isUpdating}
+                className="px-4 py-2 text-xs font-semibold border rounded-lg hover:bg-gray-50 disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => void handleSendCorrection()}
-                disabled={isUpdating || !correctionNotes.trim() || Object.keys(selectedReqs).filter(id => selectedReqs[id]).length === 0}
-                className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-40"
+                disabled={isUpdating || !correctionReasonCode || Object.keys(selectedReqs).filter(id => selectedReqs[id]).length === 0}
+                className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-40 flex items-center gap-1.5"
               >
-                Send Correction Request
+                {isUpdating ? 'Rejecting...' : 'Reject Document'}
               </button>
             </div>
           </div>
@@ -919,28 +1053,42 @@ export function DocumentRequestsPage() {
     }
   }, [location.state, requests]);
 
-  const handleStatusUpdate = async (newStatus: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]) => {
+  const handleStatusUpdate = async (
+    newStatus: DocumentStatus,
+    remarks?: string,
+    correctionRequirementIds?: string[],
+    correctionReasonCode?: string,
+    correctionNote?: string
+  ) => {
     if (!selectedRequest) return;
     setIsMutating(true);
-    const originalRequest = { ...selectedRequest };
-    const originalRequests = [...requests];
-
-    // Optimistic UI updates
-    setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { ...r, status: newStatus } : r));
-    setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
 
     try {
-      await updateDocumentStatus(selectedRequest.id, newStatus, remarks, correctionRequirementIds);
+      const updated = await updateDocumentStatus(
+        selectedRequest.id,
+        newStatus,
+        remarks,
+        correctionRequirementIds,
+        correctionReasonCode,
+        correctionNote
+      );
+
+      // Hydrate state directly from authoritative response DTO
+      setSelectedRequest(updated);
+      setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
       setToastMessage(`Request status updated to ${newStatus}.`);
+
+      try {
+        await fetchRequests(true);
+      } catch (refreshErr) {
+        console.error('Refresh after update failed:', refreshErr);
+        setToastMessage(`Updated to ${newStatus}, but list refresh failed.`);
+      }
     } catch (err: any) {
       console.error('Failed to update status:', err);
-      // Rollback on error
-      setRequests(originalRequests);
-      setSelectedRequest(originalRequest);
-      setToastMessage(`Error: ${err.message || 'Failed to update status.'}`);
+      throw err;
     } finally {
       setIsMutating(false);
-      void fetchRequests(true);
     }
   };
 
@@ -1029,6 +1177,12 @@ export function DocumentRequestsPage() {
           request={selectedRequest}
           onClose={() => setSelectedRequest(null)}
           onStatusChange={handleStatusUpdate}
+          onRefetchRequest={async () => {
+            const result = await getDocumentRequests({ search, documentType, status, page, pageSize: PAGE_SIZE });
+            setRequests(result.data);
+            const fresh = result.data.find(r => r.id === selectedRequest.id);
+            if (fresh) setSelectedRequest(fresh);
+          }}
           canManage={canManage}
         />
       )}

@@ -94,6 +94,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const interactiveOperationRef = useRef<InteractiveAuthOperation | null>(null);
   const interactiveUidRef = useRef<string | null>(null);
   const verificationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const refreshPromiseRef = useRef<Promise<BackendUserProfile | null> | null>(null);
   const mountedRef = useRef(true);
 
   const resetLocalState = useCallback(async () => {
@@ -228,9 +229,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const refreshProfile = useCallback(async (): Promise<BackendUserProfile | null> => {
     const firebaseUser = firebaseAuth.currentUser;
     if (!firebaseUser) return null;
+
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current;
+    }
+
     const generation = generationRef.current;
-    const nextProfile = await authApi.profile();
-    return commitProfile(nextProfile, firebaseUser, generation) ? nextProfile : null;
+    const uid = firebaseUser.uid;
+
+    refreshPromiseRef.current = (async () => {
+      try {
+        const nextProfile = await authApi.profile();
+        if (!isCurrent(generation, uid, generationRef.current, uidRef.current)) {
+          return null;
+        }
+        return commitProfile(nextProfile, firebaseUser, generation) ? nextProfile : null;
+      } catch (err) {
+        devDiagnostic("Auth", "Transient background profile refresh failure", safeErrorDetails(err));
+        return null;
+      } finally {
+        refreshPromiseRef.current = null;
+      }
+    })();
+
+    return refreshPromiseRef.current;
   }, [commitProfile]);
 
   const signInWithEmail = useCallback(
@@ -308,8 +330,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       interactiveUidRef.current = "pending";
 
       try {
-        const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
-        const firebaseUser = credential.user;
+        const existingPendingUser = firebaseAuth.currentUser?.email?.toLowerCase() === email.trim().toLowerCase()
+          ? firebaseAuth.currentUser
+          : null;
+        const firebaseUser = existingPendingUser ||
+          (await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password)).user;
         interactiveUidRef.current = firebaseUser.uid;
         generationRef.current += 1;
         uidRef.current = firebaseUser.uid;
@@ -318,13 +343,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         let registeredProfile: BackendUserProfile;
         const registerPayload: RegisterRequestPayload = {
-          ...legal,
+          termsAccepted: Boolean(legal.termsAccepted),
+          privacyAccepted: Boolean(legal.privacyAccepted),
+          termsVersion: legal.termsVersion || "",
+          privacyVersion: legal.privacyVersion || "",
           registrationProfile,
         };
 
         try {
           registeredProfile = await authApi.register(registerPayload);
         } catch (backendError) {
+          if (isAppError(backendError) && backendError.code === "LEGAL_ACCEPTANCE_VERSION_CONFLICT") {
+            // Keep the just-created Firebase identity available for an immediate retry
+            // after the UI reloads the authoritative policy versions.
+            await resetLocalState();
+            throw backendError;
+          }
           // Ambiguous/network failure reconciliation: check if user was created before failing
           try {
             registeredProfile = await authApi.profile();
@@ -345,7 +379,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         // Attempt initial verification email send using modular function
         try {
-          await sendEmailVerification(firebaseUser);
+          if (!existingPendingUser) await sendEmailVerification(firebaseUser);
         } catch {
           // Initial verification send failure does not invalidate registration; user can resend from verify screen
         }
@@ -621,17 +655,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch {}
   }, [resetLocalState]);
 
-  // AppState foreground email-verification re-check
+  // AppState foreground email-verification re-check & authoritative profile refresh
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState === "active" && state === "EMAIL_VERIFICATION_REQUIRED") {
-        void checkEmailVerification(true);
+      if (nextAppState === "active") {
+        if (state === "EMAIL_VERIFICATION_REQUIRED") {
+          void checkEmailVerification(true);
+        } else if (state === "AUTHENTICATED_READY") {
+          void refreshProfile();
+        }
       }
     };
 
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
-  }, [checkEmailVerification, state]);
+  }, [checkEmailVerification, refreshProfile, state]);
 
   const value = useMemo(
     () => ({

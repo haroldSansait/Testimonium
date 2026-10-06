@@ -119,7 +119,14 @@ export interface NotificationProvider {
 
 export interface DocumentProvider {
   getDocumentRequests(filters: DocumentRequestFilters): Promise<PaginatedResponse<DocumentRequest>>;
-  updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]): Promise<DocumentRequest>;
+  updateDocumentStatus(
+    id: string,
+    status: DocumentStatus,
+    remarks?: string,
+    correctionRequirementIds?: string[],
+    correctionReasonCode?: string,
+    correctionNote?: string
+  ): Promise<DocumentRequest>;
 }
 
 export interface ProposeReschedulePayload {

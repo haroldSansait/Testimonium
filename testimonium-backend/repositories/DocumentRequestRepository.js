@@ -1,6 +1,6 @@
 import { prisma } from "../config/db.js";
 
-const listInclude = {
+export const listInclude = {
   user: {
     select: { id: true, fullName: true, email: true, contactNumber: true },
   },

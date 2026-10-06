@@ -3,8 +3,15 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 import { PrivacyContent } from '../../components/legal/PrivacyContent';
+import { useLegalPolicies } from '../../services/legalPolicyService';
 
 export const PrivacyPage: React.FC = () => {
+  const { policies } = useLegalPolicies();
+  const version = policies?.privacyPolicy?.version || 'Unavailable';
+  const effectiveDate = policies?.privacyPolicy?.effectiveAt
+    ? new Date(policies.privacyPolicy.effectiveAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : 'Unavailable';
+
   return (
     <div className="min-h-screen bg-app-base py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -22,7 +29,7 @@ export const PrivacyPage: React.FC = () => {
           
           <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm">
             <Lock size={14} className="text-emerald-700" />
-            <span>Version 1.0 — Effective August 2026</span>
+            <span>Version {version} — Effective {effectiveDate}</span>
           </div>
         </div>
 
@@ -68,4 +75,3 @@ export const PrivacyPage: React.FC = () => {
 };
 
 export default PrivacyPage;
-

@@ -19,9 +19,26 @@ const DocumentRequestTemplates = {
    * @param {string} trackingNumber
    * @param {string} oldStatus
    * @param {string} newStatus
+   * @param {object|null} [correctionContext]
    * @returns {{ title: string, message: string }}
    */
-  parishioner(trackingNumber, oldStatus, newStatus) {
+  parishioner(trackingNumber, oldStatus, newStatus, correctionContext = null) {
+    if (newStatus === "NEEDS_CORRECTION") {
+      let msg = `Your request (Tracking #: ${trackingNumber}) requires document correction.`;
+      if (correctionContext?.reason) {
+        msg += ` Reason: ${correctionContext.reason}.`;
+      }
+      if (correctionContext?.affectedRequirements) {
+        msg += ` Affected requirement(s): ${correctionContext.affectedRequirements}.`;
+      }
+      if (correctionContext?.note) {
+        msg += ` Note: ${correctionContext.note}`;
+      }
+      return {
+        title: "Document Correction Required",
+        message: msg,
+      };
+    }
     if (newStatus === "PAYMENT_NEEDS_CORRECTION") {
       return {
         title: "Payment Proof Requires Correction",
@@ -290,7 +307,7 @@ export class NotificationDispatcher {
    * @param {object|null} tx               - Prisma transaction client
    */
   static async notifyDocumentStatusChange(
-    { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins = false, historyId = null },
+    { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins = false, historyId = null, correctionContext = null },
     tx = null
   ) {
     const client = tx || prisma;
@@ -300,7 +317,8 @@ export class NotificationDispatcher {
     const parishionerTemplate = DocumentRequestTemplates.parishioner(
       trackingNumber,
       oldStatus,
-      newStatus
+      newStatus,
+      correctionContext
     );
     payloads.push({
       userId: parishionerId,
@@ -335,8 +353,9 @@ export class NotificationDispatcher {
       }
     }
 
-    await NotificationDispatcher._persist(payloads, client);
-    await EmailOutboxService.enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId }, client);
+    const throwOnError = newStatus === "NEEDS_CORRECTION";
+    await NotificationDispatcher._persist(payloads, client, { throwOnError });
+    await EmailOutboxService.enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId, correctionContext }, client);
   }
 
   /**

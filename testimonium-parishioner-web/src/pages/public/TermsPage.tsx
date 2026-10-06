@@ -3,8 +3,15 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Scale } from 'lucide-react';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 import { TermsContent } from '../../components/legal/TermsContent';
+import { useLegalPolicies } from '../../services/legalPolicyService';
 
 export const TermsPage: React.FC = () => {
+  const { policies } = useLegalPolicies();
+  const version = policies?.termsOfService?.version || 'Unavailable';
+  const effectiveDate = policies?.termsOfService?.effectiveAt
+    ? new Date(policies.termsOfService.effectiveAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : 'Unavailable';
+
   return (
     <div className="min-h-screen bg-app-base py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -22,7 +29,7 @@ export const TermsPage: React.FC = () => {
           
           <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm">
             <Scale size={14} className="text-crimson" />
-            <span>Version 1.0 — Effective August 2026</span>
+            <span>Version {version} — Effective {effectiveDate}</span>
           </div>
         </div>
 
@@ -68,4 +75,3 @@ export const TermsPage: React.FC = () => {
 };
 
 export default TermsPage;
-

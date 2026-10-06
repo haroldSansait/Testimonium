@@ -28,9 +28,9 @@ The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`:
 
 A successful response is normally `{ "success": true, "data": ... }`; errors provide `success`, `message`, and optional `errors` or `code`. List endpoints return pagination metadata alongside items.
 
-### Registered Route Modules (23 Modules)
-All REST API endpoints are mounted under `/api/v1` across 23 functional modules:
-`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, `chatbot` (including `/chatbot/admin/*` Caloy management and telemetry endpoints), and `identity-verification` (`/identity-verification`).
+### Registered Route Modules (24 Modules)
+All REST API endpoints are mounted under `/api/v1` across 24 functional modules:
+`health`, `auth`, `dashboard`, `document-requests`, `document-requirements`, `parish-availabilities`, `requests`, `payment`, `parishes`, `users`, `schedule-requests`, `schedule-availability`, `reports`, `notifications`, `calendar`, `activity-log`, `diocese`, `analytics`, `mass-schedules`, `parish-events`, `priest/personal-schedules`, `chatbot` (including `/chatbot/admin/*` Caloy management and telemetry endpoints), `identity-verification` (`/identity-verification`), and `legal-policies` (`/legal-policies`).
 
 ## Public and authentication routes
 
@@ -39,9 +39,9 @@ All REST API endpoints are mounted under `/api/v1` across 23 functional modules:
 | GET | `/health` | Public | API and database health status. |
 | GET | `/auth/profile` | Authenticated | Get the signed-in user profile (includes `emailNotificationsEnabled`, `isGovernmentIdVerified`, `governmentIdVerificationStatus`, `governmentIdRejectionReason`, `governmentIdVerifiedAt`, `governmentIdExpiresAt`, and `governmentIdType`). |
 | PUT | `/auth/profile` | Authenticated | Update the signed-in profile (supports name fields, contact number, address, and `emailNotificationsEnabled` boolean). If `fullName` is materially changed after verification, existing Government ID verification is automatically invalidated under a concurrency lease lock. |
-| POST | `/auth/login` | Authenticated (Rate-limited) | Provision or resolve the Firebase-authenticated user session (supports Google JIT legal payload). |
-| POST | `/auth/register` | Authenticated (Rate-limited) | Register/complete a user record after Firebase authentication. |
-| POST | `/auth/legal-acceptance` | Authenticated | Record accepted terms and privacy policy versions. |
+| POST | `/auth/login` | Authenticated (Rate-limited) | Provision or resolve the Firebase-authenticated user session (supports Google JIT legal payload with exact current policy versions; rejects stale versions with `409 LEGAL_ACCEPTANCE_VERSION_CONFLICT`). |
+| POST | `/auth/register` | Authenticated (Rate-limited) | Register/complete a user record after Firebase authentication. Requires explicit acceptance of both Terms and Privacy with exact current displayed versions (rejects stale versions with `409 LEGAL_ACCEPTANCE_VERSION_CONFLICT`). |
+| POST | `/auth/legal-acceptance` | Authenticated | Record accepted terms and/or privacy policy versions. Supports independent reacceptance (`termsAccepted` / `termsVersion`, `privacyAccepted` / `privacyVersion`). Exact displayed versions required; rejects stale versions with `409 LEGAL_ACCEPTANCE_VERSION_CONFLICT`. |
 | POST | `/auth/resend-verification` | Public (Rate-limited) | Request a verification-email resend (60s cooldown, 5/day account limit). |
 
 ## Parish directory and configuration
@@ -147,7 +147,7 @@ The system automates the verification of Philippine government-issued card IDs u
 | POST | `/requests/:id/resubmit-corrections` | Owner | Resubmit a corrected request after staff request. |
 | GET | `/payment/configuration` | Authenticated | Resolve payment settings and QR data for the caller’s context. |
 | GET | `/document-requests` | Staff / Coordinator / Priest | List processable document requests. Priests have parish-scoped read-only access. |
-| PATCH | `/document-requests/:id/status` | Secretary / Coordinator | Apply a validated workflow/status change. Priests are strictly rejected with `403` (read-only). Canonical workflow: `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`. Transitioning to `READY_FOR_SIGNING` dispatches an in-app notification to the active primary parish priest. |
+| PATCH | `/document-requests/:id/status` | Secretary / Coordinator | Apply a validated workflow/status change. Priests are strictly rejected with `403` (read-only). Canonical workflow: `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`. Transitioning to `READY_FOR_SIGNING` dispatches an in-app notification to the active primary parish priest. For `NEEDS_CORRECTION`, requires `correctionReasonCode` and non-empty `correctionRequirementIds`, with optional `correctionNote` (<= 1000 characters). Status CAS conflict returns `409 DOCUMENT_REQUEST_CONCURRENCY_CONFLICT`. |
 | GET | `/document-requests/:id/attachments/:attachmentId/download` | Staff / Coordinator / Priest | Authenticated staff attachment download streaming (includes parish-assigned Priests for review). |
 
 ### Sacramental Document Types and Configurable Requirements Matrix
@@ -197,9 +197,29 @@ The system governs seven canonical document types and eight canonical requiremen
 **Document Request Lifecycle & Presentation Mapping:**
 - Canonical workflow: `PENDING` → `UNDER_REVIEW` → `PAYMENT_PENDING` → `PAYMENT_UNDER_REVIEW` → `PAYMENT_VERIFIED` → `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`.
 - Correction workflows: `UNDER_REVIEW` → `NEEDS_CORRECTION` → `UNDER_REVIEW`; `PAYMENT_UNDER_REVIEW` → `PAYMENT_NEEDS_CORRECTION` → `PAYMENT_UNDER_REVIEW`.
+- `PENDING -> NEEDS_CORRECTION` is strictly forbidden (staff must first transition `PENDING -> UNDER_REVIEW` via `Start Review`).
+- Admin Document Quality Correction ("Reject" Action):
+  - In Admin portal, the visible action in `UNDER_REVIEW` is named `Reject`, which transitions internally to resumable `UNDER_REVIEW -> NEEDS_CORRECTION` (terminal `REJECTED` remains in state machine and backend capability).
+  - Payload requires canonical reason code (`correctionReasonCode`), array of canonical requirement IDs (`correctionRequirementIds`), and optional note (`correctionNote` <= 1000 chars):
+    - `UNCLEAR_OR_BLURRY` — `Unclear / blurry / unreadable document`
+    - `WRONG_DOCUMENT` — `Wrong document uploaded`
+    - `INCOMPLETE_DOCUMENT` — `Incomplete document / missing page or side`
+    - `CROPPED_INFORMATION` — `Cropped document / important information not visible`
+    - `APPLICANT_MISMATCH` — `Information does not match applicant/request`
+    - `EXPIRED_OR_INVALID` — `Expired / invalid document`
+    - `INCORRECT_REQUIREMENT_FILE` — `Incorrect file uploaded for this requirement`
+    - `OTHER` — `Other`
+  - Persisted multiline snapshot in `correction_notes` / history:
+    ```text
+    Reason: Unclear / blurry / unreadable document
+    Affected requirements: Valid ID, Baptismal Certificate
+    Additional note: Please include the reverse side.
+    ```
+  - Dispatches dedicated `DOCUMENT_NEEDS_CORRECTION` notification with `{ throwOnError: true }` so DB failure rolls back the state transition. The outbox stores the structured plain-text correction context; the email renderer escapes each field exactly once and preserves multiline notes.
+  - Concurrency conflict triggers 409 `DOCUMENT_REQUEST_CONCURRENCY_CONFLICT`; frontend retains draft and refetches authoritative state.
 - `READY_FOR_SIGNING`: Internal stage indicating document certificate drafting is complete and awaiting the physical signature of the parish's primary priest before pickup. Transitioning to `READY_FOR_SIGNING` automatically dispatches an in-app notification to the active primary parish priest (`DOCUMENT_REQUEST_READY_FOR_SIGNING`). If no active primary priest is assigned, it proceeds gracefully.
 - Client presentation: Parishioner-facing clients (web portal and mobile app) map `READY_FOR_SIGNING` to "Processing" ("Document is prepared and awaiting the parish priest's signature before release"), shielding internal operational workflows from parishioner confusion while providing full transparency.
-- Supporting uploads allow PDF, PNG, JPEG, and WebP, up to 5 MB each (maximum 5 files per request). Receipts accept JPEG or PNG only, up to 5 MB; HEIC/HEIF and PDFs are rejected by the backend (mobile converts HEIC locally before upload). A receipt upload allocates an atomic `attemptVersion`, supersedes previous non-superseded receipts, records SHA-256 duplicate image hashes, and moves the request to `PAYMENT_UNDER_REVIEW`. OCR enriches the evidence asynchronously; staff verification remains mandatory.
+- Supporting uploads allow PDF, PNG, JPEG, and WebP, up to 5 MB each (maximum 5 files per request). On Parishioner Web client selectors, supporting/correction uploads are restricted to image types (JPEG, JPG, PNG, WebP) and authorization letters to (JPEG, JPG, PNG; no PDF, no WebP); backend and Android PDF support remain intact. Receipts accept JPEG or PNG only, up to 5 MB; HEIC/HEIF and PDFs are rejected by the backend (mobile converts HEIC locally before upload). A receipt upload allocates an atomic `attemptVersion`, supersedes previous non-superseded receipts, records SHA-256 duplicate image hashes, and moves the request to `PAYMENT_UNDER_REVIEW`. OCR enriches the evidence asynchronously; staff verification remains mandatory.
 
 ## Scheduling, availability, and calendar
 
@@ -418,7 +438,21 @@ FINAL RESPONSE + EPHEMERAL SAFE CONTEXT
 }
 ```
 
+## Legal policies
 
+Authoritative legal terms of service and privacy policy are stored in the database (`legal_policies`), seeded as v1.0 effective 2026-08-01, and managed exclusively by Diocese Coordinators.
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/legal-policies/current` | Public | Returns current authoritative Terms of Service and Privacy Policy in plain text alongside public version strings (`v{revision}.0`). Excludes updater identity. If unseeded or unavailable, returns `503 LEGAL_POLICY_CONFIGURATION_UNAVAILABLE`. |
+| GET | `/legal-policies/manage` | Diocese Coordinator | Returns management view of policies including revision, effective date, content, and safe updater metadata (`id`, `fullName`, `email`, `role`). |
+| PATCH | `/legal-policies/:policyType` | Diocese Coordinator | Atomically update policy content (`TERMS_OF_SERVICE` or `PRIVACY_POLICY`). Requires `content` (plain text <= 50,000 chars) and integer `expectedRevision`. CAS concurrency mismatch returns `409 LEGAL_POLICY_VERSION_CONFLICT`. Unchanged content returns `{ "changed": false }` without bumping revision or effective date. Publication increments revision (`v{revision}.0`), updates `effective_at = NOW()`, and creates a transactional audit log with SHA-256 content hashes (never storing full legal text in audit logs). |
+
+### Legal Acceptance and Stale Version Protection
+- **Independent Acceptance Computation:** Terms and Privacy policy acceptance are evaluated independently based on stored `terms_version` and `privacy_version` against authoritative active versions.
+- **Stale Acceptance Rejection:** Submitters must accept the exact currently active version string. A race condition where coordinator publishes v2.0 while a user submits v1.0 results in `409 LEGAL_ACCEPTANCE_VERSION_CONFLICT`, prompting the client to refetch and review the latest policy.
+- **Client Rendering:** Rendered as inert plain text with `white-space: pre-wrap`. HTML parsers and markdown interpreters are strictly prohibited.
+- **Staff Exemption:** Legal policy acceptance gating applies only to parishioner registration and parishioner workflows; pre-provisioned staff accounts (`SECRETARY`, `PRIEST`, `DIOCESE_COORDINATOR`) are never blocked from administrative functions.
 
 ## Idempotency and concurrency controls
 

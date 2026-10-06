@@ -23,6 +23,7 @@ import {
   Info,
   FileCheck,
   Church,
+  Scale,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -35,6 +36,8 @@ import {
   type SchedulingAvailabilityEditorHandle,
 } from '@/components/settings/SchedulingAvailabilityEditor';
 import { ParishCouncilEditor } from '@/components/settings/ParishCouncilEditor';
+import { LegalPoliciesEditor } from '@/components/settings/LegalPoliciesEditor';
+import { canManageLegalPolicies } from '@/permissions/rolePermissions';
 
 import {
   CANONICAL_DOCUMENT_TYPES,
@@ -175,7 +178,7 @@ export function SettingsPage() {
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [selectedParishId, setSelectedParishId] = useState<string>('');
   
-  const [activeTab, setActiveTab] = useState<'documents' | 'events' | 'hours' | 'qr' | 'councils'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'events' | 'hours' | 'qr' | 'councils' | 'legal'>('documents');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -759,7 +762,7 @@ export function SettingsPage() {
         title="Parish Settings"
         subtitle="Manage configurations for sacraments, documents, fees, and office operating hours."
         actions={
-          activeTab !== 'councils' ? (
+          activeTab !== 'councils' && activeTab !== 'legal' ? (
             <button
               onClick={() => void handleSaveSettings()}
               disabled={saving || !selectedParishId || !isDirty}
@@ -773,7 +776,7 @@ export function SettingsPage() {
       />
 
       {/* Unsaved Changes Banner (for general settings tabs) */}
-      {isDirty && activeTab !== 'councils' && (
+      {isDirty && activeTab !== 'councils' && activeTab !== 'legal' && (
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
@@ -805,7 +808,7 @@ export function SettingsPage() {
       )}
 
       {/* Parish Selector (Diocese Coordinator Only, for general settings tabs) */}
-      {isCoordinator && activeTab !== 'councils' && (
+      {isCoordinator && activeTab !== 'councils' && activeTab !== 'legal' && (
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-1">
@@ -901,6 +904,20 @@ export function SettingsPage() {
             <Users className="w-4 h-4" />
             Parish Councils
           </button>
+          {canManageLegalPolicies(role) && (
+            <button
+              onClick={() => setActiveTab('legal')}
+              className={cn(
+                'flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer',
+                activeTab === 'legal'
+                  ? 'border-crimson-700 text-crimson-700 bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+              )}
+            >
+              <Scale className="w-4 h-4" />
+              Legal Policies
+            </button>
+          )}
         </div>
 
         {/* Tab Contents */}
@@ -2070,6 +2087,11 @@ export function SettingsPage() {
           {/* Tab 5: Parish Councils */}
           {activeTab === 'councils' && (
             <ParishCouncilEditor />
+          )}
+
+          {/* Tab 6: Legal Policies (Diocese Coordinator Only) */}
+          {activeTab === 'legal' && canManageLegalPolicies(role) && (
+            <LegalPoliciesEditor />
           )}
         </div>
       </div>

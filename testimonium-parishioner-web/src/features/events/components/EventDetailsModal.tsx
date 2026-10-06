@@ -6,7 +6,6 @@ import {
   Building, 
   User, 
   Phone, 
-  Share2, 
   Globe, 
   Check, 
   AlertCircle, 
@@ -98,8 +97,6 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
 }) => {
   // Per-action inline feedback states (no browser alert())
   const [calendarFeedback, setCalendarFeedback] = useState<FeedbackState>('idle');
-  const [shareFeedback, setShareFeedback] = useState<FeedbackState>('idle');
-  const [shareError, setShareError] = useState('');
 
   const resetFeedback = (setter: React.Dispatch<React.SetStateAction<FeedbackState>>) => {
     setTimeout(() => setter('idle'), 2500);
@@ -114,29 +111,6 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
     } catch {
       setCalendarFeedback('error');
       resetFeedback(setCalendarFeedback);
-    }
-  }, [event]);
-
-  const handleShare = useCallback(() => {
-    if (!event) return;
-    const url = `${window.location.origin}/dashboard/events?id=${event.id}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(
-        () => {
-          setShareFeedback('success');
-          setShareError('');
-          resetFeedback(setShareFeedback);
-        },
-        () => {
-          setShareFeedback('error');
-          setShareError('Failed to copy to clipboard');
-          resetFeedback(setShareFeedback);
-        }
-      );
-    } else {
-      setShareFeedback('error');
-      setShareError('Clipboard not available');
-      resetFeedback(setShareFeedback);
     }
   }, [event]);
 
@@ -219,18 +193,6 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
           <div role="alert" className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
             <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
             <span>Could not download calendar file. Please try again.</span>
-          </div>
-        )}
-        {shareFeedback === 'success' && (
-          <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
-            <Check size={15} className="text-emerald-600 flex-shrink-0" />
-            <span>Event link copied to clipboard!</span>
-          </div>
-        )}
-        {shareFeedback === 'error' && (
-          <div role="alert" className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
-            <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
-            <span>{shareError || 'Could not copy link.'}</span>
           </div>
         )}
 
@@ -406,28 +368,6 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 justify-end">
-            {/* Share button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleShare}
-              className={`flex items-center space-x-1.5 transition-colors text-xs font-semibold ${
-                shareFeedback === 'success'
-                  ? 'border-green-500 text-green-700 bg-green-50'
-                  : shareFeedback === 'error'
-                  ? 'border-red-400 text-red-600'
-                  : ''
-              }`}
-            >
-              {shareFeedback === 'success' ? (
-                <><Check size={13} /><span>Copied!</span></>
-              ) : shareFeedback === 'error' ? (
-                <><AlertCircle size={13} /><span>Failed</span></>
-              ) : (
-                <><Share2 size={13} /><span>Share</span></>
-              )}
-            </Button>
-
             {/* Add to Calendar (.ics) button */}
             <Button
               variant="outline"

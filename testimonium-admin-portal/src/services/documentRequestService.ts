@@ -20,7 +20,16 @@ export async function updateDocumentStatus(
   id: string,
   status: DocumentStatus,
   remarks?: string,
-  correctionRequirementIds?: string[]
+  correctionRequirementIds?: string[],
+  correctionReasonCode?: string,
+  correctionNote?: string
 ): Promise<DocumentRequest> {
-  return providerFactory.getDocumentProvider().updateDocumentStatus(id, status, remarks, correctionRequirementIds);
+  return providerFactory.getDocumentProvider().updateDocumentStatus(
+    id,
+    status,
+    remarks,
+    correctionRequirementIds,
+    correctionReasonCode,
+    correctionNote
+  );
 }

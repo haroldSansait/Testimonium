@@ -9,8 +9,8 @@ import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { TextInput } from "@/components/ui/TextInput";
 import { FormSection } from "@/components/ui/FormSection";
 import { Divider } from "@/components/ui/Divider";
-import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/config/legal";
 import { useAuth } from "@/providers/AuthProvider";
+import { useLegalPolicies } from "@/hooks/useLegalPolicies";
 import { isAppError } from "@/services/api/errors";
 import { isGoogleAuthAvailable } from "@/services/auth/googleAuth";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -19,6 +19,13 @@ import { evaluatePasswordStrength } from "@/utils/passwordStrength";
 
 export default function RegisterScreen() {
   const { signUpWithEmail, signInWithGoogle, isRegistering, isSigningIn } = useAuth();
+  const {
+    data: policies,
+    isLoading: isPoliciesLoading,
+    isError: isPoliciesError,
+    error: policiesError,
+    refetch: refetchPolicies,
+  } = useLegalPolicies();
   const showGoogleButton = isGoogleAuthAvailable();
 
   const [firstName, setFirstName] = useState("");
@@ -40,6 +47,11 @@ export default function RegisterScreen() {
 
   const handleSubmit = async () => {
     if (isRegistering || isSigningIn) return;
+
+    if (!policies?.termsOfService || !policies?.privacyPolicy) {
+      setError("Authoritative legal policies are currently unavailable. Please retry.");
+      return;
+    }
 
     if (!firstName.trim() || !lastName.trim()) {
       setError("First Name and Last Name are required.");
@@ -80,16 +92,23 @@ export default function RegisterScreen() {
         {
           termsAccepted: true,
           privacyAccepted: true,
-          termsVersion: CURRENT_TERMS_VERSION,
-          privacyVersion: CURRENT_PRIVACY_VERSION,
+          termsVersion: policies.termsOfService.version,
+          privacyVersion: policies.privacyPolicy.version,
         }
       );
     } catch (cause) {
-      setError(
-        isAppError(cause)
-          ? cause.message
-          : "Registration could not be completed. Please check your details and try again."
-      );
+      if (isAppError(cause) && cause.code === "LEGAL_ACCEPTANCE_VERSION_CONFLICT") {
+        setTermsAccepted(false);
+        setPrivacyAccepted(false);
+        await refetchPolicies();
+        setError("The legal policies changed while you were registering. Please review and accept the updated versions.");
+      } else {
+        setError(
+          isAppError(cause)
+            ? cause.message
+            : "Registration could not be completed. Please check your details and try again."
+        );
+      }
     }
   };
 
@@ -114,7 +133,8 @@ export default function RegisterScreen() {
     password.length >= 6 &&
     password === confirmPassword &&
     termsAccepted &&
-    privacyAccepted;
+    privacyAccepted &&
+    Boolean(policies?.termsOfService && policies?.privacyPolicy);
 
   return (
     <AuthScaffold
@@ -312,11 +332,25 @@ export default function RegisterScreen() {
 
         {/* Section 3: Legal Terms & Privacy */}
         <FormSection title="Legal Terms & Privacy Consent">
+          {isPoliciesLoading && (
+            <Text style={styles.checkboxLabel} allowFontScaling>
+              Loading authoritative legal policies...
+            </Text>
+          )}
+          {isPoliciesError && (
+            <View style={styles.errorContainer}>
+              <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
+                {policiesError?.message || "Authoritative legal policies are unavailable."}
+              </Text>
+              <Button title="Retry" size="sm" variant="secondary" onPress={() => { void refetchPolicies(); }} />
+            </View>
+          )}
           <View style={styles.legalCheckboxes}>
             <Pressable
               accessibilityRole="checkbox"
               accessibilityState={{ checked: termsAccepted }}
               accessibilityLabel="Accept Terms of Service"
+              disabled={!policies || isPoliciesLoading}
               onPress={() => setTermsAccepted((prev) => !prev)}
               style={styles.checkboxRow}
             >
@@ -334,7 +368,7 @@ export default function RegisterScreen() {
                   hitSlop={8}
                 >
                   <Text style={styles.linkText} allowFontScaling>
-                    Terms of Service
+                    Terms of Service ({policies?.termsOfService.version ?? "Unavailable"})
                   </Text>
                 </Pressable>
               </View>
@@ -344,6 +378,7 @@ export default function RegisterScreen() {
               accessibilityRole="checkbox"
               accessibilityState={{ checked: privacyAccepted }}
               accessibilityLabel="Accept Privacy Policy"
+              disabled={!policies || isPoliciesLoading}
               onPress={() => setPrivacyAccepted((prev) => !prev)}
               style={styles.checkboxRow}
             >
@@ -361,7 +396,7 @@ export default function RegisterScreen() {
                   hitSlop={8}
                 >
                   <Text style={styles.linkText} allowFontScaling>
-                    Privacy Policy
+                    Privacy Policy ({policies?.privacyPolicy.version ?? "Unavailable"})
                   </Text>
                 </Pressable>
               </View>

@@ -4,7 +4,7 @@
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 
-This reference summarizes the 34 physical models and 28 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
+This reference summarizes the 35 physical models and 29 enums implemented in the TESTIMONIUM backend. Prisma model names map to the listed `snake_case` tables and database columns.
 
 ## Enums
 
@@ -38,6 +38,7 @@ This reference summarizes the 34 physical models and 28 enums implemented in the
 | `KnowledgeSourceStatus` | `DRAFT`, `ACTIVE`, `RETIRED` |
 | `KnowledgeSourceType` | `SYSTEM_GUIDE`, `PARISH_PROCEDURE`, `DIOCESE_PROCEDURE`, `CLERGY_INTERVIEW`, `OFFICIAL_SOURCE`, `LEGACY_FAQ`, `ADMIN_ENTRY` |
 | `EmbeddingStatus` | `PENDING`, `PROCESSING`, `READY`, `FAILED`, `STALE` |
+| `LegalPolicyType` | `TERMS_OF_SERVICE`, `PRIVACY_POLICY` |
 
 ## Identity and parish directory
 
@@ -103,6 +104,12 @@ This reference summarizes the 34 physical models and 28 enums implemented in the
 | `system_leases` | `lease_key` | `lease_key` (`VarChar(100)`, PK), `owner_token` (`VarChar(100)`), `lease_expires_at` (`TIMESTAMPTZ(6)`), `updated_at` | Atomic DB-backed coordination using PostgreSQL `NOW()` for expiry, owner-token renewal, and owner-token release. Daily retention uses `CALOY_TELEMETRY_RETENTION:YYYY-MM-DD`; manual and automatic deletion share renewable lease `CALOY_TELEMETRY_PURGE`. |
 | `ai_usage_events` | `event_id` | `trace_id` (nullable UUID string), `provider` (`VarChar(50)`), `model` (`VarChar(100)`), `operation` (`VarChar(50)`: `GENERATE_CONTENT`, `EMBED_CONTENT`), `purpose` (`VarChar(50)`: `SEMANTIC_ROUTING`, `RAG_GENERATION`, `RESPONSE_COMPOSER`, `QUERY_EMBEDDING`, `DOCUMENT_EMBEDDING`), `attempt_number` (Int), `success` (Boolean), `status_code` (nullable Int), `error_category` (nullable VarChar(100)), `latency_ms` (Int), `input_tokens` (nullable Int), `output_tokens` (nullable Int), `total_tokens` (nullable Int), `created_at` | Non-blocking best-effort provider usage telemetry. Correlates with `chatbot_logs.trace_id`. Check constraints: `operation IN ('GENERATE_CONTENT', 'EMBED_CONTENT')`, `purpose IN ('SEMANTIC_ROUTING', 'RAG_GENERATION', 'RESPONSE_COMPOSER', 'QUERY_EMBEDDING', 'DOCUMENT_EMBEDDING')`, `attempt_number >= 1`, `latency_ms >= 0`, tokens `>= 0`. Indexed by `[created_at]`, `[trace_id]`, `[operation, created_at]`, `[purpose, created_at]`, `[model, created_at]`, and `[success, created_at]`. |
 
+## Legal Policy Governance
+
+| Table | Primary key | Important columns | Relations/indexes |
+| --- | --- | --- | --- |
+| `legal_policies` | `policy_type` (`LegalPolicyType`) | `content` (Text, non-empty, <= 50,000 chars), `revision` (Int, default 1), `effective_at` (`TIMESTAMPTZ(6)`), `updated_by_id` (optional Int FK users), `created_at` (`TIMESTAMPTZ(6)`), `updated_at` (`TIMESTAMPTZ(6)`) | Optional User relation (`updatedBy`). Managed exclusively by Diocese Coordinators with optimistic concurrency (`expectedRevision`). |
+
 ## Relationship graph summary
 
 ```text
@@ -124,6 +131,7 @@ Parish 0..1 ── * DailyReport
 Parish 0..1 ── * KnowledgeSource 1 ── * KnowledgeChunk
 User 1 ── * (Notification, ActivityLog, ChatbotLog, IdempotencyKey)
 User 0..1 ── * CaloyRuntimeConfig (Singleton updater relation)
+User 0..1 ── * LegalPolicy (Policy updater relation)
 ChatbotLog 1 (trace_id) ── 0..* AiUsageEvent (via unconstrained trace_id correlation)
 SystemLease (Standalone distributed coordination lease ledger)
 EmailOutbox (Standalone transactional outbox ledger)
@@ -131,13 +139,16 @@ EmailOutbox (Standalone transactional outbox ledger)
 
 ## Data integrity and constraints
 
-- PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, council types, government ID statuses/reasons, and workflow boundaries.
+- PostgreSQL native database enums enforce role, status, event type, weekdays, visibility, report scopes/categories, email states, council types, government ID statuses/reasons, legal policy types, and workflow boundaries.
 - `Decimal(10,2)` is used for all fee snapshots and payment amounts.
 - `DocumentRequest.correctionRequirementIds` and `Parish.gallery` are PostgreSQL string arrays; `Parish.availableDocuments`, `Parish.documentSettings`, and `EmailOutbox.payload` are JSON.
 - `Parish.is_mother_parish` is a non-null boolean with a safe default of `false`. A PostgreSQL partial unique index `parishes_single_mother_parish_idx` ON `parishes ("is_mother_parish") WHERE "is_mother_parish" = true` guarantees at most one Mother Parish exists per diocese at the database engine level.
 - `DocumentRequestStatus` includes `READY_FOR_SIGNING` between `PROCESSING` and `READY_FOR_PICKUP`. Transitioning to `READY_FOR_SIGNING` represents the internal completion of drafting awaiting the active primary priest's physical signature, triggering an in-app notification to the active primary priest. Priests have parish-scoped read-only access to document requests, and mutations are restricted to Secretary and Coordinator (`PRIEST` receives `403 FORBIDDEN`).
 - Document requirements are dynamically resolved by merging the system-wide `DOCUMENT_REQUIREMENTS_MATRIX` with parish-specific `documentSettings.requirements` (supporting both adding canonical requirements and disabling default requirements).
+- Document request `NEEDS_CORRECTION` transition enforces canonical reason selection (`correctionReasonCode`), non-empty canonical requirement IDs (`correctionRequirementIds`), and optional note (`correctionNote` <= 1000 chars), storing an authoritative multiline human-readable snapshot in `correction_notes` / `request_history`, emitting a dedicated notification with `{ throwOnError: true }`, and enqueuing an HTML-escaped email payload. Status CAS conflict returns 409 `DOCUMENT_REQUEST_CONCURRENCY_CONFLICT`.
 - `GovernmentIdVerification` enforces 1-to-1 uniqueness on `user_id` and cascades on user deletion. Images are stored exclusively in dedicated private bucket `R2_IDENTITY_BUCKET_NAME`. Sharp-based Laplacian variance sharpness (threshold >= 15) and distinct SHA-256 binary hash validation prevent blurry or duplicate uploads. Multi-marker regexes with strength rankings (`STRONG`, `SUPPORTING`, `SHARED`) identify 5 supported Philippine card types (`PHIL_SYS`, `DRIVERS_LICENSE`, `UMID`, `VOTER_ID`, `POSTAL_ID`). Deterministic side classification detects misoriented uploads (`FRONT_IS_BACK`, `BACK_IS_FRONT`, `BOTH_APPEAR_FRONT`, `BOTH_APPEAR_BACK`, `SIDES_SWAPPED`). Fuzzy Levenshtein token matching against legal profile `fullName` and expiration checks protect identity integrity. Concurrency is guarded via `SystemLease` key `GOVERNMENT_ID_VERIFICATION:<userId>`, and any material profile name change automatically invalidates active verification and cleans up prior R2 objects. Effective verification gates document requests and appointments, and automatically satisfies the canonical `valid_id` checklist requirement.
+- `LegalPolicy` table contains exactly two authoritative rows keyed by `LegalPolicyType` (`TERMS_OF_SERVICE`, `PRIVACY_POLICY`) with database checks for revision, nonblank content, and the 50,000-character limit. Runtime reads fail closed if either row is unavailable. Revision increments on publication (`v{revision}.0`) while unchanged content returns `{ changed: false }`. Publication locks the target row and performs a revision-qualified update; acceptance/registration holds shared locks on both rows through the user write. Stale writers receive 409 `LEGAL_POLICY_VERSION_CONFLICT`. Publication executes transactional audit logging recording SHA-256 content hashes (never storing full legal text in audit rows).
+- Supabase RLS and Security Hardening Deferral: Row Level Security policies, table grants, Supabase Data API exposure, role permissions, and Supabase Auth configuration are intentionally untouched in this feature batch; RLS/security remediation is explicitly deferred to a dedicated later security phase.
 - `ReceiptUpload` enforces `attempt_version > 0`, uniqueness on `[payment_transaction_id, attempt_version]`, and at most ONE active attempt (`is_superseded = false`) per payment transaction via a unique partial index.
 - `PriestPersonalSchedule` enforces an interval check constraint (`end_at > start_at`) and optimistic versioning (`version`).
 - `Schedule` maintains optimistic concurrency control via integer `version`, references optional `requested_priest_id` for parishioner priest preferences, and generates append-only `ScheduleHistory` records across transitions.

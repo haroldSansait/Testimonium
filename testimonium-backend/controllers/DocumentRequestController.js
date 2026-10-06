@@ -37,7 +37,7 @@ export const list = async (req, res, next) => {
 export const updateStatus = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status, remarks, correctionRequirementIds } = req.body;
+    const { status, remarks, correctionRequirementIds, correctionReasonCode, correctionNote } = req.body;
     const actorId = req.user.id;
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
@@ -63,7 +63,17 @@ export const updateStatus = async (req, res, next) => {
       });
     }
 
-    const updated = await documentRequestService.updateStatus(id, status, remarks, actorId, actorRole, actorParishId, correctionRequirementIds);
+    const updated = await documentRequestService.updateStatus(
+      id,
+      status,
+      remarks,
+      actorId,
+      actorRole,
+      actorParishId,
+      correctionRequirementIds,
+      correctionReasonCode,
+      correctionNote
+    );
 
     return res.status(200).json({
       success: true,
@@ -74,6 +84,7 @@ export const updateStatus = async (req, res, next) => {
     if (err.statusCode) {
       return res.status(err.statusCode).json({
         success: false,
+        code: err.code,
         message: err.message,
       });
     }

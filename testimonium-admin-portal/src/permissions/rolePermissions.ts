@@ -57,6 +57,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.MANAGE_CALOY_SETTINGS,
     PERMISSIONS.VIEW_CALOY_LOGS,
     PERMISSIONS.MANAGE_CALOY_LOGS,
+    PERMISSIONS.MANAGE_LEGAL_POLICIES,
   ],
 
   // Parishioners do not have access to the admin portal.
@@ -144,6 +145,11 @@ export function canManageCaloyLogs(role: UserRole | null | undefined): boolean {
 /** True when the role may manage (change status / approve / reject) document requests. */
 export function canManageDocumentRequests(role: UserRole | null | undefined): boolean {
   return hasPermission(role, PERMISSIONS.MANAGE_DOCUMENT_REQUESTS);
+}
+
+/** True when the role may manage dynamic legal policies (Terms & Privacy). */
+export function canManageLegalPolicies(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.MANAGE_LEGAL_POLICIES);
 }
 
 // Re-export Permission type for convenient single-import by consumers.

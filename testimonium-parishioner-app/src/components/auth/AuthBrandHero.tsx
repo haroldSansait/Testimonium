@@ -7,7 +7,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { colors, fontStyles, spacing } from "@/theme/tokens";
+import { fontStyles, spacing } from "@/theme/tokens";
 
 export interface AuthBrandHeroProps {
   title?: string;

@@ -2,6 +2,7 @@ import { authApi } from "@/services/api/endpoints/auth";
 import { AppError } from "@/services/api/errors";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/config/legal";
 import type { BackendUserProfile, PendingLegalAction } from "@/types/auth";
+import { parseCurrentLegalPolicies } from "@/services/api/endpoints/legal";
 
 jest.mock("@/services/api/endpoints/auth");
 
@@ -93,5 +94,30 @@ describe("Legal Acceptance Suite", () => {
     ).rejects.toMatchObject({
       kind: "SERVER",
     });
+  });
+});
+
+describe("Authoritative legal policy response validation", () => {
+  const valid = {
+    termsOfService: {
+      policyType: "TERMS_OF_SERVICE", version: "v2.0", revision: 2,
+      effectiveAt: "2026-10-05T00:00:00.000Z", content: "Terms",
+    },
+    privacyPolicy: {
+      policyType: "PRIVACY_POLICY", version: "v3.0", revision: 3,
+      effectiveAt: "2026-10-05T00:00:00.000Z", content: "Privacy",
+    },
+  };
+
+  it("accepts a complete, internally consistent policy pair", () => {
+    expect(parseCurrentLegalPolicies(valid)).toEqual(valid);
+  });
+
+  it("rejects malformed and revision/version-inconsistent responses", () => {
+    expect(() => parseCurrentLegalPolicies({ ...valid, privacyPolicy: null })).toThrow(/Malformed/);
+    expect(() => parseCurrentLegalPolicies({
+      ...valid,
+      termsOfService: { ...valid.termsOfService, version: "v1.0" },
+    })).toThrow(/Malformed/);
   });
 });

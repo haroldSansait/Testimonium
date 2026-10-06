@@ -27,7 +27,8 @@ export type Permission =
   | 'VIEW_CALOY'
   | 'MANAGE_CALOY_SETTINGS'
   | 'VIEW_CALOY_LOGS'
-  | 'MANAGE_CALOY_LOGS';
+  | 'MANAGE_CALOY_LOGS'
+  | 'MANAGE_LEGAL_POLICIES';
 
 // ─── Convenience constants ────────────────────────────────────────────────────
 // Re-export each permission as a constant so callers can write
@@ -55,4 +56,5 @@ export const PERMISSIONS = {
   MANAGE_CALOY_SETTINGS: 'MANAGE_CALOY_SETTINGS' as const,
   VIEW_CALOY_LOGS: 'VIEW_CALOY_LOGS' as const,
   MANAGE_CALOY_LOGS: 'MANAGE_CALOY_LOGS' as const,
+  MANAGE_LEGAL_POLICIES: 'MANAGE_LEGAL_POLICIES' as const,
 } satisfies Record<Permission, Permission>;

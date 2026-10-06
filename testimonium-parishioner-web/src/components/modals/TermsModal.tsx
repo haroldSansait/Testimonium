@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { X, Scale } from 'lucide-react';
 import { TermsContent } from '../legal/TermsContent';
+import { useLegalPolicies } from '../../services/legalPolicyService';
 
 interface TermsModalProps {
   isOpen: boolean;
@@ -9,6 +10,11 @@ interface TermsModalProps {
 
 export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const { policies } = useLegalPolicies();
+  const version = policies?.termsOfService?.version || 'Unavailable';
+  const effectiveDate = policies?.termsOfService?.effectiveAt
+    ? new Date(policies.termsOfService.effectiveAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : 'Unavailable';
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -49,7 +55,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose }) => {
               <h2 id="terms-modal-title" className="text-base sm:text-lg font-serif font-bold text-gray-900">
                 Terms of Service
               </h2>
-              <p className="text-xs text-gray-500 font-medium">Version 1.0 — August 2026</p>
+              <p className="text-xs text-gray-500 font-medium">Version {version} — {effectiveDate}</p>
             </div>
           </div>
           <button

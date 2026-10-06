@@ -189,9 +189,6 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
   };
 };
 
-// Local optimistic cache
-const optimisticDocumentStatuses: Record<string, DocumentStatus> = {};
-
 export const ApiDocumentProvider: DocumentProvider = {
   async getDocumentRequests(
     filters: DocumentRequestFilters = {}
@@ -218,12 +215,7 @@ export const ApiDocumentProvider: DocumentProvider = {
       },
     });
 
-    const mappedData = (response.data.data || []).map(mapToFrontend).map(item => {
-      if (optimisticDocumentStatuses[item.id]) {
-        return { ...item, status: optimisticDocumentStatuses[item.id] };
-      }
-      return item;
-    });
+    const mappedData = (response.data.data || []).map(mapToFrontend);
 
     return {
       data: mappedData,
@@ -234,23 +226,24 @@ export const ApiDocumentProvider: DocumentProvider = {
     };
   },
 
-  async updateDocumentStatus(id: string, status: DocumentStatus, remarks?: string, correctionRequirementIds?: string[]): Promise<DocumentRequest> {
+  async updateDocumentStatus(
+    id: string,
+    status: DocumentStatus,
+    remarks?: string,
+    correctionRequirementIds?: string[],
+    correctionReasonCode?: string,
+    correctionNote?: string
+  ): Promise<DocumentRequest> {
     const backendStatus = mapDocumentStatusToBackend(status) || 'PENDING';
 
-    optimisticDocumentStatuses[id] = status;
-
-    try {
-      const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, { status: backendStatus, remarks, correctionRequirementIds });
-      const updated = mapToFrontend(response.data.data);
-      return { ...updated, status };
-    } catch (error) {
-      delete optimisticDocumentStatuses[id];
-      throw error;
-    } finally {
-      setTimeout(() => {
-        delete optimisticDocumentStatuses[id];
-      }, 1500);
-    }
+    const response = await api.patch<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/status`, {
+      status: backendStatus,
+      remarks,
+      correctionRequirementIds,
+      correctionReasonCode,
+      correctionNote,
+    });
+    return mapToFrontend(response.data.data);
   }
 };
 

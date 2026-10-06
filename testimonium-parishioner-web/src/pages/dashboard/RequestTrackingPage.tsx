@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight } from 'lucide-react';
 import services from '../../providers/factory';
@@ -16,6 +16,7 @@ import PaymentInstructionsCard from '../../features/payments/components/PaymentI
 import ReceiptUploadCard from '../../features/payments/components/ReceiptUploadCard';
 import { ErrorState } from '../../components/ui/ErrorState';
 import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
+import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
 
 const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
   switch (status) {
@@ -282,6 +283,26 @@ export const RequestTrackingPage: React.FC = () => {
   const [submittingCorrections, setSubmittingCorrections] = useState(false);
   const [correctionSuccess, setCorrectionSuccess] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [correctionInputErrors, setCorrectionInputErrors] = useState<Record<string, string>>({});
+  const [uploadedCorrectionReqIds, setUploadedCorrectionReqIds] = useState<Record<string, boolean>>({});
+  const correctionSubmitInFlightRef = useRef(false);
+  const correctionSessionKey = selectedRequest
+    ? `${selectedRequest.id}:${selectedRequest.status}:${(selectedRequest.correctionRequirementIds || []).join(',')}`
+    : null;
+
+  const handleCorrectionFileSelect = (reqId: string, file: File) => {
+    const result = validateUploadFile(file, UPLOAD_POLICIES.CORRECTION_DOCUMENT);
+    if (!result.valid) {
+      setCorrectionInputErrors(prev => ({ ...prev, [reqId]: result.error || 'Unsupported file format. Accepted formats: PDF, JPG, PNG, or WebP — up to 5 MB.' }));
+      return;
+    }
+    setCorrectionInputErrors(prev => {
+      const copy = { ...prev };
+      delete copy[reqId];
+      return copy;
+    });
+    setUploadedFilesByCorrectionReq(prev => ({ ...prev, [reqId]: file }));
+  };
 
   useEffect(() => {
     if (selectedRequest && (selectedRequest.status === 'needs-correction' || selectedRequest.status === 'needs_correction')) {
@@ -289,6 +310,8 @@ export const RequestTrackingPage: React.FC = () => {
       setCorrectionError(null);
       setCorrectionSuccess(false);
       setUploadedFilesByCorrectionReq({});
+      setUploadedCorrectionReqIds({});
+      setCorrectionInputErrors({});
       services.request.getDocumentRequirements(selectedRequest.documentType, selectedRequest.parishId)
         .then(res => {
           const reqs = res?.requiredDocuments || [];
@@ -306,7 +329,9 @@ export const RequestTrackingPage: React.FC = () => {
     } else {
       setCorrectionReqsList([]);
     }
-  }, [selectedRequest]);
+    // Refreshes of the same authoritative request must not erase successful or pending uploads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [correctionSessionKey]);
 
   // Parse query parameter for specific request ID
   const queryParams = new URLSearchParams(window.location.search);
@@ -886,8 +911,8 @@ export const RequestTrackingPage: React.FC = () => {
                               </p>
                               {selectedRequest.correctionNote && (
                                 <div className="mt-3 p-3 bg-white border border-amber-200 rounded-xl">
-                                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest block mb-1">Secretary Note</span>
-                                  <p className="text-xs text-gray-800 italic">"{selectedRequest.correctionNote}"</p>
+                                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest block mb-1">Correction Details</span>
+                                  <p className="text-xs text-gray-800 whitespace-pre-wrap">{selectedRequest.correctionNote}</p>
                                 </div>
                               )}
                             </div>
@@ -904,6 +929,7 @@ export const RequestTrackingPage: React.FC = () => {
                               {correctionReqsList.map(req => {
                                 const existingFile = selectedRequest.attachments?.find(a => a.category === req.id);
                                 const selectedFile = uploadedFilesByCorrectionReq[req.id];
+                                const replacementUploaded = uploadedCorrectionReqIds[req.id];
                                 const fileUrl = existingFile ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${existingFile.r2ObjectKey}` : null;
 
                                 return (
@@ -914,9 +940,9 @@ export const RequestTrackingPage: React.FC = () => {
                                         {req.description && <p className="text-[10px] text-gray-500 mt-0.5">{req.description}</p>}
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        {selectedFile && (
+                                        {(selectedFile || replacementUploaded) && (
                                           <span className="text-[10px] bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                                            <CheckCircle2 size={10} /> Selected
+                                            <CheckCircle2 size={10} /> {replacementUploaded ? 'Uploaded' : 'Selected'}
                                           </span>
                                         )}
                                         <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
@@ -924,6 +950,12 @@ export const RequestTrackingPage: React.FC = () => {
                                         </span>
                                       </div>
                                     </div>
+
+                                    {correctionInputErrors[req.id] && (
+                                      <div className="p-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">
+                                        {correctionInputErrors[req.id]}
+                                      </div>
+                                    )}
 
                                     {existingFile && (
                                       <div className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-150 rounded-lg text-xs">
@@ -948,7 +980,11 @@ export const RequestTrackingPage: React.FC = () => {
                                       </div>
                                     )}
 
-                                    {selectedFile ? (
+                                    {replacementUploaded ? (
+                                      <div className="p-2.5 bg-green-50 border border-green-200 rounded-lg text-xs font-semibold text-green-800">
+                                        Replacement uploaded. It will be included when this correction cycle is resubmitted.
+                                      </div>
+                                    ) : selectedFile ? (
                                       <div className="flex items-center justify-between p-2.5 bg-green-50/50 border border-green-200 rounded-lg text-xs">
                                         <span className="truncate max-w-[280px] font-mono font-semibold text-green-800">
                                           New: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
@@ -968,6 +1004,18 @@ export const RequestTrackingPage: React.FC = () => {
                                     ) : (
                                       <label
                                         htmlFor={`correction-file-${req.id}`}
+                                        onDragOver={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                        }}
+                                        onDrop={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          const dropped = e.dataTransfer.files?.[0];
+                                          if (dropped) {
+                                            handleCorrectionFileSelect(req.id, dropped);
+                                          }
+                                        }}
                                         className="relative border-2 border-dashed border-gray-300 hover:border-amber-500 rounded-lg p-4 text-center transition-colors bg-white cursor-pointer block focus-within:ring-2 focus-within:ring-crimson"
                                       >
                                         <input
@@ -976,14 +1024,16 @@ export const RequestTrackingPage: React.FC = () => {
                                           onChange={(e) => {
                                             const selected = e.target.files?.[0];
                                             if (selected) {
-                                              setUploadedFilesByCorrectionReq(prev => ({ ...prev, [req.id]: selected }));
+                                              handleCorrectionFileSelect(req.id, selected);
                                             }
+                                            e.target.value = '';
                                           }}
                                           className="sr-only"
-                                          accept=".png,.jpg,.jpeg,.pdf"
+                                          accept={UPLOAD_POLICIES.CORRECTION_DOCUMENT.acceptAttribute}
                                         />
-                                        <span className="text-xs font-semibold text-text-primary block">Click to select replacement file</span>
-                                        <span className="text-[10px] text-text-muted mt-0.5 block">Supports PNG, JPG, JPEG, PDF</span>
+                                        <span className="text-xs text-text-muted block">
+                                          Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB.
+                                        </span>
                                       </label>
                                     )}
                                   </div>
@@ -1007,30 +1057,61 @@ export const RequestTrackingPage: React.FC = () => {
                           <div className="flex justify-end pt-2">
                             <Button
                               onClick={async () => {
+                                if (correctionSubmitInFlightRef.current) return;
+                                correctionSubmitInFlightRef.current = true;
                                 setSubmittingCorrections(true);
                                 setCorrectionError(null);
+                                let succeededCount = Object.keys(uploadedCorrectionReqIds).length;
+                                const entries = Object.entries(uploadedFilesByCorrectionReq);
+                                const totalCount = correctionReqsList.length;
+
                                 try {
-                                  const entries = Object.entries(uploadedFilesByCorrectionReq);
                                   for (const [reqId, file] of entries) {
                                     await services.request.uploadFiles(selectedRequest.id, [file], reqId);
+                                    succeededCount++;
+                                    setUploadedCorrectionReqIds(prev => ({ ...prev, [reqId]: true }));
+                                    setUploadedFilesByCorrectionReq(prev => {
+                                      const copy = { ...prev };
+                                      delete copy[reqId];
+                                      return copy;
+                                    });
                                   }
                                   const res = await services.request.resubmitCorrections(selectedRequest.id);
                                   setCorrectionSuccess(true);
                                   setUploadedFilesByCorrectionReq({});
+                                  setUploadedCorrectionReqIds({});
                                   setSearchedRequest(res);
                                   setSelectedRequestId(String(res.id));
-                                  refetch();
+                                  void refetch();
                                 } catch (err: any) {
-                                  console.error(err);
-                                  setCorrectionError(err.response?.data?.message || err.message || "Failed to submit corrections. Please check files and try again.");
+                                  console.error('Correction submission error:', err);
+                                  try {
+                                    await refetch();
+                                    const updatedReq = await services.request.getRequestById(selectedRequest.id);
+                                    if (updatedReq) {
+                                      setSearchedRequest(updatedReq);
+                                    }
+                                  } catch (refetchErr) {
+                                    console.error('Failed to refetch state after correction error:', refetchErr);
+                                  }
+
+                                  const errMsg = err.response?.data?.message || err.message || "Failed to submit corrections.";
+                                  if (succeededCount > 0 && succeededCount < totalCount) {
+                                    setCorrectionError(`${succeededCount} of ${totalCount} replacement files were uploaded, but a subsequent upload failed: ${errMsg}. Please select and retry the remaining files.`);
+                                  } else if (succeededCount === totalCount) {
+                                    setCorrectionError(`All replacement files were uploaded, but final resubmission failed: ${errMsg}. Please click 'Submit Corrections' again.`);
+                                  } else {
+                                    setCorrectionError(errMsg);
+                                  }
                                 } finally {
+                                  correctionSubmitInFlightRef.current = false;
                                   setSubmittingCorrections(false);
                                 }
                               }}
                               disabled={
                                 submittingCorrections ||
                                 correctionSuccess ||
-                                correctionReqsList.some(req => !uploadedFilesByCorrectionReq[req.id])
+                                correctionReqsList.some(req => !uploadedFilesByCorrectionReq[req.id] && !uploadedCorrectionReqIds[req.id])
                               }
                               loading={submittingCorrections}
                               className="bg-amber-700 hover:bg-amber-800 text-white font-bold"

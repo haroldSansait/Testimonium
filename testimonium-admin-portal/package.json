@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --test scripts/pfc_regression.test.js scripts/council_reconciliation.test.js scripts/pfc_state.test.mjs scripts/priest_assignment_availability.test.js scripts/phase6_verified_payments.test.mjs scripts/knowledge_base_contract.test.mjs scripts/caloy_admin_portal_contracts.test.mjs scripts/descriptive_visual_polish.test.mjs scripts/features_regression.test.mjs scripts/mother_parish_ui.test.mjs scripts/document_requirement_management_admin.test.mjs",
+    "test": "node --experimental-strip-types --test scripts/pfc_regression.test.js scripts/council_reconciliation.test.js scripts/pfc_state.test.mjs scripts/priest_assignment_availability.test.js scripts/phase6_verified_payments.test.mjs scripts/knowledge_base_contract.test.mjs scripts/caloy_admin_portal_contracts.test.mjs scripts/descriptive_visual_polish.test.mjs scripts/features_regression.test.mjs scripts/mother_parish_ui.test.mjs scripts/document_requirement_management_admin.test.mjs scripts/legal_policy_admin.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

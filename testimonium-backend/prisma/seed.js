@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import { CANONICAL_TERMS_TEXT, CANONICAL_PRIVACY_TEXT } from "../config/canonicalLegalContent.js";
 
 const roles = [
   {
@@ -394,6 +395,36 @@ const seed = async () => {
     }
     console.log(`[SEED] Seeded sample events for parish: ${parish.parishName}`);
   }
+
+  // Seed canonical v1.0 legal policies
+  const legalPolicies = [
+    {
+      policyType: "TERMS_OF_SERVICE",
+      content: CANONICAL_TERMS_TEXT,
+      revision: 1,
+      effectiveAt: new Date("2026-08-01T00:00:00.000Z"),
+    },
+    {
+      policyType: "PRIVACY_POLICY",
+      content: CANONICAL_PRIVACY_TEXT,
+      revision: 1,
+      effectiveAt: new Date("2026-08-01T00:00:00.000Z"),
+    },
+  ];
+
+  for (const pol of legalPolicies) {
+    await prisma.legalPolicy.upsert({
+      where: { policyType: pol.policyType },
+      update: {},
+      create: {
+        policyType: pol.policyType,
+        content: pol.content,
+        revision: pol.revision,
+        effectiveAt: pol.effectiveAt,
+      },
+    });
+  }
+  console.log("[SEED] Seeded canonical legal policies (TERMS_OF_SERVICE, PRIVACY_POLICY)");
 };
 
 seed()

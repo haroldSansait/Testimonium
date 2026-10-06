@@ -75,7 +75,7 @@ export const LoginPage: React.FC = () => {
       // ProtectedRoute is single routing authority for dashboard vs profile completion
       navigate('/dashboard/home');
     } catch (err: any) {
-      if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED') {
+      if (err?.code === 'LEGAL_ACCEPTANCE_REQUIRED' || err?.code === 'LEGAL_ACCEPTANCE_VERSION_CONFLICT') {
         setIsLegalModalOpen(true);
       } else {
         setError(mapAuthError(err, 'Google Sign-In failed.'));
@@ -297,12 +297,7 @@ export const LoginPage: React.FC = () => {
       <LegalAcceptanceModal
         isOpen={isLegalModalOpen}
         onClose={() => setIsLegalModalOpen(false)}
-        onAccept={() => handleExecuteGoogleSignIn({
-          termsAccepted: true,
-          privacyAccepted: true,
-          termsVersion: 'v1.0',
-          privacyVersion: 'v1.0',
-        })}
+        onAccept={(payload) => handleExecuteGoogleSignIn(payload)}
       />
     </div>
   );

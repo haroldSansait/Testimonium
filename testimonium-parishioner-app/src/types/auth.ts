@@ -60,14 +60,31 @@ export interface RegistrationProfilePayload {
   suffix?: string;
 }
 
+export interface LegalPolicyPublic {
+  policyType: "TERMS_OF_SERVICE" | "PRIVACY_POLICY";
+  version: string;
+  revision: number;
+  effectiveAt: string;
+  content: string;
+}
+
+export interface CurrentLegalPolicies {
+  termsOfService: LegalPolicyPublic;
+  privacyPolicy: LegalPolicyPublic;
+}
+
 export interface LegalAcceptancePayload {
+  termsAccepted?: boolean;
+  privacyAccepted?: boolean;
+  termsVersion?: string;
+  privacyVersion?: string;
+}
+
+export interface RegisterRequestPayload {
   termsAccepted: boolean;
   privacyAccepted: boolean;
   termsVersion: string;
   privacyVersion: string;
-}
-
-export interface RegisterRequestPayload extends LegalAcceptancePayload {
   registrationProfile?: RegistrationProfilePayload;
   firstName?: string;
   middleName?: string;

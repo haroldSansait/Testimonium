@@ -1,60 +1,72 @@
-/**
- * Canonical Privacy Policy Component
- * Source: testimonium-parishioner-web/src/components/legal/PrivacyContent.tsx as reconciled 2026-08-20
- * Legal version: v1.0
- */
-
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { colors, radii, spacing, typography } from "@/theme/tokens";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useLegalPolicies } from "@/hooks/useLegalPolicies";
+import { colors, radii, spacing, fontStyles } from "@/theme/tokens";
 
 export const PrivacyContent: React.FC = () => {
+  const { data: policies, isLoading, isError, error, refetch } = useLegalPolicies();
+
+  if (isLoading) {
+    return (
+      <View style={styles.stateContainer}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={styles.loadingText} allowFontScaling>
+          Loading authoritative Privacy Policy...
+        </Text>
+      </View>
+    );
+  }
+
+  if (isError || !policies?.privacyPolicy) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle-outline" size={24} color={colors.danger} />
+        <Text style={styles.errorText} allowFontScaling>
+          {error?.message || "Unable to load current Privacy Policy."}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading Privacy Policy"
+          onPress={() => void refetch()}
+          style={styles.retryButton}
+        >
+          <Ionicons name="refresh" size={16} color="#FFF" />
+          <Text style={styles.retryButtonText} allowFontScaling>
+            Retry
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const privacy = policies.privacyPolicy;
+  const effectiveDate = privacy.effectiveAt
+    ? new Date(privacy.effectiveAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "August 1, 2026";
+
   return (
     <View style={styles.container}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>1. Information We Collect</Text>
-        <Text style={styles.paragraph}>
-          To process certificate requests, parish appointments, and verification, TESTIMONIUM collects:
+      <View style={styles.metaBadge}>
+        <Text style={styles.metaVersion} allowFontScaling>
+          Version {privacy.version}
         </Text>
-        <Text style={styles.bulletItem}>• Profile Information: Full name, email address, contact telephone number, and home address.</Text>
-        <Text style={styles.bulletItem}>• Sacramental Records: Date of birth, baptismal details, confirmation records, parents&apos; names, and marriage registry data.</Text>
-        <Text style={styles.bulletItem}>• Transaction Data: Uploaded payment receipts and GCash/Maya reference numbers.</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>2. Third-Party Infrastructure Services</Text>
-        <Text style={styles.paragraph}>
-          Your data is processed using production-grade infrastructure with strict security protocols:
+        <Text style={styles.metaDivider} allowFontScaling>
+          •
         </Text>
-        <Text style={styles.bulletItem}>• Firebase Authentication: Manages secure user identities, Google Sign-In tokens, and email verification state.</Text>
-        <Text style={styles.bulletItem}>• Cloudflare R2 Object Storage: Stores encrypted uploaded attachments and payment receipts under restricted access policies.</Text>
-        <Text style={styles.bulletItem}>• Automated OCR Engine: Processes uploaded payment proofs for reference and amount validation without retaining raw image caches.</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>3. Data Retention & Usage</Text>
-        <Text style={styles.paragraph}>
-          The Diocese uses collected information strictly for validating canonical sacramental requests and maintaining immutable audit logs. Personal data is never sold, rented, or commercialized.
+        <Text style={styles.metaDate} allowFontScaling>
+          Effective {effectiveDate}
         </Text>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>4. Cookies & Session Management</Text>
-        <Text style={styles.paragraph}>
-          We use secure session tokens and local storage strictly necessary for authentication and session protection. No third-party tracking cookies are used.
+      <View style={styles.readingSurface}>
+        <Text style={styles.textContent} allowFontScaling selectable>
+          {privacy.content}
         </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>5. Your Rights Under Philippine Privacy Law</Text>
-        <Text style={styles.paragraph}>
-          Under Republic Act No. 10173, you have the right to request access to your personal records, request corrections to erroneous entries, and request information regarding data processing protocols.
-        </Text>
-      </View>
-
-      <View style={styles.contactBox}>
-        <Text style={styles.contactTitle}>Diocese Data Protection Officer</Text>
-        <Text style={styles.contactText}>Direct inquiries to privacy@testimonium.org</Text>
       </View>
     </View>
   );
@@ -64,43 +76,78 @@ const styles = StyleSheet.create({
   container: {
     gap: spacing.md,
   },
-  section: {
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
+  stateContainer: {
+    padding: spacing.xl,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
   },
-  sectionTitle: {
-    fontSize: typography.heading,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: spacing.xs,
+  loadingText: {
+    ...fontStyles.bodySmall,
+    color: colors.textSecondary,
   },
-  paragraph: {
-    fontSize: typography.caption,
-    color: colors.textPrimary,
-    lineHeight: 22,
-  },
-  bulletItem: {
-    fontSize: typography.caption,
-    color: colors.textPrimary,
-    lineHeight: 20,
-    paddingLeft: spacing.sm,
-  },
-  contactBox: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+  errorContainer: {
+    padding: spacing.lg,
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: radii.md,
-    padding: spacing.md,
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  errorText: {
+    ...fontStyles.bodySmall,
+    color: colors.danger,
+    textAlign: "center",
+  },
+  retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
     gap: spacing.xs,
-    marginTop: spacing.sm,
   },
-  contactTitle: {
+  retryButtonText: {
+    ...fontStyles.captionMedium,
+    color: "#FFF",
+  },
+  metaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.xs,
+    alignSelf: "flex-start",
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  metaVersion: {
+    ...fontStyles.caption,
     fontWeight: "700",
-    color: colors.textPrimary,
-    fontSize: typography.caption,
+    color: colors.primary,
   },
-  contactText: {
+  metaDivider: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+  },
+  metaDate: {
+    ...fontStyles.caption,
     color: colors.textSecondary,
-    fontSize: typography.caption,
+  },
+  readingSurface: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: spacing.md,
+  },
+  textContent: {
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
+    lineHeight: 22,
   },
 });

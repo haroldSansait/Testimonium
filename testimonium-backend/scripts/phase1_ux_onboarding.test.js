@@ -196,6 +196,25 @@ test("Phase 1: AuthService isNewUser and Name Resolution Contract", async (t) =>
   const createMockRoleRepo = () => ({
     findByName: async (name) => ({ id: 1, roleName: name }),
   });
+  const currentPolicies = {
+    termsOfService: { version: "v1.0" },
+    privacyPolicy: { version: "v1.0" },
+  };
+  const createAuthService = (userRepository) => {
+    const legalPolicyService = {
+      getCurrentPolicies: async () => currentPolicies,
+      withCurrentPoliciesForAcceptance: async (callback) => callback({
+        user: {
+          create: async ({ data }) => userRepository.create(data),
+          findUnique: async ({ where }) => userRepository.findById ? userRepository.findById(where.id) : { id: where.id },
+          update: async ({ where, data }) => userRepository.update(where.id, data),
+        },
+      }, currentPolicies),
+    };
+    return new AuthService(userRepository, createMockRoleRepo(), legalPolicyService, {
+      logOrThrow: async () => {},
+    });
+  };
 
   await t.test("genuinely new user creation returns isNewUser: true", async () => {
     const mockUserRepo = {
@@ -207,7 +226,7 @@ test("Phase 1: AuthService isNewUser and Name Resolution Contract", async (t) =>
         role: { roleName: "PARISHIONER" },
       }),
     };
-    const authService = new AuthService(mockUserRepo, createMockRoleRepo());
+    const authService = createAuthService(mockUserRepo);
     const decodedToken = {
       uid: "brand-new-uid",
       email: "newuser@example.com",
@@ -241,7 +260,7 @@ test("Phase 1: AuthService isNewUser and Name Resolution Contract", async (t) =>
         privacyVersion: "v1.0",
       }),
     };
-    const authService = new AuthService(mockUserRepo, createMockRoleRepo());
+    const authService = createAuthService(mockUserRepo);
     const decodedToken = {
       uid: "existing-uid",
       email: "existing@example.com",
@@ -280,7 +299,7 @@ test("Phase 1: AuthService isNewUser and Name Resolution Contract", async (t) =>
         role: { roleName: "PARISHIONER" },
       }),
     };
-    const authService = new AuthService(mockUserRepo, createMockRoleRepo());
+    const authService = createAuthService(mockUserRepo);
     const decodedToken = {
       uid: "google-uid-103",
       email: "staff@example.com",
@@ -315,7 +334,7 @@ test("Phase 1: AuthService isNewUser and Name Resolution Contract", async (t) =>
         throw error;
       },
     };
-    const authService = new AuthService(mockUserRepo, createMockRoleRepo());
+    const authService = createAuthService(mockUserRepo);
     const decodedToken = {
       uid: "race-uid",
       email: "race@example.com",
@@ -356,7 +375,7 @@ test("Phase 1: AuthService isNewUser and Name Resolution Contract", async (t) =>
         role: { roleName: "PARISHIONER" },
       }),
     };
-    const authService = new AuthService(mockUserRepo, createMockRoleRepo());
+    const authService = createAuthService(mockUserRepo);
     const decodedToken = {
       uid: "no-name-uid",
       email: "unnamed@example.com",
@@ -392,6 +411,8 @@ test("Phase 1: AuthController.register isNewUser Contract", async (t) => {
       body: {
         termsAccepted: true,
         privacyAccepted: true,
+        termsVersion: "v1.0",
+        privacyVersion: "v1.0",
       },
     };
     let responseData = null;
@@ -426,6 +447,8 @@ test("Phase 1: AuthController.register isNewUser Contract", async (t) => {
       body: {
         termsAccepted: true,
         privacyAccepted: true,
+        termsVersion: "v1.0",
+        privacyVersion: "v1.0",
       },
     };
     let responseData = null;

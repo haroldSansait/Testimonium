@@ -401,9 +401,14 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   </Text>
                 </View>
                 {request.correctionNote ? (
-                  <Text style={styles.alertBoxDesc} allowFontScaling>
-                    Staff Note: {request.correctionNote}
-                  </Text>
+                  <View style={{ gap: 2 }}>
+                    <Text style={[styles.alertBoxDesc, { fontWeight: "700", color: colors.textPrimary }]} allowFontScaling>
+                      Correction Details:
+                    </Text>
+                    <Text style={styles.alertBoxDesc} allowFontScaling>
+                      {request.correctionNote}
+                    </Text>
+                  </View>
                 ) : null}
 
                 {correctionIds.map((reqId) => {

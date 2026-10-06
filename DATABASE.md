@@ -36,6 +36,7 @@ The migration history is stored in `testimonium-backend/prisma/migrations/`. Cur
 - `20260928120000_correct_mother_parish_designation`
 - `20260928180000_enforce_single_mother_parish`
 - `20260929210000_add_government_id_verification`
+- `20261004120000_add_legal_policies`
 
 ### Development change flow
 
@@ -102,7 +103,10 @@ It upserts the four application roles and the canonical parish dataset. Review t
 - `GovernmentIdVerification` maintains a 1-to-1 unique relationship with `User` (`user_id`). It persists verification lifecycle state (`status`: `NOT_SUBMITTED`, `VERIFIED`, `REJECTED`), card type (`id_type`), verification timestamp (`verified_at`), expiration timestamp (`expires_at`), rejection reason (`rejection_reason`: `IMAGE_BLURRY`, `FRONT_BACK_INCOMPLETE`, `NAME_MISMATCH`, `ID_EXPIRED`, `UNSUPPORTED_OR_INVALID_DOCUMENT`), private R2 object keys (`front_object_key`, `back_object_key`), and `last_attempt_at`. Deleting a user cascades to delete their verification record.
 - Government ID verification concurrency is coordinated via `SystemLease` key `GOVERNMENT_ID_VERIFICATION:<userId>`. Any material change to `User.fullName` in `PUT /auth/profile` or `PUT /users/:id` automatically invalidates active verification under the lease lock and purges old R2 images. Rate limiting is isolated per authenticated account via `governmentIdRateLimiter` (default 6 attempts / 10m).
 - Verified Government ID status (`isEffectivelyVerified`) is checked before creating or submitting sacramental document requests (`DocumentRequest`) and schedule appointments (`Schedule`), returning 403 `IDENTITY_NOT_VERIFIED` when unverified. Effective Government ID verification automatically fulfills the canonical `valid_id` requirement during document request submission.
-- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; government ID verification cascades with user deletion; optional actor/processor assignments set null.
+- `LegalPolicy` model stores authoritative Terms of Service and Privacy Policy (`legal_policies` table) keyed by enum `LegalPolicyType` (`TERMS_OF_SERVICE`, `PRIVACY_POLICY`). Columns include database-constrained `content` (plain text, nonblank, <= 50,000 characters), `revision` (integer >= 1, default 1), `effective_at` (`TIMESTAMPTZ(6)`), `updated_by_id` (FK `users`, SetNull on delete), `created_at`, and `updated_at`. Migration seeds exactly Terms v1.0 and Privacy v1.0 effective 2026-08-01; runtime reads fail closed if either authoritative row is unavailable. Publications lock the target row and use a revision-qualified update (`expectedRevision`, 409 `LEGAL_POLICY_VERSION_CONFLICT`). User acceptance/registration holds shared locks on both policy rows through the user write, preventing publication races. Unchanged normalized content returns `{ changed: false }` without bumping revision or timestamp. Content revisions bump independently (`v{revision}.0`) and create atomic audit logs recording SHA-256 content hashes (never storing full legal text in audit tables).
+- Supabase RLS and Security Hardening Deferral: Row Level Security policies, table grants, Supabase Data API exposure, role permissions, and Supabase Auth configuration are intentionally untouched in this feature batch; RLS/security remediation is explicitly deferred to a dedicated later security phase.
+- Feature Deployment Sequence: Safe rollout order requires: (1) forward additive database migration seeded with v1.0, (2) backend deployment, (3) parishioner web deployment, (4) mobile Android release, and (5) coordinator legal editing enabled after client deployment.
+- Deletion behavior follows the Prisma relations: request children cascade with their request; required user/parish references restrict deletion; council configurations and members cascade with parish deletion; priest personal schedules cascade with priest deletion; government ID verification cascades with user deletion; legal policy updater references set null; optional actor/processor assignments set null.
 
 ## Backup and recovery
 
@@ -130,4 +134,4 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Restrict database credentials to the backend/migration runner and rotate them through the secret manager.
 - Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
-See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (34 models and 28 enums).
+See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (35 models and 29 enums).

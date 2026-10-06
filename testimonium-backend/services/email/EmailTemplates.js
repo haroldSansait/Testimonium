@@ -17,7 +17,7 @@ const formatDate = (value) => {
 
 const layout = (heading, paragraphs) => ({
   html: `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#222;line-height:1.55"><main style="max-width:600px;margin:auto;padding:24px"><h1 style="color:#7B1C2A;font-size:22px">${escapeHtml(heading)}</h1>${paragraphs.map((line) => `<p>${line}</p>`).join("")}<p>— TESTIMONIUM</p></main></body></html>`,
-  text: `${heading}\n\n${paragraphs.map((line) => line.replace(/<[^>]+>/g, "")).join("\n\n")}\n\n— TESTIMONIUM`,
+  text: `${heading}\n\n${paragraphs.map((line) => line.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, "")).join("\n\n")}\n\n— TESTIMONIUM`,
 });
 
 export function renderEmail(emailType, payload) {
@@ -40,12 +40,25 @@ export function renderEmail(emailType, payload) {
     };
   }
   if (emailType === "DOCUMENT_NEEDS_CORRECTION") {
+    const correction = payload.correctionContext;
+    const correctionLines = [];
+    if (correction?.reason) {
+      correctionLines.push(`Reason: <strong>${escapeHtml(correction.reason)}</strong>`);
+    }
+    if (correction?.affectedRequirements) {
+      correctionLines.push(`Affected requirement(s): <strong>${escapeHtml(correction.affectedRequirements)}</strong>`);
+    }
+    if (correction?.note) {
+      correctionLines.push(`Additional note: ${escapeHtml(correction.note).replace(/\r?\n/g, "<br>")}`);
+    }
+
     return {
       subject: "TESTIMONIUM — Action Required on Your Document Request",
       ...layout("Action required on your document request", [
         `Hello ${name},`,
         "Your document request requires corrections before processing can continue.",
         `Tracking Number: <strong>${tracking}</strong><br>Document: ${service}<br>Parish: ${parish}`,
+        ...(correctionLines.length > 0 ? [correctionLines.join("<br>")] : []),
         "Sign in to TESTIMONIUM to review the required corrections and submit the updated requirements.",
       ]),
     };
