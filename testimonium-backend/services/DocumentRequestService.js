@@ -134,6 +134,15 @@ export class DocumentRequestService {
           throw error;
         }
 
+        if (uniqueIds.has("valid_id")) {
+          const error = new Error(
+            "Government ID verification cannot be corrected through the document request attachment workflow."
+          );
+          error.statusCode = 400;
+          error.code = "NON_CORRECTABLE_REQUIREMENT";
+          throw error;
+        }
+
         // Fetch valid requirements for this document type
         const requirementsConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
         const validReqs = requirementsConfig.requiredDocuments || [];

@@ -290,6 +290,9 @@ export const RequestTrackingPage: React.FC = () => {
     ? `${selectedRequest.id}:${selectedRequest.status}:${(selectedRequest.correctionRequirementIds || []).join(',')}`
     : null;
 
+  const hasSystemSatisfiedCorrection = Boolean(
+    selectedRequest?.correctionRequirementIds?.includes('valid_id')
+  );
   const handleCorrectionFileSelect = (reqId: string, file: File) => {
     const result = validateUploadFile(file, UPLOAD_POLICIES.CORRECTION_DOCUMENT);
     if (!result.valid) {
@@ -315,7 +318,9 @@ export const RequestTrackingPage: React.FC = () => {
       services.request.getDocumentRequirements(selectedRequest.documentType, selectedRequest.parishId)
         .then(res => {
           const reqs = res?.requiredDocuments || [];
-          const selectedReqIds = selectedRequest.correctionRequirementIds || [];
+          const selectedReqIds = (selectedRequest.correctionRequirementIds || []).filter(
+            id => id !== 'valid_id'
+          );
           const filtered = reqs.filter((r: any) => selectedReqIds.includes(r.id));
           setCorrectionReqsList(filtered);
         })
@@ -918,6 +923,12 @@ export const RequestTrackingPage: React.FC = () => {
                             </div>
                           </div>
 
+                          {hasSystemSatisfiedCorrection && (
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
+                              Government ID verification is handled separately and does not require a replacement file here.
+                            </div>
+                          )}
+
                           {loadingCorrectionReqs ? (
                             <div className="space-y-3 pt-2">
                               <Skeleton className="h-16 w-full rounded" />
@@ -1098,7 +1109,7 @@ export const RequestTrackingPage: React.FC = () => {
                                   const errMsg = err.response?.data?.message || err.message || "Failed to submit corrections.";
                                   if (succeededCount > 0 && succeededCount < totalCount) {
                                     setCorrectionError(`${succeededCount} of ${totalCount} replacement files were uploaded, but a subsequent upload failed: ${errMsg}. Please select and retry the remaining files.`);
-                                  } else if (succeededCount === totalCount) {
+                                  } else if (totalCount > 0 && succeededCount === totalCount) {
                                     setCorrectionError(`All replacement files were uploaded, but final resubmission failed: ${errMsg}. Please click 'Submit Corrections' again.`);
                                   } else {
                                     setCorrectionError(errMsg);

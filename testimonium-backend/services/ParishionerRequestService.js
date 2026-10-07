@@ -636,7 +636,7 @@ export class ParishionerRequestService {
    */
   async resubmitCorrections(requestId, userId) {
     return prisma.$transaction(async (tx) => {
-      await assertParishionerOwnerRole(userId, tx);
+      const user = await assertParishionerOwnerRole(userId, tx);
       // 1. Verify ownership
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
@@ -655,13 +655,28 @@ export class ParishionerRequestService {
         throw error;
       }
 
-      // 3. Verify required replacements exist
+      const correctionRequirementIds = request.correctionRequirementIds || [];
+      const requiresGovernmentIdVerification = correctionRequirementIds.includes("valid_id");
+      if (
+        requiresGovernmentIdVerification &&
+        !isEffectivelyVerified(user.governmentIdVerification)
+      ) {
+        const error = new Error(
+          "Please complete Government ID verification before resubmitting this document request."
+        );
+        error.statusCode = 403;
+        error.code = "IDENTITY_NOT_VERIFIED";
+        throw error;
+      }
+
+      // 3. Verify attachment-backed replacements exist. Legacy valid_id corrections
+      // remain governed by the separate Government ID verification subsystem above.
       const attachments = await tx.requestAttachment.findMany({
         where: { requestId },
       });
       const attachmentCategories = attachments.map((a) => a.category);
 
-      for (const reqId of request.correctionRequirementIds) {
+      for (const reqId of correctionRequirementIds.filter((id) => id !== "valid_id")) {
         if (!attachmentCategories.includes(reqId)) {
           const error = new Error(`Replacement file for requirement "${reqId}" is missing.`);
           error.statusCode = 400;

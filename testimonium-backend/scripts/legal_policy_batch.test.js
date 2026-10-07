@@ -288,14 +288,14 @@ test("Objective 2 Backend Suite: Canonical Reasons & Status Transitions", async 
     const valid = {
       status: "NEEDS_CORRECTION",
       correctionReasonCode: "WRONG_DOCUMENT",
-      correctionRequirementIds: ["valid_id"],
-      correctionNote: "  Please upload the correct ID.  ",
+      correctionRequirementIds: ["baptismal_cert"],
+      correctionNote: "  Please upload the correct certificate.  ",
     };
     const parsed = updateRequestStatusSchema.safeParse(valid);
     assert.equal(parsed.success, true);
-    assert.equal(parsed.data.correctionNote, "Please upload the correct ID.");
+    assert.equal(parsed.data.correctionNote, "Please upload the correct certificate.");
     assert.equal(updateRequestStatusSchema.safeParse({ ...valid, correctionReasonCode: "UNKNOWN" }).success, false);
-    assert.equal(updateRequestStatusSchema.safeParse({ ...valid, correctionRequirementIds: ["valid_id", "valid_id"] }).success, false);
+    assert.equal(updateRequestStatusSchema.safeParse({ ...valid, correctionRequirementIds: ["baptismal_cert", "baptismal_cert"] }).success, false);
     assert.equal(updateRequestStatusSchema.safeParse({ status: "NEEDS_CORRECTION", remarks: "bypass" }).success, false);
     assert.equal(updateRequestStatusSchema.safeParse({ ...valid, correctionNote: "x".repeat(1001) }).success, false);
   });

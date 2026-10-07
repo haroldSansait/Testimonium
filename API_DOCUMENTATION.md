@@ -130,6 +130,7 @@ The system automates the verification of Philippine government-issued card IDs u
    - **Profile Invalidation:** If a user materially modifies their legal `fullName` in `PUT /auth/profile` or `PUT /users/:id`, existing verification is automatically invalidated under a concurrency lease lock, and prior R2 images are pruned.
    - **Request & Booking Gating:** `POST /requests`, `POST /requests/:id/submit`, and `POST /schedule-requests` require `isEffectivelyVerified(user.governmentIdVerification)`. Unverified parishioners receive `403 IDENTITY_NOT_VERIFIED`.
    - **Checklist Auto-fulfillment:** An effective verified Government ID automatically satisfies the canonical `valid_id` requirement during document request submission without requiring duplicate ID re-uploads.
+   - **Correction Separation:** `valid_id` is system-satisfied exclusively through effective Government ID verification. It is never a selectable attachment correction target and never requires a `requestAttachment` replacement.
 
 ## Parishioner document requests, requirements, and payment
 
@@ -144,11 +145,14 @@ The system automates the verification of Philippine government-issued card IDs u
 | POST | `/requests/:id/files` | Owner | Upload up to five supporting files in `files` (PDF, PNG, JPEG, WebP, 5 MB max each) under canonical requirement category IDs. |
 | GET | `/requests/:id/attachments/:attachmentId/download` | Owner | Authenticated private attachment download streaming. |
 | POST | `/requests/:id/receipt` | Owner (Rate-limited) | Upload payment receipt in `receipt` (JPEG/PNG only, 5 MB max, rate-limited; allocates incremented `attemptVersion`, supersedes prior attempts). |
-| POST | `/requests/:id/resubmit-corrections` | Owner | Resubmit a corrected request after staff request. |
+| POST | `/requests/:id/resubmit-corrections` | Owner | Resubmit a corrected request after staff request. Attachment replacements are required only for attachment-backed correction IDs. A legacy stored `valid_id` correction is revalidated against current effective Government ID verification and never requires an attachment; invalid verification returns `403 IDENTITY_NOT_VERIFIED`. |
 | GET | `/payment/configuration` | Authenticated | Resolve payment settings and QR data for the caller’s context. |
 | GET | `/document-requests` | Staff / Coordinator / Priest | List processable document requests. Priests have parish-scoped read-only access. |
 | PATCH | `/document-requests/:id/status` | Secretary / Coordinator | Apply a validated workflow/status change. Priests are strictly rejected with `403` (read-only). Canonical workflow: `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`. Transitioning to `READY_FOR_SIGNING` dispatches an in-app notification to the active primary parish priest. For `NEEDS_CORRECTION`, requires `correctionReasonCode` and non-empty `correctionRequirementIds`, with optional `correctionNote` (<= 1000 characters). Status CAS conflict returns `409 DOCUMENT_REQUEST_CONCURRENCY_CONFLICT`. |
 | GET | `/document-requests/:id/attachments/:attachmentId/download` | Staff / Coordinator / Priest | Authenticated staff attachment download streaming (includes parish-assigned Priests for review). |
+
+
+For `NEEDS_CORRECTION`, `valid_id` is excluded from authoritative correction eligibility and direct attempts return `400 NON_CORRECTABLE_REQUIREMENT`; all other IDs remain validated against `GET /document-requirements` for the request's document type and parish.
 
 ### Sacramental Document Types and Configurable Requirements Matrix
 
@@ -209,10 +213,11 @@ The system governs seven canonical document types and eight canonical requiremen
     - `EXPIRED_OR_INVALID` — `Expired / invalid document`
     - `INCORRECT_REQUIREMENT_FILE` — `Incorrect file uploaded for this requirement`
     - `OTHER` — `Other`
+  - Correction eligibility comes from `GET /document-requirements` for the request's document type and parish. The canonical `valid_id` requirement is excluded; if no attachment-backed requirements remain, ordinary Reject is unavailable. Fetch failure keeps Reject unavailable and offers Retry.
   - Persisted multiline snapshot in `correction_notes` / history:
     ```text
     Reason: Unclear / blurry / unreadable document
-    Affected requirements: Valid ID, Baptismal Certificate
+    Affected requirements: Baptismal Certificate, Confirmation Certificate
     Additional note: Please include the reverse side.
     ```
   - Dispatches dedicated `DOCUMENT_NEEDS_CORRECTION` notification with `{ throwOnError: true }` so DB failure rolls back the state transition. The outbox stores the structured plain-text correction context; the email renderer escapes each field exactly once and preserves multiline notes.

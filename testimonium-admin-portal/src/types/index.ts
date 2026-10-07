@@ -18,11 +18,15 @@ export type DocumentStatus =
 
 export type DocumentType =
   | 'Baptismal Certificate'
-  | 'Marriage Certificate'
   | 'Confirmation Certificate'
-  | 'Good Moral Character'
-  | 'Death Certificate'
-  | 'Burial Permit';
+  | 'Marriage Certificate'
+  | 'First Communion Certificate'
+  | 'Marriage Banns'
+  | 'Permit to Marry'
+  | 'Status of Liberty Certificate';
+
+export type UnknownDocumentType = `Unknown Document Type (${string})`;
+export type DocumentTypeDisplay = DocumentType | UnknownDocumentType;
 
 export interface DocumentRequest {
   id: string;
@@ -31,7 +35,7 @@ export interface DocumentRequest {
   applicantName?: string;
   relationship?: string;
   parishionerName: string;
-  documentType: DocumentType;
+  documentType: DocumentTypeDisplay;
   dateSubmitted: string;
   status: DocumentStatus;
   purpose?: string;

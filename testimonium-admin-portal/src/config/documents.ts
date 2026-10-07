@@ -3,9 +3,15 @@
  * Mirrors backend authoritative definition in config/documents.js
  */
 
+import type {
+  CanonicalDocumentType,
+  DocumentType,
+  DocumentTypeDisplay,
+} from '@/types';
+
 export interface CanonicalDocumentDefinition {
-  id: string;
-  label: string;
+  id: CanonicalDocumentType;
+  label: DocumentType;
   defaultPrice: number;
   description: string;
   requirements: Array<{ id: string; label: string }>;
@@ -87,6 +93,46 @@ export const CANONICAL_DOCUMENT_TYPES: CanonicalDocumentDefinition[] = [
 
 export const CANONICAL_DOCUMENT_IDS = CANONICAL_DOCUMENT_TYPES.map((d) => d.id);
 export const DEFAULT_OFFERED_DOCUMENTS = [...CANONICAL_DOCUMENT_IDS];
+
+const DOCUMENT_BY_ID = new Map(
+  CANONICAL_DOCUMENT_TYPES.map((document) => [document.id, document] as const)
+);
+const DOCUMENT_BY_LABEL = new Map(
+  CANONICAL_DOCUMENT_TYPES.map((document) => [document.label, document] as const)
+);
+
+export const DOCUMENT_TYPE_FILTER_OPTIONS: Array<{ label: DocumentType; value: DocumentType }> =
+  CANONICAL_DOCUMENT_TYPES.map(({ label }) => ({ label, value: label }));
+
+export function getDocumentLabel(canonicalId: string): DocumentTypeDisplay {
+  return DOCUMENT_BY_ID.get(canonicalId as CanonicalDocumentType)?.label
+    ?? `Unknown Document Type (${canonicalId || 'empty value'})`;
+}
+
+export function getCanonicalDocumentId(label: string): CanonicalDocumentType | string {
+  const canonicalDocument = DOCUMENT_BY_LABEL.get(label as DocumentType);
+  if (canonicalDocument) return canonicalDocument.id;
+
+  const unknownMatch = /^Unknown Document Type \((.*)\)$/.exec(label);
+  return unknownMatch ? unknownMatch[1] : label;
+}
+
+export function getDocumentTypeFilterParam(
+  documentType?: DocumentType | 'all'
+): CanonicalDocumentType | undefined {
+  if (!documentType || documentType === 'all') return undefined;
+  return getCanonicalDocumentId(documentType) as CanonicalDocumentType;
+}
+
+export function getDocumentRequirementsLookupParams(
+  documentType: DocumentTypeDisplay,
+  parishId?: string
+): { type: string; parishId?: string } {
+  return {
+    type: getCanonicalDocumentId(documentType),
+    parishId,
+  };
+}
 
 export interface CanonicalRequirement {
   id: string;

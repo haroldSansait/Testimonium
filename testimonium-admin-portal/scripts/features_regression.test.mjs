@@ -115,4 +115,22 @@ test('Admin Portal Features 1-7 Regression & Contract Suite', async (t) => {
       'Admin analytics must expose the internal status with a human-readable label'
     );
   });
+
+  await t.test('Document correction eligibility is authoritative and excludes valid_id', () => {
+    const docPagePath = path.join(srcDir, 'pages/DocumentRequestsPage.tsx');
+    const content = fs.readFileSync(docPagePath, 'utf8');
+
+    assert.match(content, /const params = getDocumentRequirementsLookupParams\(request\.documentType, request\.parishId\)/);
+    assert.match(content, /api\.get\(`\/document-requirements`, \{ params \}\)/);
+    assert.doesNotMatch(content, /request\.requirements/, 'Admin DTO presentation requirements must not drive eligibility');
+    assert.match(content, /authoritativeReqs\.filter\(\(r: \{ id: string \}\) => r\.id !== 'valid_id'\)/);
+    assert.match(content, /request\.status === 'Under Review'[\s\S]*?loadRequirements\(\)/);
+    assert.match(content, /requirementsLoadState !== 'success'[\s\S]*?requirements\.length === 0/);
+    assert.ok(content.includes('Checking correctable requirements...'));
+    assert.ok(content.includes('Unable to determine correctable requirements.'));
+    assert.match(content, /onClick=\{\(\) => void loadRequirements\(\)\}[\s\S]*?Retry/);
+    assert.ok(content.includes('This request has no supporting documents that can be returned for correction.'));
+    assert.match(content, /requirements\.filter\(req => selectedReqs\[req\.id\]\)\.map\(req => req\.id\)/);
+    assert.doesNotMatch(content, /showCorrectionModal[\s\S]{0,80}loadRequirements\(\)/, 'Opening the modal must reuse prefetched requirements');
+  });
 });

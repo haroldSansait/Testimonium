@@ -62,4 +62,21 @@ test("Parishioner Web Features 2 & 7 Regression Suite", async (t) => {
     assert.ok(reqContent.includes("case 'READY_FOR_SIGNING':"), "request.ts must handle READY_FOR_SIGNING");
     assert.ok(reqContent.includes("case 'PROCESSING':\n    case 'READY_FOR_SIGNING':\n      return 'processing';"), "READY_FOR_SIGNING must map to 'processing'");
   });
+
+  await t.test("Correction uploads exclude system-satisfied valid_id while preserving resubmit", () => {
+    const pagePath = path.join(srcDir, "pages/dashboard/RequestTrackingPage.tsx");
+    const content = fs.readFileSync(pagePath, "utf8");
+
+    assert.match(content, /correctionRequirementIds \|\| \[\]\)\.filter\([\s\S]*?id => id !== 'valid_id'/);
+    assert.match(content, /const filtered = reqs\.filter\(\(r: any\) => selectedReqIds\.includes\(r\.id\)\)/);
+    assert.ok(content.includes("Government ID verification is handled separately and does not require a replacement file here."));
+    assert.match(content, /correctionReqsList\.map\(req =>/);
+    assert.match(content, /services\.request\.resubmitCorrections\(selectedRequest\.id\)/);
+    assert.match(content, /correctionReqsList\.some\(req => !uploadedFilesByCorrectionReq\[req\.id\]/);
+    assert.ok(content.includes("UPLOAD_POLICIES.CORRECTION_DOCUMENT.acceptAttribute"));
+    assert.match(content, /onDrop=\{\(e\) =>[\s\S]*?handleCorrectionFileSelect\(req\.id, dropped\)/);
+    assert.match(content, /for \(const \[reqId, file\] of entries\)/);
+    assert.match(content, /totalCount > 0 && succeededCount === totalCount/);
+    assert.ok(content.includes("Please select and retry the remaining files."));
+  });
 });

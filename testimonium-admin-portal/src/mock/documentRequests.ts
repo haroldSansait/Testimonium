@@ -33,7 +33,7 @@ export const documentRequests: DocumentRequest[] = [
     id: 'doc-4',
     referenceNo: `REQ-${currentYear}-0885`,
     parishionerName: 'Carlos Mendoza',
-    documentType: 'Good Moral Character',
+    documentType: 'Status of Liberty Certificate',
     dateSubmitted: `${currentMonth} 03, ${currentYear}`,
     status: 'Released',
   },

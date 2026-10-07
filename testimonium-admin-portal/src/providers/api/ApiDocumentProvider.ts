@@ -1,7 +1,8 @@
 import api from '@/api/api';
 import type { DocumentProvider, DocumentRequestFilters } from '../interfaces';
-import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
+import type { DocumentRequest, DocumentStatus } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
+import { getDocumentLabel, getDocumentTypeFilterParam } from '@/config/documents';
 import { mapDocumentStatusToBackend } from './documentStatusMapping';
 
 interface BackendDocumentRequestDTO {
@@ -124,21 +125,6 @@ const mapDocumentStatus = (status: string): DocumentStatus => {
   }
 };
 
-const mapDocumentType = (type: string): DocumentType => {
-  switch (type) {
-    case 'BAPTISMAL_CERTIFICATE':
-      return 'Baptismal Certificate';
-    case 'MARRIAGE_CERTIFICATE':
-      return 'Marriage Certificate';
-    case 'CONFIRMATION_CERTIFICATE':
-      return 'Confirmation Certificate';
-    case 'FIRST_COMMUNION_CERTIFICATE':
-      return 'Confirmation Certificate';
-    default:
-      return 'Baptismal Certificate';
-  }
-};
-
 const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
   const dateSubmitted = new Date(dbItem.createdAt || dbItem.dateRequested).toLocaleDateString(undefined, {
     year: 'numeric',
@@ -173,7 +159,7 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
     applicantName: dbItem.applicantName || '',
     relationship: dbItem.relationship || 'Self',
     parishionerName: dbItem.user?.fullName || dbItem.applicantName || 'Anonymous',
-    documentType: mapDocumentType(dbItem.documentType),
+    documentType: getDocumentLabel(dbItem.documentType),
     dateSubmitted,
     status: mapDocumentStatus(dbItem.status),
     purpose: dbItem.purpose || 'Official Use',
@@ -198,17 +184,12 @@ export const ApiDocumentProvider: DocumentProvider = {
     // Map filters back to backend values
     const backendStatus = mapDocumentStatusToBackend(status);
 
-    let backendDocType = documentType;
-    if (documentType && documentType !== 'all') {
-      if (documentType === 'Baptismal Certificate') backendDocType = 'BAPTISMAL_CERTIFICATE' as any;
-      else if (documentType === 'Marriage Certificate') backendDocType = 'MARRIAGE_CERTIFICATE' as any;
-      else if (documentType === 'Confirmation Certificate') backendDocType = 'CONFIRMATION_CERTIFICATE' as any;
-    }
+    const backendDocType = getDocumentTypeFilterParam(documentType);
 
     const response = await api.get<BackendPaginatedResponse<BackendDocumentRequestDTO>>('/document-requests', {
       params: {
         ...(search ? { search } : {}),
-        ...(backendDocType && backendDocType !== 'all' ? { documentType: backendDocType } : {}),
+        ...(backendDocType ? { documentType: backendDocType } : {}),
         ...(backendStatus && backendStatus !== 'all' ? { status: backendStatus } : {}),
         page,
         limit: pageSize,
@@ -246,4 +227,3 @@ export const ApiDocumentProvider: DocumentProvider = {
     return mapToFrontend(response.data.data);
   }
 };
-

@@ -30,6 +30,10 @@ import {
   useUploadSupportingFile,
 } from "./api";
 import { RequestStatusTimeline } from "./components/RequestStatusTimeline";
+import {
+  getCorrectionEligibleIds,
+  hasSystemSatisfiedCorrection,
+} from "./correctionRequirements";
 import { SupportingFilePicker } from "./components/SupportingFilePicker";
 import {
   formatDate,
@@ -148,11 +152,13 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
 
   const attachments = request?.attachments || [];
   const correctionIds = request?.correctionRequirementIds || [];
+  const correctionEligibleIds = getCorrectionEligibleIds(correctionIds);
+  const includesSystemSatisfiedCorrection = hasSystemSatisfiedCorrection(correctionIds);
 
   const handleResubmitCorrections = async () => {
     if (!request || inFlightGuard.current) return;
 
-    const missingUploads = correctionIds.filter((id) => !correctionFiles[id]);
+    const missingUploads = correctionEligibleIds.filter((id) => !correctionFiles[id]);
     if (missingUploads.length > 0) {
       Alert.alert(
         "Missing Attachments",
@@ -163,7 +169,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
 
     inFlightGuard.current = true;
     try {
-      for (const reqId of correctionIds) {
+      for (const reqId of correctionEligibleIds) {
         const file = correctionFiles[reqId];
         await uploadFileMutation.mutateAsync({
           requestId: request.id,
@@ -177,7 +183,9 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
       setCorrectionFiles({});
       Alert.alert(
         "Corrections Submitted",
-        "Your replacement files have been sent to the parish office for review."
+        correctionEligibleIds.length > 0
+          ? "Your replacement files have been sent to the parish office for review."
+          : "Your request has been returned to the parish office for review."
       );
       void refetch();
     } catch (err: any) {
@@ -411,7 +419,13 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   </View>
                 ) : null}
 
-                {correctionIds.map((reqId) => {
+                {includesSystemSatisfiedCorrection ? (
+                  <Text style={styles.alertBoxDesc} allowFontScaling>
+                    Government ID verification is handled separately and does not require a replacement file here.
+                  </Text>
+                ) : null}
+
+                {correctionEligibleIds.map((reqId) => {
                   const reqDoc = requirements?.requiredDocuments?.find((d) => d.id === reqId) || {
                     id: reqId,
                     label: reqId.replace(/_/g, " "),

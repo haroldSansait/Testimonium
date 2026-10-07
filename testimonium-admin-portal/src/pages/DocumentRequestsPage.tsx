@@ -16,33 +16,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { canManageDocumentRequests } from '@/permissions/rolePermissions';
 import { cn } from '@/utils/cn';
 import api from '@/api/api';
-
-const mapFrontendToBackendDocType = (type: string): string => {
-  switch (type) {
-    case 'Baptismal Certificate':
-      return 'BAPTISMAL_CERTIFICATE';
-    case 'Marriage Certificate':
-      return 'MARRIAGE_CERTIFICATE';
-    case 'Confirmation Certificate':
-      return 'CONFIRMATION_CERTIFICATE';
-    case 'First Communion Certificate':
-      return 'FIRST_COMMUNION_CERTIFICATE';
-    case 'Good Moral Character':
-      return 'GOOD_MORAL_CHARACTER';
-    case 'Death Certificate':
-      return 'DEATH_CERTIFICATE';
-    default:
-      return type;
-  }
-};
+import {
+  DOCUMENT_TYPE_FILTER_OPTIONS,
+  getDocumentRequirementsLookupParams,
+} from '@/config/documents';
 
 const DOCUMENT_TYPE_OPTIONS: { label: string; value: DocumentType | 'all' }[] = [
   { label: 'All Document Types', value: 'all' },
-  { label: 'Baptismal Certificate', value: 'Baptismal Certificate' },
-  { label: 'Marriage Certificate', value: 'Marriage Certificate' },
-  { label: 'Confirmation Certificate', value: 'Confirmation Certificate' },
-  { label: 'Good Moral Character', value: 'Good Moral Character' },
-  { label: 'Death Certificate', value: 'Death Certificate' },
+  ...DOCUMENT_TYPE_FILTER_OPTIONS,
 ];
 
 const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
@@ -98,41 +79,40 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   const [showPaymentCorrectionModal, setShowPaymentCorrectionModal] = useState(false);
   const [paymentCorrectionNotes, setPaymentCorrectionNotes] = useState('');
   const [requirements, setRequirements] = useState<{ id: string; label: string; description?: string }[]>([]);
-  const [loadingReqs, setLoadingReqs] = useState(false);
+  const [requirementsLoadState, setRequirementsLoadState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [selectedReqs, setSelectedReqs] = useState<Record<string, boolean>>({});
   const updateInFlightRef = useRef(false);
+  const loadingReqs = requirementsLoadState === 'loading';
 
-  const loadRequirements = useCallback(() => {
-    setLoadingReqs(true);
+  const loadRequirements = useCallback(async () => {
+    setRequirementsLoadState('loading');
     setCorrectionModalError(null);
-    const backendType = mapFrontendToBackendDocType(request.documentType);
-    api.get(`/document-requirements`, { params: { type: backendType, parishId: request.parishId } })
-      .then(res => {
-        const reqs = res.data?.data?.requiredDocuments || res.data?.requiredDocuments || [];
-        setRequirements(reqs);
-        setSelectedReqs(prev => {
-          if (Object.keys(prev).length > 0) return prev;
-          const initialSelect: Record<string, boolean> = {};
-          reqs.forEach((r: any) => {
-            initialSelect[r.id] = false;
-          });
-          return initialSelect;
-        });
-      })
-      .catch(err => {
-        console.error("Failed to fetch document requirements:", err);
-        setCorrectionModalError("Failed to fetch document requirements. Please retry.");
-      })
-      .finally(() => {
-        setLoadingReqs(false);
+    setRequirements([]);
+    setSelectedReqs({});
+    const params = getDocumentRequirementsLookupParams(request.documentType, request.parishId);
+    try {
+      const res = await api.get(`/document-requirements`, { params });
+      const authoritativeReqs = res.data?.data?.requiredDocuments || res.data?.requiredDocuments || [];
+      const correctionEligibleReqs = authoritativeReqs.filter((r: { id: string }) => r.id !== 'valid_id');
+      setRequirements(correctionEligibleReqs);
+      const initialSelect: Record<string, boolean> = {};
+      correctionEligibleReqs.forEach((r: { id: string }) => {
+        initialSelect[r.id] = false;
       });
+      setSelectedReqs(initialSelect);
+      setRequirementsLoadState('success');
+    } catch (err) {
+      console.error("Failed to fetch document requirements:", err);
+      setRequirementsLoadState('error');
+      setCorrectionModalError("Unable to determine correctable requirements. Retry.");
+    }
   }, [request.documentType, request.parishId]);
 
   useEffect(() => {
-    if (showCorrectionModal) {
-      loadRequirements();
+    if (canManage && request.status === 'Under Review') {
+      void loadRequirements();
     }
-  }, [showCorrectionModal, loadRequirements]);
+  }, [canManage, request.status, loadRequirements]);
 
   const handleAction = async (
     status: DocumentStatus,
@@ -176,7 +156,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
       setCorrectionModalError('Please select a reason for rejection.');
       return;
     }
-    const selectedIds = Object.keys(selectedReqs).filter(id => selectedReqs[id]);
+    const selectedIds = requirements.filter(req => selectedReqs[req.id]).map(req => req.id);
     if (selectedIds.length === 0) {
       setCorrectionModalError('Please select at least one affected document requirement.');
       return;
@@ -243,25 +223,52 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
         );
       case 'Under Review':
         return (
-          <>
-            <button
-              onClick={() => void handleAction('Payment Pending')}
-              disabled={isUpdating}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              Request Payment
-            </button>
-            <button
-              onClick={() => {
-                setCorrectionModalError(null);
-                setShowCorrectionModal(true);
-              }}
-              disabled={isUpdating}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
-            >
-              Reject
-            </button>
-          </>
+          <div className="flex flex-col items-start gap-1.5">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void handleAction('Payment Pending')}
+                disabled={isUpdating}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+              >
+                Request Payment
+              </button>
+              <button
+                onClick={() => {
+                  if (requirementsLoadState !== 'success' || requirements.length === 0) return;
+                  setCorrectionModalError(null);
+                  setShowCorrectionModal(true);
+                }}
+                disabled={
+                  isUpdating ||
+                  requirementsLoadState !== 'success' ||
+                  requirements.length === 0
+                }
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+              >
+                Reject
+              </button>
+            </div>
+            {(requirementsLoadState === 'idle' || requirementsLoadState === 'loading') && (
+              <p className="text-[11px] text-gray-500">Checking correctable requirements...</p>
+            )}
+            {requirementsLoadState === 'error' && (
+              <p className="text-[11px] text-red-700">
+                Unable to determine correctable requirements.{' '}
+                <button
+                  type="button"
+                  onClick={() => void loadRequirements()}
+                  className="font-semibold underline hover:no-underline"
+                >
+                  Retry
+                </button>
+              </p>
+            )}
+            {requirementsLoadState === 'success' && requirements.length === 0 && (
+              <p className="text-[11px] text-gray-500">
+                This request has no supporting documents that can be returned for correction.
+              </p>
+            )}
+          </div>
         );
       case 'Payment Pending':
       case 'Payment Needs Correction':
@@ -951,19 +958,19 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
         )}
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
+        <div className="px-6 py-4 border-t border-gray-100 flex items-start justify-between gap-4 bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-2">
             {canManage ? (
               renderActionButtons()
             ) : (
-              <p className="text-xs text-gray-500 italic">
+              <p className="text-xs text-gray-500 italic py-2">
                 You have read-only access to document requests.
               </p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border bg-white"
+            className="px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 bg-white"
           >
             Close
           </button>

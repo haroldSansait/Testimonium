@@ -1,3 +1,6 @@
+import { CANONICAL_DOCUMENT_IDS } from '@/config/documents';
+import type { CanonicalDocumentType } from '@/types';
+
 export const UserRole = {
   PARISHIONER: 'PARISHIONER',
   SECRETARY: 'SECRETARY',
@@ -37,12 +40,9 @@ export const ScheduleStatus = {
 
 export type ScheduleStatusType = typeof ScheduleStatus[keyof typeof ScheduleStatus];
 
-export const DocumentType = {
-  BAPTISMAL_CERTIFICATE: 'BAPTISMAL_CERTIFICATE',
-  CONFIRMATION_CERTIFICATE: 'CONFIRMATION_CERTIFICATE',
-  MARRIAGE_CERTIFICATE: 'MARRIAGE_CERTIFICATE',
-  FIRST_COMMUNION_CERTIFICATE: 'FIRST_COMMUNION_CERTIFICATE'
-} as const;
+export const DocumentType = Object.fromEntries(
+  CANONICAL_DOCUMENT_IDS.map((id) => [id, id])
+) as { [K in CanonicalDocumentType]: K };
 
 export type DocumentTypeType = typeof DocumentType[keyof typeof DocumentType];
 
