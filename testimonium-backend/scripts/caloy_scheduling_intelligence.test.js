@@ -9,6 +9,7 @@ import { ChatbotService } from "../services/ChatbotService.js";
 import { ConversationContextManager } from "../services/ai/ConversationContextManager.js";
 import { ScheduleService } from "../services/ScheduleService.js";
 import { prisma } from "../config/db.js";
+import { getManilaTodayDateString } from "../utils/manilaAnalyticsDate.js";
 import {
   resolveManilaDate,
   resolveScheduleEventType,
@@ -748,26 +749,31 @@ test("Caloy Scheduling Intelligence & Live Directory Correction Pass", async (t)
       scheduleDateRules: [],
     });
     prisma.schedule.findMany = async () => [];
+    const [year, month, day] = getManilaTodayDateString().split("-").map(Number);
+    const nextMonday = new Date(Date.UTC(year, month - 1, day));
+    const daysUntilMonday = ((8 - nextMonday.getUTCDay()) % 7) || 7;
+    nextMonday.setUTCDate(nextMonday.getUTCDate() + daysUntilMonday);
+    const testDate = nextMonday.toISOString().slice(0, 10);
 
     try {
       const service = new ScheduleService();
-      const slots = await service.getAvailableSlots(2, "2026-09-14", "WEDDING");
+      const slots = await service.getAvailableSlots(2, testDate, "WEDDING");
       assert.deepEqual(slots, ["09:00 AM", "10:30 AM"]);
       assert.ok(slots.every((slot) => typeof slot === "string"));
 
-      const detailed = await service.getAvailableSlotsDetailed(2, "2026-09-14", "WEDDING");
+      const detailed = await service.getAvailableSlotsDetailed(2, testDate, "WEDDING");
       assert.equal(detailed.candidateSlots.length, 2);
       assert.equal(detailed.slots.length, 2);
       assert.equal(detailed.reasonCode, null);
 
       officeClosed = true;
-      const closed = await service.getAvailableSlotsDetailed(2, "2026-09-14", "WEDDING");
+      const closed = await service.getAvailableSlotsDetailed(2, testDate, "WEDDING");
       assert.deepEqual(closed.slots, []);
       assert.equal(closed.reasonCode, "PARISH_CLOSED");
 
       officeClosed = false;
       serviceEnabled = false;
-      const disabled = await service.getAvailableSlotsDetailed(2, "2026-09-14", "WEDDING");
+      const disabled = await service.getAvailableSlotsDetailed(2, testDate, "WEDDING");
       assert.deepEqual(disabled.slots, []);
       assert.equal(disabled.reasonCode, "EVENT_NOT_OFFERED");
     } finally {

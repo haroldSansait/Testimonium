@@ -516,3 +516,13 @@ All endpoints are mounted under `/api/v1/chatbot/admin` and require `DIOCESE_COO
 - Mobile application base URL: `EXPO_PUBLIC_API_BASE_URL`.
 - All mutation endpoints must be protected by authentication, role middleware, and strict request schema validation.
 - Cloudflare R2 object keys are stored securely in database tables; storage credentials are never exposed to web or mobile clients.
+
+## Relationship-based request evidence
+
+Relationship is canonicalized to Self, Parent, Child, Spouse, Sibling, Other Relative, or Authorized Representative. Unsupported values return 400 INVALID_RELATIONSHIP. Omitted legacy values resolve to Self, while persisted unknown values fail closed.
+
+GET /document-requirements and GET /document-requirements/:type accept an optional relationship query. The existing requiredDocuments contract is unchanged; relationshipEvidence is an additive array. Every non-Self relationship requires authorization_letter, registrant_id_front, and registrant_id_back.
+
+Owners upload one or both private JPEG/PNG sides (5 MB each) with POST /requests/:id/registrant-id, read bounded metadata with GET /requests/:id/registrant-id, and stream a side with GET /requests/:id/registrant-id/:side. Secretary users in the request parish and Diocese Coordinators use the corresponding /document-requests/:id routes. Priests are explicitly forbidden from registrant-ID metadata and images. Admin receipt viewing uses GET /document-requests/:id/receipts/:receiptId/download. All private streams set private, no-store and nosniff headers; list DTOs contain no private object keys or public URLs.
+
+Submission requires the authorization letter plus distinct front and back image hashes, but it never waits for OCR. Advisory OCR is asynchronous, leased, retryable, version-fenced, and cannot mutate profile, request, payment, or identity-verification decisions. Correction rounds snapshot the current authorization attachment and side revisions and require a newer replacement for each targeted item.

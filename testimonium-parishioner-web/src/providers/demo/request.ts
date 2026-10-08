@@ -182,6 +182,15 @@ export class DemoRequestProvider implements IRequestProvider {
     return newAttachments;
   }
 
+  async uploadRegistrantId(_id: string, files: { front?: File; back?: File }): Promise<any> {
+    return {
+      version: 1,
+      front: { uploaded: Boolean(files.front), revision: files.front ? 1 : 0 },
+      back: { uploaded: Boolean(files.back), revision: files.back ? 1 : 0 },
+      ocrStatus: files.front && files.back ? "PENDING" : "AWAITING_IMAGES",
+    };
+  }
+
   async uploadReceipt(id: string, file: File): Promise<any> {
     await new Promise(resolve => setTimeout(resolve, 600));
     const request = this.requests.find(r => r.id === id);

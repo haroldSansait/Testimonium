@@ -21,6 +21,7 @@ import type {
   DocumentRequirement,
   LocalSelectedFile,
   LocalSelectedReceipt,
+  LocalRegistrantIdImage,
   PaymentConfiguration,
   ReceiptUploadResponse,
   RequestAttachment,
@@ -32,11 +33,13 @@ import type {
 export const fetchDocumentRequirements = async (params: {
   documentType?: string;
   parishId?: number | string;
+  relationship?: string;
   signal?: AbortSignal;
 }): Promise<DocumentRequirement> => {
   const queryParams = new URLSearchParams();
   if (params.documentType) queryParams.set("type", params.documentType);
   if (params.parishId) queryParams.set("parishId", String(params.parishId));
+  if (params.relationship) queryParams.set("relationship", params.relationship);
 
   const queryString = queryParams.toString();
   const path = `/document-requirements${queryString ? `?${queryString}` : ""}`;
@@ -55,22 +58,26 @@ export const useDocumentRequirements = (
   params?: {
     documentType?: string | null;
     parishId?: number | string | null;
+    relationship?: string | null;
   },
   options?: Partial<UseQueryOptions<DocumentRequirement>>
 ) => {
   const { user } = useAuth();
   const docType = params?.documentType ?? "";
   const parishId = params?.parishId ?? "";
+  const relationship = params?.relationship ?? "";
 
   return useQuery({
     queryKey: requestKeys.requirements(user?.uid, {
       documentType: docType,
       parishId,
+      relationship,
     }),
     queryFn: ({ signal }) =>
       fetchDocumentRequirements({
         documentType: docType,
         parishId,
+        relationship,
         signal,
       }),
     enabled: Boolean(docType),
@@ -151,6 +158,43 @@ export const useRequestDetail = (
     enabled: Boolean(user?.uid && isValidId),
     staleTime: 15 * 1000,
     ...options,
+  });
+};
+
+export const uploadRegistrantId = async ({
+  requestId,
+  front,
+  back,
+}: {
+  requestId: number | string;
+  front?: LocalRegistrantIdImage;
+  back?: LocalRegistrantIdImage;
+}): Promise<any> => {
+  const createBody = () => {
+    const formData = new FormData();
+    if (front) formData.append("front", { uri: front.uri, name: front.name, type: front.mimeType } as unknown as Blob);
+    if (back) formData.append("back", { uri: back.uri, name: back.name, type: back.mimeType } as unknown as Blob);
+    return formData;
+  };
+  return apiClient.request<any>({
+    method: "POST",
+    path: `/requests/${requestId}/registrant-id`,
+    createBody,
+    isMultipart: true,
+    auth: true,
+    timeout: 45_000,
+  });
+};
+
+export const useUploadRegistrantId = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: uploadRegistrantId,
+    retry: false,
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: requestKeys.detail(user?.uid, variables.requestId) });
+    },
   });
 };
 

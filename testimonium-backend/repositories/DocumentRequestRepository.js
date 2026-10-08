@@ -11,6 +11,15 @@ export const listInclude = {
     select: { id: true, fullName: true },
   },
   attachments: {
+    select: {
+      id: true,
+      requestId: true,
+      fileName: true,
+      fileType: true,
+      fileSize: true,
+      category: true,
+      uploadedAt: true,
+    },
     orderBy: {
       uploadedAt: "asc",
     },
@@ -18,7 +27,15 @@ export const listInclude = {
   paymentTransactions: {
     include: {
       receipts: {
-        include: {
+        select: {
+          id: true,
+          paymentTransactionId: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          attemptVersion: true,
+          isSuperseded: true,
+          uploadedAt: true,
           ocrResult: true,
         },
         orderBy: {

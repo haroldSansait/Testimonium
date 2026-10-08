@@ -159,7 +159,11 @@ test("Parishioner Web Upload Policy Suite", async (t) => {
 
   await t.test("Accept attributes: specific extensions without broad */* or image/* wildcards", () => {
     for (const [key, policy] of Object.entries(UPLOAD_POLICIES)) {
-      assert.ok(policy.acceptAttribute.includes(".pdf"), `${key} must advertise .pdf in acceptAttribute`);
+      if (key !== "REGISTRANT_ID_IMAGE") {
+        assert.ok(policy.acceptAttribute.includes(".pdf"), `${key} must advertise .pdf in acceptAttribute`);
+      } else {
+        assert.ok(!policy.acceptAttribute.includes(".pdf"), "Registrant ID must remain JPEG/PNG only");
+      }
       assert.ok(!policy.acceptAttribute.includes("*/*"), `${key} must not use broad */*`);
       assert.ok(!policy.acceptAttribute.includes("image/*"), `${key} must not use broad image/* which permits HEIC`);
     }
@@ -173,7 +177,7 @@ test("Parishioner Web Upload Policy Suite", async (t) => {
     const pageContent = fs.readFileSync(path.join(srcDir, "pages/dashboard/SacramentalRequestPage.tsx"), "utf8");
     assert.ok(pageContent.includes("UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute"));
     assert.ok(pageContent.includes("UPLOAD_POLICIES.AUTHORIZATION_LETTER.acceptAttribute"));
-    assert.ok(pageContent.includes("Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB."));
+    assert.match(pageContent, /Drag and drop files here, or click to upload\. PDF, JPG, PNG, or WebP [-—] up to 5 MB\./);
     assert.ok(pageContent.includes("Drag and drop files here, or click to upload. PDF, JPG, or PNG — up to 5 MB."));
     assert.ok(pageContent.includes("onDragOver"));
     assert.ok(pageContent.includes("onDrop"));
@@ -183,8 +187,9 @@ test("Parishioner Web Upload Policy Suite", async (t) => {
 
   await t.test("Source contract: RequestTrackingPage uses UPLOAD_POLICIES.CORRECTION_DOCUMENT and preserves partial-upload retry", () => {
     const pageContent = fs.readFileSync(path.join(srcDir, "pages/dashboard/RequestTrackingPage.tsx"), "utf8");
-    assert.ok(pageContent.includes("UPLOAD_POLICIES.CORRECTION_DOCUMENT.acceptAttribute"));
-    assert.ok(pageContent.includes("Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB."));
+    assert.ok(pageContent.includes("UPLOAD_POLICIES.CORRECTION_DOCUMENT).acceptAttribute"));
+    assert.ok(pageContent.includes("UPLOAD_POLICIES.REGISTRANT_ID_IMAGE"));
+    assert.ok(pageContent.includes("Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP"));
     assert.ok(pageContent.includes("onDragOver"));
     assert.ok(pageContent.includes("onDrop"));
     // Verify audited partial-upload repair is intact

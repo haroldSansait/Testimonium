@@ -10,6 +10,9 @@ import {
   uploadReceipt,
   resubmitCorrections,
   downloadAttachment,
+  uploadRegistrantId,
+  getRegistrantIdMetadata,
+  streamOwnedRegistrantIdSide,
 } from "../controllers/ParishionerRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
@@ -18,8 +21,9 @@ import { createRequestSchema } from "../validators/requestSchemas.js";
 import {
   uploadRequestFiles,
   uploadReceiptFile,
+  uploadRegistrantIdFiles,
 } from "../middlewares/uploadMiddleware.js";
-import { receiptUploadRateLimiter } from "../middlewares/rateLimit.js";
+import { receiptUploadRateLimiter, registrantIdUploadRateLimiter } from "../middlewares/rateLimit.js";
 
 const router = Router();
 
@@ -36,6 +40,9 @@ router.get("/:id", getById);
 
 // File attachment uploads (limit 10)
 router.post("/:id/files", uploadRequestFiles, uploadFiles);
+router.post("/:id/registrant-id", registrantIdUploadRateLimiter, uploadRegistrantIdFiles, uploadRegistrantId);
+router.get("/:id/registrant-id", getRegistrantIdMetadata);
+router.get("/:id/registrant-id/:side", streamOwnedRegistrantIdSide);
 
 // Authenticated private attachment download
 router.get("/:id/attachments/:attachmentId/download", downloadAttachment);

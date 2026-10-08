@@ -121,6 +121,7 @@ export class ApiRequestProvider implements IRequestProvider {
     applicantLastName?: string;
     relationship: string;
     purpose: string;
+    idempotencyKey?: string;
   }): Promise<SacramentalRequest> {
     const payload: any = {
       parishId: parseInt(request.parishId, 10),
@@ -134,7 +135,7 @@ export class ApiRequestProvider implements IRequestProvider {
     if (request.applicantName) {
       payload.applicantName = request.applicantName;
     }
-    const data = await client.post<any>("/requests", payload);
+    const data = await client.post<any>("/requests", payload, request.idempotencyKey ? { headers: { "Idempotency-Key": request.idempotencyKey } } : undefined);
     return mapRequest(data);
   }
 
@@ -150,12 +151,19 @@ export class ApiRequestProvider implements IRequestProvider {
 
   async uploadFiles(id: string, files: File[], category: string = "supporting"): Promise<RequestAttachment[]> {
     const formData = new FormData();
+    formData.append("category", category);
     files.forEach((file) => {
       formData.append("files", file);
     });
-    formData.append("category", category);
 
     return client.post<RequestAttachment[]>(`/requests/${id}/files`, formData);
+  }
+
+  async uploadRegistrantId(id: string, files: { front?: File; back?: File }): Promise<any> {
+    const formData = new FormData();
+    if (files.front) formData.append("front", files.front);
+    if (files.back) formData.append("back", files.back);
+    return client.post<any>(`/requests/${id}/registrant-id`, formData);
   }
 
   async uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any; request?: SacramentalRequest }> {
@@ -170,9 +178,9 @@ export class ApiRequestProvider implements IRequestProvider {
     };
   }
 
-  async getDocumentRequirements(type: string, parishId?: string): Promise<any> {
+  async getDocumentRequirements(type: string, parishId?: string, relationship?: string): Promise<any> {
     const backendType = mapFrontendToBackendDocType(type);
-    const response = await client.get<any>('/document-requirements', { type: backendType, parishId });
+    const response = await client.get<any>('/document-requirements', { type: backendType, parishId, relationship });
     return response.data || response;
   }
 

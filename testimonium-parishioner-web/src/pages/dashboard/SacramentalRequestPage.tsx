@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, Copy, FileText, AlertCircle, ShieldCheck } from 'lucide-react';
 import services from '../../providers/factory';
@@ -19,6 +19,16 @@ import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
+
+const LocalImagePreview: React.FC<{ file: File; alt: string }> = ({ file, alt }) => {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url ? <img src={url} alt={alt} className="w-full h-36 object-contain rounded bg-gray-900" /> : null;
+};
 
 export const SacramentalRequestPage: React.FC = () => {
   usePausePolling(true);
@@ -63,6 +73,11 @@ export const SacramentalRequestPage: React.FC = () => {
   // Authorization Letter for Authorized Representatives
   const [authLetterFile, setAuthLetterFile] = useState<File | null>(null);
   const [authLetterError, setAuthLetterError] = useState<string | null>(null);
+  const [registrantIdFront, setRegistrantIdFront] = useState<File | null>(null);
+  const [registrantIdBack, setRegistrantIdBack] = useState<File | null>(null);
+  const [registrantIdErrors, setRegistrantIdErrors] = useState<Record<string, string>>({});
+  const draftRef = useRef<{ id: string; fingerprint: string } | null>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   // Success State
   const [createdRequest, setCreatedRequest] = useState<SacramentalRequest | null>(null);
@@ -102,7 +117,7 @@ export const SacramentalRequestPage: React.FC = () => {
   useEffect(() => {
     if (currentStep === 3) {
       setLoadingReqs(true);
-      services.request.getDocumentRequirements(docType, selectedParishId)
+      services.request.getDocumentRequirements(docType, selectedParishId, relationship)
         .then(res => {
           const reqs = res?.requiredDocuments || [];
           setRequirementsList(reqs);
@@ -114,7 +129,7 @@ export const SacramentalRequestPage: React.FC = () => {
           setLoadingReqs(false);
         });
     }
-  }, [currentStep, docType, selectedParishId]);
+  }, [currentStep, docType, selectedParishId, relationship]);
 
   const steps = ['Select Parish', 'Document Details', 'Applicant Info', 'Upload Requirements', 'Confirmation'];
 
@@ -142,11 +157,26 @@ export const SacramentalRequestPage: React.FC = () => {
   };
 
   const handleRelationshipChange = (newRel: string) => {
-    setRelationship(newRel);
-    if (newRel !== 'Authorized Representative') {
-      setAuthLetterFile(null);
-      setAuthLetterError(null);
+    if (newRel !== relationship) {
+      draftRef.current = null;
+      idempotencyKeyRef.current = null;
     }
+    setRelationship(newRel);
+  };
+
+  const handleRegistrantIdUpload = (side: 'front' | 'back', file: File) => {
+    const result = validateUploadFile(file, UPLOAD_POLICIES.REGISTRANT_ID_IMAGE);
+    if (!result.valid) {
+      setRegistrantIdErrors((current) => ({ ...current, [side]: result.error || 'Select a JPEG or PNG image under 5 MB.' }));
+      return;
+    }
+    setRegistrantIdErrors((current) => {
+      const next = { ...current };
+      delete next[side];
+      return next;
+    });
+    if (side === 'front') setRegistrantIdFront(file);
+    else setRegistrantIdBack(file);
   };
 
   const handleAuthLetterUpload = (file: File) => {
@@ -206,7 +236,13 @@ export const SacramentalRequestPage: React.FC = () => {
         ? `${purpose} (Approximate Registry Year: ${registryYear})`
         : purpose;
 
-      const draft = await services.request.createRequest({
+      const payloadFingerprint = JSON.stringify({ selectedParishId, docType, applicantFirstName: applicantFirstName.trim(), applicantMiddleName: applicantMiddleName.trim(), applicantLastName: applicantLastName.trim(), relationship, finalPurpose });
+      if (draftRef.current && draftRef.current.fingerprint !== payloadFingerprint) {
+        draftRef.current = null;
+        idempotencyKeyRef.current = null;
+      }
+      if (!idempotencyKeyRef.current) idempotencyKeyRef.current = globalThis.crypto?.randomUUID?.() || `web_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const draft = draftRef.current ? { id: draftRef.current.id } : await services.request.createRequest({
         parishId: selectedParishId,
         documentType: docType as any,
         applicantFirstName: applicantFirstName.trim(),
@@ -214,28 +250,39 @@ export const SacramentalRequestPage: React.FC = () => {
         applicantLastName: applicantLastName.trim(),
         relationship,
         purpose: finalPurpose,
+        idempotencyKey: idempotencyKeyRef.current,
       });
+      if (!draftRef.current) draftRef.current = { id: draft.id, fingerprint: payloadFingerprint };
 
       // 2. Upload requirements if any are present
-      const reqFiles = Object.entries(uploadedFilesByReq);
+      const activeRequirementIds = new Set(requirementsList.filter((item) => item.required && item.id !== 'valid_id').map((item) => item.id));
+      const reqFiles = Object.entries(uploadedFilesByReq).filter(([id]) => activeRequirementIds.has(id));
       for (const [reqId, file] of reqFiles) {
         await services.request.uploadFiles(draft.id, [file], reqId);
       }
 
-      // 2b. Upload authorization letter if Authorized Representative
-      if (relationship === 'Authorized Representative') {
+      // 2b. Upload mandatory relationship evidence for every non-Self request.
+      if (relationship !== 'Self') {
         if (!authLetterFile) {
-          setSubmissionError("An authorization letter is required when requesting documents as an Authorized Representative.");
+          setSubmissionError("An authorization letter is required when requesting a document for another person.");
+          setSubmitting(false);
+          return;
+        }
+        if (!registrantIdFront || !registrantIdBack) {
+          setSubmissionError("Front and back images of the registrant's Government ID are required.");
           setSubmitting(false);
           return;
         }
         await services.request.uploadFiles(draft.id, [authLetterFile], 'authorization_letter');
+        await services.request.uploadRegistrantId(draft.id, { front: registrantIdFront, back: registrantIdBack });
       }
 
       // 3. Finalize and submit the request
       const finalized = await services.request.submitDraft(draft.id);
 
       setCreatedRequest(finalized);
+      draftRef.current = null;
+      idempotencyKeyRef.current = null;
       setCurrentStep(4);
     } catch (err: any) {
       console.error("Request submission error:", err);
@@ -244,7 +291,11 @@ export const SacramentalRequestPage: React.FC = () => {
       } else if (err?.code === "IDENTITY_NOT_VERIFIED") {
         setSubmissionError("Please verify your Government ID in your profile before submitting requests.");
       } else if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
-        setSubmissionError("An authorization letter is required when requesting documents as an Authorized Representative.");
+        setSubmissionError("An authorization letter is required when requesting a document for another person.");
+      } else if (err?.code === "REGISTRANT_ID_REQUIRED") {
+        setSubmissionError("Front and back images of the registrant's Government ID are required.");
+      } else if (err?.code === "SELF_REGISTRANT_NAME_MISMATCH" || err?.code === "SELF_REGISTRANT_NAME_UNAVAILABLE") {
+        setSubmissionError(err?.message || "Please check that the registrant name matches your verified profile name.");
       } else {
         setSubmissionError(err?.message || "Failed to submit document request. Please review your information.");
       }
@@ -308,12 +359,12 @@ export const SacramentalRequestPage: React.FC = () => {
     );
   }
 
-  const isAuthLetterRequired = relationship === 'Authorized Representative';
+  const isAuthLetterRequired = relationship !== 'Self';
   const allReqsUploaded = requirementsList.every(req => {
     if (!req.required) return true;
     if (req.id === 'valid_id' && isGovIdVerified) return true;
     return !!uploadedFilesByReq[req.id];
-  }) && (!isAuthLetterRequired || !!authLetterFile);
+  }) && (!isAuthLetterRequired || (!!authLetterFile && !!registrantIdFront && !!registrantIdBack));
 
   if (isProfileIncomplete) {
     return (
@@ -570,6 +621,18 @@ export const SacramentalRequestPage: React.FC = () => {
                 </p>
               </div>
 
+              {relationship !== 'Self' ? (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-card space-y-2">
+                  <span className="text-xs font-bold text-amber-950">Requesting a document for someone else</span>
+                  <p className="text-[11px] text-amber-900">
+                    Your Government ID is already verified through your TESTIMONIUM profile. Because this document belongs to another person, provide a signed Authorization Letter and clear front and back images of the registrant's valid Government ID. The registrant is the person named on the requested sacramental record.
+                  </p>
+                  <p className="text-[11px] text-amber-900">
+                    If the registrant has no available ID or cannot provide the required evidence, this online request cannot be completed under the current rule. Contact the parish office for guidance.
+                  </p>
+                </div>
+              ) : null}
+
               {loadingReqs ? (
                 <div className="space-y-3">
                   <Skeleton className="h-20 w-full rounded" />
@@ -611,7 +674,7 @@ export const SacramentalRequestPage: React.FC = () => {
                           <div className="flex items-center gap-3 p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-button">
                             <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                             <div>
-                              <span className="text-xs font-semibold text-emerald-950 block">Valid Government ID</span>
+                              <span className="text-xs font-semibold text-emerald-950 block">{relationship === 'Self' ? 'Valid Government ID' : 'Your Government ID - verified (requester)'}</span>
                               <p className="text-[11px] text-emerald-700">Verified through your TESTIMONIUM profile</p>
                             </div>
                           </div>
@@ -663,7 +726,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Authorization Letter Upload when Authorized Representative */}
+              {/* Authorization Letter Upload for every non-Self relationship */}
               {isAuthLetterRequired && (
                 <div className="p-4 border border-crimson/30 rounded-button bg-red-50/20 space-y-3">
                   <div className="flex justify-between items-start">
@@ -672,7 +735,7 @@ export const SacramentalRequestPage: React.FC = () => {
                         Authorization Letter <span className="text-crimson">*</span>
                       </span>
                       <p className="text-[11px] text-text-muted mt-0.5">
-                        Upload the signed authorization letter from the person you are representing.
+                        Upload the signed authorization letter required for this non-Self request.
                       </p>
                     </div>
                     <span className="text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
@@ -733,6 +796,51 @@ export const SacramentalRequestPage: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {relationship !== 'Self' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {(['front', 'back'] as const).map((side) => {
+                    const selected = side === 'front' ? registrantIdFront : registrantIdBack;
+                    return (
+                      <div key={side} className="p-4 border border-crimson/30 rounded-button bg-red-50/20 space-y-3">
+                        <div>
+                          <span className="text-xs font-bold text-text-primary block">Registrant's Government ID - {side === 'front' ? 'Front' : 'Back'} *</span>
+                          <p className="text-[11px] text-text-muted mt-0.5">Clear, readable JPEG or PNG image. Maximum 5 MB.</p>
+                        </div>
+                        {registrantIdErrors[side] ? <div className="p-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">{registrantIdErrors[side]}</div> : null}
+                        {selected ? (
+                          <div className="space-y-2">
+                            <LocalImagePreview file={selected} alt={`Selected registrant ID ${side}`} />
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="truncate max-w-[220px] font-mono font-semibold">{selected.name} - Selected</span>
+                              <button type="button" onClick={() => side === 'front' ? setRegistrantIdFront(null) : setRegistrantIdBack(null)} className="text-crimson font-bold">Remove</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="relative border border-dashed border-gray-300 rounded-button p-4 text-center bg-white">
+                            <input
+                              type="file"
+                              capture="environment"
+                              accept={UPLOAD_POLICIES.REGISTRANT_ID_IMAGE.acceptAttribute}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) handleRegistrantIdUpload(side, file);
+                                event.target.value = '';
+                              }}
+                            />
+                            <span className="text-xs text-text-muted">Choose or capture the {side} image. JPG or PNG - up to 5 MB.</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {relationship === 'Self' && (authLetterFile || registrantIdFront || registrantIdBack) ? (
+                <p className="text-[11px] text-amber-800">Previously selected non-Self evidence is kept only in this local wizard session and will not be uploaded for a Self request.</p>
+              ) : null}
 
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev} disabled={submitting}>Back</Button>

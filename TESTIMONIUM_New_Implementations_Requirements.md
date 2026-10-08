@@ -962,3 +962,9 @@ These changes should move TESTIMONIUM toward a system where:
 - emergency rescheduling remains possible and auditable;
 - payment proof quality and reporting are more reliable;
 - concurrency, stale state, upload failure, and authorization bypasses are handled deliberately rather than as afterthoughts.
+
+## Relationship evidence clarification (2026-10-08)
+
+Section 8 now applies to every non-Self relationship, not only Authorized Representative. Parent, Child, Spouse, Sibling, Other Relative, and Authorized Representative require an authorization letter plus clear front and back JPEG/PNG images of the registrant's Government ID, limited to 5 MB per side. Self requests remain unchanged, including the existing valid_id verification contract.
+
+The backend is authoritative: unsupported relationship values fail with INVALID_RELATIONSHIP; submission requires all three evidence items and distinct side hashes; private images use a dedicated non-public bucket and authenticated streams; OCR is asynchronous advisory enrichment only; and a relationship-evidence correction requires a provably newer upload in that correction round.

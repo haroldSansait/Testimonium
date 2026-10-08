@@ -73,7 +73,8 @@ test("Parishioner Web Features 2 & 7 Regression Suite", async (t) => {
     assert.match(content, /correctionReqsList\.map\(req =>/);
     assert.match(content, /services\.request\.resubmitCorrections\(selectedRequest\.id\)/);
     assert.match(content, /correctionReqsList\.some\(req => !uploadedFilesByCorrectionReq\[req\.id\]/);
-    assert.ok(content.includes("UPLOAD_POLICIES.CORRECTION_DOCUMENT.acceptAttribute"));
+    assert.ok(content.includes("UPLOAD_POLICIES.CORRECTION_DOCUMENT).acceptAttribute"));
+    assert.ok(content.includes("UPLOAD_POLICIES.REGISTRANT_ID_IMAGE"));
     assert.match(content, /onDrop=\{\(e\) =>[\s\S]*?handleCorrectionFileSelect\(req\.id, dropped\)/);
     assert.match(content, /for \(const \[reqId, file\] of entries\)/);
     assert.match(content, /totalCount > 0 && succeededCount === totalCount/);

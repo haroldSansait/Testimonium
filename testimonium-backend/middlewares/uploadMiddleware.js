@@ -290,3 +290,54 @@ export const uploadGovernmentIdFiles = (req, res, next) => {
   });
 };
 
+const registrantIdUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 2, fields: 2, parts: 4 },
+  fileFilter: (_req, file, cb) => {
+    const rawMime = String(file.mimetype || "").trim().toLowerCase();
+    const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+    if (!["image/jpeg", "image/png"].includes(normalizedMime)) {
+      const error = new Error("Registrant ID images must be JPEG or PNG.");
+      error.statusCode = 415;
+      error.code = "REGISTRANT_ID_UNSUPPORTED_TYPE";
+      return cb(error, false);
+    }
+    file.mimetype = normalizedMime;
+    return cb(null, true);
+  },
+});
+
+export const uploadRegistrantIdFiles = (req, res, next) => {
+  registrantIdUpload.fields([
+    { name: "front", maxCount: 1 },
+    { name: "back", maxCount: 1 },
+  ])(req, res, async (err) => {
+    if (err) {
+      const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+      return res.status(tooLarge ? 413 : (err.statusCode || 400)).json({
+        success: false,
+        code: tooLarge ? "REGISTRANT_ID_FILE_TOO_LARGE" : (err.code || "INVALID_MULTIPART_UPLOAD"),
+        message: tooLarge ? "Registrant ID image exceeds the 5 MB limit." : "Invalid registrant ID multipart upload.",
+        errors: [],
+      });
+    }
+    const front = req.files?.front?.[0];
+    const back = req.files?.back?.[0];
+    if (!front && !back) {
+      return res.status(400).json({ success: false, code: "REGISTRANT_ID_REQUIRED", message: "Upload a front or back registrant ID image.", errors: [] });
+    }
+    try {
+      if (front) await FileValidator.validateRegistrantIdImage(front, "front");
+      if (back) await FileValidator.validateRegistrantIdImage(back, "back");
+      return next();
+    } catch (validationErr) {
+      return res.status(validationErr.statusCode || 400).json({
+        success: false,
+        code: validationErr.code || "REGISTRANT_ID_INVALID_IMAGE",
+        message: validationErr.message,
+        errors: validationErr.field ? [{ field: validationErr.field, message: validationErr.message }] : [],
+      });
+    }
+  });
+};
+

@@ -156,7 +156,7 @@
     },
     {
       "title": "File Upload Formats, Size Limits, and Binary Validation",
-      "sourceText": "TESTIMONIUM enforces strict security and format requirements for all file uploads. Every uploaded file must not exceed the maximum allowable size of 5 Megabytes (5 MB). For general supporting documents and valid IDs, accepted formats are PDF, JPEG, PNG, and WebP. For Authorization Letters, accepted formats are PDF, JPEG, and PNG only; WebP is explicitly disallowed. For Payment Receipts, accepted formats are JPEG and PNG only; PDF, WebP, and Apple HEIC/HEIF images are disallowed. The system inspects binary magic bytes to verify genuine file signatures and automatically rejects corrupted, empty, or disguised files.",
+      "sourceText": "TESTIMONIUM enforces strict security and format requirements for uploads. Every file is limited to 5 MB. General supporting documents accept PDF, JPEG, PNG, and WebP. Authorization Letters accept PDF, JPEG, and PNG only. Request-specific registrant Government ID evidence requires separate front and back JPEG or PNG images; PDF and WebP are not accepted for those images. Payment Receipts accept JPEG and PNG only; PDF, WebP, and Apple HEIC/HEIF are disallowed. Binary signatures and image decoding reject empty, corrupted, or disguised files.",
       "category": "ATTACHMENTS",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "TESTIMONIUM File Upload & Security Specification",
@@ -164,18 +164,18 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "All file uploads in TESTIMONIUM have a maximum size limit of 5 MB. Valid IDs and supporting documents accept PDF, JPEG, PNG, and WebP. Authorization Letters accept PDF, JPEG, and PNG only (no WebP).",
+          "content": "All TESTIMONIUM uploads have a 5 MB maximum. General supporting documents accept PDF, JPEG, PNG, and WebP. Authorization Letters accept PDF, JPEG, and PNG only.",
           "chunkOrder": 0
         },
         {
-          "content": "Payment receipts only accept JPEG and PNG formats up to 5 MB. iPhone HEIC/HEIF, PDF, and WebP formats are not supported for receipts. Uploads are verified via binary file signatures to reject corrupted or disguised files.",
+          "content": "Registrant Government ID evidence requires distinct front and back JPEG or PNG images, up to 5 MB each. Payment receipts also accept JPEG and PNG only. Binary signatures and image decoding reject corrupted or disguised files.",
           "chunkOrder": 1
         }
       ]
     },
     {
       "title": "Authorized Representative Eligibility and Identification Rules",
-      "sourceText": "Parishioners may submit a document request on behalf of another adult person—such as an adult brother, sister, relative, spouse, or friend—by applying as an Authorized Representative. Representative requests strictly require uploading a signed Authorization Letter from the certificate owner and valid government-issued IDs for both the certificate owner and the designated representative. Parents or legal guardians requesting sacramental certificates for minor children (under 18 years old) are exempt from providing an authorization letter, but must upload their own valid identification and state their parental or guardian relationship.",
+      "sourceText": "For a Self request, the parishioner requests their own sacramental document. Their Government ID is already verified through the TESTIMONIUM profile, so no additional registrant ID or Authorization Letter is required; the registrant name must satisfy backend Self-name validation. Every non-Self relationship (Parent, Child, Spouse, Sibling, Other Relative, or Authorized Representative) requires a signed Authorization Letter and clear front and back images of the registrant's valid Government ID. The registrant is the person whose sacramental record is requested, and this evidence is distinct from the requester's verified profile ID. There are no automatic exemptions for minors, deceased registrants, parents, or guardians. If the registrant cannot provide the required evidence, contact the parish office. OCR assists staff review only and never verifies identity or approves a request.",
       "category": "REPRESENTATIVE_REQUESTS",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "Diocesan Document Privacy and Representative Policy",
@@ -183,12 +183,16 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "Requesting a certificate for another adult (such as a brother, sister, relative, or friend) requires selecting Authorized Representative, uploading a signed Authorization Letter, and providing valid IDs for both parties.",
+          "content": "Self uses the requester's already-verified TESTIMONIUM profile ID and requires neither an Authorization Letter nor separate registrant ID images. The registrant name must satisfy backend Self-name validation.",
           "chunkOrder": 0
         },
         {
-          "content": "Parents and legal guardians requesting records for minor children do not need an Authorization Letter. They must upload their own valid government-issued ID and indicate their relationship to the minor.",
+          "content": "Parent, Child, Spouse, Sibling, Other Relative, and Authorized Representative requests all require a signed Authorization Letter plus front and back images of the registrant's valid Government ID. This is separate from the requester's verified profile ID.",
           "chunkOrder": 1
+        },
+        {
+          "content": "No automatic minor, deceased-person, parent, or guardian exemption is configured. Contact the parish office if the registrant cannot provide the required ID or letter. OCR is advisory and cannot verify identity or approve the request.",
+          "chunkOrder": 2
         }
       ]
     },
@@ -422,7 +426,7 @@
     },
     {
       "title": "Common User Errors and Request Rejection Causes",
-      "sourceText": "Document requests and appointment bookings may be delayed, flagged for correction, or rejected due to common submission mistakes. Frequent document errors include uploading blurry or cropped ID photos, submitting unsupported file formats (such as WebP for authorization letters or HEIC/HEIF for payment receipts), failing to attach a signed Authorization Letter when requesting for another adult, leaving profile contact numbers blank, or requesting certificate types not offered by the selected parish. In scheduling, common errors include booking slots outside parish operating hours or failing to respond to alternative date proposals.",
+      "sourceText": "Document requests and appointment bookings may be delayed, flagged for correction, or rejected due to common submission mistakes. Frequent document errors include blurry or cropped registrant ID images, uploading the same image for both sides, unsupported formats, missing a signed Authorization Letter or either registrant ID side for any non-Self request, a Self registrant name that does not match the verified profile name, incomplete profile contact details, or requesting a certificate type not offered by the selected parish. In scheduling, common errors include booking outside parish operating hours or failing to respond to alternative date proposals.",
       "category": "TROUBLESHOOTING",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "TESTIMONIUM Document Processing & Quality Guidelines",
@@ -430,7 +434,7 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "Common document request errors include blurry ID photos, unsupported file types (WebP for letters, HEIC for receipts), missing authorization letters for another adult, and incomplete profile contact numbers.",
+          "content": "Common request errors include blurry, duplicate, or missing registrant ID sides; unsupported file types; missing Authorization Letters for non-Self requests; Self-name mismatches; and incomplete profile contact details.",
           "chunkOrder": 0
         },
         {

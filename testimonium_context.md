@@ -63,3 +63,7 @@ The Prisma schema defines 35 models and 29 enums across identity, legal policy g
 - Create explicit Prisma migrations for schema changes; never use `prisma db push` in production.
 - Keep R2 object keys in the database and never expose storage credentials or direct database connections to web or mobile clients.
 - Build and verify all clients before handoff (`npm run build:all`, `npm test` across backend and mobile).
+
+### Relationship-based evidence
+
+Document-request relationships are a closed canonical set. Every non-Self request requires authorization_letter, registrant_id_front, and registrant_id_back in addition to the ordinary document matrix; Self remains unchanged. Registrant-ID images are isolated in R2_REGISTRANT_ID_BUCKET_NAME, never exposed by public URL, and streamed only to the owner, same-parish Secretary, or Diocese Coordinator. Priests are denied. Durable cleanup and OCR workers use leases and version fencing; OCR is advisory and never gates submission or mutates authoritative identity, request, or payment state.

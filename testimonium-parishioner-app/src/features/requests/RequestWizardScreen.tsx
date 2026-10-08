@@ -31,11 +31,13 @@ import {
   useDocumentRequirements,
   useSubmitRequestDraft,
   useUploadSupportingFile,
+  useUploadRegistrantId,
 } from "./api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/providers/AuthProvider";
 import { requestKeys } from "./queryKeys";
 import { SupportingFilePicker } from "./components/SupportingFilePicker";
+import { RegistrantIdCapturePicker } from "./components/RegistrantIdCapturePicker";
 import { normalizeAuthorizationLetterFile } from "./supportingUpload";
 import {
   formatDocumentType,
@@ -46,6 +48,7 @@ import {
 import {
   CanonicalDocumentType,
   LocalSelectedFile,
+  LocalRegistrantIdImage,
 } from "./types";
 
 export interface RequestWizardScreenProps {
@@ -91,12 +94,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   // Files
   const [selectedFiles, setSelectedFiles] = useState<Record<string, LocalSelectedFile>>({});
+  const [registrantIdFront, setRegistrantIdFront] = useState<LocalRegistrantIdImage | null>(null);
+  const [registrantIdBack, setRegistrantIdBack] = useState<LocalRegistrantIdImage | null>(null);
 
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStage, setSubmissionStage] = useState("");
   const idempotencyKeyRef = useRef<string | null>(null);
   const inFlightGuard = useRef(false);
+  const draftFingerprintRef = useRef<string | null>(null);
 
   // Queries
   const { data: parishesResponse, isLoading: loadingParishes } = useParishes({
@@ -119,13 +125,14 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     error: requirementsError,
   } = useDocumentRequirements(
     selectedDocType && selectedParish
-      ? { documentType: selectedDocType, parishId: selectedParish.id }
+      ? { documentType: selectedDocType, parishId: selectedParish.id, relationship }
       : undefined
   );
 
   // Mutations
   const createDraftMutation = useCreateRequestDraft();
   const uploadFileMutation = useUploadSupportingFile();
+  const uploadRegistrantIdMutation = useUploadRegistrantId();
   const submitDraftMutation = useSubmitRequestDraft();
   const hasValidRequirementsFee = hasAuthoritativeFee(requirements?.baseFee);
   const queryClient = useQueryClient();
@@ -310,11 +317,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
 
-    if (relationship === "Authorized Representative" && !selectedFiles["authorization_letter"]) {
+    if (relationship !== "Self" && !selectedFiles["authorization_letter"]) {
       feedback.showWarning(
         "Authorization Letter Required",
-        "An authorization letter is required when requesting documents as an Authorized Representative."
+        "An authorization letter is required when requesting a document for another person."
       );
+      return;
+    }
+    if (relationship !== "Self" && (!registrantIdFront || !registrantIdBack)) {
+      feedback.showWarning("Registrant ID Required", "Select clear front and back images of the registrant's Government ID.");
       return;
     }
 
@@ -324,7 +335,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   // Generate or retrieve persistent UUID for this submission session
   const getOrCreateIdempotencyKey = () => {
     if (!idempotencyKeyRef.current) {
-      idempotencyKeyRef.current = `req_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+      idempotencyKeyRef.current = `req_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`}`;
     }
     return idempotencyKeyRef.current;
   };
@@ -336,8 +347,12 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
 
-    if (relationship === "Authorized Representative" && !selectedFiles["authorization_letter"]) {
-      feedback.showWarning("Authorization Letter Required", "An authorization letter is required when requesting documents as an Authorized Representative.");
+    if (relationship !== "Self" && !selectedFiles["authorization_letter"]) {
+      feedback.showWarning("Authorization Letter Required", "An authorization letter is required when requesting a document for another person.");
+      return;
+    }
+    if (relationship !== "Self" && (!registrantIdFront || !registrantIdBack)) {
+      feedback.showWarning("Registrant ID Required", "Select clear front and back images of the registrant's Government ID.");
       return;
     }
 
@@ -346,7 +361,13 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     let createdDraftId: number | null = createdDraftIdRef.current;
 
     try {
-      // Stage 1: Create once. A retry after an upload failure reuses this exact draft ID.
+      const draftFingerprint = JSON.stringify({ parishId: selectedParish.id, documentType: selectedDocType, applicantFirstName: applicantFirstName.trim(), applicantMiddleName: applicantMiddleName.trim(), applicantLastName: applicantLastName.trim(), relationship: relationship.trim(), purpose: purpose.trim() });
+      if (draftFingerprintRef.current && draftFingerprintRef.current !== draftFingerprint) {
+        createdDraftIdRef.current = null;
+        idempotencyKeyRef.current = null;
+        createdDraftId = null;
+      }
+      // Stage 1: Reuse only a draft whose authoritative payload still matches.
       if (!createdDraftId) {
         setSubmissionStage("Initializing server draft...");
         const draft = await createDraftMutation.mutateAsync({
@@ -364,12 +385,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
         createdDraftId = draft.id;
         createdDraftIdRef.current = draft.id;
+        draftFingerprintRef.current = draftFingerprint;
       }
 
       const draftId = createdDraftId;
 
       // Stage 2: Upload all selected supporting files
-      const fileEntries = Object.entries(selectedFiles);
+      const activeIds = new Set((requirements?.requiredDocuments || []).filter((item) => item.required && item.id !== "valid_id").map((item) => item.id));
+      if (relationship !== "Self") activeIds.add("authorization_letter");
+      const fileEntries = Object.entries(selectedFiles).filter(([category]) => activeIds.has(category));
       if (fileEntries.length > 0) {
         setSubmissionStage(`Attaching supporting files (0 of ${fileEntries.length})...`);
         let count = 0;
@@ -384,6 +408,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         }
       }
 
+      if (relationship !== "Self" && registrantIdFront && registrantIdBack) {
+        setSubmissionStage("Uploading registrant Government ID evidence...");
+        await uploadRegistrantIdMutation.mutateAsync({ requestId: draftId, front: registrantIdFront, back: registrantIdBack });
+      }
+
       // Stage 3: Submit draft
       setSubmissionStage("Finalizing and submitting request...");
       const submitted = await submitDraftMutation.mutateAsync(draftId);
@@ -391,6 +420,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       // Clean local wizard state
       idempotencyKeyRef.current = null;
       createdDraftIdRef.current = null;
+      draftFingerprintRef.current = null;
 
       // Invalidate relevant queries
       void queryClient.invalidateQueries({ queryKey: requestKeys.lists(user?.uid) });
@@ -414,6 +444,14 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             confirmText: "Verify ID",
             onConfirm: () => router.push("/(app)/profile/id-verification" as any),
           }
+        );
+        return;
+      }
+
+      if (err?.code === "SELF_REGISTRANT_NAME_MISMATCH" || err?.code === "SELF_REGISTRANT_NAME_UNAVAILABLE") {
+        feedback.showWarning(
+          "Check Registrant Name",
+          err.message || "The registrant name must match your verified profile name for a Self request."
         );
         return;
       }
@@ -635,15 +673,12 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                     title={opt}
                     selected={relationship === opt}
                     onSelect={() => {
-                      setRelationship(opt);
-                      if (opt !== "Authorized Representative") {
-                        setSelectedFiles((prev) => {
-                          if (!prev["authorization_letter"]) return prev;
-                          const copy = { ...prev };
-                          delete copy["authorization_letter"];
-                          return copy;
-                        });
+                      if (relationship !== opt) {
+                        createdDraftIdRef.current = null;
+                        draftFingerprintRef.current = null;
+                        idempotencyKeyRef.current = null;
                       }
+                      setRelationship(opt);
                     }}
                     mode="radio"
                     accessibilityLabel={`Relationship: ${opt}`}
@@ -736,15 +771,23 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               </View>
             )}
 
-            {/* Conditional Authorization Letter for Authorized Representative */}
-            {relationship === "Authorized Representative" ? (
+            {relationship !== "Self" ? (
+              <View style={styles.infoBanner}>
+                <Text style={styles.infoTitle}>Requesting a document for someone else</Text>
+                <Text style={styles.infoText}>Your Government ID is verified through your profile. Also provide a signed Authorization Letter and clear front and back images of the Government ID belonging to the registrant. The registrant is the person named on the sacramental record.</Text>
+                <Text style={styles.infoText}>If the registrant has no available ID or cannot provide the required evidence, contact the parish office; this online request cannot proceed under the current rule.</Text>
+              </View>
+            ) : null}
+
+            {/* Conditional relationship evidence for every non-Self request */}
+            {relationship !== "Self" ? (
               <SupportingFilePicker
                 key="authorization_letter"
                 requirement={{
                   id: "authorization_letter",
                   category: "authorization_letter",
                   label: "Authorization Letter *",
-                  description: "Upload the signed authorization letter from the person you are representing. Accepted: PDF, JPEG, PNG (Max 5 MB).",
+                  description: "Upload the signed Authorization Letter required for this non-Self request. Accepted: PDF, JPEG, PNG (Max 5 MB).",
                   required: true,
                 }}
                 selectedFile={selectedFiles["authorization_letter"]}
@@ -764,6 +807,17 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   });
                 }}
               />
+            ) : null}
+
+            {relationship !== "Self" ? (
+              <>
+                <RegistrantIdCapturePicker side="front" image={registrantIdFront} onSelected={setRegistrantIdFront} onRemoved={() => setRegistrantIdFront(null)} disabled={isSubmitting} />
+                <RegistrantIdCapturePicker side="back" image={registrantIdBack} onSelected={setRegistrantIdBack} onRemoved={() => setRegistrantIdBack(null)} disabled={isSubmitting} />
+              </>
+            ) : null}
+
+            {relationship === "Self" && (selectedFiles["authorization_letter"] || registrantIdFront || registrantIdBack) ? (
+              <Text style={styles.hiddenEvidenceNote}>Previously selected non-Self evidence is kept only in this local wizard session and will not be uploaded for a Self request.</Text>
             ) : null}
           </View>
         ) : null}
@@ -811,12 +865,14 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 ...(profile?.isGovernmentIdVerified
                   ? [{ label: "Government ID", value: "Verified on Profile (Auto-satisfied)" }]
                   : []),
-                ...(relationship === "Authorized Representative"
+                ...(relationship !== "Self"
                   ? [
                       {
                         label: "Authorization Letter",
                         value: selectedFiles["authorization_letter"] ? "Attached (Ready)" : "Missing",
                       },
+                      { label: "Registrant ID - Front", value: registrantIdFront ? "Selected (Ready)" : "Missing" },
+                      { label: "Registrant ID - Back", value: registrantIdBack ? "Selected (Ready)" : "Missing" },
                     ]
                   : []),
               ]}
@@ -908,6 +964,30 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
+  infoBanner: {
+    backgroundColor: colors.warningSoft,
+    borderColor: colors.warningBorder,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  infoTitle: {
+    ...fontStyles.bodyMedium,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  infoText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  hiddenEvidenceNote: {
+    ...fontStyles.caption,
+    color: colors.warning,
+    marginBottom: spacing.sm,
+  },
   screen: {
     padding: 0,
     backgroundColor: colors.background,

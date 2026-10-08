@@ -17,6 +17,11 @@ import {
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { buildApplicantName } from "../utils/nameUtils.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
+import {
+  isSelfRelationship,
+  requireCanonicalRelationship,
+} from "../config/relationshipEvidence.js";
+import { compareSelfRegistrantName, SELF_NAME_MATCH } from "../utils/selfRegistrantNameMatcher.js";
 
 export async function assertParishionerOwnerRole(userId, client = prisma) {
   const user = await client.user.findUnique({
@@ -39,18 +44,36 @@ export async function assertParishionerOwnerRole(userId, client = prisma) {
 }
 
 export class ParishionerRequestService {
+  static validateSelfRegistrantName(relationship, applicantName, authoritativeProfileName) {
+    if (!isSelfRelationship(relationship)) return { outcome: "NOT_APPLICABLE" };
+    const result = compareSelfRegistrantName(authoritativeProfileName, applicantName);
+    if (result.outcome === SELF_NAME_MATCH.UNAVAILABLE) {
+      const error = new Error("Your verified profile name is unavailable. Please update your profile and verify your Government ID before submitting a Self request.");
+      error.statusCode = 409;
+      error.code = "SELF_REGISTRANT_NAME_UNAVAILABLE";
+      throw error;
+    }
+    if (result.outcome === SELF_NAME_MATCH.MISMATCH) {
+      const error = new Error("The registrant name does not appear to match your verified profile name. Please check the name or select the appropriate relationship if you are requesting a document for someone else.");
+      error.statusCode = 400;
+      error.code = "SELF_REGISTRANT_NAME_MISMATCH";
+      throw error;
+    }
+    return result;
+  }
+
   /**
    * Validates whether an authorization letter is required and present.
-   * Throws AUTHORIZATION_LETTER_REQUIRED (400) if relationship is Authorized Representative and no letter exists.
+   * Throws AUTHORIZATION_LETTER_REQUIRED (400) for any non-Self relationship without a letter.
    */
   static validateAuthorizationLetterRequirement(relationship, attachments = []) {
-    if (relationship === "Authorized Representative") {
+    if (!isSelfRelationship(relationship)) {
       const hasAuthLetter = Array.isArray(attachments) && attachments.some(
         (a) => a && a.category === "authorization_letter"
       );
       if (!hasAuthLetter) {
         const error = new Error(
-          "An authorization letter is required when requesting documents as an Authorized Representative."
+          "An authorization letter is required when requesting a document for another person."
         );
         error.code = "AUTHORIZATION_LETTER_REQUIRED";
         error.statusCode = 400;
@@ -75,6 +98,7 @@ export class ParishionerRequestService {
       throw error;
     }
 
+    const canonicalRelationship = requireCanonicalRelationship(requestData.relationship, { allowOmitted: true });
     const numericParishId = parseInt(requestData.parishId, 10);
     if (isNaN(numericParishId)) {
       const error = new Error("Invalid parish ID.");
@@ -127,7 +151,7 @@ export class ParishionerRequestService {
       parishId: numericParishId,
       documentType: normalizedDocType,
       applicantName: resolvedApplicantName,
-      relationship: requestData.relationship,
+      relationship: canonicalRelationship,
       purpose: requestData.purpose,
     });
 
@@ -228,7 +252,7 @@ export class ParishionerRequestService {
             parishId: numericParishId,
             documentType: normalizedDocType,
             applicantName: resolvedApplicantName,
-            relationship: (requestData.relationship || "Self").trim(),
+            relationship: canonicalRelationship,
             purpose: (requestData.purpose || "").trim(),
             isDraft: true,
             status: "PENDING",
@@ -366,6 +390,9 @@ export class ParishionerRequestService {
         throw error;
       }
 
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${Number(requestId)} FOR UPDATE`;
+      }
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
       });
@@ -381,6 +408,13 @@ export class ParishionerRequestService {
         error.statusCode = 400;
         throw error;
       }
+
+      // The requester name comes only from the authenticated server-side profile.
+      ParishionerRequestService.validateSelfRegistrantName(
+        request.relationship,
+        request.applicantName,
+        user.fullName
+      );
 
       // Check authoritative requirements for this parish and document type
       const reqConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
@@ -434,8 +468,8 @@ export class ParishionerRequestService {
         }
       }
 
-      // 3. Enforce Authorization Letter requirement for Authorized Representatives
-      if (request.relationship === "Authorized Representative") {
+      // 3. Enforce relationship evidence from the persisted relationship.
+      if (!isSelfRelationship(request.relationship)) {
         const authLetter = await tx.requestAttachment.findFirst({
           where: { requestId, category: "authorization_letter" },
         });
@@ -444,6 +478,26 @@ export class ParishionerRequestService {
           request.relationship,
           authLetter ? [authLetter] : []
         );
+
+        const evidence = await tx.registrantIdEvidence.findUnique({
+          where: { requestId },
+        });
+        const missing = [];
+        if (!evidence?.frontObjectKey) missing.push("front");
+        if (!evidence?.backObjectKey) missing.push("back");
+        if (missing.length > 0) {
+          const error = new Error(`Registrant Government ID evidence is incomplete. Missing: ${missing.join(", ")}.`);
+          error.statusCode = 400;
+          error.code = "REGISTRANT_ID_REQUIRED";
+          error.details = { missing };
+          throw error;
+        }
+        if (!evidence.frontSha256 || !evidence.backSha256 || evidence.frontSha256 === evidence.backSha256) {
+          const error = new Error("Registrant Government ID front and back evidence is invalid.");
+          error.statusCode = 400;
+          error.code = "DUPLICATE_ID_IMAGE";
+          throw error;
+        }
       }
 
       // Finalize and flip isDraft to false
@@ -637,6 +691,9 @@ export class ParishionerRequestService {
   async resubmitCorrections(requestId, userId) {
     return prisma.$transaction(async (tx) => {
       const user = await assertParishionerOwnerRole(userId, tx);
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${Number(requestId)} FOR UPDATE`;
+      }
       // 1. Verify ownership
       const request = await tx.documentRequest.findFirst({
         where: { id: requestId, userId },
@@ -675,11 +732,58 @@ export class ParishionerRequestService {
         where: { requestId },
       });
       const attachmentCategories = attachments.map((a) => a.category);
+      const relationshipCorrectionIds = correctionRequirementIds.filter((id) =>
+        ["authorization_letter", "registrant_id_front", "registrant_id_back"].includes(id)
+      );
+      const correctionSnapshot = relationshipCorrectionIds.length > 0
+        ? await tx.relationshipEvidenceCorrection.findFirst({
+            where: { requestId, completedAt: null },
+            orderBy: { requestedAt: "desc" },
+          })
+        : null;
 
-      for (const reqId of correctionRequirementIds.filter((id) => id !== "valid_id")) {
+      if (relationshipCorrectionIds.length > 0 && !correctionSnapshot) {
+        const error = new Error("This legacy correction cannot prove replacement evidence. Ask the parish office to restart the correction request.");
+        error.statusCode = 409;
+        error.code = "RELATIONSHIP_EVIDENCE_CORRECTION_RESTART_REQUIRED";
+        throw error;
+      }
+
+      for (const reqId of correctionRequirementIds.filter((id) =>
+        !["valid_id", "registrant_id_front", "registrant_id_back", "authorization_letter"].includes(id)
+      )) {
         if (!attachmentCategories.includes(reqId)) {
           const error = new Error(`Replacement file for requirement "${reqId}" is missing.`);
           error.statusCode = 400;
+          throw error;
+        }
+      }
+
+
+      if (relationshipCorrectionIds.includes("authorization_letter")) {
+        const newestLetter = attachments
+          .filter((attachment) => attachment.category === "authorization_letter")
+          .sort((a, b) => b.id - a.id)[0];
+        if (!newestLetter || newestLetter.id === correctionSnapshot.baselineAuthAttachmentId) {
+          const error = new Error("A new Authorization Letter is required for this correction round.");
+          error.statusCode = 400;
+          error.code = "CORRECTION_REPLACEMENT_REQUIRED";
+          throw error;
+        }
+      }
+
+      if (relationshipCorrectionIds.some((id) => id.startsWith("registrant_id_"))) {
+        const evidence = await tx.registrantIdEvidence.findUnique({ where: { requestId } });
+        if (relationshipCorrectionIds.includes("registrant_id_front") && (!evidence?.frontObjectKey || evidence.frontRevision <= correctionSnapshot.baselineFrontRevision)) {
+          const error = new Error("A new registrant ID front image is required for this correction round.");
+          error.statusCode = 400;
+          error.code = "CORRECTION_REPLACEMENT_REQUIRED";
+          throw error;
+        }
+        if (relationshipCorrectionIds.includes("registrant_id_back") && (!evidence?.backObjectKey || evidence.backRevision <= correctionSnapshot.baselineBackRevision)) {
+          const error = new Error("A new registrant ID back image is required for this correction round.");
+          error.statusCode = 400;
+          error.code = "CORRECTION_REPLACEMENT_REQUIRED";
           throw error;
         }
       }
@@ -693,6 +797,10 @@ export class ParishionerRequestService {
           correctionNote: null,
         },
       });
+
+      if (correctionSnapshot) {
+        await tx.relationshipEvidenceCorrection.update({ where: { id: correctionSnapshot.id }, data: { completedAt: new Date() } });
+      }
 
       // 5. Create request history entry
       await tx.requestHistory.create({

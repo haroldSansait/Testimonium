@@ -3,6 +3,7 @@ import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 import { R2Service } from "./R2Service.js";
 import { FileValidator } from "../utils/fileValidator.js";
+import { isSelfRelationship } from "../config/relationshipEvidence.js";
 
 const r2Service = new R2Service();
 
@@ -13,6 +14,78 @@ export class FileUploadService {
   static generateKey(requestId, category, fileName) {
     const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
     return `documents/req_${requestId}/${category}/${Date.now()}_${sanitizedName}`;
+  }
+
+  static generateOpaqueAuthorizationKey(requestId) {
+    return `documents/req_${Number(requestId)}/authorization_letter/${crypto.randomUUID()}`;
+  }
+
+  /** Serializes Authorization Letter replacement with submission/resubmission. */
+  static async uploadAuthorizationLetter(requestId, userId, file) {
+    FileValidator.validateAuthorizationLetter(file);
+    const numericRequestId = Number(requestId);
+    const key = this.generateOpaqueAuthorizationKey(numericRequestId);
+
+    let publicUrl;
+    try {
+      publicUrl = await r2Service.upload({ key, body: file.buffer, contentType: file.mimetype });
+    } catch (uploadErr) {
+      logger.error({ err: uploadErr }, "Failed to upload Authorization Letter to R2");
+      throw uploadErr;
+    }
+
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        if (typeof tx.$queryRaw === "function") {
+          await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${numericRequestId} FOR UPDATE`;
+        }
+        const request = await tx.documentRequest.findFirst({
+          where: { id: numericRequestId, userId: Number(userId) },
+          select: { id: true, isDraft: true, status: true, relationship: true, correctionRequirementIds: true },
+        });
+        if (!request) {
+          const error = new Error("Request not found or does not belong to this user.");
+          error.statusCode = 404;
+          throw error;
+        }
+        if (isSelfRelationship(request.relationship)) {
+          const error = new Error("Authorization letter is only applicable to non-Self requests.");
+          error.statusCode = 400;
+          error.code = "INVALID_ATTACHMENT_CATEGORY";
+          throw error;
+        }
+        const correctionAllowed = request.status === "NEEDS_CORRECTION" &&
+          (request.correctionRequirementIds || []).includes("authorization_letter");
+        if (!request.isDraft && !correctionAllowed) {
+          const error = new Error("Authorization Letter evidence is immutable in the request's current status.");
+          error.statusCode = 409;
+          error.code = "RELATIONSHIP_EVIDENCE_UPLOAD_CONFLICT";
+          throw error;
+        }
+
+        const existing = await tx.requestAttachment.findFirst({
+          where: { requestId: numericRequestId, category: "authorization_letter" },
+          orderBy: { id: "desc" },
+        });
+        const attachment = await tx.requestAttachment.create({
+          data: { requestId: numericRequestId, fileName: file.originalname, r2ObjectKey: key,
+            fileType: file.mimetype, fileSize: file.size, category: "authorization_letter" },
+        });
+        if (existing) await tx.requestAttachment.delete({ where: { id: existing.id } });
+        return { attachment, oldObjectKey: existing?.r2ObjectKey || null };
+      }, { maxWait: 10000, timeout: 20000 });
+    } catch (dbErr) {
+      try { await r2Service.delete(key); }
+      catch (cleanupErr) { logger.error({ err: cleanupErr }, "Failed to clean up an uncommitted Authorization Letter object"); }
+      throw dbErr;
+    }
+
+    if (result.oldObjectKey) {
+      try { await r2Service.delete(result.oldObjectKey); }
+      catch (cleanupErr) { logger.error({ err: cleanupErr }, "Failed to delete a superseded Authorization Letter object"); }
+    }
+    return { ...result.attachment, publicUrl };
   }
 
   /**

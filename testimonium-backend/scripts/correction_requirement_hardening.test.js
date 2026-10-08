@@ -294,7 +294,7 @@ test("valid_id document-correction hardening", async (t) => {
           }),
         },
         documentRequest: {
-          findFirst: async () => ({ ...submitted, isDraft: true, purpose: "Legal", relationship: "Self" }),
+          findFirst: async () => ({ ...submitted, isDraft: true, purpose: "Legal", relationship: "Self", applicantName: "Verified Parishioner" }),
           update: async () => submitted,
         },
         requestAttachment: { findMany: async () => [{ category: "baptismal_cert" }] },

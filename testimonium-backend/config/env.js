@@ -111,6 +111,8 @@ export const env = {
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     bucketName: process.env.R2_BUCKET_NAME,
     identityBucketName: process.env.R2_IDENTITY_BUCKET_NAME,
+    registrantIdBucketName: process.env.R2_REGISTRANT_ID_BUCKET_NAME,
+    registrantIdBucketApproved: parseBoolean(process.env.R2_REGISTRANT_ID_BUCKET_APPROVED, false, "R2_REGISTRANT_ID_BUCKET_APPROVED"),
     publicUrl: process.env.R2_PUBLIC_URL,
   },
   ocr: {
@@ -160,6 +162,7 @@ export const env = {
     userCreationMax: parsePositiveInt(process.env.USER_CREATION_RATE_LIMIT_MAX, 5, "USER_CREATION_RATE_LIMIT_MAX"),
     ocrMax: parsePositiveInt(process.env.OCR_RATE_LIMIT_MAX, 10, "OCR_RATE_LIMIT_MAX"),
     receiptUploadMax: parsePositiveInt(process.env.RECEIPT_UPLOAD_RATE_LIMIT_MAX, 5, "RECEIPT_UPLOAD_RATE_LIMIT_MAX"),
+    registrantIdUploadMax: parsePositiveInt(process.env.REGISTRANT_ID_UPLOAD_RATE_LIMIT_MAX, 6, "REGISTRANT_ID_UPLOAD_RATE_LIMIT_MAX"),
     imageUploadMax: parsePositiveInt(process.env.PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX ?? process.env.IMAGE_UPLOAD_RATE_LIMIT_MAX, 5, "PARISH_IMAGE_UPLOAD_RATE_LIMIT_MAX"),
     mapSaveMax: parsePositiveInt(process.env.MAP_SAVE_RATE_LIMIT_MAX, 20, "MAP_SAVE_RATE_LIMIT_MAX"),
   },
@@ -174,6 +177,13 @@ export const env = {
       10 * 60 * 1000,
       "GOVERNMENT_ID_RATE_LIMIT_WINDOW_MS"
     ),
+  },
+  registrantId: {
+    workerPollMs: parsePositiveInt(process.env.REGISTRANT_ID_WORKER_POLL_MS, 15000, "REGISTRANT_ID_WORKER_POLL_MS"),
+    workerBatchSize: parsePositiveInt(process.env.REGISTRANT_ID_WORKER_BATCH_SIZE, 2, "REGISTRANT_ID_WORKER_BATCH_SIZE"),
+    workerLeaseSeconds: parsePositiveInt(process.env.REGISTRANT_ID_WORKER_LEASE_SECONDS, 90, "REGISTRANT_ID_WORKER_LEASE_SECONDS"),
+    maxOcrAttempts: parsePositiveInt(process.env.REGISTRANT_ID_OCR_MAX_ATTEMPTS, 3, "REGISTRANT_ID_OCR_MAX_ATTEMPTS"),
+    cleanupMaxAttempts: parsePositiveInt(process.env.REGISTRANT_ID_CLEANUP_MAX_ATTEMPTS, 8, "REGISTRANT_ID_CLEANUP_MAX_ATTEMPTS"),
   },
   chatbot: {
     enabled: parseBoolean(process.env.CHATBOT_ENABLED, false, "CHATBOT_ENABLED"),
@@ -239,6 +249,13 @@ export const getMissingRequiredConfig = () => {
     env.r2.identityBucketName === env.r2.bucketName
   ) {
     missing.push("R2_IDENTITY_BUCKET_NAME must differ from R2_BUCKET_NAME");
+  }
+
+  if (
+    env.r2.registrantIdBucketName &&
+    [env.r2.bucketName, env.r2.identityBucketName].filter(Boolean).includes(env.r2.registrantIdBucketName)
+  ) {
+    missing.push("R2_REGISTRANT_ID_BUCKET_NAME must differ from media and identity buckets");
   }
 
   if (env.chatbot?.enabled) {

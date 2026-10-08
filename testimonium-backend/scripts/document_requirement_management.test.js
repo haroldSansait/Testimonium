@@ -579,6 +579,7 @@ test("17. Newly assigned required item is enforced at submission", async () => {
           status: "PENDING",
           purpose: "Legal",
           relationship: "Self",
+          applicantName: "Test Parishioner",
         }),
       },
       requestAttachment: {
@@ -640,6 +641,7 @@ test("18. Removed requirement is no longer enforced at submission", async () => 
           isDraft: true,
           purpose: "Legal",
           relationship: "Self",
+          applicantName: "Test Parishioner",
         }),
         update: async () => submitted,
       },

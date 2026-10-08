@@ -7,6 +7,7 @@ import { AuditLogService } from "./AuditLogService.js";
 import { DocumentRequirementService } from "./DocumentRequirementService.js";
 import { env } from "../config/env.js";
 import { CORRECTION_REASONS } from "../shared/constants.js";
+import { resolveRelationshipEvidence } from "../config/relationshipEvidence.js";
 
 export class DocumentRequestService {
   constructor(documentRequestRepository = new DocumentRequestRepository()) {
@@ -111,6 +112,7 @@ export class DocumentRequestService {
       let duplicateOverrideAudit = null;
       let effectiveRemarks = remarks || `Status updated from ${currentStatus} to ${targetStatus}`;
       let correctionContext = null;
+      let relationshipCorrectionSnapshot = null;
 
       // If Needs Correction, strictly validate reason, requirement IDs, and optional note
       if (targetStatus === "NEEDS_CORRECTION") {
@@ -147,6 +149,9 @@ export class DocumentRequestService {
         const requirementsConfig = await DocumentRequirementService.getRequirements(request.documentType, request.parishId);
         const validReqs = requirementsConfig.requiredDocuments || [];
         const reqMap = new Map(validReqs.map(r => [r.id, r.label]));
+        for (const evidenceRequirement of resolveRelationshipEvidence(request.relationship)) {
+          reqMap.set(evidenceRequirement.id, evidenceRequirement.label);
+        }
 
         for (const id of correctionRequirementIds) {
           if (!reqMap.has(id)) {
@@ -188,6 +193,23 @@ export class DocumentRequestService {
           affectedRequirements: affectedLabels,
           note: trimmedNote || null,
         };
+
+        const relationshipIds = correctionRequirementIds.filter((id) =>
+          ["authorization_letter", "registrant_id_front", "registrant_id_back"].includes(id)
+        );
+        if (relationshipIds.length > 0) {
+          const [evidence, authLetter] = await Promise.all([
+            tx.registrantIdEvidence.findUnique({ where: { requestId } }),
+            tx.requestAttachment.findFirst({ where: { requestId, category: "authorization_letter" }, orderBy: { id: "desc" } }),
+          ]);
+          relationshipCorrectionSnapshot = {
+            requestId,
+            requestedRequirementIds: relationshipIds,
+            baselineFrontRevision: evidence?.frontRevision || 0,
+            baselineBackRevision: evidence?.backRevision || 0,
+            baselineAuthAttachmentId: authLetter?.id || null,
+          };
+        }
       }
 
       if (targetStatus === "PAYMENT_NEEDS_CORRECTION") {
@@ -387,6 +409,10 @@ export class DocumentRequestService {
         error.statusCode = 409;
         error.code = "DOCUMENT_REQUEST_CONCURRENCY_CONFLICT";
         throw error;
+      }
+
+      if (relationshipCorrectionSnapshot) {
+        await tx.relationshipEvidenceCorrection.create({ data: relationshipCorrectionSnapshot });
       }
 
       if (duplicateOverrideAudit) {

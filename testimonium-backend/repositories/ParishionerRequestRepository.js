@@ -18,14 +18,41 @@ const detailInclude = {
     },
   },
   attachments: {
+    select: {
+      id: true,
+      requestId: true,
+      fileName: true,
+      fileType: true,
+      fileSize: true,
+      category: true,
+      uploadedAt: true,
+    },
     orderBy: {
       uploadedAt: "asc",
+    },
+  },
+  registrantIdEvidence: {
+    select: {
+      frontUploadedAt: true,
+      frontRevision: true,
+      backUploadedAt: true,
+      backRevision: true,
+      ocrStatus: true,
+      updatedAt: true,
     },
   },
   paymentTransactions: {
     include: {
       receipts: {
-        include: {
+        select: {
+          id: true,
+          paymentTransactionId: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          attemptVersion: true,
+          isSuperseded: true,
+          uploadedAt: true,
           ocrResult: true,
         },
         orderBy: {

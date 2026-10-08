@@ -34,8 +34,21 @@ describe("Requests and Payment UID-Scoped Query Keys (Cross-Account Safety)", ()
       "requests",
       userA,
       "requirements",
-      { documentType: "BAPTISMAL_CERTIFICATE", parishId: "2" },
+      { documentType: "BAPTISMAL_CERTIFICATE", parishId: "2", relationship: "" },
     ]);
+    expect(
+      requestKeys.requirements(userA, {
+        documentType: "BAPTISMAL_CERTIFICATE",
+        parishId: 2,
+        relationship: "Parent",
+      })
+    ).not.toEqual(
+      requestKeys.requirements(userA, {
+        documentType: "BAPTISMAL_CERTIFICATE",
+        parishId: 2,
+        relationship: "Self",
+      })
+    );
   });
 
   it("scopes payment configuration keys by user ID and request ID", () => {

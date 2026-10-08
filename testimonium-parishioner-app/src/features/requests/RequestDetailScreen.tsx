@@ -27,6 +27,7 @@ import {
   useRequestDetail,
   useResubmitCorrections,
   useSubmitRequestDraft,
+  useUploadRegistrantId,
   useUploadSupportingFile,
 } from "./api";
 import { RequestStatusTimeline } from "./components/RequestStatusTimeline";
@@ -35,6 +36,7 @@ import {
   hasSystemSatisfiedCorrection,
 } from "./correctionRequirements";
 import { SupportingFilePicker } from "./components/SupportingFilePicker";
+import { RegistrantIdCapturePicker } from "./components/RegistrantIdCapturePicker";
 import {
   formatDate,
   formatDocumentType,
@@ -44,7 +46,7 @@ import {
   isDocumentCorrectionEligible,
   isPaymentEligible,
 } from "./presentation";
-import type { LocalSelectedFile } from "./types";
+import type { LocalRegistrantIdImage, LocalSelectedFile } from "./types";
 
 export interface RequestDetailScreenProps {
   requestId?: string | null;
@@ -66,10 +68,14 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   } = useRequestDetail(isValidId ? requestId : null);
 
   const { data: requirements } = useDocumentRequirements(
-    request ? { documentType: request.documentType, parishId: request.parishId } : undefined
+    request
+      ? { documentType: request.documentType, parishId: request.parishId, relationship: request.relationship || "Self" }
+      : undefined
   );
 
   const [correctionFiles, setCorrectionFiles] = useState<Record<string, LocalSelectedFile>>({});
+  const [correctionRegistrantIdFront, setCorrectionRegistrantIdFront] = useState<LocalRegistrantIdImage | null>(null);
+  const [correctionRegistrantIdBack, setCorrectionRegistrantIdBack] = useState<LocalRegistrantIdImage | null>(null);
   const [draftFiles, setDraftFiles] = useState<Record<string, LocalSelectedFile>>({});
   const [draftUploadingReqId, setDraftUploadingReqId] = useState<string | null>(null);
   const inFlightGuard = useRef(false);
@@ -78,6 +84,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const resubmitMutation = useResubmitCorrections();
   const submitDraftMutation = useSubmitRequestDraft();
   const uploadFileMutation = useUploadSupportingFile();
+  const uploadRegistrantIdMutation = useUploadRegistrantId();
 
   const handleBack = () => {
     navigateBackOrReplace(
@@ -150,15 +157,47 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
     }
   };
 
+  const handleDraftRegistrantIdUpload = async (
+    side: "front" | "back",
+    image: LocalRegistrantIdImage
+  ) => {
+    if (!request || inFlightGuard.current) return;
+    inFlightGuard.current = true;
+    setDraftUploadingReqId(`registrant_id_${side}`);
+    try {
+      await uploadRegistrantIdMutation.mutateAsync({
+        requestId: request.id,
+        [side]: image,
+      });
+      if (side === "front") setCorrectionRegistrantIdFront(image);
+      else setCorrectionRegistrantIdBack(image);
+      Alert.alert("Image Uploaded", `The registrant ID ${side} image is attached to this draft.`);
+      void refetch();
+    } catch (err: any) {
+      Alert.alert("Upload Failed", err.message || "Could not attach the registrant ID image.");
+      void refetch();
+    } finally {
+      inFlightGuard.current = false;
+      setDraftUploadingReqId(null);
+    }
+  };
+
   const attachments = request?.attachments || [];
   const correctionIds = request?.correctionRequirementIds || [];
   const correctionEligibleIds = getCorrectionEligibleIds(correctionIds);
+  const needsRegistrantIdFront = correctionEligibleIds.includes("registrant_id_front");
+  const needsRegistrantIdBack = correctionEligibleIds.includes("registrant_id_back");
+  const genericCorrectionIds = correctionEligibleIds.filter(
+    (id) => id !== "registrant_id_front" && id !== "registrant_id_back"
+  );
   const includesSystemSatisfiedCorrection = hasSystemSatisfiedCorrection(correctionIds);
 
   const handleResubmitCorrections = async () => {
     if (!request || inFlightGuard.current) return;
 
-    const missingUploads = correctionEligibleIds.filter((id) => !correctionFiles[id]);
+    const missingUploads = genericCorrectionIds.filter((id) => !correctionFiles[id]);
+    if (needsRegistrantIdFront && !correctionRegistrantIdFront) missingUploads.push("registrant_id_front");
+    if (needsRegistrantIdBack && !correctionRegistrantIdBack) missingUploads.push("registrant_id_back");
     if (missingUploads.length > 0) {
       Alert.alert(
         "Missing Attachments",
@@ -169,7 +208,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
 
     inFlightGuard.current = true;
     try {
-      for (const reqId of correctionEligibleIds) {
+      for (const reqId of genericCorrectionIds) {
         const file = correctionFiles[reqId];
         await uploadFileMutation.mutateAsync({
           requestId: request.id,
@@ -178,9 +217,19 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
         });
       }
 
+      if (correctionRegistrantIdFront || correctionRegistrantIdBack) {
+        await uploadRegistrantIdMutation.mutateAsync({
+          requestId: request.id,
+          front: correctionRegistrantIdFront || undefined,
+          back: correctionRegistrantIdBack || undefined,
+        });
+      }
+
       await resubmitMutation.mutateAsync(request.id);
 
       setCorrectionFiles({});
+      setCorrectionRegistrantIdFront(null);
+      setCorrectionRegistrantIdBack(null);
       Alert.alert(
         "Corrections Submitted",
         correctionEligibleIds.length > 0
@@ -227,10 +276,21 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const isCorrectionActionAvailable = isDocumentCorrectionEligible(request);
   const isCancellationAvailable = isCancelEligible(request);
 
-  const requiredDocuments = requirements?.requiredDocuments || [];
+  const requiredDocuments = [
+    ...(requirements?.requiredDocuments || []),
+    ...(requirements?.relationshipEvidence || []),
+  ].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index);
   const requiredDocs = requiredDocuments.filter((d) => d.required);
   const uploadedRequirementIds = new Set(attachments.map((a) => a.category));
-  const missingRequiredDocs = requiredDocs.filter((d) => !uploadedRequirementIds.has(d.id));
+  const missingRequiredDocs = requiredDocs.filter((d) => {
+    if (d.id === "registrant_id_front") {
+      return !request?.registrantIdEvidence?.frontUploadedAt && !correctionRegistrantIdFront;
+    }
+    if (d.id === "registrant_id_back") {
+      return !request?.registrantIdEvidence?.backUploadedAt && !correctionRegistrantIdBack;
+    }
+    return !uploadedRequirementIds.has(d.id);
+  });
   const isDraftComplete = missingRequiredDocs.length === 0;
 
   const bottomPadding = contentBottomInset("none");
@@ -318,8 +378,21 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
 
                 {requiredDocuments.map((reqDoc) => {
                   const uploadedAtt = attachments.find((a) => a.category === reqDoc.id);
+                  const registrantSide =
+                    reqDoc.id === "registrant_id_front"
+                      ? "front"
+                      : reqDoc.id === "registrant_id_back"
+                        ? "back"
+                        : null;
+                  const registrantUploaded = registrantSide
+                    ? Boolean(
+                        registrantSide === "front"
+                          ? request.registrantIdEvidence?.frontUploadedAt
+                          : request.registrantIdEvidence?.backUploadedAt
+                      )
+                    : false;
 
-                  if (uploadedAtt) {
+                  if (uploadedAtt || registrantUploaded) {
                     return (
                       <View key={reqDoc.id} style={styles.draftUploadedRow}>
                         <Ionicons name="checkmark-circle" size={18} color={colors.success} />
@@ -328,10 +401,34 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                             {reqDoc.label || reqDoc.id}
                           </Text>
                           <Text style={styles.draftUploadedFileName} numberOfLines={1} allowFontScaling>
-                            {uploadedAtt.fileName}
+                            {uploadedAtt?.fileName || "Private registrant ID image uploaded"}
                           </Text>
                         </View>
                       </View>
+                    );
+                  }
+
+                  if (registrantSide) {
+                    return (
+                      <RegistrantIdCapturePicker
+                        key={reqDoc.id}
+                        side={registrantSide}
+                        image={
+                          registrantSide === "front"
+                            ? correctionRegistrantIdFront
+                            : correctionRegistrantIdBack
+                        }
+                        onSelected={(image) => void handleDraftRegistrantIdUpload(registrantSide, image)}
+                        onRemoved={() => {
+                          if (registrantSide === "front") setCorrectionRegistrantIdFront(null);
+                          else setCorrectionRegistrantIdBack(null);
+                        }}
+                        disabled={
+                          uploadRegistrantIdMutation.isPending ||
+                          submitDraftMutation.isPending ||
+                          draftUploadingReqId === reqDoc.id
+                        }
+                      />
                     );
                   }
 
@@ -369,8 +466,12 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   onPress={() => {
                     void handleFinalizeDraft();
                   }}
-                  loading={submitDraftMutation.isPending}
-                  disabled={submitDraftMutation.isPending || Boolean(draftUploadingReqId)}
+                  loading={submitDraftMutation.isPending || uploadRegistrantIdMutation.isPending}
+                  disabled={
+                    submitDraftMutation.isPending ||
+                    uploadRegistrantIdMutation.isPending ||
+                    Boolean(draftUploadingReqId)
+                  }
                   style={styles.fullWidthAction}
                 />
               </View>
@@ -425,7 +526,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   </Text>
                 ) : null}
 
-                {correctionEligibleIds.map((reqId) => {
+                {genericCorrectionIds.map((reqId) => {
                   const reqDoc = requirements?.requiredDocuments?.find((d) => d.id === reqId) || {
                     id: reqId,
                     label: reqId.replace(/_/g, " "),
@@ -452,6 +553,25 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   );
                 })}
 
+                {needsRegistrantIdFront ? (
+                  <RegistrantIdCapturePicker
+                    side="front"
+                    image={correctionRegistrantIdFront}
+                    onSelected={setCorrectionRegistrantIdFront}
+                    onRemoved={() => setCorrectionRegistrantIdFront(null)}
+                    disabled={uploadRegistrantIdMutation.isPending}
+                  />
+                ) : null}
+                {needsRegistrantIdBack ? (
+                  <RegistrantIdCapturePicker
+                    side="back"
+                    image={correctionRegistrantIdBack}
+                    onSelected={setCorrectionRegistrantIdBack}
+                    onRemoved={() => setCorrectionRegistrantIdBack(null)}
+                    disabled={uploadRegistrantIdMutation.isPending}
+                  />
+                ) : null}
+
                 <Button
                   title="Resubmit Corrected Documents"
                   variant="primary"
@@ -460,7 +580,11 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   onPress={() => {
                     void handleResubmitCorrections();
                   }}
-                  loading={resubmitMutation.isPending || uploadFileMutation.isPending}
+                  loading={
+                    resubmitMutation.isPending ||
+                    uploadFileMutation.isPending ||
+                    uploadRegistrantIdMutation.isPending
+                  }
                   style={styles.fullWidthAction}
                 />
               </View>

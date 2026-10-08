@@ -4,6 +4,9 @@ import { ReceiptVerificationService } from "../services/ReceiptVerificationServi
 import { DocumentRequirementService } from "../services/DocumentRequirementService.js";
 import { prisma } from "../config/db.js";
 import { R2Service } from "../services/R2Service.js";
+import { RegistrantIdEvidenceService } from "../services/RegistrantIdEvidenceService.js";
+import { RegistrantIdStorageService } from "../services/RegistrantIdStorageService.js";
+import { isSelfRelationship } from "../config/relationshipEvidence.js";
 
 const requestService = new ParishionerRequestService();
 
@@ -182,12 +185,29 @@ export const uploadFiles = async (req, res, next) => {
 
     const category = req.body.category.trim();
 
+    if (["registrant_id_front", "registrant_id_back"].includes(category)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_ATTACHMENT_CATEGORY",
+        message: "Registrant ID images must use the dedicated private evidence endpoint.",
+        errors: [],
+      });
+    }
+
     if (category === "authorization_letter") {
-      if (request.relationship !== "Authorized Representative") {
+      if (isSelfRelationship(request.relationship)) {
         return res.status(400).json({
           success: false,
           code: "INVALID_ATTACHMENT_CATEGORY",
-          message: "Authorization letter is only applicable when relationship is Authorized Representative.",
+          message: "Authorization letter is only applicable to non-Self requests.",
+          errors: [],
+        });
+      }
+      if (!request.isDraft && request.status === "NEEDS_CORRECTION" && !(request.correctionRequirementIds || []).includes("authorization_letter")) {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_ATTACHMENT_CATEGORY",
+          message: "Authorization Letter replacement was not requested for this correction round.",
           errors: [],
         });
       }
@@ -213,7 +233,9 @@ export const uploadFiles = async (req, res, next) => {
     // Upload files to R2 and create DB records
     const uploads = [];
     for (const file of req.files) {
-      const attachment = await FileUploadService.uploadAttachment(requestId, file, category);
+      const attachment = category === "authorization_letter"
+        ? await FileUploadService.uploadAuthorizationLetter(requestId, userId, file)
+        : await FileUploadService.uploadAttachment(requestId, file, category);
       uploads.push(attachment);
     }
 
@@ -350,6 +372,8 @@ export const downloadAttachment = async (req, res, next) => {
     const downloadStream = await r2Service.download(attachment.r2ObjectKey);
 
     res.setHeader("Content-Type", attachment.fileType || "application/octet-stream");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader(
       "Content-Disposition",
       `inline; filename="${encodeURIComponent(attachment.fileName)}"`
@@ -362,5 +386,48 @@ export const downloadAttachment = async (req, res, next) => {
     downloadStream.Body.pipe(res);
   } catch (err) {
     return next(err);
+  }
+};
+
+export const uploadRegistrantId = async (req, res, next) => {
+  try {
+    const requestId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(requestId)) return res.status(400).json({ success: false, code: "INVALID_REQUEST_ID", message: "Invalid request ID.", errors: [] });
+    const data = await RegistrantIdEvidenceService.upload(requestId, req.user.id, req.files);
+    return res.status(200).json({ success: true, message: "Registrant ID evidence uploaded securely.", data });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getRegistrantIdMetadata = async (req, res, next) => {
+  try {
+    const data = await RegistrantIdEvidenceService.getOwnedMetadata(parseInt(req.params.id, 10), req.user.id);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const streamOwnedRegistrantIdSide = async (req, res, next) => {
+  try {
+    const requestId = parseInt(req.params.id, 10);
+    const side = req.params.side;
+    if (!["front", "back"].includes(side)) return res.status(400).json({ success: false, code: "INVALID_REGISTRANT_ID_SIDE", message: "Invalid registrant ID side." });
+    const request = await prisma.documentRequest.findFirst({ where: { id: requestId, userId: req.user.id }, select: { id: true } });
+    if (!request) return res.status(404).json({ success: false, message: "Request not found." });
+    const evidence = await prisma.registrantIdEvidence.findUnique({ where: { requestId } });
+    const key = side === "front" ? evidence?.frontObjectKey : evidence?.backObjectKey;
+    const mime = side === "front" ? evidence?.frontMimeType : evidence?.backMimeType;
+    if (!key) return res.status(404).json({ success: false, message: "Registrant ID image not found." });
+    const object = await RegistrantIdStorageService.download(key);
+    res.setHeader("Content-Type", mime || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="registrant-id-${side}.${mime === "image/png" ? "png" : "jpg"}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (object.ContentLength) res.setHeader("Content-Length", object.ContentLength);
+    object.Body.pipe(res);
+  } catch (error) {
+    return next(error);
   }
 };

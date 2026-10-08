@@ -245,6 +245,22 @@ export const receiptUploadRateLimiter = rateLimit({
     ),
 });
 
+export const registrantIdUploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: env.rateLimits.registrantIdUploadMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createRateLimitStore("l2:registrant-id:"),
+  keyGenerator: (req) => getRateLimitKey(req, "l2:registrant-id:"),
+  handler: (req, res) =>
+    handleRateLimitExceeded(
+      req,
+      res,
+      "registrantIdUploadRateLimiter",
+      "Too many registrant ID uploads. Please wait before trying again."
+    ),
+});
+
 // 2.6 Parish Image Upload Limiter
 export const parishImageUploadRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute

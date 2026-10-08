@@ -4,6 +4,7 @@ import { GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES } from "../config/governmentId
 const PUBLIC_SERVER_ERROR_CODES = new Set([
   ...Object.values(GOVERNMENT_ID_INFRASTRUCTURE_ERROR_CODES),
   "LEGAL_POLICY_CONFIGURATION_UNAVAILABLE",
+  "REGISTRANT_ID_STORAGE_UNAVAILABLE",
 ]);
 
 
@@ -79,6 +80,9 @@ export const errorHandler = (err, req, res, _next) => {
     (statusCode < 500 || PUBLIC_SERVER_ERROR_CODES.has(err.code))
   ) {
     responseBody.code = err.code;
+  }
+  if (statusCode < 500 && err.details && typeof err.details === "object") {
+    responseBody.details = err.details;
   }
 
   res.status(statusCode).json(responseBody);

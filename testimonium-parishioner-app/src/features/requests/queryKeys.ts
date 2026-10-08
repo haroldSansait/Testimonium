@@ -12,7 +12,11 @@ export const requestKeys = {
     [...requestKeys.all(uid), "tracking", String(trackingNumber ?? "")] as const,
   requirements: (
     uid?: string | null,
-    params?: { documentType?: string | null; parishId?: string | number | null }
+    params?: {
+      documentType?: string | null;
+      parishId?: string | number | null;
+      relationship?: string | null;
+    }
   ) =>
     [
       ...requestKeys.all(uid),
@@ -20,6 +24,7 @@ export const requestKeys = {
       {
         documentType: params?.documentType ?? "",
         parishId: params?.parishId ? String(params.parishId) : "",
+        relationship: params?.relationship ?? "",
       },
     ] as const,
 };

@@ -169,6 +169,24 @@ enum OcrStatus {
   FAILED
 }
 
+enum RegistrantIdOcrStatus {
+  AWAITING_IMAGES
+  PENDING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  UNAVAILABLE
+}
+
+enum PrivateObjectCleanupStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
 enum GovernmentIdVerificationStatus {
   NOT_SUBMITTED
   VERIFIED
@@ -345,35 +363,37 @@ model User {
 }
 
 model DocumentRequest {
-  id                       Int                   @id @default(autoincrement()) @map("request_id")
-  userId                   Int                   @map("user_id")
-  parishId                 Int                   @map("parish_id")
-  trackingNumber           String?               @unique @map("tracking_number") @db.VarChar(50)
-  applicantName            String                @map("applicant_name") @db.VarChar(150)
-  relationship             String?               @db.VarChar(100)
-  isDraft                  Boolean               @default(true) @map("is_draft")
-  documentType             DocumentType          @map("document_type")
-  purpose                  String?               @db.Text
-  status                   DocumentRequestStatus @default(PENDING)
-  paymentStatus            PaymentStatus         @default(UNPAID) @map("payment_status")
-  paymentProofObjectKey    String?               @map("payment_proof_object_key") @db.VarChar(255)
-  paymentQrReference       String?               @map("payment_qr_reference") @db.VarChar(100)
-  fee                      Decimal?              @map("fee") @db.Decimal(10, 2)
-  processedById            Int?                  @map("processed_by")
-  remarks                  String?               @db.Text
-  correctionNote           String?               @map("correction_note") @db.Text
-  paymentCorrectionNote    String?               @map("payment_correction_note") @db.Text
-  correctionRequirementIds String[]              @default([]) @map("correction_requirement_ids")
-  dateRequested            DateTime              @default(now()) @map("date_requested")
-  dateProcessed            DateTime?             @map("date_processed")
-  createdAt                DateTime              @default(now()) @map("created_at")
-  updatedAt                DateTime              @updatedAt @map("updated_at")
-  user                     User                  @relation("DocumentRequestSubmitter", fields: [userId], references: [id], onDelete: Restrict)
-  parish                   Parish                @relation(fields: [parishId], references: [id], onDelete: Restrict)
-  processedBy              User?                 @relation("DocumentRequestProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  id                       Int                              @id @default(autoincrement()) @map("request_id")
+  userId                   Int                              @map("user_id")
+  parishId                 Int                              @map("parish_id")
+  trackingNumber           String?                          @unique @map("tracking_number") @db.VarChar(50)
+  applicantName            String                           @map("applicant_name") @db.VarChar(150)
+  relationship             String?                          @db.VarChar(100)
+  isDraft                  Boolean                          @default(true) @map("is_draft")
+  documentType             DocumentType                     @map("document_type")
+  purpose                  String?                          @db.Text
+  status                   DocumentRequestStatus            @default(PENDING)
+  paymentStatus            PaymentStatus                    @default(UNPAID) @map("payment_status")
+  paymentProofObjectKey    String?                          @map("payment_proof_object_key") @db.VarChar(255)
+  paymentQrReference       String?                          @map("payment_qr_reference") @db.VarChar(100)
+  fee                      Decimal?                         @map("fee") @db.Decimal(10, 2)
+  processedById            Int?                             @map("processed_by")
+  remarks                  String?                          @db.Text
+  correctionNote           String?                          @map("correction_note") @db.Text
+  paymentCorrectionNote    String?                          @map("payment_correction_note") @db.Text
+  correctionRequirementIds String[]                         @default([]) @map("correction_requirement_ids")
+  dateRequested            DateTime                         @default(now()) @map("date_requested")
+  dateProcessed            DateTime?                        @map("date_processed")
+  createdAt                DateTime                         @default(now()) @map("created_at")
+  updatedAt                DateTime                         @updatedAt @map("updated_at")
+  user                     User                             @relation("DocumentRequestSubmitter", fields: [userId], references: [id], onDelete: Restrict)
+  parish                   Parish                           @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  processedBy              User?                            @relation("DocumentRequestProcessor", fields: [processedById], references: [id], onDelete: SetNull)
   attachments              RequestAttachment[]
   paymentTransactions      PaymentTransaction[]
   requestHistory           RequestHistory[]
+  registrantIdEvidence     RegistrantIdEvidence?
+  relationshipCorrections  RelationshipEvidenceCorrection[]
 
   @@index([userId])
   @@index([parishId])
@@ -385,6 +405,52 @@ model DocumentRequest {
   @@index([parishId, dateRequested])
   @@index([trackingNumber])
   @@map("document_requests")
+}
+
+model RegistrantIdEvidence {
+  id                  Int                   @id @default(autoincrement()) @map("registrant_id_evidence_id")
+  requestId           Int                   @unique @map("request_id")
+  frontObjectKey      String?               @map("front_object_key") @db.VarChar(255)
+  frontMimeType       String?               @map("front_mime_type") @db.VarChar(50)
+  frontSize           Int?                  @map("front_size")
+  frontSha256         String?               @map("front_sha256") @db.VarChar(64)
+  frontUploadedAt     DateTime?             @map("front_uploaded_at")
+  frontRevision       Int                   @default(0) @map("front_revision")
+  backObjectKey       String?               @map("back_object_key") @db.VarChar(255)
+  backMimeType        String?               @map("back_mime_type") @db.VarChar(50)
+  backSize            Int?                  @map("back_size")
+  backSha256          String?               @map("back_sha256") @db.VarChar(64)
+  backUploadedAt      DateTime?             @map("back_uploaded_at")
+  backRevision        Int                   @default(0) @map("back_revision")
+  version             Int                   @default(0)
+  ocrStatus           RegistrantIdOcrStatus @default(AWAITING_IMAGES) @map("ocr_status")
+  ocrAttemptCount     Int                   @default(0) @map("ocr_attempt_count")
+  ocrNextAttemptAt    DateTime?             @map("ocr_next_attempt_at")
+  ocrProcessingToken  String?               @map("ocr_processing_token") @db.Uuid
+  ocrProcessingAt     DateTime?             @map("ocr_processing_at")
+  ocrLeaseExpiresAt   DateTime?             @map("ocr_lease_expires_at")
+  ocrClaimedVersion   Int?                  @map("ocr_claimed_version")
+  ocrClaimedFrontKey  String?               @map("ocr_claimed_front_key") @db.VarChar(255)
+  ocrClaimedBackKey   String?               @map("ocr_claimed_back_key") @db.VarChar(255)
+  ocrProcessedVersion Int?                  @map("ocr_processed_version")
+  ocrProvider         String?               @map("ocr_provider") @db.VarChar(50)
+  ocrErrorCode        String?               @map("ocr_error_code") @db.VarChar(80)
+  extractedName       String?               @map("extracted_name") @db.VarChar(200)
+  detectedIdType      String?               @map("detected_id_type") @db.VarChar(80)
+  idNumber            String?               @map("id_number") @db.VarChar(120)
+  dateOfBirth         DateTime?             @map("date_of_birth") @db.Date
+  expiryDate          DateTime?             @map("expiry_date") @db.Date
+  frontText           String?               @map("front_text") @db.Text
+  backText            String?               @map("back_text") @db.Text
+  advisoryFlags       String[]              @default([]) @map("advisory_flags")
+  processedAt         DateTime?             @map("processed_at")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+  request             DocumentRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([ocrStatus, ocrNextAttemptAt])
+  @@index([ocrLeaseExpiresAt])
+  @@map("registrant_id_evidence")
 }
 
 model RequestAttachment {
@@ -400,6 +466,41 @@ model RequestAttachment {
 
   @@index([requestId])
   @@map("request_attachments")
+}
+
+model RelationshipEvidenceCorrection {
+  id                       Int             @id @default(autoincrement()) @map("relationship_evidence_correction_id")
+  requestId                Int             @map("request_id")
+  requestedRequirementIds  String[]        @map("requested_requirement_ids")
+  baselineFrontRevision    Int             @default(0) @map("baseline_front_revision")
+  baselineBackRevision     Int             @default(0) @map("baseline_back_revision")
+  baselineAuthAttachmentId Int?            @map("baseline_auth_attachment_id")
+  requestedAt              DateTime        @default(now()) @map("requested_at")
+  completedAt              DateTime?       @map("completed_at")
+  request                  DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, requestedAt])
+  @@map("relationship_evidence_corrections")
+}
+
+model PrivateObjectCleanupJob {
+  id              Int                        @id @default(autoincrement()) @map("cleanup_job_id")
+  objectKey       String                     @unique @map("object_key") @db.VarChar(255)
+  status          PrivateObjectCleanupStatus @default(PENDING)
+  reasonCode      String                     @map("reason_code") @db.VarChar(80)
+  attemptCount    Int                        @default(0) @map("attempt_count")
+  nextAttemptAt   DateTime                   @default(now()) @map("next_attempt_at")
+  processingToken String?                    @map("processing_token") @db.Uuid
+  processingAt    DateTime?                  @map("processing_at")
+  leaseExpiresAt  DateTime?                  @map("lease_expires_at")
+  lastErrorCode   String?                    @map("last_error_code") @db.VarChar(80)
+  completedAt     DateTime?                  @map("completed_at")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  updatedAt       DateTime                   @updatedAt @map("updated_at")
+
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+  @@map("private_object_cleanup_jobs")
 }
 
 model PaymentTransaction {

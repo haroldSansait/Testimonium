@@ -135,4 +135,8 @@ A restore is an operational event: put the API in maintenance/read-only mode, re
 - Restrict database credentials to the backend/migration runner and rotate them through the secret manager.
 - Build/verify both portals and mobile app types after changes that affect API payloads or enum values.
 
-See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (35 models and 29 enums).
+See [Testimonium_Database_Schema.md](Testimonium_Database_Schema.md) for the model-level reference (38 models and 31 enums).
+
+## Relationship-evidence persistence
+
+Migration 20261008120000_add_registrant_id_evidence adds RegistrantIdEvidence (one row per request with independent side revisions and OCR lease/version state), RelationshipEvidenceCorrection (per-round replacement baselines), and PrivateObjectCleanupJob (durable orphan/superseded-object cleanup). It also adds RegistrantIdOcrStatus and PrivateObjectCleanupStatus. The migration is additive and has not been applied to any live database by this implementation task.

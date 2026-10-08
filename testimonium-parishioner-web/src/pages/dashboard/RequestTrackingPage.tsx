@@ -294,7 +294,12 @@ export const RequestTrackingPage: React.FC = () => {
     selectedRequest?.correctionRequirementIds?.includes('valid_id')
   );
   const handleCorrectionFileSelect = (reqId: string, file: File) => {
-    const result = validateUploadFile(file, UPLOAD_POLICIES.CORRECTION_DOCUMENT);
+    const policy = reqId.startsWith('registrant_id_')
+      ? UPLOAD_POLICIES.REGISTRANT_ID_IMAGE
+      : reqId === 'authorization_letter'
+        ? UPLOAD_POLICIES.AUTHORIZATION_LETTER
+        : UPLOAD_POLICIES.CORRECTION_DOCUMENT;
+    const result = validateUploadFile(file, policy);
     if (!result.valid) {
       setCorrectionInputErrors(prev => ({ ...prev, [reqId]: result.error || 'Unsupported file format. Accepted formats: PDF, JPG, PNG, or WebP — up to 5 MB.' }));
       return;
@@ -315,9 +320,9 @@ export const RequestTrackingPage: React.FC = () => {
       setUploadedFilesByCorrectionReq({});
       setUploadedCorrectionReqIds({});
       setCorrectionInputErrors({});
-      services.request.getDocumentRequirements(selectedRequest.documentType, selectedRequest.parishId)
+      services.request.getDocumentRequirements(selectedRequest.documentType, selectedRequest.parishId, selectedRequest.relationship || 'Self')
         .then(res => {
-          const reqs = res?.requiredDocuments || [];
+          const reqs = [...(res?.requiredDocuments || []), ...(res?.relationshipEvidence || [])];
           const selectedReqIds = (selectedRequest.correctionRequirementIds || []).filter(
             id => id !== 'valid_id'
           );
@@ -1040,10 +1045,10 @@ export const RequestTrackingPage: React.FC = () => {
                                             e.target.value = '';
                                           }}
                                           className="sr-only"
-                                          accept={UPLOAD_POLICIES.CORRECTION_DOCUMENT.acceptAttribute}
+                                          accept={(req.id.startsWith('registrant_id_') ? UPLOAD_POLICIES.REGISTRANT_ID_IMAGE : req.id === 'authorization_letter' ? UPLOAD_POLICIES.AUTHORIZATION_LETTER : UPLOAD_POLICIES.CORRECTION_DOCUMENT).acceptAttribute}
                                         />
                                         <span className="text-xs text-text-muted block">
-                                          Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB.
+                                          {req.id.startsWith('registrant_id_') ? 'Choose a JPEG or PNG replacement image - up to 5 MB.' : req.id === 'authorization_letter' ? 'Choose a PDF, JPEG, or PNG replacement - up to 5 MB.' : 'Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP - up to 5 MB.'}
                                         </span>
                                       </label>
                                     )}
@@ -1078,7 +1083,13 @@ export const RequestTrackingPage: React.FC = () => {
 
                                 try {
                                   for (const [reqId, file] of entries) {
-                                    await services.request.uploadFiles(selectedRequest.id, [file], reqId);
+                                    if (reqId === 'registrant_id_front') {
+                                      await services.request.uploadRegistrantId(selectedRequest.id, { front: file });
+                                    } else if (reqId === 'registrant_id_back') {
+                                      await services.request.uploadRegistrantId(selectedRequest.id, { back: file });
+                                    } else {
+                                      await services.request.uploadFiles(selectedRequest.id, [file], reqId);
+                                    }
                                     succeededCount++;
                                     setUploadedCorrectionReqIds(prev => ({ ...prev, [reqId]: true }));
                                     setUploadedFilesByCorrectionReq(prev => {

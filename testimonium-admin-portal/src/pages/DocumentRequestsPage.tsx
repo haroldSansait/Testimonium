@@ -7,6 +7,7 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { DocumentRequestTable } from '@/components/document-requests/DocumentRequestTable';
+import { SecureBlobViewer } from '@/components/document-requests/SecureBlobViewer';
 import { getDocumentRequests, updateDocumentStatus } from '@/services/documentRequestService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -41,6 +42,25 @@ const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
   { label: 'Rejected', value: 'Rejected' },
   { label: 'Needs Correction', value: 'Needs Correction' },
 ];
+
+interface RegistrantIdEvidenceDetail {
+  applicantName: string;
+  relationship: string | null;
+  front: { available: boolean; uploadedAt?: string | null; mimeType?: string | null; size?: number | null };
+  back: { available: boolean; uploadedAt?: string | null; mimeType?: string | null; size?: number | null };
+  ocrStatus: string;
+  ocrErrorCode?: string | null;
+  extractedName?: string | null;
+  detectedIdType?: string | null;
+  idNumber?: string | null;
+  dateOfBirth?: string | null;
+  expiryDate?: string | null;
+  frontText?: string | null;
+  backText?: string | null;
+  advisoryFlags: string[];
+  processedAt?: string | null;
+  label: string;
+}
 
 export const CANONICAL_CORRECTION_REASONS = [
   { code: 'UNCLEAR_OR_BLURRY', label: 'Unclear / blurry / unreadable document' },
@@ -81,6 +101,8 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   const [requirements, setRequirements] = useState<{ id: string; label: string; description?: string }[]>([]);
   const [requirementsLoadState, setRequirementsLoadState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [selectedReqs, setSelectedReqs] = useState<Record<string, boolean>>({});
+  const [registrantEvidence, setRegistrantEvidence] = useState<RegistrantIdEvidenceDetail | null>(null);
+  const [registrantEvidenceState, setRegistrantEvidenceState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const updateInFlightRef = useRef(false);
   const loadingReqs = requirementsLoadState === 'loading';
 
@@ -89,11 +111,12 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
     setCorrectionModalError(null);
     setRequirements([]);
     setSelectedReqs({});
-    const params = getDocumentRequirementsLookupParams(request.documentType, request.parishId);
+    const params = { ...getDocumentRequirementsLookupParams(request.documentType, request.parishId), relationship: request.relationship || 'Self' };
     try {
       const res = await api.get(`/document-requirements`, { params });
       const authoritativeReqs = res.data?.data?.requiredDocuments || res.data?.requiredDocuments || [];
-      const correctionEligibleReqs = authoritativeReqs.filter((r: { id: string }) => r.id !== 'valid_id');
+      const relationshipReqs = res.data?.data?.relationshipEvidence || res.data?.relationshipEvidence || [];
+      const correctionEligibleReqs = [...authoritativeReqs, ...relationshipReqs].filter((r: { id: string }) => r.id !== 'valid_id');
       setRequirements(correctionEligibleReqs);
       const initialSelect: Record<string, boolean> = {};
       correctionEligibleReqs.forEach((r: { id: string }) => {
@@ -106,7 +129,27 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
       setRequirementsLoadState('error');
       setCorrectionModalError("Unable to determine correctable requirements. Retry.");
     }
-  }, [request.documentType, request.parishId]);
+  }, [request.documentType, request.parishId, request.relationship]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRegistrantEvidence(null);
+    if (!canManage || request.relationship === 'Self') {
+      setRegistrantEvidenceState('idle');
+      return () => { cancelled = true; };
+    }
+    setRegistrantEvidenceState('loading');
+    api.get(`/document-requests/${request.id}/registrant-id`)
+      .then((response) => {
+        if (cancelled) return;
+        setRegistrantEvidence(response.data?.data || null);
+        setRegistrantEvidenceState('success');
+      })
+      .catch(() => {
+        if (!cancelled) setRegistrantEvidenceState('error');
+      });
+    return () => { cancelled = true; };
+  }, [canManage, request.id, request.relationship]);
 
   useEffect(() => {
     if (canManage && request.status === 'Under Review') {
@@ -462,36 +505,25 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
             {request.attachments && request.attachments.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {request.attachments.map((file) => {
-                  const fileUrl = `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${file.r2ObjectKey}`;
                   return (
                     <div key={file.id} className="flex flex-col border border-gray-100 rounded-xl p-3 bg-gray-50/50">
                       <span className="font-semibold text-xs text-gray-800 truncate" title={file.fileName}>{file.fileName}</span>
                       <span className="text-[10px] text-gray-400 mt-1">Uploaded: {new Date(file.uploadedAt).toLocaleDateString()}</span>
                       {file.category === 'authorization_letter' ? (
                         <span className="text-[10px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full w-max mt-1 uppercase tracking-wider">
-                          Authorization Letter (Representative)
+                          Authorization Letter
                         </span>
                       ) : (
                         <span className="text-[10px] text-gray-400 capitalize">Category: {file.category}</span>
                       )}
-                      <div className="flex gap-2 mt-3">
-                        <a
-                          href={fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-800 text-[10px] font-bold rounded-md transition-all text-center flex-1"
-                        >
-                          Preview
-                        </a>
-                        <a
-                          href={fileUrl}
-                          download={file.fileName}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 bg-[#7B1C2A] text-white hover:bg-[#9B2C3A] text-[10px] font-bold rounded-md transition-all text-center flex-1"
-                        >
-                          Download
-                        </a>
+                      <div className="mt-3">
+                        <SecureBlobViewer
+                          endpoint={`/document-requests/${request.id}/attachments/${file.id}/download`}
+                          fileName={file.fileName}
+                          mimeType={file.fileType}
+                          alt={`Secure preview of ${file.fileName}`}
+                          compact
+                        />
                       </div>
                     </div>
                   );
@@ -502,6 +534,69 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
             )}
           </div>
 
+          {request.relationship !== 'Self' && canManage ? (
+            <div className="space-y-3">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Registrant Government ID</span>
+              {registrantEvidenceState === 'loading' ? (
+                <p className="text-xs text-gray-500">Loading secure registrant evidence...</p>
+              ) : registrantEvidenceState === 'error' ? (
+                <p className="text-xs text-red-700">Registrant ID details could not be loaded. Refresh your session and try again.</p>
+              ) : !registrantEvidence ? (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">No registrant ID evidence on file - request submitted before this requirement.</p>
+              ) : (
+                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-4">
+                  <p className="text-[10px] text-gray-500">This is the registrant's evidence, separate from the requester's profile Government ID.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {(['front', 'back'] as const).map((side) => {
+                      const metadata = registrantEvidence[side];
+                      return (
+                        <div key={side} className="space-y-2">
+                          <span className="text-xs font-bold text-gray-700 capitalize">{side} image</span>
+                          {metadata.available ? (
+                            <SecureBlobViewer
+                              endpoint={`/document-requests/${request.id}/registrant-id/${side}`}
+                              fileName={`registrant-id-${side}.${metadata.mimeType === 'image/png' ? 'png' : 'jpg'}`}
+                              mimeType={metadata.mimeType}
+                              alt={`Registrant Government ID ${side}`}
+                            />
+                          ) : <p className="text-xs text-red-700">Missing {side} image.</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="border border-blue-100 rounded-lg bg-blue-50/30 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">OCR-extracted - not independently verified</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-blue-700 border-blue-200">{registrantEvidence.ocrStatus}</span>
+                    </div>
+                    {['FAILED', 'UNAVAILABLE'].includes(registrantEvidence.ocrStatus) ? (
+                      <p className="text-xs text-amber-800">OCR unavailable - review the images manually.</p>
+                    ) : null}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div><span className="text-[10px] text-gray-400 block uppercase">Requested registrant</span><span className="font-semibold">{request.applicantName || registrantEvidence.applicantName}</span></div>
+                      <div><span className="text-[10px] text-gray-400 block uppercase">Extracted name</span><span className="font-semibold">{registrantEvidence.extractedName || 'Not extracted'}</span></div>
+                      <div><span className="text-[10px] text-gray-400 block uppercase">Detected ID type</span><span>{registrantEvidence.detectedIdType || 'Not extracted'}</span></div>
+                      <div><span className="text-[10px] text-gray-400 block uppercase">ID/reference number</span><span>{registrantEvidence.idNumber || 'Not extracted'}</span></div>
+                      <div><span className="text-[10px] text-gray-400 block uppercase">Birthdate</span><span>{registrantEvidence.dateOfBirth ? new Date(registrantEvidence.dateOfBirth).toLocaleDateString() : 'Not extracted'}</span></div>
+                      <div><span className="text-[10px] text-gray-400 block uppercase">Expiry</span><span>{registrantEvidence.expiryDate ? new Date(registrantEvidence.expiryDate).toLocaleDateString() : 'Not extracted'}</span></div>
+                    </div>
+                    {registrantEvidence.advisoryFlags?.length ? <p className="text-[10px] text-amber-800">Advisory flags: {registrantEvidence.advisoryFlags.join(', ')}</p> : null}
+                    {(registrantEvidence.frontText || registrantEvidence.backText) ? (
+                      <details className="text-[10px]">
+                        <summary className="cursor-pointer font-semibold text-blue-700">View private OCR text</summary>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                          <pre className="p-2 bg-gray-900 text-gray-100 rounded whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{registrantEvidence.frontText || 'No front text'}</pre>
+                          <pre className="p-2 bg-gray-900 text-gray-100 rounded whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{registrantEvidence.backText || 'No back text'}</pre>
+                        </div>
+                      </details>
+                    ) : null}
+                    <p className="text-[10px] text-amber-800">Manual review is required. OCR does not verify identity or approve the request.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* Payments Section */}
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Payment Details</span>
@@ -510,7 +605,6 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
                 {request.paymentTransactions.map((tx) => {
                   const receipt = tx.receipts?.[0];
                   const ocr = receipt?.ocrResult;
-                  const receiptUrl = receipt ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${receipt.r2ObjectKey}` : null;
 
                   // Confidence display helpers
                   const confidence = ocr?.confidenceScore != null ? Math.round(ocr.confidenceScore * 100) : null;
@@ -738,24 +832,16 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
                       )}
 
                       {/* Original receipt image — secretary always sees full quality */}
-                      {receiptUrl && (
+                      {receipt && (
                         <div>
                           <span className="text-[10px] text-gray-400 block uppercase mb-1">Receipt Image (Original Quality)</span>
-                          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 flex justify-center bg-gray-900">
-                            <img
-                              src={receiptUrl}
-                              alt="Receipt Proof"
-                              className="object-contain max-h-56"
-                            />
-                          </div>
-                          <a
-                            href={receiptUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-1.5 inline-block text-[10px] text-blue-600 hover:underline"
-                          >
-                            Open full-size image ↗
-                          </a>
+                          <SecureBlobViewer
+                            endpoint={`/document-requests/${request.id}/receipts/${receipt.id}/download`}
+                            fileName={receipt.fileName}
+                            mimeType={receipt.mimeType}
+                            alt="Secure receipt proof"
+                            compact
+                          />
                         </div>
                       )}
                     </div>

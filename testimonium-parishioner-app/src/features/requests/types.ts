@@ -54,6 +54,7 @@ export interface DocumentRequirement {
   baseFee: number;
   requiredFields: RequiredField[];
   requiredDocuments: RequiredDocument[];
+  relationshipEvidence?: RequiredDocument[];
 }
 
 export interface RequestAttachment {
@@ -147,6 +148,14 @@ export interface DocumentRequestDetail {
   updatedAt: string;
   parish?: ParishSummary | null;
   attachments?: RequestAttachment[];
+  registrantIdEvidence?: {
+    frontUploadedAt?: string | null;
+    frontRevision: number;
+    backUploadedAt?: string | null;
+    backRevision: number;
+    ocrStatus: string;
+    updatedAt: string;
+  } | null;
   requestHistory?: RequestHistoryItem[];
   paymentTransactions?: PaymentTransaction[];
 }
@@ -191,6 +200,13 @@ export interface LocalSelectedFile {
 }
 
 export interface LocalSelectedReceipt {
+  uri: string;
+  name: string;
+  size?: number;
+  mimeType: "image/jpeg" | "image/png";
+}
+
+export interface LocalRegistrantIdImage {
   uri: string;
   name: string;
   size?: number;

@@ -152,3 +152,9 @@ Legal policies require a coordinated multi-tier deployment sequence to prevent u
 - Note that Priests have parish-scoped read-only access to document requests, and document status changes to `READY_FOR_SIGNING` trigger an in-app notification to the active primary priest.
 
 For R2 CORS and lifecycle configuration, see [CLOUDFLARE_R2.md](CLOUDFLARE_R2.md).
+
+## Relationship-evidence rollout
+
+Before deploying dependent code, provision a private R2 bucket with no R2.dev/custom public domain and a bucket-scoped backend token. Set R2_REGISTRANT_ID_BUCKET_NAME and only then set R2_REGISTRANT_ID_BUCKET_APPROVED=true. Apply migration 20261008120000_add_registrant_id_evidence with npx prisma migrate deploy after status/validate checks. Never use db push, reset, migrate dev, seed, or destructive SQL in production.
+
+Deploy backend before clients. Verify owner upload/stream, same-parish Secretary and Coordinator access, explicit Priest denial, malformed/oversized-image rejection, storage-unavailable fail-closed behavior, correction replacement proof, worker retry/lease recovery, and absence of object keys/public URLs in list responses. Monitor cleanup/OCR terminal failures. Rollback application code forward-safely; retain the additive tables and private objects until a reviewed cleanup/retention procedure exists.

@@ -100,3 +100,7 @@ Admin Portal     ──┘         │                     └──> pgvector (
 - [Project context and implementation map](testimonium_context.md)
 - [Mobile application documentation pack](testimonium-parishioner-app/00_MOBILE_DOCS_INDEX.md)
 - [Backend developer guide](testimonium-backend/DEVELOPER_GUIDE.md)
+
+### Relationship-based document evidence
+
+All non-Self document requests now require an authorization letter and private front/back registrant Government ID images. Web and Mobile capture this evidence without replacing the account-level valid_id verification flow. Staff access is limited to same-parish Secretaries and Diocese Coordinators; Priests cannot view registrant IDs. OCR enrichment is asynchronous and advisory.

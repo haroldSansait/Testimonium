@@ -4,7 +4,7 @@
   "sources": [
     {
       "title": "Document Request Submission and Types",
-      "sourceText": "Parishioners can request official sacramental certificates through the TESTIMONIUM portal, including Baptismal, Confirmation, First Communion, Marriage, and Death certificates. To submit a document request, the parishioner selects the issuing parish, specifies the certificate type, provides the certificate holder's personal details (such as full name and date of the sacrament), and indicates the purpose of the request. A clear image of a valid government-issued ID is required for verification.",
+      "sourceText": "Parishioners request supported sacramental and canonical documents through TESTIMONIUM by selecting the issuing parish, document type, registrant details, relationship, and purpose. The requester must have an effectively verified Government ID on their TESTIMONIUM profile. For Self, that verified profile ID satisfies the identity requirement and no additional registrant ID upload is needed; the registrant name must satisfy backend Self-name validation. Every non-Self request additionally requires a signed Authorization Letter and separate front and back images of the registrant's valid Government ID.",
       "category": "DOCUMENT_REQUESTS",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "TESTIMONIUM User Guide - Document Requests",
@@ -12,11 +12,11 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "Parishioners can submit requests for sacramental certificates through TESTIMONIUM, including Baptismal, Confirmation, First Communion, Marriage, and Death certificates. The requester selects the issuing parish, provides the certificate holder's details (full name and approximate date of the sacrament), and states the intended purpose.",
+          "content": "To create a supported document request, select the issuing parish and document type, then provide the registrant's name, relationship to the requester, relevant sacrament details, and purpose.",
           "chunkOrder": 0
         },
         {
-          "content": "All certificate requests require uploading a clear image of a valid government-issued ID to confirm identity. Requests cannot be processed without identity verification.",
+          "content": "All requesters need an effectively verified TESTIMONIUM profile ID. Self reuses that verification and uploads no separate registrant ID. Every non-Self request also needs a signed Authorization Letter and front and back images of the registrant's valid Government ID.",
           "chunkOrder": 1
         }
       ]
@@ -61,7 +61,7 @@
     },
     {
       "title": "Authorization Letter for Representative Requests",
-      "sourceText": "If an individual is requesting a sacramental certificate on behalf of another adult person, TESTIMONIUM requires an Authorization Letter signed by the certificate owner. In addition to the authorization letter, valid government-issued IDs of both the certificate owner and the designated representative must be uploaded during submission. Parents or legal guardians requesting for minor children do not require a separate authorization letter but must provide proof of relationship.",
+      "sourceText": "For a Self request, the parishioner requests their own sacramental document, uses the Government ID already verified through their TESTIMONIUM profile, and does not upload an Authorization Letter or separate registrant ID images. The registrant name must match the verified profile name under the system's conservative name-validation rules. Every non-Self relationship (Parent, Child, Spouse, Sibling, Other Relative, or Authorized Representative) requires a signed Authorization Letter plus clear front and back images of the registrant's valid Government ID. The registrant is the person whose sacramental record is requested; these images are separate from the requester's verified profile ID. For a minor, deceased registrant, or anyone unable to provide the required ID or letter, contact the parish office; TESTIMONIUM does not apply an automatic exemption. OCR only assists staff review and does not verify identity or approve a request.",
       "category": "DOCUMENT_REQUESTS",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "Diocesan Document Release Guidelines",
@@ -69,12 +69,16 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "Requesting a certificate on behalf of another adult person requires an Authorization Letter signed by the certificate owner. Valid government-issued IDs for both the owner and the authorized representative must be provided.",
+          "content": "A Self request uses the requester's existing verified TESTIMONIUM profile ID. It requires no Authorization Letter or separate registrant ID upload, but the registrant name must satisfy backend Self-name validation.",
           "chunkOrder": 0
         },
         {
-          "content": "Parents or legal guardians requesting certificates for minor children do not require an authorization letter, but must upload their own valid identification and indicate their relationship to the minor.",
+          "content": "Every non-Self relationship requires a signed Authorization Letter and front and back images of the registrant's valid Government ID. The registrant is the person whose sacramental record is requested, and their evidence is separate from the requester's verified profile ID.",
           "chunkOrder": 1
+        },
+        {
+          "content": "There are no automatic minor, deceased-person, parent, or guardian exemptions. If the required registrant ID or Authorization Letter cannot be provided, contact the parish office. OCR is advisory for staff review and never verifies or approves identity.",
+          "chunkOrder": 2
         }
       ]
     },

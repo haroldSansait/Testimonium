@@ -1,4 +1,4 @@
-export type UploadPolicyType = 'SUPPORTING_DOCUMENT' | 'AUTHORIZATION_LETTER' | 'CORRECTION_DOCUMENT';
+export type UploadPolicyType = 'SUPPORTING_DOCUMENT' | 'AUTHORIZATION_LETTER' | 'CORRECTION_DOCUMENT' | 'REGISTRANT_ID_IMAGE';
 
 export interface UploadPolicy {
   type: UploadPolicyType;
@@ -33,6 +33,14 @@ export const UPLOAD_POLICIES: Record<UploadPolicyType, UploadPolicy> = {
     acceptAttribute: '.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp',
     maxSizeBytes: 5 * 1024 * 1024,
     label: 'PDF, JPG, PNG, or WebP — up to 5 MB',
+  },
+  REGISTRANT_ID_IMAGE: {
+    type: 'REGISTRANT_ID_IMAGE',
+    allowedExtensions: ['.jpg', '.jpeg', '.png'],
+    allowedMimes: ['image/jpeg', 'image/jpg', 'image/png'],
+    acceptAttribute: '.jpg,.jpeg,.png,image/jpeg,image/png',
+    maxSizeBytes: 5 * 1024 * 1024,
+    label: 'JPG or PNG - up to 5 MB',
   },
 };
 

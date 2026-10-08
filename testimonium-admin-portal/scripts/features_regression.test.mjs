@@ -120,10 +120,10 @@ test('Admin Portal Features 1-7 Regression & Contract Suite', async (t) => {
     const docPagePath = path.join(srcDir, 'pages/DocumentRequestsPage.tsx');
     const content = fs.readFileSync(docPagePath, 'utf8');
 
-    assert.match(content, /const params = getDocumentRequirementsLookupParams\(request\.documentType, request\.parishId\)/);
+    assert.match(content, /getDocumentRequirementsLookupParams\(request\.documentType, request\.parishId\), relationship: request\.relationship \|\| 'Self'/);
     assert.match(content, /api\.get\(`\/document-requirements`, \{ params \}\)/);
     assert.doesNotMatch(content, /request\.requirements/, 'Admin DTO presentation requirements must not drive eligibility');
-    assert.match(content, /authoritativeReqs\.filter\(\(r: \{ id: string \}\) => r\.id !== 'valid_id'\)/);
+    assert.match(content, /\[\.\.\.authoritativeReqs, \.\.\.relationshipReqs\]\.filter\(\(r: \{ id: string \}\) => r\.id !== 'valid_id'\)/);
     assert.match(content, /request\.status === 'Under Review'[\s\S]*?loadRequirements\(\)/);
     assert.match(content, /requirementsLoadState !== 'success'[\s\S]*?requirements\.length === 0/);
     assert.ok(content.includes('Checking correctable requirements...'));

@@ -43,6 +43,8 @@ import legalPolicyRoutes from "./routes/legalPolicyRoutes.js";
 import { EmailOutboxWorker } from "./services/EmailOutboxWorker.js";
 import { knowledgeEmbeddingWorker } from "./services/KnowledgeEmbeddingWorker.js";
 import { caloyTelemetryRetentionWorker } from "./services/CaloyTelemetryRetentionWorker.js";
+import { RegistrantIdOcrWorker } from "./services/RegistrantIdOcrWorker.js";
+import { PrivateObjectCleanupWorker } from "./services/PrivateObjectCleanupWorker.js";
 
 const app = express();
 app.set("etag", false);
@@ -259,6 +261,8 @@ const server = app.listen(env.port, () => {
   EmailOutboxWorker.start();
   knowledgeEmbeddingWorker.start();
   caloyTelemetryRetentionWorker.start();
+  RegistrantIdOcrWorker.start();
+  PrivateObjectCleanupWorker.start();
 });
 
 // Graceful Shutdown Management
@@ -276,6 +280,8 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
       await EmailOutboxWorker.stop();
       await knowledgeEmbeddingWorker.stop();
       await caloyTelemetryRetentionWorker.stop();
+      await RegistrantIdOcrWorker.stop();
+      await PrivateObjectCleanupWorker.stop();
       await prisma.$disconnect();
       logger.info("[TESTIMONIUM] Prisma DB connection closed.");
     } catch (err) {

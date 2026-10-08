@@ -266,11 +266,13 @@ test("Authorization Letter: Self request without letter succeeds", () => {
   assert.equal(result, true);
 });
 
-test("Authorization Letter: Spouse/Relative request without letter succeeds", () => {
-  const resultSpouse = ParishionerRequestService.validateAuthorizationLetterRequirement("Spouse", []);
-  assert.equal(resultSpouse, true);
-  const resultParent = ParishionerRequestService.validateAuthorizationLetterRequirement("Parent", []);
-  assert.equal(resultParent, true);
+test("Authorization Letter: every non-Self relationship without a letter is rejected", () => {
+  for (const relationship of ["Spouse", "Parent", "Child", "Sibling", "Other Relative"]) {
+    assert.throws(
+      () => ParishionerRequestService.validateAuthorizationLetterRequirement(relationship, []),
+      (err) => err.code === "AUTHORIZATION_LETTER_REQUIRED" && err.statusCode === 400
+    );
+  }
 });
 
 test("Authorization Letter: Authorized Representative without letter throws AUTHORIZATION_LETTER_REQUIRED (400)", () => {

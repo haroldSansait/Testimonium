@@ -162,3 +162,11 @@ EmailOutbox (Standalone transactional outbox ledger)
 - `SystemLease` ownership changes are guarded by `lease_key` plus `owner_token`. Purge lease loss halts subsequent delete batches; the once-per-Manila-day marker is retained after success and released after failure.
 - `AiUsageEvent` captures individual SDK attempts (including retries) with privacy-safe error categories, latency, and token usage without storing prompts, responses, or secrets.
 - Schema changes require explicit Prisma migrations. Consult [DATABASE.md](DATABASE.md) for the database migration protocol.
+
+### Relationship evidence models
+
+| Model/table | Purpose |
+| --- | --- |
+| RegistrantIdEvidence / registrant_id_evidence | One-to-one request evidence with private front/back key, MIME, size, hash, upload timestamp, independent revision counters, overall version, structured/raw advisory OCR results, attempts, processing token, claimed version/keys, and lease timestamps. |
+| RelationshipEvidenceCorrection / relationship_evidence_corrections | Append-only correction-round snapshot of targeted relationship requirements and baseline authorization attachment/front/back revisions. |
+| PrivateObjectCleanupJob / private_object_cleanup_jobs | Durable, leased, retryable cleanup for abandoned and superseded private R2 objects with unique object-key idempotency. |

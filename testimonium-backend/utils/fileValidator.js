@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 /**
  * FileValidator — Centralized binary signature (magic bytes), MIME type,
  * and size validation for TESTIMONIUM file uploads.
@@ -78,6 +80,62 @@ export function detectFileSignature(buffer) {
 }
 
 export class FileValidator {
+  static async validateRegistrantIdImage(file, field = "registrant_id") {
+    if (!file?.buffer?.length || !file.size) {
+      throw new FileValidationError("Registrant ID image is empty.", {
+        code: "REGISTRANT_ID_INVALID_IMAGE",
+        field,
+      });
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      throw new FileValidationError("Registrant ID image exceeds the 5 MB limit.", {
+        code: "REGISTRANT_ID_FILE_TOO_LARGE",
+        statusCode: 413,
+        field,
+      });
+    }
+    const rawMime = String(file.mimetype || "").trim().toLowerCase();
+    const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+    const signature = detectFileSignature(file.buffer);
+    if (!["image/jpeg", "image/png"].includes(normalizedMime) || !["jpeg", "png"].includes(signature)) {
+      throw new FileValidationError("Registrant ID must be a genuine JPEG or PNG image.", {
+        code: "REGISTRANT_ID_UNSUPPORTED_TYPE",
+        statusCode: 415,
+        field,
+      });
+    }
+    if ((normalizedMime === "image/jpeg" && signature !== "jpeg") || (normalizedMime === "image/png" && signature !== "png")) {
+      throw new FileValidationError("Registrant ID MIME type does not match its binary content.", {
+        code: "REGISTRANT_ID_INVALID_IMAGE",
+        field,
+      });
+    }
+    try {
+      const metadata = await sharp(file.buffer, {
+        failOn: "error",
+        limitInputPixels: 25_000_000,
+        sequentialRead: true,
+      }).metadata();
+      const width = Number(metadata.width || 0);
+      const height = Number(metadata.height || 0);
+      if (!width || !height || width < 200 || height < 200 || width * height > 25_000_000 || Number(metadata.pages || 1) !== 1) {
+        throw new Error("unsafe dimensions");
+      }
+      await sharp(file.buffer, {
+        failOn: "error",
+        limitInputPixels: 25_000_000,
+        sequentialRead: true,
+      }).rotate().toBuffer();
+      file.mimetype = normalizedMime;
+      return { signature, normalizedMime, width, height };
+    } catch {
+      throw new FileValidationError("Registrant ID image is corrupt, undecodable, or has unsafe dimensions.", {
+        code: "REGISTRANT_ID_INVALID_IMAGE",
+        field,
+      });
+    }
+  }
+
   /**
    * Validates Payment Receipt uploads:
    *  - JPEG and PNG only

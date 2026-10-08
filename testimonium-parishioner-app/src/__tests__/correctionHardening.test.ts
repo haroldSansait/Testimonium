@@ -31,11 +31,14 @@ describe("document correction hardening", () => {
 
   it("wires attachment checks, pickers, and uploads to the eligible ID list", () => {
     expect(detailSource).toContain(
-      "const missingUploads = correctionEligibleIds.filter((id) => !correctionFiles[id]);"
+      "const missingUploads = genericCorrectionIds.filter((id) => !correctionFiles[id]);"
     );
-    expect(detailSource).toContain("{correctionEligibleIds.map((reqId) => {");
+    expect(detailSource).toContain("{genericCorrectionIds.map((reqId) => {");
     expect(detailSource).not.toContain("{correctionIds.map((reqId) => {");
-    expect(detailSource).toContain("for (const reqId of correctionEligibleIds) {");
+    expect(detailSource).toContain("for (const reqId of genericCorrectionIds) {");
+    expect(detailSource).toContain("needsRegistrantIdFront");
+    expect(detailSource).toContain("needsRegistrantIdBack");
+    expect(detailSource).toContain("uploadRegistrantIdMutation.mutateAsync");
     expect(detailSource).toContain(
       "Government ID verification is handled separately and does not require a replacement file here."
     );

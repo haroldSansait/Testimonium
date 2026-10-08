@@ -36,6 +36,7 @@ export interface IRequestProvider {
     applicantLastName?: string;
     relationship: string;
     purpose: string;
+    idempotencyKey?: string;
   }): Promise<SacramentalRequest>;
   getRequestByTrackingNumber(trackingNumber: string): Promise<SacramentalRequest | null>;
   getRequests(): Promise<SacramentalRequest[]>;
@@ -43,8 +44,9 @@ export interface IRequestProvider {
   submitDraft(id: string): Promise<SacramentalRequest>;
   cancelRequest(id: string, remarks?: string): Promise<SacramentalRequest>;
   uploadFiles(id: string, files: File[], category?: string): Promise<RequestAttachment[]>;
+  uploadRegistrantId(id: string, files: { front?: File; back?: File }): Promise<any>;
   uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any; request?: SacramentalRequest }>;
-  getDocumentRequirements(type: string, parishId?: string): Promise<any>;
+  getDocumentRequirements(type: string, parishId?: string, relationship?: string): Promise<any>;
   resubmitCorrections(id: string): Promise<SacramentalRequest>;
 }
 
