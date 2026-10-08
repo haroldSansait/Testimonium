@@ -1,6 +1,6 @@
 # TESTIMONIUM Deployment Guide
 
-**Last reconciled:** 3 October 2026
+**Last reconciled:** 8 October 2026
 
 Deploy the backend, the two Vite web applications, and the Expo mobile application independently. All browser and mobile requests target the same backend API version, currently `/api/v1`.
 
@@ -68,7 +68,7 @@ Client variables are public configuration. Never put service-account keys, R2 se
    npx prisma generate
    ```
 
-   *Note: Ensure all recent migrations through `20260928180000_enforce_single_mother_parish` and `20260929210000_add_government_id_verification` (which provisions the `government_id_verifications` table, indexes, and enums) are fully applied before running application services.*
+   *Note: Ensure all recent migrations through `20260928180000_enforce_single_mother_parish`, `20260929210000_add_government_id_verification` (which provisions `government_id_verifications` table, indexes, and enums), and `20261004120000_add_legal_policies` (which provisions `legal_policies` table, `LegalPolicyType` enum, and seeds v1.0 Terms and Privacy policies) are fully applied before running application services.*
 
 3. Start or restart the backend with a process manager. Example PM2 command:
 
@@ -130,6 +130,15 @@ The Caloy chatbot and Knowledge Base follow a strictly additive, phased rollout 
 
 The additive migration `20260913150000_add_caloy_control_center` must be applied by the deployment owner before real Control Center QA. Source validation does not prove PostgreSQL lease concurrency, migration application, live HTTP behavior, real Gemini calls, or browser/device behavior.
 
+## Legal Policies Rollout Sequence
+
+Legal policies require a coordinated multi-tier deployment sequence to prevent user lockouts or version mismatches:
+1. **Database Migration:** Apply migration `20261004120000_add_legal_policies` to create the `legal_policies` table, enum `LegalPolicyType`, and seed initial Terms of Service v1.0 and Privacy Policy v1.0 effective 2026-08-01.
+2. **Backend Deployment:** Deploy Express backend providing `GET /api/v1/legal-policies/current`, coordinator management routes (`GET /manage`, `PATCH /:policyType`), and registration/JIT legal acceptance version verification.
+3. **Parishioner Web Deployment:** Deploy Parishioner Web portal containing `LegalGate`, updated registration workflow, and legal acceptance modals.
+4. **Mobile Release:** Deploy Expo mobile client with native legal onboarding and policy viewer screens.
+5. **Admin Portal Deployment:** Deploy Admin Portal containing the Legal Policies Editor under Settings (`/settings`), guarded by `MANAGE_LEGAL_POLICIES` (restricted to Diocese Coordinator). Coordinators may edit and publish revised policy versions (`v{revision}.0`) only after client versions supporting dynamic policy gates are live.
+
 ## Operational checks and rollback
 
 - Keep database backups and verify a restore path before migrations; see [DATABASE.md](DATABASE.md).
@@ -137,6 +146,7 @@ The additive migration `20260913150000_add_caloy_control_center` must be applied
 - Monitor API health, structured backend logs, R2 upload errors, OCR failures, and rate-limit behavior after release.
 - Ensure that `R2_IDENTITY_BUCKET_NAME` is configured as a dedicated private bucket distinct from `R2_BUCKET_NAME` with no public domain or R2.dev access. Verify that coordinator image streaming routes (`/users/:id/identity/front-image` and `/users/:id/identity/back-image`) stream securely and return `404 IDENTITY_IMAGE_NOT_FOUND` on missing files and `503 IDENTITY_STORAGE_UNAVAILABLE` on storage errors.
 - For production identity verification, ensure `OCR_ENABLED=true`, `OCR_PROVIDER=ocrspace`, and `OCR_SPACE_API_KEY` are valid; the stub OCR provider is strictly rejected for Government ID verification. Verify that card side diagnostics (`FRONT_IS_BACK`, `BACK_IS_FRONT`, `SIDES_SWAPPED`, etc.) and rate limits operate correctly.
+- Verify `GET /api/v1/legal-policies/current` returns authoritative Terms and Privacy policies in plain text, and that the reverse proxy permits unauthenticated access.
 - `RATE_LIMIT_STORE=memory` is process-local; use a shared strategy before horizontally scaling rate-limited API instances.
 - Ensure that the single Mother Parish invariant (`parishes_single_mother_parish_idx`) is respected during seed operations and parish modifications.
 - Note that Priests have parish-scoped read-only access to document requests, and document status changes to `READY_FOR_SIGNING` trigger an in-app notification to the active primary priest.

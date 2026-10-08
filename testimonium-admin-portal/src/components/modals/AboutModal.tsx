@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Info, Church, Mail, Phone, Globe, Shield } from 'lucide-react';
-import logoUrl from '@/assets/TESTIMONIUM_logo.png';
+import logoUrl from '@/assets/TESTIMONIUM_official_logo.png';
 import packageJson from '../../../package.json';
 
 // ─── Static system information ─────────────────────────────────────────────────

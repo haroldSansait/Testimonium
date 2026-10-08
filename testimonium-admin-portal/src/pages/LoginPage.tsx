@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Lock, Eye, EyeOff, LogIn, KeyRound } from 'lucide-react';
-import logoUrl from '@/assets/TESTIMONIUM_logo.png';
+import logoUrl from '@/assets/TESTIMONIUM_official_logo.png';
 import { useAuth } from '@/hooks/useAuth';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -83,7 +83,7 @@ export function LoginPage() {
         <img
           src={logoUrl}
           alt="TESTIMONIUM Logo"
-          className="w-20 h-20 rounded-full object-cover mb-4 shadow-md"
+          className="w-24 h-24 rounded-full object-cover mb-4 shadow-md"
         />
         <h1
           className="text-2xl font-bold tracking-widest text-gray-900 uppercase"

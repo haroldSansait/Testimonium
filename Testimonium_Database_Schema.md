@@ -1,6 +1,6 @@
 # TESTIMONIUM Database Schema
 
-**Last reconciled:** 3 October 2026
+**Last reconciled:** 8 October 2026
 **Authoritative file:** `testimonium-backend/prisma/schema.prisma`
 **Database:** PostgreSQL, accessed through Prisma 7 (`@prisma/adapter-pg`).
 

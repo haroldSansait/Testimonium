@@ -1,7 +1,7 @@
 # TESTIMONIUM Backend REST API
 
 **Base URL:** `/api/v1`
-**Last reconciled:** 3 October 2026
+**Last reconciled:** 8 October 2026
 **Source of truth:** `testimonium-backend/server.js`, route modules, validators, controllers, and services.
 
 ## Authentication, tenancy, and response conventions
@@ -10,6 +10,7 @@ Public unauthenticated endpoints are:
 - `GET /` (service info)
 - `GET /health` (API and database health status)
 - `GET /document-requirements` and `GET /document-requirements/:type` (document metadata, fee matrix, and requirement checklists with parish overrides)
+- `GET /legal-policies/current` (public retrieval of authoritative Terms of Service and Privacy Policy plain text and public version strings)
 - `POST /auth/resend-verification` (rate-limited email verification trigger)
 
 All other endpoints require a verified Firebase ID token in the authorization header:
@@ -18,7 +19,7 @@ All other endpoints require a verified Firebase ID token in the authorization he
 Authorization: Bearer <firebase-id-token>
 ```
 
-In local development only, `ENABLE_DEV_AUTH=true` enables the backend’s development-auth bypass. It must never be enabled in production.
+In local development only, `ENABLE_DEV_AUTH=true` enables the backend's development-auth bypass. It must never be enabled in production.
 
 The roles are `PARISHIONER`, `SECRETARY`, `PRIEST`, and `DIOCESE_COORDINATOR`:
 - `PARISHIONER`: Access to own profile, Government ID verification submission/status, document requests, receipt uploads, schedule requests with preferred priest selection, in-app notifications, and Caloy assistant queries. Incomplete profiles (`fullName` and `contactNumber`) receive `403 PROFILE_INCOMPLETE`. Unverified accounts receive `403 IDENTITY_NOT_VERIFIED` when creating or submitting document requests and appointments. Verified Government ID automatically fulfills the `valid_id` requirement for document requests.
@@ -197,6 +198,7 @@ The system governs seven canonical document types and eight canonical requiremen
   - Setting updates are strictly validated by `validateDocumentSettingsForSave` against canonical IDs; unknown IDs, non-boolean values, or malformed JSON return `400 Bad Request`.
   - When `parishId` is passed to `GET /document-requirements` or `GET /document-requirements/:type`, the service dynamically overlays the parish's custom pricing and requirements.
   - During request submission (`POST /requests/:id/submit`), the backend validates that attachments exist for every resolved required document.
+  - **Document Type Mapping & Query Filtering:** Bidirectional translation between canonical identifiers (e.g. `BAPTISMAL_CERTIFICATE`) and user-facing labels (e.g. `Baptismal Certificate`) is maintained across admin and parishioner clients via `getDocumentLabel`, `getCanonicalDocumentId`, and `getDocumentTypeFilterParam`. List queries (`GET /document-requests?documentType=...`) strictly resolve to backend canonical enum values. Unknown backend values remain safely visible as `Unknown Document Type (<value>)` without corrupting UI state.
 
 **Document Request Lifecycle & Presentation Mapping:**
 - Canonical workflow: `PENDING` → `UNDER_REVIEW` → `PAYMENT_PENDING` → `PAYMENT_UNDER_REVIEW` → `PAYMENT_VERIFIED` → `PROCESSING` → `READY_FOR_SIGNING` → `READY_FOR_PICKUP` → `COMPLETED`.

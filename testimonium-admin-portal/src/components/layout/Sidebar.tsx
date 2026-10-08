@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/utils/cn';
-import logoUrl from '@/assets/TESTIMONIUM_logo.png';
+import logoUrl from '@/assets/TESTIMONIUM_logo_alt.png';
 import { useAuth } from '@/hooks/useAuth';
 import { hasPermission } from '@/permissions/rolePermissions';
 import { PERMISSIONS, type Permission } from '@/permissions/permissions';
@@ -280,7 +280,7 @@ export function Sidebar() {
             <img
               src={logoUrl}
               alt="TESTIMONIUM Logo"
-              className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+              className="w-11 h-11 object-contain flex-shrink-0"
             />
             <div className={cn("transition-opacity duration-200", isExpanded ? "opacity-100" : "opacity-0 hidden")}>
               <span
