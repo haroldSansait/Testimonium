@@ -735,10 +735,10 @@ export const RequestTrackingPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setMobileView('requests')}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-crimson hover:underline py-1 focus-ring rounded cursor-pointer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-crimson bg-red-50 hover:bg-red-100 border border-crimson/20 rounded-button shadow-2xs transition-colors focus-ring cursor-pointer"
                   >
                     <ArrowLeft size={14} />
-                    <span>Back to My Requests List</span>
+                    <span>Back to Requests List</span>
                   </button>
                 </div>
               )}
@@ -907,6 +907,74 @@ export const RequestTrackingPage: React.FC = () => {
                             )}
                           </div>
                         )}
+                      </div>
+
+                      {/* Submitted Documents & Existing Uploads */}
+                      <div className="space-y-3 text-left">
+                        <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                          <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                            Submitted Documents & Evidence
+                          </h3>
+                          <span className="text-[10px] text-text-muted font-mono uppercase">
+                            {(selectedRequest.attachments?.length || 0) + (selectedRequest.relationship === 'Self' ? 1 : 0)} Item(s)
+                          </span>
+                        </div>
+
+                        {selectedRequest.relationship === 'Self' && (
+                          <div className="flex items-center justify-between p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs">
+                            <div className="flex items-center gap-2.5">
+                              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                              <div>
+                                <span className="font-bold text-emerald-950 block">Requester Government ID</span>
+                                <span className="text-[10px] text-emerald-800">Verified via TESTIMONIUM Profile (satisfies ID requirement for Self)</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              Verified
+                            </span>
+                          </div>
+                        )}
+
+                        {selectedRequest.attachments && selectedRequest.attachments.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {selectedRequest.attachments.map((att) => {
+                              const attUrl = `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${att.r2ObjectKey}`;
+                              return (
+                                <div key={att.id} className="p-3 bg-gray-50/80 border border-gray-150 rounded-xl flex items-center justify-between gap-3 text-xs">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <FileText size={16} className="text-gray-400 shrink-0" />
+                                    <div className="min-w-0">
+                                      <span className="truncate block font-semibold text-text-primary" title={att.fileName}>
+                                        {att.fileName}
+                                      </span>
+                                      <span className="text-[10px] text-text-muted capitalize block">
+                                        {att.category === 'authorization_letter'
+                                          ? 'Signed Authorization Letter'
+                                          : att.category === 'registrant_id_front'
+                                          ? 'Registrant ID (Front)'
+                                          : att.category === 'registrant_id_back'
+                                          ? 'Registrant ID (Back)'
+                                          : att.category.replace(/_/g, ' ')} • {new Date(att.uploadedAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <a
+                                    href={attUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-crimson hover:underline font-bold text-xs shrink-0 ml-2 focus-ring rounded"
+                                  >
+                                    View
+                                  </a>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : selectedRequest.relationship !== 'Self' ? (
+                          <p className="text-xs text-text-muted italic bg-app-page p-3 rounded-lg border border-border/50">
+                            No files attached to this request.
+                          </p>
+                        ) : null}
                       </div>
 
                       {/* Correction Resubmission Section */}

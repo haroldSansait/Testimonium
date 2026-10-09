@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { X, Check, AlertCircle, FileText, User } from 'lucide-react';
+import { X, Check, AlertCircle, FileText, User, RefreshCw, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Pagination } from '@/components/ui/Pagination';
@@ -442,62 +442,93 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-5 text-sm flex-1">
           {/* Main Info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Applicant</span>
-              <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
-                <User className="w-4 h-4 text-gray-400" />
-                {request.applicantName} ({request.relationship})
+          <div className="bg-gray-50/70 border border-gray-200/80 rounded-xl p-4 space-y-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Requester (Parishioner Account)</span>
+                <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
+                  <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span className="truncate">{request.parishionerName || 'Parishioner'}</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Registrant (Record Holder)</span>
+                <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
+                  <User className="w-4 h-4 text-[#7B1C2A] flex-shrink-0" />
+                  <span className="font-semibold text-gray-900 truncate">{request.applicantName || request.parishionerName}</span>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold border ml-auto flex-shrink-0",
+                    request.relationship === 'Self'
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : "bg-amber-50 text-amber-700 border-amber-200"
+                  )}>
+                    {request.relationship === 'Self' ? 'Self' : `Rep: ${request.relationship}`}
+                  </span>
+                </div>
               </div>
             </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Requested Document</span>
-              <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
-                <FileText className="w-4 h-4 text-gray-400" />
-                {request.documentType}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2.5 border-t border-gray-200/60">
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Requested Document</span>
+                <div className="flex items-center gap-2 text-gray-800 mt-1 font-medium">
+                  <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span>{request.documentType}</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Purpose</span>
+                <p className="text-gray-800 mt-1 font-medium">{request.purpose || 'Official Requirement'}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2.5 border-t border-gray-200/60">
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Submission Date</span>
+                <p className="text-gray-800 mt-1 font-medium text-xs">{request.dateSubmitted}</p>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Payment Status</span>
+                <p className="mt-1">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-xs font-semibold border",
+                    request.paymentStatus === 'Paid' ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                  )}>
+                    {request.paymentStatus || 'Pending'}
+                  </span>
+                </p>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Current Status</span>
+                <p className="mt-1">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-xs font-semibold border",
+                    request.status === 'Released' && "bg-blue-50 text-blue-700 border-blue-200",
+                    request.status === 'Ready for Pickup' && "bg-green-50 text-green-700 border-green-200",
+                    request.status === 'Ready for Signing' && "bg-indigo-50 text-indigo-700 border-indigo-200",
+                    request.status === 'Processing' && "bg-purple-50 text-purple-700 border-purple-200",
+                    (request.status === 'Pending Review' || request.status === 'Under Review') && "bg-amber-50 text-amber-700 border-amber-200",
+                    (request.status === 'Rejected' || request.status === 'Needs Correction' || request.status === 'Cancelled') && "bg-red-50 text-red-700 border-red-200"
+                  )}>
+                    {request.status}
+                  </span>
+                </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Purpose</span>
-              <p className="text-gray-800 mt-1 font-medium">{request.purpose || 'Official Requirement'}</p>
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Submission Date</span>
-              <p className="text-gray-800 mt-1 font-medium">{request.dateSubmitted}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment Status</span>
-              <p className="mt-1">
-                <span className={cn(
-                  "px-2 py-0.5 rounded-full text-xs font-semibold border",
-                  request.paymentStatus === 'Paid' ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
-                )}>
-                  {request.paymentStatus || 'Pending'}
+          {/* Self Relationship Verification Callout */}
+          {request.relationship === 'Self' && (
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-start gap-2.5 text-xs text-emerald-900">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold block text-emerald-950">Identity Verified via Account Profile</span>
+                <span className="text-[11px] text-emerald-800 leading-relaxed">
+                  The parishioner requested their own sacramental record. Identity verification is satisfied by their verified diocesan Government ID. No separate registrant ID images or signed authorization letter are required.
                 </span>
-              </p>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Current Status</span>
-              <p className="mt-1">
-                <span className={cn(
-                  "px-2 py-0.5 rounded-full text-xs font-semibold border",
-                  request.status === 'Released' && "bg-blue-50 text-blue-700 border-blue-200",
-                  request.status === 'Ready for Pickup' && "bg-green-50 text-green-700 border-green-200",
-                  request.status === 'Processing' && "bg-purple-50 text-purple-700 border-purple-200",
-                  (request.status === 'Pending Review' || request.status === 'Under Review') && "bg-amber-50 text-amber-700 border-amber-200",
-                  (request.status === 'Rejected' || request.status === 'Needs Correction' || request.status === 'Cancelled') && "bg-red-50 text-red-700 border-red-200"
-                )}>
-                  {request.status}
-                </span>
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Attachments Section */}
           <div>
@@ -506,16 +537,18 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {request.attachments.map((file) => {
                   return (
-                    <div key={file.id} className="flex flex-col border border-gray-100 rounded-xl p-3 bg-gray-50/50">
-                      <span className="font-semibold text-xs text-gray-800 truncate" title={file.fileName}>{file.fileName}</span>
+                    <div key={file.id} className="flex flex-col border border-gray-200 rounded-xl p-3 bg-gray-50/50">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-xs text-gray-800 truncate" title={file.fileName}>{file.fileName}</span>
+                        {file.category === 'authorization_letter' ? (
+                          <span className="text-[9px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full flex-shrink-0 uppercase tracking-wider">
+                            Authorization Letter
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded capitalize flex-shrink-0">{file.category}</span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-gray-400 mt-1">Uploaded: {new Date(file.uploadedAt).toLocaleDateString()}</span>
-                      {file.category === 'authorization_letter' ? (
-                        <span className="text-[10px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full w-max mt-1 uppercase tracking-wider">
-                          Authorization Letter
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-gray-400 capitalize">Category: {file.category}</span>
-                      )}
                       <div className="mt-3">
                         <SecureBlobViewer
                           endpoint={`/document-requests/${request.id}/attachments/${file.id}/download`}
@@ -530,67 +563,144 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
                 })}
               </div>
             ) : (
-              <p className="text-xs text-gray-400 italic">No supporting attachments uploaded.</p>
+              <p className="text-xs text-gray-400 italic bg-gray-50/50 p-3 rounded-xl border border-gray-100">No supporting attachments uploaded.</p>
             )}
           </div>
 
           {request.relationship !== 'Self' && canManage ? (
             <div className="space-y-3">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Registrant Government ID</span>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Registrant Government ID Evidence &amp; Advisory OCR</span>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Submitted evidence for the sacramental record holder, separate from the requester's profile Government ID.
+                </p>
+              </div>
               {registrantEvidenceState === 'loading' ? (
-                <p className="text-xs text-gray-500">Loading secure registrant evidence...</p>
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl flex items-center gap-2.5 text-xs text-gray-500">
+                  <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+                  <span>Loading secure registrant evidence...</span>
+                </div>
               ) : registrantEvidenceState === 'error' ? (
-                <p className="text-xs text-red-700">Registrant ID details could not be loaded. Refresh your session and try again.</p>
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">Registrant ID details could not be loaded. Refresh your session and try again.</p>
               ) : !registrantEvidence ? (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">No registrant ID evidence on file - request submitted before this requirement.</p>
               ) : (
-                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-4">
-                  <p className="text-[10px] text-gray-500">This is the registrant's evidence, separate from the requester's profile Government ID.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {(['front', 'back'] as const).map((side) => {
-                      const metadata = registrantEvidence[side];
-                      return (
-                        <div key={side} className="space-y-2">
-                          <span className="text-xs font-bold text-gray-700 capitalize">{side} image</span>
-                          {metadata.available ? (
-                            <SecureBlobViewer
-                              endpoint={`/document-requests/${request.id}/registrant-id/${side}`}
-                              fileName={`registrant-id-${side}.${metadata.mimeType === 'image/png' ? 'png' : 'jpg'}`}
-                              mimeType={metadata.mimeType}
-                              alt={`Registrant Government ID ${side}`}
-                            />
-                          ) : <p className="text-xs text-red-700">Missing {side} image.</p>}
-                        </div>
-                      );
-                    })}
+                <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 space-y-4">
+                  {/* Uploaded ID Images */}
+                  <div>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-2">Uploaded Physical ID Images</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {(['front', 'back'] as const).map((side) => {
+                        const metadata = registrantEvidence[side];
+                        return (
+                          <div key={side} className="border border-gray-200 bg-white rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-gray-800 capitalize">{side} Image</span>
+                              {metadata.available && (
+                                <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                                  Available
+                                </span>
+                              )}
+                            </div>
+                            {metadata.available ? (
+                              <SecureBlobViewer
+                                endpoint={`/document-requests/${request.id}/registrant-id/${side}`}
+                                fileName={`registrant-id-${side}.${metadata.mimeType === 'image/png' ? 'png' : 'jpg'}`}
+                                mimeType={metadata.mimeType}
+                                alt={`Registrant Government ID ${side}`}
+                              />
+                            ) : (
+                              <p className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-100">Missing {side} image.</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="border border-blue-100 rounded-lg bg-blue-50/30 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">OCR-extracted - not independently verified</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-blue-700 border-blue-200">{registrantEvidence.ocrStatus}</span>
+
+                  {/* Advisory OCR Extraction */}
+                  <div className="border border-blue-200 rounded-xl bg-blue-50/40 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-blue-100">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-blue-700" />
+                        <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                          Advisory OCR Extraction — Automated Assist (Not Verified Identity)
+                        </span>
+                      </div>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                        registrantEvidence.ocrStatus === 'COMPLETED' ? "bg-blue-100 text-blue-800 border-blue-300" :
+                        registrantEvidence.ocrStatus === 'FAILED' ? "bg-red-50 text-red-700 border-red-200" :
+                        "bg-white text-blue-700 border-blue-200"
+                      )}>
+                        {registrantEvidence.ocrStatus}
+                      </span>
                     </div>
+
                     {['FAILED', 'UNAVAILABLE'].includes(registrantEvidence.ocrStatus) ? (
-                      <p className="text-xs text-amber-800">OCR unavailable - review the images manually.</p>
+                      <p className="text-xs text-amber-800 bg-amber-50/80 p-2 rounded-lg border border-amber-200">
+                        OCR unavailable - review the images manually.
+                      </p>
                     ) : null}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      <div><span className="text-[10px] text-gray-400 block uppercase">Requested registrant</span><span className="font-semibold">{request.applicantName || registrantEvidence.applicantName}</span></div>
-                      <div><span className="text-[10px] text-gray-400 block uppercase">Extracted name</span><span className="font-semibold">{registrantEvidence.extractedName || 'Not extracted'}</span></div>
-                      <div><span className="text-[10px] text-gray-400 block uppercase">Detected ID type</span><span>{registrantEvidence.detectedIdType || 'Not extracted'}</span></div>
-                      <div><span className="text-[10px] text-gray-400 block uppercase">ID/reference number</span><span>{registrantEvidence.idNumber || 'Not extracted'}</span></div>
-                      <div><span className="text-[10px] text-gray-400 block uppercase">Birthdate</span><span>{registrantEvidence.dateOfBirth ? new Date(registrantEvidence.dateOfBirth).toLocaleDateString() : 'Not extracted'}</span></div>
-                      <div><span className="text-[10px] text-gray-400 block uppercase">Expiry</span><span>{registrantEvidence.expiryDate ? new Date(registrantEvidence.expiryDate).toLocaleDateString() : 'Not extracted'}</span></div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs bg-white/70 p-3 rounded-lg border border-blue-100/70">
+                      <div>
+                        <span className="text-[10px] text-gray-500 block uppercase font-medium">Requested Registrant</span>
+                        <span className="font-semibold text-gray-900">{request.applicantName || registrantEvidence.applicantName}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 block uppercase font-medium">Extracted Name</span>
+                        <span className="font-semibold text-gray-900">{registrantEvidence.extractedName || 'Not extracted'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 block uppercase font-medium">Detected ID Type</span>
+                        <span className="text-gray-800">{registrantEvidence.detectedIdType || 'Not extracted'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 block uppercase font-medium">ID / Reference Number</span>
+                        <span className="font-mono text-gray-800">{registrantEvidence.idNumber || 'Not extracted'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 block uppercase font-medium">Birthdate</span>
+                        <span className="text-gray-800">{registrantEvidence.dateOfBirth ? new Date(registrantEvidence.dateOfBirth).toLocaleDateString() : 'Not extracted'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 block uppercase font-medium">Expiry Date</span>
+                        <span className="text-gray-800">{registrantEvidence.expiryDate ? new Date(registrantEvidence.expiryDate).toLocaleDateString() : 'Not extracted'}</span>
+                      </div>
                     </div>
-                    {registrantEvidence.advisoryFlags?.length ? <p className="text-[10px] text-amber-800">Advisory flags: {registrantEvidence.advisoryFlags.join(', ')}</p> : null}
+
+                    {registrantEvidence.advisoryFlags?.length ? (
+                      <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 space-y-1">
+                        <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-800">Advisory Flags:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {registrantEvidence.advisoryFlags.map((flag, idx) => (
+                            <span key={idx} className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-amber-300">
+                              {flag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {(registrantEvidence.frontText || registrantEvidence.backText) ? (
                       <details className="text-[10px]">
-                        <summary className="cursor-pointer font-semibold text-blue-700">View private OCR text</summary>
+                        <summary className="cursor-pointer font-semibold text-blue-700 hover:text-blue-900 select-none">
+                          View private OCR text
+                        </summary>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                          <pre className="p-2 bg-gray-900 text-gray-100 rounded whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{registrantEvidence.frontText || 'No front text'}</pre>
-                          <pre className="p-2 bg-gray-900 text-gray-100 rounded whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{registrantEvidence.backText || 'No back text'}</pre>
+                          <pre className="p-2 bg-gray-900 text-gray-100 rounded text-[9px] font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{registrantEvidence.frontText || 'No front text'}</pre>
+                          <pre className="p-2 bg-gray-900 text-gray-100 rounded text-[9px] font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{registrantEvidence.backText || 'No back text'}</pre>
                         </div>
                       </details>
                     ) : null}
-                    <p className="text-[10px] text-amber-800">Manual review is required. OCR does not verify identity or approve the request.</p>
+
+                    <div className="flex items-center gap-2 p-2 bg-amber-50/70 border border-amber-200/60 rounded-lg text-xs text-amber-800">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span className="text-[10px]">
+                        Manual review is required. OCR does not verify identity or approve the request.
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}

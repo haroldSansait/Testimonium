@@ -12,7 +12,7 @@
  *    is NEVER accidentally stripped.
  */
 
-const CITATION_MARKER_REGEX = /\[CITATIONS?:\s*([0-9,\s]+)\]/gi;
+const CITATION_MARKER_REGEX = /\[(?:CITATIONS?|CHUNKS?):\s*([0-9,\s]+)\]/gi;
 
 /**
  * Sanitizes visible text by removing all internal citation markers while preserving
@@ -26,10 +26,10 @@ export function sanitizeCitationMarkers(text) {
 
   // 1. Remove markers immediately preceding sentence punctuation (e.g., "proof [CITATIONS: 50].")
   //    This ensures that removing the marker attaches the punctuation cleanly to the preceding word.
-  let cleaned = text.replace(/\s*\[CITATIONS?:\s*[0-9,\s]+\](?=[\s.,!?;:])/gi, "");
+  let cleaned = text.replace(/\s*\[(?:CITATIONS?|CHUNKS?):[^\]\r\n]*\](?=[\s.,!?;:])/gi, "");
 
   // 2. Remove any remaining citation markers (e.g., standalone lines, sentence endings "proof. [CITATIONS: 50]")
-  cleaned = cleaned.replace(/\s*\[CITATIONS?:\s*[0-9,\s]+\]/gi, "");
+  cleaned = cleaned.replace(/\s*\[(?:CITATIONS?|CHUNKS?):[^\]\r\n]*\]/gi, "");
 
   // 3. Normalize multiple horizontal spaces on the same line to a single space
   cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
@@ -42,17 +42,17 @@ export function sanitizeCitationMarkers(text) {
 
 /**
  * Authoritative citation extractor and sanitizer.
- * Extracts all chunk IDs from any citation markers in rawText, validates against
- * validEvidenceIds (if supplied), and returns the sanitized answer text alongside
- * the deduplicated list of cited chunk IDs in encounter order.
+ * Extracts all chunk IDs from any citation markers in rawText. When an allow-list
+ * is supplied, out-of-evidence IDs are reported separately rather than silently
+ * discarded. This lets the service reject the entire citation contract.
  *
  * @param {string} rawText - Model-generated response text.
  * @param {Set<number>|Array<number>|null} [validEvidenceIds=null] - Allowed chunk IDs.
- * @returns {{ cleanedAnswer: string, citedChunkIds: number[] }}
+ * @returns {{ cleanedAnswer: string, citedChunkIds: number[], invalidCitedChunkIds: number[] }}
  */
 export function extractCitationsAndSanitize(rawText, validEvidenceIds = null) {
   if (!rawText || typeof rawText !== "string") {
-    return { cleanedAnswer: "", citedChunkIds: [] };
+    return { cleanedAnswer: "", citedChunkIds: [], invalidCitedChunkIds: [] };
   }
 
   const validSet =
@@ -63,6 +63,7 @@ export function extractCitationsAndSanitize(rawText, validEvidenceIds = null) {
       : null;
 
   const citedChunkIds = [];
+  const invalidCitedChunkIds = [];
   const regex = new RegExp(CITATION_MARKER_REGEX.source, "gi");
   let match;
 
@@ -73,10 +74,11 @@ export function extractCitationsAndSanitize(rawText, validEvidenceIds = null) {
       .filter((n) => Number.isInteger(n) && n > 0);
 
     for (const id of rawIds) {
-      if (!validSet || validSet.has(id)) {
-        if (!citedChunkIds.includes(id)) {
-          citedChunkIds.push(id);
-        }
+      if (!citedChunkIds.includes(id)) {
+        citedChunkIds.push(id);
+      }
+      if (validSet && !validSet.has(id) && !invalidCitedChunkIds.includes(id)) {
+        invalidCitedChunkIds.push(id);
       }
     }
   }
@@ -86,5 +88,6 @@ export function extractCitationsAndSanitize(rawText, validEvidenceIds = null) {
   return {
     cleanedAnswer,
     citedChunkIds,
+    invalidCitedChunkIds,
   };
 }

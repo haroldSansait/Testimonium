@@ -539,9 +539,68 @@ export const SacramentalRequestPage: React.FC = () => {
             </div>
           )}
 
-          {/* Step 3: Applicant Info */}
+          {/* Step 3: Registrant & Applicant Info */}
           {currentStep === 2 && (
-            <div className="space-y-4 max-w-xl mx-auto">
+            <div className="space-y-5 max-w-xl mx-auto text-left">
+              {/* Requester vs Registrant Distinction Card */}
+              <div className="p-4 bg-app-page border border-border rounded-card space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-crimson uppercase tracking-wider">
+                    Identity Verification Context
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-600" />
+                    Requester ID Verified
+                  </span>
+                </div>
+                <div className="text-xs text-text-primary">
+                  <span className="text-text-muted font-medium">Requester (Account Owner): </span>
+                  <span className="font-bold">{appProfile?.firstName} {appProfile?.lastName}</span>
+                </div>
+                {relationship === 'Self' ? (
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    You are requesting a sacramental document for <strong>yourself (Self)</strong>. The legal name entered below must correspond with your verified profile identity.
+                  </p>
+                ) : (
+                  <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-button space-y-1">
+                    <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      Third-Party Request: {relationship}
+                    </div>
+                    <p className="text-[11px] text-amber-900 leading-relaxed font-normal">
+                      You (the requester) are applying on behalf of the <strong>registrant</strong>. Enter the registrant's legal name as it appears in parish canonical records. In the next step, you must upload a signed <strong>Authorization Letter</strong> and the registrant's <strong>Government ID (front & back)</strong>.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                  Relationship to Registrant *
+                </label>
+                <p className="text-xs text-text-muted">Specify how you are related to the certificate owner.</p>
+              </div>
+              <CustomSelect
+                value={relationship}
+                onChange={handleRelationshipChange}
+                options={[
+                  'Self',
+                  'Parent',
+                  'Child',
+                  'Spouse',
+                  'Sibling',
+                  'Other Relative',
+                  'Authorized Representative',
+                ]}
+              />
+
+              <div className="space-y-1 pt-1">
+                <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                  {relationship === 'Self' ? 'Registrant Legal Name (Self) *' : "Registrant's Legal Name *"}
+                </label>
+                <p className="text-xs text-text-muted">Name of the person whose baptism, confirmation, or marriage is recorded.</p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Input
                   label="First Name *"
@@ -567,38 +626,24 @@ export const SacramentalRequestPage: React.FC = () => {
                   required
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="w-full mb-4">
-                  <CustomSelect
-                    label="Relationship to Registrant"
-                    value={relationship}
-                    onChange={handleRelationshipChange}
-                    options={[
-                      'Self',
-                      'Parent',
-                      'Child',
-                      'Spouse',
-                      'Sibling',
-                      'Other Relative',
-                      'Authorized Representative',
-                    ]}
-                  />
-                </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <Input
-                  label="Registry Year (Optional)"
+                  label="Approx. Registry Year (Optional)"
                   type="number"
-                  placeholder="Approx. year, e.g. 1995"
+                  placeholder="e.g. 1995"
                   value={registryYear}
                   onChange={e => setRegistryYear(e.target.value)}
                   className="h-[42px]"
                 />
+                <Input
+                  label="Purpose of Request"
+                  placeholder="e.g. Marriage requirement, School, Passport"
+                  value={purpose}
+                  onChange={e => setPurpose(e.target.value)}
+                />
               </div>
-              <Input
-                label="Purpose of Request"
-                placeholder="e.g. Marriage canonical requirement, school, passport"
-                value={purpose}
-                onChange={e => setPurpose(e.target.value)}
-              />
+
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev}>Back</Button>
                 <Button onClick={handleNext} disabled={!applicantFirstName.trim() || !applicantLastName.trim()}>
@@ -621,17 +666,32 @@ export const SacramentalRequestPage: React.FC = () => {
                 </p>
               </div>
 
-              {relationship !== 'Self' ? (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-card space-y-2">
-                  <span className="text-xs font-bold text-amber-950">Requesting a document for someone else</span>
-                  <p className="text-[11px] text-amber-900">
+              {relationship === 'Self' ? (
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-card flex items-start gap-3 text-left">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950">
+                      Requester Identity Satisfied (Self)
+                    </h4>
+                    <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed font-normal">
+                      Your Government ID is already verified through your TESTIMONIUM profile. Because this request is for yourself (Self), no separate registrant ID images or signed Authorization Letter are required.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-card space-y-2 text-left">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span className="text-xs font-bold text-amber-950">Representative Evidence Requirements ({relationship})</span>
+                  </div>
+                  <p className="text-[11px] text-amber-900 leading-relaxed font-normal">
                     Your Government ID is already verified through your TESTIMONIUM profile. Because this document belongs to another person, provide a signed Authorization Letter and clear front and back images of the registrant's valid Government ID. The registrant is the person named on the requested sacramental record.
                   </p>
-                  <p className="text-[11px] text-amber-900">
+                  <p className="text-[11px] text-amber-900 leading-relaxed font-normal">
                     If the registrant has no available ID or cannot provide the required evidence, this online request cannot be completed under the current rule. Contact the parish office for guidance.
                   </p>
                 </div>
-              ) : null}
+              )}
 
               {loadingReqs ? (
                 <div className="space-y-3">

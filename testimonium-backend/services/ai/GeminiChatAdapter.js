@@ -3,10 +3,131 @@ import { ChatCompletionProvider } from "./ChatCompletionProvider.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
 import { extractCitationsAndSanitize } from "./citationUtils.js";
 import { buildRagSystemInstruction } from "./CaloyPolicy.js";
+import { isCurrentMessageLanguageConsistent } from "./languageMirroring.js";
 import { defaultAiUsageTelemetry, noOpAiUsageTelemetry, isAiUnitTestRuntime } from "../AiUsageTelemetryService.js";
 import { buildGeminiGenerationConfig } from "./geminiConfigHelper.js";
 
 const DEFAULT_SYSTEM_INSTRUCTIONS = buildRagSystemInstruction();
+
+export const RAG_RESPONSE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    answer: {
+      type: "string",
+      description: "Human-visible grounded answer only, with no citation markers or metadata.",
+    },
+    citedChunkIds: {
+      type: "array",
+      items: { type: "integer" },
+      description: "Supporting Chunk IDs copied only from the supplied verified evidence.",
+    },
+    insufficientEvidence: {
+      type: "boolean",
+      description: "True only when the supplied evidence cannot fully support an answer.",
+    },
+  },
+  required: ["answer", "citedChunkIds", "insufficientEvidence"],
+  propertyOrdering: ["answer", "citedChunkIds", "insufficientEvidence"],
+};
+
+function stripJsonFence(rawText) {
+  const match = String(rawText || "").trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1].trim() : String(rawText || "").trim();
+}
+
+function deduplicatePositiveIntegers(values) {
+  if (!Array.isArray(values)) return null;
+  if (!values.every((value) => Number.isInteger(value) && value > 0)) return null;
+  return [...new Set(values)];
+}
+
+/**
+ * Parses the new schema-bound JSON contract, while retaining strict support for
+ * historical marker output during rollout. It never invents or filters citations.
+ */
+export function parseGroundedGenerationResponse(rawText, validEvidenceIds = null) {
+  const text = String(rawText || "").trim();
+  const validSet = validEvidenceIds instanceof Set
+    ? validEvidenceIds
+    : new Set(Array.isArray(validEvidenceIds) ? validEvidenceIds.map(Number) : []);
+
+  if (!text) {
+    return {
+      answer: "",
+      citedChunkIds: [],
+      invalidCitedChunkIds: [],
+      citationContractStatus: "MALFORMED_STRUCTURED_OUTPUT",
+    };
+  }
+
+  if (text === "[INSUFFICIENT_EVIDENCE]") {
+    return {
+      answer: "",
+      citedChunkIds: [],
+      invalidCitedChunkIds: [],
+      citationContractStatus: "INSUFFICIENT_EVIDENCE",
+    };
+  }
+
+  const jsonCandidate = stripJsonFence(text);
+  if (jsonCandidate.startsWith("{")) {
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonCandidate);
+    } catch {
+      return {
+        answer: "",
+        citedChunkIds: [],
+        invalidCitedChunkIds: [],
+        citationContractStatus: "MALFORMED_STRUCTURED_OUTPUT",
+      };
+    }
+
+    const hasValidShape =
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof parsed.answer === "string" &&
+      typeof parsed.insufficientEvidence === "boolean";
+    const citedChunkIds = deduplicatePositiveIntegers(parsed?.citedChunkIds);
+
+    if (!hasValidShape || citedChunkIds === null) {
+      return {
+        answer: "",
+        citedChunkIds: [],
+        invalidCitedChunkIds: [],
+        citationContractStatus: "MALFORMED_STRUCTURED_OUTPUT",
+      };
+    }
+
+    if (parsed.insufficientEvidence) {
+      return {
+        answer: "",
+        citedChunkIds: [],
+        invalidCitedChunkIds: [],
+        citationContractStatus: "INSUFFICIENT_EVIDENCE",
+      };
+    }
+
+    const { cleanedAnswer } = extractCitationsAndSanitize(parsed.answer);
+    const invalidCitedChunkIds = citedChunkIds.filter((id) => !validSet.has(id));
+    return {
+      answer: cleanedAnswer,
+      citedChunkIds,
+      invalidCitedChunkIds,
+      citationContractStatus: citedChunkIds.length > 0 ? "STRUCTURED" : "MISSING_CITATIONS",
+    };
+  }
+
+  const legacy = extractCitationsAndSanitize(text, validSet);
+  return {
+    answer: legacy.cleanedAnswer,
+    citedChunkIds: legacy.citedChunkIds,
+    invalidCitedChunkIds: legacy.invalidCitedChunkIds,
+    citationContractStatus: legacy.citedChunkIds.length > 0 ? "LEGACY" : "MISSING_CITATIONS",
+  };
+}
 
 function isTransientError(err) {
   if (!err) return false;
@@ -67,7 +188,14 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
       evidenceText = "No relevant verified evidence available.";
     }
 
-    return `VERIFIED EVIDENCE:\n${evidenceText}\n\nUSER QUESTION:\n${question}`;
+    return `CURRENT-MESSAGE LANGUAGE RULE:
+The USER QUESTION below is the sole language-style authority. Answer in English when it is clearly English, even if evidence is in a Philippine language. Mirror Tagalog, Cebuano, Hiligaynon, and intentional mixed-language questions naturally. Evidence language never overrides the question.
+
+VERIFIED EVIDENCE:
+${evidenceText}
+
+USER QUESTION:
+${question}`;
   }
 
   /**
@@ -120,6 +248,8 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
 
         const baseConfig = {
           systemInstruction,
+          responseMimeType: "application/json",
+          responseJsonSchema: RAG_RESPONSE_JSON_SCHEMA,
           maxOutputTokens,
           temperature: 0.2,
           abortSignal: combinedSignal,
@@ -160,21 +290,20 @@ export class GeminiChatAdapter extends ChatCompletionProvider {
         const textContent = typeof response?.text === "function" ? response.text() : response?.text;
         const rawText = typeof textContent === "string" ? textContent.trim() : "";
 
-        // Explicit insufficient evidence marker or empty output
-        if (!rawText || rawText.includes("[INSUFFICIENT_EVIDENCE]")) {
+        const parsedResult = parseGroundedGenerationResponse(rawText, validEvidenceIds);
+        if (
+          parsedResult.answer &&
+          !isCurrentMessageLanguageConsistent(question, parsedResult.answer)
+        ) {
           return {
             answer: "",
-            citedChunkIds: [],
+            citedChunkIds: parsedResult.citedChunkIds,
+            invalidCitedChunkIds: parsedResult.invalidCitedChunkIds,
+            citationContractStatus: "CURRENT_MESSAGE_LANGUAGE_MISMATCH",
           };
         }
 
-        // Parse citation tags and sanitize visible answer text
-        const { cleanedAnswer, citedChunkIds } = extractCitationsAndSanitize(rawText, validEvidenceIds);
-
-        return {
-          answer: cleanedAnswer,
-          citedChunkIds,
-        };
+        return parsedResult;
       } catch (err) {
         lastError = err;
         const attemptLatencyMs = Date.now() - attemptStartTime;

@@ -21,6 +21,7 @@ import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { useAuth } from "@/providers/AuthProvider";
 import {
   useCancelRequest,
   useDocumentRequirements,
@@ -56,6 +57,8 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   requestId,
 }) => {
   const router = useRouter();
+  const { profile } = useAuth();
+  const isProfileGovIdVerified = Boolean(profile?.isGovernmentIdVerified);
   const { contentBottomInset } = useAppLayoutMetrics();
   const isValidId = Boolean(requestId && /^[1-9]\d*$/.test(String(requestId).trim()));
 
@@ -283,6 +286,9 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const requiredDocs = requiredDocuments.filter((d) => d.required);
   const uploadedRequirementIds = new Set(attachments.map((a) => a.category));
   const missingRequiredDocs = requiredDocs.filter((d) => {
+    if (d.id === "valid_id" && isProfileGovIdVerified) {
+      return false;
+    }
     if (d.id === "registrant_id_front") {
       return !request?.registrantIdEvidence?.frontUploadedAt && !correctionRegistrantIdFront;
     }
@@ -391,6 +397,22 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                           : request.registrantIdEvidence?.backUploadedAt
                       )
                     : false;
+
+                  if (reqDoc.id === "valid_id" && isProfileGovIdVerified) {
+                    return (
+                      <View key={reqDoc.id} style={styles.draftUploadedRow}>
+                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                        <View style={styles.draftUploadedDetails}>
+                          <Text style={styles.draftUploadedLabel} allowFontScaling>
+                            {reqDoc.label || "Valid Government ID"}
+                          </Text>
+                          <Text style={styles.draftUploadedFileName} allowFontScaling>
+                            Verified via Profile ({profile?.governmentIdType || "Government ID"})
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  }
 
                   if (uploadedAtt || registrantUploaded) {
                     return (

@@ -612,8 +612,31 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         {/* ================= STEP 3: APPLICANT INFORMATION ================= */}
         {step === 3 ? (
           <View style={styles.stepContainer}>
+            {/* Requester vs Registrant Distinction Card */}
+            <View style={styles.verifiedIdBanner}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <Text style={styles.verifiedIdTitle}>Requester Identity</Text>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons name="checkmark-circle" size={14} color="#059669" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: "#059669" }}>ID Verified</Text>
+                </View>
+              </View>
+              <Text style={styles.verifiedIdSubtext}>
+                Logged in as: {profile?.firstName} {profile?.lastName}
+              </Text>
+              {relationship === "Self" ? (
+                <Text style={[styles.verifiedIdSubtext, { marginTop: 4 }]}>
+                  Requesting for yourself (Self). Enter your legal name as recorded in parish books.
+                </Text>
+              ) : (
+                <Text style={[styles.verifiedIdSubtext, { marginTop: 4, color: "#92400e" }]}>
+                  Third-party request ({relationship}). Enter the registrant's name below. A signed Authorization Letter and the registrant's Government ID will be required in Step 4.
+                </Text>
+              )}
+            </View>
+
             <FormSection
-              title="Applicant Information"
+              title="Registrant Information"
               description={`For ${formatDocumentType(selectedDocType)} at ${selectedParish?.name}`}
             >
               <TextInput
@@ -849,6 +872,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             <RecordSection
               title="Applicant Details"
               fields={[
+                { label: "Requester (Account)", value: `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || "You" },
                 { label: "Record Holder Name", value: applicantName },
                 { label: "Relationship", value: relationship },
                 { label: "Purpose", value: purpose },

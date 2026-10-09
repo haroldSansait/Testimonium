@@ -885,9 +885,16 @@ export class ChatbotService {
       };
     };
 
-    // Handle model-reported insufficient evidence or empty text
+    // Keep model-reported insufficiency distinct from a broken machine-readable
+    // citation contract or a rejected current-message language mismatch.
     if (!generationResult.answer || !generationResult.answer.trim()) {
-      const fallbackPayload = buildFallbackResponse("INSUFFICIENT_EVIDENCE");
+      let emptyFallbackReason = "INSUFFICIENT_EVIDENCE";
+      if (generationResult.citationContractStatus === "MALFORMED_STRUCTURED_OUTPUT") {
+        emptyFallbackReason = "RAG_CITATION_CONTRACT_INVALID";
+      } else if (generationResult.citationContractStatus === "CURRENT_MESSAGE_LANGUAGE_MISMATCH") {
+        emptyFallbackReason = "CURRENT_MESSAGE_LANGUAGE_MISMATCH";
+      }
+      const fallbackPayload = buildFallbackResponse(emptyFallbackReason);
 
       await this.logRepository.logQuery({
         userId,
@@ -898,7 +905,7 @@ export class ChatbotService {
         retrievedChunkIds,
         retrievalScores,
         fallback: true,
-        fallbackReason: "INSUFFICIENT_EVIDENCE",
+        fallbackReason: emptyFallbackReason,
         category,
         embeddingProvider,
         generationProvider: chatProvider.providerName,
@@ -915,9 +922,14 @@ export class ChatbotService {
     const citedIds = Array.isArray(generationResult.citedChunkIds)
       ? generationResult.citedChunkIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
       : [];
+    const invalidCitedIds = Array.isArray(generationResult.invalidCitedChunkIds)
+      ? generationResult.invalidCitedChunkIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
 
     const allCitationsValid =
-      citedIds.length >= 1 && citedIds.every((id) => suppliedChunkIdsSet.has(id));
+      citedIds.length >= 1 &&
+      invalidCitedIds.length === 0 &&
+      citedIds.every((id) => suppliedChunkIdsSet.has(id));
 
     if (!allCitationsValid) {
       const fallbackPayload = buildFallbackResponse("UNSUPPORTED_OR_MISSING_CITATIONS");
