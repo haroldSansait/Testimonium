@@ -678,7 +678,7 @@ export class DocumentRequestService {
             requestId: Number(requestId),
             actorId: Number(staffId),
             action: "CORRECTED_DOCUMENT_UPLOADED",
-            notes: `Corrected document uploaded for Return Cycle ${activeReturn.cycleNumber} (${file.originalname}).`,
+            remarks: `Corrected document uploaded for Return Cycle ${activeReturn.cycleNumber} (${file.originalname}).`,
           },
         });
 

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import { DOCUMENT_RETURN_REASONS, DocumentReturnReasonCode } from "../shared/constants.js";
 import { canTransition } from "../services/RequestStateMachine.js";
@@ -11,9 +12,20 @@ import { EmailOutboxService } from "../services/EmailOutboxService.js";
 import { renderEmail } from "../services/email/EmailTemplates.js";
 import { returnDocumentSchema, updateRequestStatusSchema } from "../validators/requestSchemas.js";
 import { FileValidator } from "../utils/fileValidator.js";
+import { RequestNotificationService } from "../services/RequestNotificationService.js";
+import { AuditLogService } from "../services/AuditLogService.js";
 
 const parishionerService = new ParishionerRequestService();
 const staffService = new DocumentRequestService();
+
+function assertPrismaModelPayload(modelName, payload) {
+  const model = Prisma.dmmf.datamodel.models.find(({ name }) => name === modelName);
+  assert.ok(model, `Missing Prisma model metadata for ${modelName}`);
+  const validFields = new Set(model.fields.map(({ name }) => name));
+  for (const field of Object.keys(payload)) {
+    assert.ok(validFields.has(field), `${modelName} does not define Prisma field "${field}"`);
+  }
+}
 
 test("Post-Release Document Return - Canonical Reasons (8 Reasons)", () => {
   const codes = Object.keys(DOCUMENT_RETURN_REASONS);
@@ -315,6 +327,171 @@ test("Post-Release Document Return - Corrected document upload validation on sta
     }),
     (err) => err.statusCode === 400 && err.code === "INVALID_FILE_SIGNATURE"
   );
+});
+
+test("Post-Release Document Return - return workflow sends schema-valid Prisma payloads", async () => {
+  const originalRequestFindFirst = prisma.documentRequest.findFirst;
+  const originalReturnCount = prisma.documentReturn.count;
+  const originalTransaction = prisma.$transaction;
+  const originalUpload = DocumentReturnStorageService.upload;
+  const originalDelete = DocumentReturnStorageService.delete;
+  const originalNotifyDocumentReturned = RequestNotificationService.notifyDocumentReturned;
+  let historyPayload;
+
+  try {
+    prisma.documentRequest.findFirst = async () => ({ id: 101, userId: 5, status: "COMPLETED" });
+    prisma.documentReturn.count = async () => 0;
+    DocumentReturnStorageService.upload = async () => {};
+    DocumentReturnStorageService.delete = async () => {};
+    RequestNotificationService.notifyDocumentReturned = async () => {};
+    prisma.$transaction = async (callback) => callback({
+      $queryRaw: async () => [],
+      user: {
+        findUnique: async () => ({ id: 5, role: { roleName: "PARISHIONER" } }),
+      },
+      documentRequest: {
+        findFirst: async () => ({
+          id: 101,
+          userId: 5,
+          parishId: 2,
+          status: "COMPLETED",
+          trackingNumber: "TEST-101",
+          parish: { id: 2 },
+        }),
+        updateMany: async ({ where, data }) => {
+          assertPrismaModelPayload("DocumentRequest", where);
+          assertPrismaModelPayload("DocumentRequest", data);
+          return { count: 1 };
+        },
+      },
+      documentReturn: {
+        count: async () => 0,
+        create: async ({ data, select }) => {
+          assertPrismaModelPayload("DocumentReturn", data);
+          assertPrismaModelPayload("DocumentReturn", select);
+          assert.equal(data.notes, "Wrong surname");
+          return { id: 44, ...data };
+        },
+      },
+      requestHistory: {
+        create: async ({ data }) => {
+          assertPrismaModelPayload("RequestHistory", data);
+          historyPayload = data;
+          return { id: 52, ...data };
+        },
+      },
+    });
+
+    const result = await parishionerService.returnDocument({
+      requestId: 101,
+      userId: 5,
+      reasonCode: "INCORRECT_NAME",
+      notes: "  Wrong surname  ",
+      file: {
+        originalname: "defective.pdf",
+        size: 13,
+        mimetype: "application/pdf",
+        buffer: Buffer.from("%PDF-1.4 test"),
+      },
+    });
+
+    assert.equal(result.id, 44);
+    assert.deepEqual(historyPayload, {
+      requestId: 101,
+      actorId: 5,
+      action: "DOCUMENT_RETURNED",
+      remarks: "Document returned for correction (Cycle 1). Reason: Incorrect name (registrant, parents, or sponsors) - Wrong surname",
+    });
+  } finally {
+    prisma.documentRequest.findFirst = originalRequestFindFirst;
+    prisma.documentReturn.count = originalReturnCount;
+    prisma.$transaction = originalTransaction;
+    DocumentReturnStorageService.upload = originalUpload;
+    DocumentReturnStorageService.delete = originalDelete;
+    RequestNotificationService.notifyDocumentReturned = originalNotifyDocumentReturned;
+  }
+});
+
+test("Post-Release Document Return - corrected upload sends schema-valid Prisma payloads", async () => {
+  const originalRequestFindUnique = prisma.documentRequest.findUnique;
+  const originalReturnFindFirst = prisma.documentReturn.findFirst;
+  const originalTransaction = prisma.$transaction;
+  const originalUpload = DocumentReturnStorageService.upload;
+  const originalDelete = DocumentReturnStorageService.delete;
+  const originalAuditLog = AuditLogService.log;
+  let historyPayload;
+
+  try {
+    prisma.documentRequest.findUnique = async () => ({ id: 101, parishId: 2, status: "RETURNED" });
+    prisma.documentReturn.findFirst = async () => ({
+      id: 44,
+      requestId: 101,
+      cycleNumber: 2,
+      correctedObjectKey: null,
+    });
+    DocumentReturnStorageService.upload = async () => {};
+    DocumentReturnStorageService.delete = async () => {};
+    AuditLogService.log = async () => true;
+    prisma.$transaction = async (callback) => callback({
+      $queryRaw: async () => [],
+      documentRequest: {
+        findUnique: async () => ({ id: 101, parishId: 2, status: "RETURNED" }),
+      },
+      documentReturn: {
+        findFirst: async () => ({
+          id: 44,
+          requestId: 101,
+          cycleNumber: 2,
+          correctedObjectKey: null,
+        }),
+        updateMany: async ({ where, data }) => {
+          assertPrismaModelPayload("DocumentReturn", where);
+          assertPrismaModelPayload("DocumentReturn", data);
+          return { count: 1 };
+        },
+        findUnique: async ({ where, select }) => {
+          assertPrismaModelPayload("DocumentReturn", where);
+          assertPrismaModelPayload("DocumentReturn", select);
+          return { id: 44, requestId: 101, cycleNumber: 2, correctedRevision: 1 };
+        },
+      },
+      requestHistory: {
+        create: async ({ data }) => {
+          assertPrismaModelPayload("RequestHistory", data);
+          historyPayload = data;
+          return { id: 53, ...data };
+        },
+      },
+    });
+
+    const result = await staffService.uploadCorrectedDocument({
+      requestId: 101,
+      staffId: 20,
+      staffRole: "SECRETARY",
+      staffParishId: 2,
+      file: {
+        originalname: "corrected.pdf",
+        size: 13,
+        mimetype: "application/pdf",
+        buffer: Buffer.from("%PDF-1.4 test"),
+      },
+    });
+
+    assert.equal(result.id, 44);
+    assert.deepEqual(historyPayload, {
+      requestId: 101,
+      actorId: 20,
+      action: "CORRECTED_DOCUMENT_UPLOADED",
+      remarks: "Corrected document uploaded for Return Cycle 2 (corrected.pdf).",
+    });
+  } finally {
+    prisma.documentRequest.findUnique = originalRequestFindUnique;
+    prisma.documentReturn.findFirst = originalReturnFindFirst;
+    prisma.$transaction = originalTransaction;
+    DocumentReturnStorageService.upload = originalUpload;
+    DocumentReturnStorageService.delete = originalDelete;
+    AuditLogService.log = originalAuditLog;
+  }
 });
 
 test("Post-Release Document Return - priests cannot read another parish return history", async () => {

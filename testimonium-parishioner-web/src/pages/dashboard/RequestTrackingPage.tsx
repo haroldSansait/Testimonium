@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download } from 'lucide-react';
 import services from '../../providers/factory';
@@ -12,6 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Ca
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { SearchInput } from '../../components/ui/SearchInput';
+import { CustomSelect } from '../../components/ui/CustomSelect';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import PaymentInstructionsCard from '../../features/payments/components/PaymentInstructionsCard';
@@ -19,6 +21,7 @@ import ReceiptUploadCard from '../../features/payments/components/ReceiptUploadC
 import { ErrorState } from '../../components/ui/ErrorState';
 import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
 import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
+import SecureFileActions from '../../components/files/SecureFileActions';
 
 const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
   switch (status) {
@@ -149,13 +152,13 @@ const SecureReturnFileActions: React.FC<SecureReturnFileActionsProps> = ({
   const isImage = String(mimeType || '').startsWith('image/');
 
   return (
-    <div className="space-y-2 pt-2">
+    <div className="space-y-2 pt-1">
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-text-primary hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[10px] font-semibold text-text-primary hover:bg-gray-50 disabled:opacity-50"
         >
           {loading ? <Loader2 size={11} className="animate-spin" /> : <Eye size={11} />}
           Secure Preview
@@ -991,14 +994,14 @@ export const RequestTrackingPage: React.FC = () => {
                               Uploaded: {new Date(selectedRequest.paymentTransactions[0].receipts[0].uploadedAt).toLocaleDateString()}
                             </span>
                           </div>
-                          <a
-                            href={`https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${selectedRequest.paymentTransactions[0].receipts[0].r2ObjectKey}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3.5 py-1.5 bg-crimson text-white hover:bg-crimson-dark text-xs font-bold rounded-button transition-all text-center focus-ring"
-                          >
-                            View Receipt
-                          </a>
+                          <SecureFileActions
+                            endpoint={'/requests/' + selectedRequest.id + '/receipts/' + selectedRequest.paymentTransactions[0].receipts[0].id + '/download'}
+                            fileName={selectedRequest.paymentTransactions[0].receipts[0].fileName}
+                            mimeType={selectedRequest.paymentTransactions[0].receipts[0].mimeType}
+                            compact
+                            showDownload={false}
+                            viewLabel="View Receipt"
+                          />
                         </div>
                       )}
                     </div>
@@ -1106,7 +1109,6 @@ export const RequestTrackingPage: React.FC = () => {
                         {selectedRequest.attachments && selectedRequest.attachments.length > 0 ? (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {selectedRequest.attachments.map((att) => {
-                              const attUrl = `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${att.r2ObjectKey}`;
                               return (
                                 <div key={att.id} className="p-3 bg-gray-50/80 border border-gray-150 rounded-xl flex items-center justify-between gap-3 text-xs">
                                   <div className="flex items-center gap-2 min-w-0">
@@ -1126,14 +1128,13 @@ export const RequestTrackingPage: React.FC = () => {
                                       </span>
                                     </div>
                                   </div>
-                                  <a
-                                    href={attUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-crimson hover:underline font-bold text-xs shrink-0 ml-2 focus-ring rounded"
-                                  >
-                                    View
-                                  </a>
+                                  <SecureFileActions
+                                    endpoint={'/requests/' + selectedRequest.id + '/attachments/' + att.id + '/download'}
+                                    fileName={att.fileName}
+                                    mimeType={att.fileType}
+                                    compact
+                                    showDownload={false}
+                                  />
                                 </div>
                               );
                             })}
@@ -1182,8 +1183,6 @@ export const RequestTrackingPage: React.FC = () => {
                                 const existingFile = selectedRequest.attachments?.find(a => a.category === req.id);
                                 const selectedFile = uploadedFilesByCorrectionReq[req.id];
                                 const replacementUploaded = uploadedCorrectionReqIds[req.id];
-                                const fileUrl = existingFile ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${existingFile.r2ObjectKey}` : null;
-
                                 return (
                                   <div key={req.id} className="p-4 bg-white border border-border rounded-xl space-y-3 shadow-xs">
                                     <div className="flex justify-between items-start">
@@ -1219,16 +1218,13 @@ export const RequestTrackingPage: React.FC = () => {
                                             Uploaded: {new Date(existingFile.uploadedAt).toLocaleDateString()}
                                           </span>
                                         </div>
-                                        {fileUrl && (
-                                          <a
-                                            href={fileUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-crimson hover:underline font-bold text-xs cursor-pointer flex-shrink-0 ml-4 focus-ring rounded"
-                                          >
-                                            View
-                                          </a>
-                                        )}
+                                        <SecureFileActions
+                                          endpoint={'/requests/' + selectedRequest.id + '/attachments/' + existingFile.id + '/download'}
+                                          fileName={existingFile.fileName}
+                                          mimeType={existingFile.fileType}
+                                          compact
+                                          showDownload={false}
+                                        />
                                       </div>
                                     )}
 
@@ -1476,12 +1472,12 @@ export const RequestTrackingPage: React.FC = () => {
                           </div>
                           <div className="space-y-3">
                             {selectedRequest.returns.map((ret) => (
-                              <div key={ret.id} className="p-3 bg-white border border-border/80 rounded-xl space-y-2 text-xs">
-                                <div className="flex items-center justify-between">
+                              <div key={ret.id} className="p-3 bg-white border border-border/80 rounded-xl space-y-3 text-xs">
+                                <div className="flex items-start justify-between gap-2">
                                   <span className="font-bold text-text-primary">
                                     Return Cycle #{ret.cycleNumber}: {DOCUMENT_RETURN_REASONS[ret.reasonCode as keyof typeof DOCUMENT_RETURN_REASONS] || ret.reasonCode}
                                   </span>
-                                  <span className="text-[10px] text-text-muted">
+                                  <span className="text-[10px] text-text-muted shrink-0 whitespace-nowrap">
                                     {new Date(ret.returnedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                   </span>
                                 </div>
@@ -1490,31 +1486,57 @@ export const RequestTrackingPage: React.FC = () => {
                                     "{ret.notes}"
                                   </p>
                                 )}
-                                <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
-                                  <span className="text-text-muted">Defective Upload: {ret.returnedFileName}</span>
-                                  {ret.correctedAt ? (
-                                    <span className="text-green-700 font-semibold flex items-center gap-1">
-                                      <CheckCircle2 size={12} /> Corrected on {new Date(ret.correctedAt).toLocaleDateString()}
+
+                                {/* Defective Document */}
+                                <div className="rounded-lg border border-red-200/60 bg-red-50/30 p-2.5 space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700">
+                                      <AlertCircle size={13} className="shrink-0 text-red-600" />
+                                      Defective Document
                                     </span>
-                                  ) : (
-                                    <span className="text-amber-700 font-medium">Awaiting staff correction</span>
-                                  )}
-                                </div>
-                                <SecureReturnFileActions
-                                  requestId={selectedRequest.id}
-                                  returnId={ret.id}
-                                  type="returned"
-                                  fileName={ret.returnedFileName}
-                                  mimeType={ret.returnedFileType}
-                                />
-                                {ret.correctedFileName && (
+                                  </div>
+                                  <p className="text-[11px] font-medium text-text-primary break-all" title={ret.returnedFileName}>
+                                    {ret.returnedFileName}
+                                  </p>
                                   <SecureReturnFileActions
                                     requestId={selectedRequest.id}
                                     returnId={ret.id}
-                                    type="corrected"
-                                    fileName={ret.correctedFileName}
-                                    mimeType={ret.correctedFileType}
+                                    type="returned"
+                                    fileName={ret.returnedFileName}
+                                    mimeType={ret.returnedFileType}
                                   />
+                                </div>
+
+                                {/* Corrected Document */}
+                                {ret.correctedFileName ? (
+                                  <div className="rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-2.5 space-y-1.5">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800">
+                                        <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
+                                        Corrected Document
+                                      </span>
+                                      {ret.correctedAt && (
+                                        <span className="text-[10px] text-emerald-700 font-medium">
+                                          Corrected on {new Date(ret.correctedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] font-medium text-text-primary break-all" title={ret.correctedFileName}>
+                                      {ret.correctedFileName}
+                                    </p>
+                                    <SecureReturnFileActions
+                                      requestId={selectedRequest.id}
+                                      returnId={ret.id}
+                                      type="corrected"
+                                      fileName={ret.correctedFileName}
+                                      mimeType={ret.correctedFileType}
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 rounded-lg border border-amber-200/70 bg-amber-50/50 px-3 py-2 text-amber-800 text-[11px]">
+                                    <Clock size={13} className="shrink-0 text-amber-600" />
+                                    <span className="font-medium">Awaiting staff correction</span>
+                                  </div>
                                 )}
                               </div>
                             ))}
@@ -1911,8 +1933,8 @@ export const RequestTrackingPage: React.FC = () => {
       )}
 
       {/* Return Document for Correction Modal */}
-      {isReturnModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+      {isReturnModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-xl border border-border max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-5 animate-in fade-in duration-150">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
@@ -1948,20 +1970,17 @@ export const RequestTrackingPage: React.FC = () => {
                 <label className="text-xs font-bold text-text-primary block">
                   Correction Reason <span className="text-crimson">*</span>
                 </label>
-                <select
+                <CustomSelect
                   value={returnReason}
-                  onChange={(e) => setReturnReason(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-border rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-crimson/20 focus:border-crimson"
-                  required
+                  onChange={(val) => setReturnReason(String(val || ''))}
+                  options={Object.entries(DOCUMENT_RETURN_REASONS).map(([code, label]) => ({
+                    value: code,
+                    label,
+                  }))}
+                  placeholder="Select a reason..."
                   disabled={submittingReturn}
-                >
-                  <option value="">Select a reason...</option>
-                  {Object.entries(DOCUMENT_RETURN_REASONS).map(([code, label]) => (
-                    <option key={code} value={code}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                  size="sm"
+                />
               </div>
 
               {/* Upload Defective Document Evidence */}
@@ -2042,7 +2061,8 @@ export const RequestTrackingPage: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

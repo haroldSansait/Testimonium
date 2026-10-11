@@ -7,6 +7,11 @@ import {
 import { r2Client } from "../config/r2.js";
 import { env } from "../config/env.js";
 
+export const isMissingR2ObjectError = (error) => {
+  const statusCode = error?.$metadata?.httpStatusCode;
+  return statusCode === 404 || error?.name === "NotFound" || error?.name === "NoSuchKey";
+};
+
 export class R2Service {
   async upload({ key, body, contentType, bucketName = env.r2.bucketName }) {
     await r2Client.send(
@@ -40,8 +45,7 @@ export class R2Service {
       );
       return true;
     } catch (error) {
-      const statusCode = error?.$metadata?.httpStatusCode;
-      if (statusCode === 404 || error?.name === 'NotFound' || error?.name === 'NoSuchKey') {
+      if (isMissingR2ObjectError(error)) {
         return false;
       }
       throw error;

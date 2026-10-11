@@ -3,7 +3,7 @@ import { FileUploadService } from "../services/FileUploadService.js";
 import { ReceiptVerificationService } from "../services/ReceiptVerificationService.js";
 import { DocumentRequirementService } from "../services/DocumentRequirementService.js";
 import { prisma } from "../config/db.js";
-import { R2Service } from "../services/R2Service.js";
+import { R2Service, isMissingR2ObjectError } from "../services/R2Service.js";
 import { RegistrantIdEvidenceService } from "../services/RegistrantIdEvidenceService.js";
 import { RegistrantIdStorageService } from "../services/RegistrantIdStorageService.js";
 import { isSelfRelationship } from "../config/relationshipEvidence.js";
@@ -345,10 +345,10 @@ export const resubmitCorrections = async (req, res, next) => {
 export const downloadAttachment = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const requestId = parseInt(req.params.id, 10);
-    const attachmentId = parseInt(req.params.attachmentId, 10);
+    const requestId = parsePositiveId(req.params.id);
+    const attachmentId = parsePositiveId(req.params.attachmentId);
 
-    if (isNaN(requestId) || isNaN(attachmentId)) {
+    if (!requestId || !attachmentId) {
       return res.status(400).json({
         success: false,
         message: "Invalid request ID or attachment ID.",
@@ -376,7 +376,19 @@ export const downloadAttachment = async (req, res, next) => {
     }
 
     const r2Service = new R2Service();
-    const downloadStream = await r2Service.download(attachment.r2ObjectKey);
+    let downloadStream;
+    try {
+      downloadStream = await r2Service.download(attachment.r2ObjectKey);
+    } catch (err) {
+      if (isMissingR2ObjectError(err)) {
+        return res.status(404).json({
+          success: false,
+          code: "ATTACHMENT_FILE_MISSING",
+          message: "The attachment file is no longer available. Please contact the parish office.",
+        });
+      }
+      throw err;
+    }
 
     res.setHeader("Content-Type", attachment.fileType || "application/octet-stream");
     res.setHeader("Cache-Control", "private, no-store");
@@ -404,6 +416,68 @@ export const uploadRegistrantId = async (req, res, next) => {
     return res.status(200).json({ success: true, message: "Registrant ID evidence uploaded securely.", data });
   } catch (error) {
     return next(error);
+  }
+};
+
+export const downloadReceipt = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const requestId = parsePositiveId(req.params.id);
+    const receiptId = parsePositiveId(req.params.receiptId);
+
+    if (!requestId || !receiptId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request ID or receipt ID.",
+      });
+    }
+
+    // Enforce parishioner ownership before looking up or streaming receipt metadata.
+    await requestService.getRequestById(requestId, userId);
+
+    const receipt = await prisma.receiptUpload.findFirst({
+      where: {
+        id: receiptId,
+        transaction: { requestId },
+      },
+    });
+
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message: "Receipt not found.",
+      });
+    }
+
+    let downloadStream;
+    try {
+      downloadStream = await new R2Service().download(receipt.r2ObjectKey);
+    } catch (err) {
+      if (isMissingR2ObjectError(err)) {
+        return res.status(404).json({
+          success: false,
+          code: "RECEIPT_FILE_MISSING",
+          message: "The receipt file is no longer available. Please upload a replacement or contact the parish office.",
+        });
+      }
+      throw err;
+    }
+
+    res.setHeader("Content-Type", receipt.mimeType || "application/octet-stream");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader(
+      "Content-Disposition",
+      'inline; filename="' + encodeURIComponent(receipt.fileName || 'receipt') + '"'
+    );
+
+    if (downloadStream.ContentLength) {
+      res.setHeader("Content-Length", downloadStream.ContentLength);
+    }
+
+    downloadStream.Body.pipe(res);
+  } catch (err) {
+    return next(err);
   }
 };
 

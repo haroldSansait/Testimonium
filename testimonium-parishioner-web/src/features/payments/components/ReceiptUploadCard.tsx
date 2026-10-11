@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, Image as ImageIcon, Trash2, RefreshCw, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Trash2, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import services from '../../../providers/factory';
 import { Button } from '../../../components/ui/Button';
+import SecureFileActions from '../../../components/files/SecureFileActions';
 
 interface ReceiptUploadCardProps {
   requestId: string;
@@ -31,9 +32,6 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
   // Detect existing receipt upload
   const existingReceipt = existingTransaction?.receipts?.[0];
   const existingOcr = existingReceipt?.ocrResult;
-  const existingReceiptUrl = existingReceipt
-    ? `https://pub-b6ab36a02c914579977dd08c3959e2f7.r2.dev/${existingReceipt.r2ObjectKey}`
-    : null;
 
   const handleFile = (selectedFile: File) => {
     setErrorMessage(null);
@@ -156,7 +154,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         )}
 
         {/* Existing uploaded receipt mode */}
-        {existingReceiptUrl && !file && (
+        {existingReceipt && !file && (
           <div className="space-y-4 text-center">
             <div className="p-4 bg-green-50/50 border border-green-200/80 rounded-xl space-y-3">
               <div className="flex items-center justify-center gap-1.5 text-green-800 text-xs font-bold">
@@ -164,9 +162,12 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
                 <span>Receipt Uploaded Successfully</span>
               </div>
 
-              <div className="border border-border/60 rounded-xl overflow-hidden max-h-64 flex justify-center bg-gray-950 shadow-inner">
-                <img src={existingReceiptUrl} alt="Uploaded receipt proof" className="object-contain max-h-64" />
-              </div>
+              <SecureFileActions
+                endpoint={'/requests/' + requestId + '/receipts/' + existingReceipt.id + '/download'}
+                fileName={existingReceipt.fileName}
+                mimeType={existingReceipt.mimeType}
+                autoPreview
+              />
 
               {existingOcr && (
                 <div className="text-left text-xs bg-white border border-border p-3.5 rounded-xl space-y-2 text-text-muted">
@@ -198,14 +199,6 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
             </div>
 
             <div className="flex gap-3">
-              <a
-                href={existingReceiptUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 py-2 text-xs font-bold rounded-button border border-border text-text-primary bg-white hover:bg-app-page transition-all flex items-center justify-center gap-1.5 focus-ring"
-              >
-                <Eye className="w-3.5 h-3.5" /> View Receipt
-              </a>
               <Button
                 onClick={triggerFileInput}
                 variant="outline"
@@ -227,7 +220,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         )}
 
         {/* OCR Result View immediately after upload */}
-        {ocrResult && !isUploading && !existingReceiptUrl && (
+        {ocrResult && !isUploading && !existingReceipt && (
           <div className="p-4 rounded-xl border space-y-4 animate-in fade-in duration-200 text-left bg-white shadow-xs border-border">
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-green-800 text-xs font-bold">
@@ -275,7 +268,7 @@ export const ReceiptUploadCard: React.FC<ReceiptUploadCardProps> = ({
         )}
 
         {/* Drag & Drop Upload Area with Semantic Accessible Label */}
-        {!file && !existingReceiptUrl && !ocrResult && !isUploading && (
+        {!file && !existingReceipt && !ocrResult && !isUploading && (
           <label
             htmlFor="receipt-file-input"
             onDragOver={handleDragOver}

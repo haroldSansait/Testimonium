@@ -1013,7 +1013,7 @@ export class ParishionerRequestService {
             requestId: Number(requestId),
             actorId: Number(userId),
             action: "DOCUMENT_RETURNED",
-            notes: `Document returned for correction (Cycle ${cycleNumber}). Reason: ${DOCUMENT_RETURN_REASONS[reasonCode] || reasonCode}${notes ? ` - ${notes.trim()}` : ""}`,
+            remarks: `Document returned for correction (Cycle ${cycleNumber}). Reason: ${DOCUMENT_RETURN_REASONS[reasonCode] || reasonCode}${notes ? ` - ${notes.trim()}` : ""}`,
           },
         });
 

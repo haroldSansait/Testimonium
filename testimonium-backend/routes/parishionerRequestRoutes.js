@@ -10,6 +10,7 @@ import {
   uploadReceipt,
   resubmitCorrections,
   downloadAttachment,
+  downloadReceipt,
   uploadRegistrantId,
   getRegistrantIdMetadata,
   streamOwnedRegistrantIdSide,
@@ -50,6 +51,7 @@ router.get("/:id/registrant-id/:side", streamOwnedRegistrantIdSide);
 
 // Authenticated private attachment download
 router.get("/:id/attachments/:attachmentId/download", downloadAttachment);
+router.get("/:id/receipts/:receiptId/download", downloadReceipt);
 
 // Payment proof receipt upload (single file)
 router.post("/:id/receipt", receiptUploadRateLimiter, uploadReceiptFile, uploadReceipt);

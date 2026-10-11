@@ -119,7 +119,6 @@ export interface RequestAttachment {
   id: number;
   requestId: number;
   fileName: string;
-  r2ObjectKey: string;
   fileType?: string | null;
   fileSize?: number | null;
   category: string; // "primary" | "supporting" | "receipt"
@@ -139,7 +138,6 @@ export interface PaymentTransaction {
   receipts?: {
     id: number;
     paymentTransactionId: number;
-    r2ObjectKey: string;
     fileName: string;
     mimeType?: string | null;
     fileSize?: number | null;
