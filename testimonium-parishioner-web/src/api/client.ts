@@ -89,9 +89,45 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   return responseData.data !== undefined ? responseData.data : (responseData as T);
 }
 
+async function requestBlob(endpoint: string): Promise<Blob> {
+  const url = new URL(`${BASE_URL}${endpoint}`);
+  const headers = new Headers();
+
+  if (auth.currentUser) {
+    try {
+      headers.set("Authorization", `Bearer ${await auth.currentUser.getIdToken()}`);
+    } catch (err) {
+      console.warn("[API Client] Failed to retrieve Firebase ID token:", err);
+    }
+  }
+
+  const response = await fetch(url.toString(), { method: "GET", headers });
+  if (!response.ok) {
+    let responseData: any = {};
+    try {
+      responseData = await response.json();
+    } catch {
+      responseData = { message: "Secure file could not be loaded." };
+    }
+    if (response.status === 401) {
+      SessionService.logout('expired');
+    }
+    throw new ApiError(
+      responseData.message || "Secure file could not be loaded.",
+      response.status,
+      responseData.errors || [],
+      typeof responseData.code === "string" ? responseData.code : undefined
+    );
+  }
+
+  return response.blob();
+}
+
 export const client = {
   get: <T>(endpoint: string, params?: Record<string, any>, options?: RequestOptions) =>
     request<T>(endpoint, { method: "GET", params, ...options }),
+
+  getBlob: (endpoint: string) => requestBlob(endpoint),
     
   post: <T>(endpoint: string, body?: any, options?: RequestOptions) =>
     request<T>(endpoint, {

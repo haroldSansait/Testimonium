@@ -82,6 +82,42 @@ const detailInclude = {
       createdAt: "asc",
     },
   },
+  returns: {
+    select: {
+      id: true,
+      requestId: true,
+      cycleNumber: true,
+      reasonCode: true,
+      notes: true,
+      returnedFileName: true,
+      returnedFileType: true,
+      returnedFileSize: true,
+      returnedAt: true,
+      returnedByUserId: true,
+      correctedFileName: true,
+      correctedFileType: true,
+      correctedFileSize: true,
+      correctedAt: true,
+      correctedByStaffId: true,
+      createdAt: true,
+      updatedAt: true,
+      returnedByUser: {
+        select: {
+          id: true,
+          fullName: true,
+        },
+      },
+      correctedByStaff: {
+        select: {
+          id: true,
+          fullName: true,
+        },
+      },
+    },
+    orderBy: {
+      cycleNumber: "asc",
+    },
+  },
 };
 
 export class ParishionerRequestRepository {

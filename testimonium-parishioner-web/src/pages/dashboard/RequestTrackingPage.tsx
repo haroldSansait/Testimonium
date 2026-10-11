@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import type { SacramentalRequest, RequestStatus, Appointment } from '../../types';
+import { DOCUMENT_RETURN_REASONS } from '../../types';
+import { client } from '../../api/client';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -26,8 +28,11 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
     case 'payment-under-review':
       return 'under-review';
     case 'ready':
+      return 'ready';
     case 'completed':
       return 'ready';
+    case 'returned':
+      return 'correction';
     case 'rejected':
     case 'cancelled':
     case 'expired':
@@ -42,6 +47,8 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
 };
 
 const formatStatusDisplay = (status: string) => {
+  if (status === 'returned') return 'Returned for Correction';
+  if (status === 'completed') return 'Released';
   if (status === 'payment-under-review') return 'Awaiting Payment Review';
   if (status === 'payment-needs-correction') return 'Payment Needs Correction';
   if (status === 'needs-correction' || status === 'needs_correction') return 'Needs Correction';
@@ -89,6 +96,91 @@ const getScheduleBadgeVariant = (status: string): 'pending' | 'under-review' | '
 };
 
 const EMPTY_REQUESTS: SacramentalRequest[] = [];
+
+interface SecureReturnFileActionsProps {
+  requestId: string | number;
+  returnId: number;
+  type: 'returned' | 'corrected';
+  fileName: string;
+  mimeType?: string | null;
+}
+
+const SecureReturnFileActions: React.FC<SecureReturnFileActionsProps> = ({
+  requestId,
+  returnId,
+  type,
+  fileName,
+  mimeType,
+}) => {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }, [objectUrl]);
+
+  const load = async () => {
+    if (objectUrl) return objectUrl;
+    setLoading(true);
+    setError(null);
+    try {
+      const blob = await client.getBlob(`/requests/${requestId}/returns/${returnId}/file/${type}`);
+      const nextUrl = URL.createObjectURL(blob);
+      setObjectUrl(nextUrl);
+      return nextUrl;
+    } catch (err: any) {
+      setError(err?.message || 'Secure file could not be loaded.');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const download = async () => {
+    const url = await load();
+    if (!url) return;
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+  };
+
+  const isImage = String(mimeType || '').startsWith('image/');
+
+  return (
+    <div className="space-y-2 pt-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-text-primary hover:bg-gray-50 disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={11} className="animate-spin" /> : <Eye size={11} />}
+          Secure Preview
+        </button>
+        <button
+          type="button"
+          onClick={() => void download()}
+          disabled={loading}
+          className="inline-flex items-center gap-1 rounded-md bg-crimson px-2 py-1 text-[10px] font-semibold text-white hover:bg-crimson-dark disabled:opacity-50"
+        >
+          <Download size={11} /> Download
+        </button>
+      </div>
+      {objectUrl && isImage && (
+        <img src={objectUrl} alt={fileName} className="max-h-64 w-full rounded-lg border border-border bg-gray-50 object-contain" />
+      )}
+      {objectUrl && !isImage && (
+        <a href={objectUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-semibold text-blue-600 hover:underline">
+          Open authenticated document preview
+        </a>
+      )}
+      {error && <p className="text-[10px] text-red-600" role="alert">{error}</p>}
+    </div>
+  );
+};
 
 export const RequestTrackingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -343,6 +435,82 @@ export const RequestTrackingPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [correctionSessionKey]);
 
+  // Post-Release Document Return State (COMPLETED -> RETURNED)
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [returnReason, setReturnReason] = useState<string>('');
+  const [returnNotes, setReturnNotes] = useState<string>('');
+  const [returnFile, setReturnFile] = useState<File | null>(null);
+  const [returnFileError, setReturnFileError] = useState<string | null>(null);
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+  const [returnSubmitError, setReturnSubmitError] = useState<string | null>(null);
+  const returnSubmitInFlightRef = useRef(false);
+
+  const handleReturnFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setReturnFile(null);
+      return;
+    }
+    const result = validateUploadFile(file, UPLOAD_POLICIES.CORRECTION_DOCUMENT);
+    if (!result.valid) {
+      setReturnFileError(result.error || 'Invalid file format. Accepted formats: PDF, JPG, PNG, or WebP up to 5 MB.');
+      setReturnFile(null);
+      return;
+    }
+    setReturnFileError(null);
+    setReturnFile(file);
+  };
+
+  const handleSubmitReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (returnSubmitInFlightRef.current) return;
+    if (!selectedRequest) return;
+    if (!returnReason) {
+      setReturnSubmitError('Please select a reason for returning the document.');
+      return;
+    }
+    if (!returnFile) {
+      setReturnFileError('Please attach an image or PDF of the defective issued document.');
+      return;
+    }
+
+    returnSubmitInFlightRef.current = true;
+    setSubmittingReturn(true);
+    setReturnSubmitError(null);
+
+    try {
+      if (services.request.returnDocument) {
+        await services.request.returnDocument(
+          String(selectedRequest.id),
+          returnReason,
+          returnFile,
+          returnNotes.trim() || undefined
+        );
+      } else {
+        const formData = new FormData();
+        formData.append('reasonCode', returnReason);
+        if (returnNotes.trim()) {
+          formData.append('notes', returnNotes.trim());
+        }
+        formData.append('file', returnFile);
+        await client.post(`/requests/${selectedRequest.id}/return-document`, formData);
+      }
+
+      setIsReturnModalOpen(false);
+      setReturnReason('');
+      setReturnNotes('');
+      setReturnFile(null);
+      setReturnFileError(null);
+      await refetch();
+    } catch (err: any) {
+      console.error('Failed to submit return:', err);
+      setReturnSubmitError(err.message || 'Failed to submit document return. Please try again.');
+    } finally {
+      returnSubmitInFlightRef.current = false;
+      setSubmittingReturn(false);
+    }
+  };
+
   // Parse query parameter for specific request ID
   const queryParams = new URLSearchParams(window.location.search);
   const paramRequestId = queryParams.get('requestId');
@@ -412,14 +580,14 @@ export const RequestTrackingPage: React.FC = () => {
       {
         key: 'validated',
         label: 'Canonical Record Search',
-        done: status === 'ready' || status === 'completed',
-        desc: status === 'ready' || status === 'completed' ? 'Registry verified and document signed.' : 'Locating archival book, volume, and folio entries.'
+        done: status === 'ready' || status === 'completed' || status === 'returned',
+        desc: status === 'ready' || status === 'completed' || status === 'returned' ? 'Registry verified and document signed.' : 'Locating archival book, volume, and folio entries.'
       },
       {
         key: 'pickup',
         label: 'Ready for Collection',
-        done: status === 'ready' || status === 'completed',
-        desc: status === 'ready' || status === 'completed' ? 'Document is prepared and ready for pickup at parish office.' : 'Pending final preparation and seal.'
+        done: status === 'ready' || status === 'completed' || status === 'returned',
+        desc: status === 'ready' || status === 'completed' || status === 'returned' ? 'The original document was released; a post-release correction is now in progress.' : 'Pending final preparation and seal.'
       }
     ];
   };
@@ -1246,6 +1414,114 @@ export const RequestTrackingPage: React.FC = () => {
                         </div>
                       )}
 
+                      {/* Post-Release Return Action Card */}
+                      {selectedRequest.status === 'completed' && (
+                        <div className="p-4 bg-gray-50 border border-border rounded-card space-y-3 text-left">
+                          <div className="flex items-start space-x-2.5">
+                            <FileText size={18} className="text-crimson mt-0.5 flex-shrink-0" />
+                            <div>
+                              <h4 className="text-xs font-bold text-text-primary">Need a Correction on Your Issued Certificate?</h4>
+                              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                                If your issued and collected document has a typographical error, misspelling, incorrect sacramental date, or physical defect, you may return it for a free official correction.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setReturnSubmitError(null);
+                                setReturnFileError(null);
+                                setIsReturnModalOpen(true);
+                              }}
+                              className="border-crimson text-crimson hover:bg-crimson/5 font-semibold"
+                            >
+                              Return Document for Correction
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Returned for Correction Status Card */}
+                      {selectedRequest.status === 'returned' && (
+                        <div className="p-5 bg-amber-50/70 border border-amber-300 rounded-card space-y-4 text-left">
+                          <div className="flex items-start space-x-2.5">
+                            <RotateCcw size={18} className="text-amber-700 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-bold text-amber-900">Document Returned for Free Correction</h4>
+                                <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                  In Progress
+                                </span>
+                              </div>
+                              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                You have returned this document for correction. Parish staff has been notified and is currently re-verifying church records and preparing your corrected certificate. You will be notified via email and in-app once it is ready for collection.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Return Cycle History */}
+                      {selectedRequest.returns && selectedRequest.returns.length > 0 && (
+                        <div className="space-y-3 pt-2 text-left">
+                          <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                            <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                              Document Return History
+                            </h3>
+                            <span className="text-[10px] text-text-muted font-mono uppercase">
+                              {selectedRequest.returns.length} Return Cycle{selectedRequest.returns.length > 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="space-y-3">
+                            {selectedRequest.returns.map((ret) => (
+                              <div key={ret.id} className="p-3 bg-white border border-border/80 rounded-xl space-y-2 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-text-primary">
+                                    Return Cycle #{ret.cycleNumber}: {DOCUMENT_RETURN_REASONS[ret.reasonCode as keyof typeof DOCUMENT_RETURN_REASONS] || ret.reasonCode}
+                                  </span>
+                                  <span className="text-[10px] text-text-muted">
+                                    {new Date(ret.returnedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  </span>
+                                </div>
+                                {ret.notes && (
+                                  <p className="text-text-muted italic bg-gray-50 p-2 rounded border border-gray-100 text-[11px]">
+                                    "{ret.notes}"
+                                  </p>
+                                )}
+                                <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
+                                  <span className="text-text-muted">Defective Upload: {ret.returnedFileName}</span>
+                                  {ret.correctedAt ? (
+                                    <span className="text-green-700 font-semibold flex items-center gap-1">
+                                      <CheckCircle2 size={12} /> Corrected on {new Date(ret.correctedAt).toLocaleDateString()}
+                                    </span>
+                                  ) : (
+                                    <span className="text-amber-700 font-medium">Awaiting staff correction</span>
+                                  )}
+                                </div>
+                                <SecureReturnFileActions
+                                  requestId={selectedRequest.id}
+                                  returnId={ret.id}
+                                  type="returned"
+                                  fileName={ret.returnedFileName}
+                                  mimeType={ret.returnedFileType}
+                                />
+                                {ret.correctedFileName && (
+                                  <SecureReturnFileActions
+                                    requestId={selectedRequest.id}
+                                    returnId={ret.id}
+                                    type="corrected"
+                                    fileName={ret.correctedFileName}
+                                    mimeType={ret.correctedFileType}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Processing History & Expected Process Timeline */}
                       {selectedRequest.status !== 'rejected' && (
                         <div className="space-y-4 pt-2">
@@ -1630,6 +1906,141 @@ export const RequestTrackingPage: React.FC = () => {
                 </Card>
               )}
             </section>
+          </div>
+        </div>
+      )}
+
+      {/* Return Document for Correction Modal */}
+      {isReturnModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-xl border border-border max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-5 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-crimson" />
+                <h3 className="font-bold text-base text-text-primary">Return Document for Correction</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!submittingReturn) {
+                    setIsReturnModalOpen(false);
+                    setReturnSubmitError(null);
+                    setReturnFileError(null);
+                  }
+                }}
+                className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                disabled={submittingReturn}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+              <p className="font-bold">Free Post-Release Document Correction</p>
+              <p className="text-amber-800 leading-relaxed font-normal">
+                If the physical certificate released to you has a typographical error, wrong sacramental date, misspelling, or format defect, you can request an official free re-issuance.
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmitReturn} className="space-y-4 text-left">
+              {/* Return Reason Select */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-primary block">
+                  Correction Reason <span className="text-crimson">*</span>
+                </label>
+                <select
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-border rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-crimson/20 focus:border-crimson"
+                  required
+                  disabled={submittingReturn}
+                >
+                  <option value="">Select a reason...</option>
+                  {Object.entries(DOCUMENT_RETURN_REASONS).map(([code, label]) => (
+                    <option key={code} value={code}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Upload Defective Document Evidence */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-primary block">
+                  Photo / Scan of Defective Document <span className="text-crimson">*</span>
+                </label>
+                <p className="text-[11px] text-text-muted">
+                  Upload a clear image or PDF showing the error on the certificate (PDF, JPG, PNG, or WebP up to 5 MB).
+                </p>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  onChange={handleReturnFileChange}
+                  disabled={submittingReturn}
+                  className="block w-full text-xs text-text-muted file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-crimson/10 file:text-crimson hover:file:bg-crimson/20 cursor-pointer"
+                />
+                {returnFile && (
+                  <p className="text-[11px] text-green-700 font-medium flex items-center gap-1 mt-1">
+                    <CheckCircle2 size={12} /> Selected: {returnFile.name} ({(returnFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                )}
+                {returnFileError && (
+                  <p className="text-[11px] text-red-600 font-medium mt-1">
+                    {returnFileError}
+                  </p>
+                )}
+              </div>
+
+              {/* Optional Notes */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-text-primary block">
+                    Additional Details / Notes <span className="text-text-muted font-normal">(Optional)</span>
+                  </label>
+                  <span className="text-[10px] text-text-muted">{returnNotes.length}/1000</span>
+                </div>
+                <textarea
+                  value={returnNotes}
+                  onChange={(e) => setReturnNotes(e.target.value.slice(0, 1000))}
+                  placeholder="Specify the exact error (e.g. 'Father's name is spelled Jonh instead of John')..."
+                  rows={3}
+                  disabled={submittingReturn}
+                  className="w-full px-3 py-2 text-xs border border-border rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-crimson/20 focus:border-crimson resize-none"
+                />
+              </div>
+
+              {returnSubmitError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  {returnSubmitError}
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end gap-2.5 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!submittingReturn) {
+                      setIsReturnModalOpen(false);
+                      setReturnSubmitError(null);
+                    }
+                  }}
+                  disabled={submittingReturn}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  loading={submittingReturn}
+                  disabled={submittingReturn || !returnReason || !returnFile}
+                  className="bg-crimson hover:bg-crimson-dark text-white font-semibold"
+                >
+                  Submit Return Request
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

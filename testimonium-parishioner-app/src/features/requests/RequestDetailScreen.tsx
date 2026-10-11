@@ -38,6 +38,7 @@ import {
 } from "./correctionRequirements";
 import { SupportingFilePicker } from "./components/SupportingFilePicker";
 import { RegistrantIdCapturePicker } from "./components/RegistrantIdCapturePicker";
+import { ReturnDocumentModal } from "./components/ReturnDocumentModal";
 import {
   formatDate,
   formatDocumentType,
@@ -45,9 +46,10 @@ import {
   formatStatus,
   isCancelEligible,
   isDocumentCorrectionEligible,
+  isDocumentReturnEligible,
   isPaymentEligible,
 } from "./presentation";
-import type { LocalRegistrantIdImage, LocalSelectedFile } from "./types";
+import { DOCUMENT_RETURN_REASONS, type LocalRegistrantIdImage, type LocalSelectedFile } from "./types";
 
 export interface RequestDetailScreenProps {
   requestId?: string | null;
@@ -81,6 +83,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const [correctionRegistrantIdBack, setCorrectionRegistrantIdBack] = useState<LocalRegistrantIdImage | null>(null);
   const [draftFiles, setDraftFiles] = useState<Record<string, LocalSelectedFile>>({});
   const [draftUploadingReqId, setDraftUploadingReqId] = useState<string | null>(null);
+  const [isReturnModalVisible, setIsReturnModalVisible] = useState(false);
   const inFlightGuard = useRef(false);
 
   const cancelMutation = useCancelRequest();
@@ -278,6 +281,11 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const isPaymentActionAvailable = isPaymentEligible(request);
   const isCorrectionActionAvailable = isDocumentCorrectionEligible(request);
   const isCancellationAvailable = isCancelEligible(request);
+  const isReturnActionAvailable = isDocumentReturnEligible(request);
+  const isReturnedStatus = request?.status === "RETURNED";
+  const latestReturn = request?.returns?.length
+    ? request.returns[request.returns.length - 1]
+    : null;
 
   const requiredDocuments = [
     ...(requirements?.requiredDocuments || []),
@@ -610,6 +618,62 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   style={styles.fullWidthAction}
                 />
               </View>
+            ) : isReturnedStatus ? (
+              <View style={[styles.alertBox, styles.alertBoxWarning]}>
+                <View style={styles.alertBoxHeader}>
+                  <Ionicons name="return-down-back-outline" size={18} color={colors.warning} />
+                  <Text style={[styles.alertBoxTitle, { color: colors.warning }]} allowFontScaling>
+                    Document Returned for Correction
+                  </Text>
+                </View>
+                <Text style={styles.alertBoxDesc} allowFontScaling>
+                  This released document has been returned to the parish office for correction. Parish staff is preparing your corrected replacement copy. The process is completely free.
+                </Text>
+                {latestReturn ? (
+                  <View style={styles.returnedDetailCard}>
+                    <Text style={styles.returnedDetailLabel} allowFontScaling>
+                      Latest Return Reason:{" "}
+                      <Text style={styles.returnedDetailValue}>
+                        {DOCUMENT_RETURN_REASONS.find((r) => r.code === latestReturn.reasonCode)?.label || latestReturn.reasonCode}
+                      </Text>
+                    </Text>
+                    {latestReturn.notes ? (
+                      <Text style={styles.returnedDetailLabel} allowFontScaling>
+                        Parishioner Note:{" "}
+                        <Text style={styles.returnedDetailValue}>
+                          {latestReturn.notes}
+                        </Text>
+                      </Text>
+                    ) : null}
+                    <Text style={styles.returnedDetailLabel} allowFontScaling>
+                      Defective Evidence:{" "}
+                      <Text style={styles.returnedDetailValue}>
+                        {latestReturn.returnedFileName}
+                      </Text>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : isReturnActionAvailable ? (
+              <View style={styles.returnActionCard}>
+                <View style={styles.alertBoxHeader}>
+                  <Ionicons name="refresh-circle-outline" size={18} color={colors.primary} />
+                  <Text style={styles.alertBoxTitle} allowFontScaling>
+                    Notice an Error on Your Document?
+                  </Text>
+                </View>
+                <Text style={styles.alertBoxDesc} allowFontScaling>
+                  If your issued certificate contains a typographical error, misspelling, or printing defect, you can return it for a free replacement copy.
+                </Text>
+                <Button
+                  title="Return Document for Correction"
+                  variant="outline"
+                  size="md"
+                  icon="return-down-back-outline"
+                  onPress={() => setIsReturnModalVisible(true)}
+                  style={styles.fullWidthAction}
+                />
+              </View>
             ) : null}
 
             <Divider />
@@ -686,6 +750,54 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
               </>
             ) : null}
 
+            {/* Record Section: Document Return History */}
+            {request.returns && request.returns.length > 0 ? (
+              <>
+                <RecordSection title="Document Return History">
+                  {request.returns.map((ret) => {
+                    const reason =
+                      DOCUMENT_RETURN_REASONS.find((r) => r.code === ret.reasonCode)?.label ||
+                      ret.reasonCode;
+                    return (
+                      <View key={ret.id} style={styles.returnHistoryItem}>
+                        <View style={styles.returnHistoryHeader}>
+                          <Text style={styles.returnHistoryCycle} allowFontScaling>
+                            Return Cycle #{ret.cycleNumber}
+                          </Text>
+                          <Text style={styles.returnHistoryDate} allowFontScaling>
+                            {formatDate(ret.returnedAt)}
+                          </Text>
+                        </View>
+                        <Text style={styles.returnHistoryReason} allowFontScaling>
+                          Reason: {reason}
+                        </Text>
+                        {ret.notes ? (
+                          <Text style={styles.returnHistoryNotes} allowFontScaling>
+                            Note: {ret.notes}
+                          </Text>
+                        ) : null}
+                        <View style={styles.returnHistoryFilesRow}>
+                          <Text style={styles.returnHistoryFileMeta} allowFontScaling>
+                            Defective: {ret.returnedFileName}
+                          </Text>
+                          {ret.correctedFileName ? (
+                            <Text style={styles.returnHistoryFileSuccess} allowFontScaling>
+                              ✓ Replacement Ready
+                            </Text>
+                          ) : (
+                            <Text style={styles.returnHistoryFilePending} allowFontScaling>
+                              ⏳ In Preparation
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </RecordSection>
+                <Divider />
+              </>
+            ) : null}
+
             {/* Record Section 4: Request Timeline & History */}
             <RecordSection title="Request History & Timeline">
               <RequestStatusTimeline
@@ -711,6 +823,18 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
           </ContentColumn>
         </ScrollView>
       )}
+
+      {request ? (
+        <ReturnDocumentModal
+          visible={isReturnModalVisible}
+          requestId={request.id}
+          trackingNumber={request.trackingNumber}
+          onClose={() => setIsReturnModalVisible(false)}
+          onSuccess={() => {
+            void refetch();
+          }}
+        />
+      ) : null}
     </Screen>
   );
 };
@@ -877,5 +1001,82 @@ const styles = StyleSheet.create({
   },
   fullWidthAction: {
     width: "100%",
+  },
+  alertBoxWarning: {
+    borderColor: colors.warningBorder || "#FFE082",
+    backgroundColor: colors.warningSoft || "#FFF8E1",
+  },
+  returnedDetailCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    gap: 4,
+    marginTop: spacing.xs,
+  },
+  returnedDetailLabel: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  returnedDetailValue: {
+    color: colors.textPrimary,
+    fontWeight: "400",
+  },
+  returnActionCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  returnHistoryItem: {
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+    gap: 2,
+  },
+  returnHistoryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  returnHistoryCycle: {
+    ...fontStyles.captionBold,
+    color: colors.textPrimary,
+  },
+  returnHistoryDate: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+  },
+  returnHistoryReason: {
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
+    fontWeight: "500",
+  },
+  returnHistoryNotes: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    fontStyle: "italic",
+  },
+  returnHistoryFilesRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  returnHistoryFileMeta: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  returnHistoryFileSuccess: {
+    ...fontStyles.captionBold,
+    color: colors.success,
+  },
+  returnHistoryFilePending: {
+    ...fontStyles.captionBold,
+    color: colors.warning,
   },
 });

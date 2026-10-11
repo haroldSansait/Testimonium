@@ -61,6 +61,8 @@ const mapBackendToFrontendStatus = (status: string): RequestStatus => {
       return 'ready';
     case 'COMPLETED':
       return 'completed';
+    case 'RETURNED':
+      return 'returned';
     case 'REJECTED':
       return 'rejected';
     case 'CANCELLED':
@@ -88,6 +90,7 @@ const mapRequest = (req: any): SacramentalRequest => {
     correctionRequirementIds: req.correctionRequirementIds || [],
     correctionNote: req.correctionNote || null,
     paymentCorrectionNote: req.paymentCorrectionNote || null,
+    returns: req.returns || [],
   };
 };
 
@@ -187,5 +190,21 @@ export class ApiRequestProvider implements IRequestProvider {
   async resubmitCorrections(id: string): Promise<SacramentalRequest> {
     const response = await client.post<any>(`/requests/${id}/resubmit-corrections`);
     return mapRequest(response.data || response);
+  }
+
+  async returnDocument(id: string, reasonCode: string, file: File, notes?: string): Promise<any> {
+    const formData = new FormData();
+    formData.append("reasonCode", reasonCode);
+    if (notes) {
+      formData.append("notes", notes);
+    }
+    formData.append("file", file);
+    const response = await client.post<any>(`/requests/${id}/return-document`, formData);
+    return response.data || response;
+  }
+
+  async getReturnHistory(id: string): Promise<any[]> {
+    const response = await client.get<any>(`/requests/${id}/returns`);
+    return Array.isArray(response) ? response : response?.data || [];
   }
 }

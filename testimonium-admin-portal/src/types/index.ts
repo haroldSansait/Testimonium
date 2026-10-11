@@ -14,7 +14,8 @@ export type DocumentStatus =
   | 'Completed'
   | 'Rejected'
   | 'Cancelled'
-  | 'Needs Correction';
+  | 'Needs Correction'
+  | 'Returned for Correction';
 
 export type DocumentType =
   | 'Baptismal Certificate'
@@ -122,6 +123,39 @@ export interface DocumentRequest {
       } | null;
     } | null;
   }[];
+  returns?: DocumentReturn[];
+}
+
+export const DOCUMENT_RETURN_REASONS = [
+  { code: 'TYPOGRAPHICAL_OR_SPELLING', label: 'Typographical or Spelling Error' },
+  { code: 'INCORRECT_NAME', label: 'Incorrect Name' },
+  { code: 'INCORRECT_SACRAMENTAL_DATE', label: 'Incorrect Sacramental Date' },
+  { code: 'INCORRECT_RECORD_INFORMATION', label: 'Incorrect Record Information' },
+  { code: 'MISSING_INFORMATION', label: 'Missing Information' },
+  { code: 'WRONG_DOCUMENT_ISSUED', label: 'Wrong Document Issued' },
+  { code: 'PRINTING_OR_FORMAT_DEFECT', label: 'Printing or Formatting Defect' },
+  { code: 'OTHER_ISSUED_DOCUMENT_ERROR', label: 'Other Issued Document Error' },
+] as const;
+
+export type DocumentReturnReasonCode = (typeof DOCUMENT_RETURN_REASONS)[number]['code'];
+
+export interface DocumentReturn {
+  id: number;
+  requestId: number;
+  cycleNumber: number;
+  reasonCode: string;
+  notes?: string | null;
+  returnedFileName: string;
+  returnedFileSize?: number | null;
+  returnedFileType?: string | null;
+  returnedAt: string;
+  correctedFileName?: string | null;
+  correctedFileSize?: number | null;
+  correctedFileType?: string | null;
+  correctedAt?: string | null;
+  correctedRevision?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 

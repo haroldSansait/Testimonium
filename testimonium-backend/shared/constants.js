@@ -18,7 +18,8 @@ export const DocumentRequestStatus = {
   READY_FOR_PICKUP: 'READY_FOR_PICKUP',
   COMPLETED: 'COMPLETED',
   REJECTED: 'REJECTED',
-  CANCELLED: 'CANCELLED'
+  CANCELLED: 'CANCELLED',
+  RETURNED: 'RETURNED'
 };
 
 export const ScheduleStatus = {
@@ -62,4 +63,26 @@ export const CORRECTION_REASONS = {
   EXPIRED_OR_INVALID: 'Expired / invalid document',
   INCORRECT_REQUIREMENT_FILE: 'Incorrect file uploaded for this requirement',
   OTHER: 'Other',
+};
+
+export const DocumentReturnReasonCode = {
+  TYPOGRAPHICAL_OR_SPELLING: 'TYPOGRAPHICAL_OR_SPELLING',
+  INCORRECT_NAME: 'INCORRECT_NAME',
+  INCORRECT_SACRAMENTAL_DATE: 'INCORRECT_SACRAMENTAL_DATE',
+  INCORRECT_RECORD_INFORMATION: 'INCORRECT_RECORD_INFORMATION',
+  MISSING_INFORMATION: 'MISSING_INFORMATION',
+  WRONG_DOCUMENT_ISSUED: 'WRONG_DOCUMENT_ISSUED',
+  PRINTING_OR_FORMAT_DEFECT: 'PRINTING_OR_FORMAT_DEFECT',
+  OTHER_ISSUED_DOCUMENT_ERROR: 'OTHER_ISSUED_DOCUMENT_ERROR',
+};
+
+export const DOCUMENT_RETURN_REASONS = {
+  TYPOGRAPHICAL_OR_SPELLING: 'Typographical or spelling error',
+  INCORRECT_NAME: 'Incorrect name (registrant, parents, or sponsors)',
+  INCORRECT_SACRAMENTAL_DATE: 'Incorrect sacramental or birth date',
+  INCORRECT_RECORD_INFORMATION: 'Incorrect registry entry (book, page, or line)',
+  MISSING_INFORMATION: 'Missing information, signature, or official seal',
+  WRONG_DOCUMENT_ISSUED: 'Wrong sacramental document issued',
+  PRINTING_OR_FORMAT_DEFECT: 'Printing, smudging, or physical formatting defect',
+  OTHER_ISSUED_DOCUMENT_ERROR: 'Other error on issued document',
 };

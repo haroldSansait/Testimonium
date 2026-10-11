@@ -48,6 +48,8 @@ export interface IRequestProvider {
   uploadReceipt(id: string, file: File): Promise<{ autoVerified: boolean; ocrResult: any; request?: SacramentalRequest }>;
   getDocumentRequirements(type: string, parishId?: string, relationship?: string): Promise<any>;
   resubmitCorrections(id: string): Promise<SacramentalRequest>;
+  returnDocument?(id: string, reasonCode: string, file: File, notes?: string): Promise<any>;
+  getReturnHistory?(id: string): Promise<any[]>;
 }
 
 export interface EligiblePriest {

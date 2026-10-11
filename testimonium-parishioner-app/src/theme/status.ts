@@ -60,6 +60,13 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
         color: colors.warning,
         accessibilityLabel: "Status: Needs Correction, action required",
       };
+    case "RETURNED":
+      return {
+        label: "Returned for Correction",
+        intent: "warning",
+        color: colors.warning,
+        accessibilityLabel: "Status: Returned for Correction, staff preparing replacement",
+      };
     case "READY_FOR_PAYMENT":
     case "AWAITING_PAYMENT":
       return {

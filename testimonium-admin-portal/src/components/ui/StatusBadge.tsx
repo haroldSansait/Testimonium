@@ -19,6 +19,7 @@ const statusStyles: Record<string, string> = {
   Released: 'bg-gray-100 text-gray-500 border border-gray-200',
   Rejected: 'bg-red-50 text-red-600 border border-red-200',
   'Needs Correction': 'bg-orange-50 text-orange-600 border border-orange-200',
+  'Returned for Correction': 'bg-amber-50 text-amber-800 border border-amber-300',
 
   // Schedule statuses
   Pending: 'bg-gray-100 text-gray-600 border border-gray-200',
@@ -48,6 +49,7 @@ const dotStyles: Record<string, string> = {
   Released: 'bg-gray-400',
   Rejected: 'bg-red-500',
   'Needs Correction': 'bg-orange-500',
+  'Returned for Correction': 'bg-amber-500',
   Pending: 'bg-gray-400',
   'Under Review': 'bg-amber-500',
   Tentative: 'bg-pink-500',

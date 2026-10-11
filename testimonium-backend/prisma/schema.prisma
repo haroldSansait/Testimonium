@@ -48,6 +48,7 @@ enum DocumentRequestStatus {
   COMPLETED
   REJECTED
   CANCELLED
+  RETURNED
 }
 
 enum PaymentStatus {
@@ -354,6 +355,8 @@ model User {
   updatedCaloyConfigs       CaloyRuntimeConfig[]      @relation("CaloyRuntimeConfigUpdater")
   governmentIdVerification  GovernmentIdVerification?
   updatedLegalPolicies      LegalPolicy[]             @relation("LegalPolicyUpdater")
+  submittedDocumentReturns  DocumentReturn[]          @relation("DocumentReturnSubmitter")
+  correctedDocumentReturns  DocumentReturn[]          @relation("DocumentReturnCorrector")
 
   @@index([roleId])
   @@index([parishId])
@@ -394,6 +397,7 @@ model DocumentRequest {
   requestHistory           RequestHistory[]
   registrantIdEvidence     RegistrantIdEvidence?
   relationshipCorrections  RelationshipEvidenceCorrection[]
+  returns                  DocumentReturn[]
 
   @@index([userId])
   @@index([parishId])
@@ -405,6 +409,39 @@ model DocumentRequest {
   @@index([parishId, dateRequested])
   @@index([trackingNumber])
   @@map("document_requests")
+}
+
+model DocumentReturn {
+  id                 Int             @id @default(autoincrement()) @map("return_id")
+  requestId          Int             @map("request_id")
+  cycleNumber        Int             @default(1) @map("cycle_number")
+  reasonCode         String          @map("reason_code") @db.VarChar(50)
+  notes              String?         @db.Text
+  returnedObjectKey  String          @map("returned_object_key") @db.VarChar(255)
+  returnedFileName   String          @map("returned_file_name") @db.VarChar(255)
+  returnedFileType   String?         @map("returned_file_type") @db.VarChar(100)
+  returnedFileSize   Int?            @map("returned_file_size")
+  returnedAt         DateTime        @default(now()) @map("returned_at")
+  returnedByUserId   Int             @map("returned_by_user_id")
+  correctedObjectKey String?         @map("corrected_object_key") @db.VarChar(255)
+  correctedFileName  String?         @map("corrected_file_name") @db.VarChar(255)
+  correctedFileType  String?         @map("corrected_file_type") @db.VarChar(100)
+  correctedFileSize  Int?            @map("corrected_file_size")
+  correctedAt        DateTime?       @map("corrected_at")
+  correctedByStaffId Int?            @map("corrected_by_staff_id")
+  correctedRevision  Int             @default(0) @map("corrected_revision")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  request            DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  returnedByUser     User            @relation("DocumentReturnSubmitter", fields: [returnedByUserId], references: [id], onDelete: Restrict)
+  correctedByStaff   User?           @relation("DocumentReturnCorrector", fields: [correctedByStaffId], references: [id], onDelete: SetNull)
+
+  @@unique([requestId, cycleNumber])
+  @@index([requestId, returnedAt])
+  @@index([returnedByUserId])
+  @@index([correctedByStaffId])
+  @@map("document_returns")
 }
 
 model RegistrantIdEvidence {

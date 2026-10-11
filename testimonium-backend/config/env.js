@@ -113,6 +113,8 @@ export const env = {
     identityBucketName: process.env.R2_IDENTITY_BUCKET_NAME,
     registrantIdBucketName: process.env.R2_REGISTRANT_ID_BUCKET_NAME,
     registrantIdBucketApproved: parseBoolean(process.env.R2_REGISTRANT_ID_BUCKET_APPROVED, false, "R2_REGISTRANT_ID_BUCKET_APPROVED"),
+    documentReturnsBucketName: process.env.R2_DOCUMENT_RETURNS_BUCKET_NAME,
+    documentReturnsBucketApproved: parseBoolean(process.env.R2_DOCUMENT_RETURNS_BUCKET_APPROVED, false, "R2_DOCUMENT_RETURNS_BUCKET_APPROVED"),
     publicUrl: process.env.R2_PUBLIC_URL,
   },
   ocr: {

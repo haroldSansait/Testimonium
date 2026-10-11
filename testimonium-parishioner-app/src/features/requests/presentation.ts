@@ -115,6 +115,12 @@ export const STATUS_PRESENTATION: Record<
     description: "Document has been released and completed.",
     icon: "checkmark-circle-outline",
   },
+  RETURNED: {
+    label: "Returned for Correction",
+    variant: "warning",
+    description: "Document returned for post-release correction. Parish staff is preparing your corrected document.",
+    icon: "return-down-back-outline",
+  },
   REJECTED: {
     label: "Declined",
     variant: "neutral",
@@ -186,6 +192,13 @@ export const isDocumentCorrectionEligible = (
 ): boolean => {
   if (!request || request.isDraft) return false;
   return request.status === "NEEDS_CORRECTION";
+};
+
+export const isDocumentReturnEligible = (
+  request?: DocumentRequestDetail | null
+): boolean => {
+  if (!request || request.isDraft) return false;
+  return request.status === "COMPLETED";
 };
 
 export const isZeroFee = (fee?: number | string | null): boolean => {

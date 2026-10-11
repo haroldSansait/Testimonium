@@ -22,6 +22,10 @@ import {
   requireCanonicalRelationship,
 } from "../config/relationshipEvidence.js";
 import { compareSelfRegistrantName, SELF_NAME_MATCH } from "../utils/selfRegistrantNameMatcher.js";
+import { DocumentReturnStorageService } from "./DocumentReturnStorageService.js";
+import { DocumentReturnReasonCode, DOCUMENT_RETURN_REASONS } from "../shared/constants.js";
+import { FileValidator } from "../utils/fileValidator.js";
+import { logger } from "../config/logger.js";
 
 export async function assertParishionerOwnerRole(userId, client = prisma) {
   const user = await client.user.findUnique({
@@ -864,5 +868,269 @@ export class ParishionerRequestService {
 
       return updatedRequest;
     }, { maxWait: 10000, timeout: 20000 });
+  }
+  /**
+   * Submits a post-release document return for free correction.
+   * COMPLETED -> RETURNED
+   */
+  async returnDocument({ requestId, userId, reasonCode, notes, file }) {
+    if (!file) {
+      const error = new Error("A defective document file is required.");
+      error.statusCode = 400;
+      error.code = "RETURN_FILE_REQUIRED";
+      throw error;
+    }
+
+    if (!reasonCode || !DOCUMENT_RETURN_REASONS[reasonCode]) {
+      const error = new Error("A valid return reason code is required.");
+      error.statusCode = 400;
+      error.code = "INVALID_RETURN_REASON";
+      throw error;
+    }
+
+    if (notes && typeof notes === "string" && notes.trim().length > 1000) {
+      const error = new Error("Notes cannot exceed 1000 characters.");
+      error.statusCode = 400;
+      error.code = "NOTES_TOO_LONG";
+      throw error;
+    }
+
+    FileValidator.validateReturnDocument(file, "file");
+
+    // Preliminary authorization & check before external storage I/O
+    const initialRequest = await prisma.documentRequest.findFirst({
+      where: { id: Number(requestId), userId: Number(userId) },
+    });
+
+    if (!initialRequest) {
+      const error = new Error("Document request not found or does not belong to this user.");
+      error.statusCode = 404;
+      error.code = "REQUEST_NOT_FOUND";
+      throw error;
+    }
+
+    if (initialRequest.status !== "COMPLETED") {
+      const error = new Error("Only completed and released requests can be returned for correction.");
+      error.statusCode = 400;
+      error.code = "INVALID_REQUEST_STATUS";
+      throw error;
+    }
+
+    // Determine estimated cycle number for unique object key
+    const currentCount = await prisma.documentReturn.count({
+      where: { requestId: Number(requestId) },
+    });
+    const nextCycleCandidate = currentCount + 1;
+
+    // Create opaque object key and upload to private R2 storage
+    const objectKey = DocumentReturnStorageService.createObjectKey(
+      Number(requestId),
+      nextCycleCandidate,
+      "returned"
+    );
+
+    await DocumentReturnStorageService.upload(objectKey, file);
+
+    // Atomically transition status, persist return cycle, and dispatch notifications
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await assertParishionerOwnerRole(userId, tx);
+
+        if (typeof tx.$queryRaw === "function") {
+          await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${Number(requestId)} FOR UPDATE`;
+        }
+
+        const request = await tx.documentRequest.findFirst({
+          where: { id: Number(requestId), userId: Number(userId) },
+          include: { parish: true },
+        });
+
+        if (!request) {
+          const err = new Error("Document request not found.");
+          err.statusCode = 404;
+          throw err;
+        }
+
+        if (request.status !== "COMPLETED") {
+          const err = new Error("Document request is not in COMPLETED status.");
+          err.statusCode = 400;
+          err.code = "INVALID_REQUEST_STATUS";
+          throw err;
+        }
+
+        const authoritativeCount = await tx.documentReturn.count({
+          where: { requestId: Number(requestId) },
+        });
+        const cycleNumber = authoritativeCount + 1;
+
+        const updateResult = await tx.documentRequest.updateMany({
+          where: { id: Number(requestId), status: "COMPLETED" },
+          data: { status: "RETURNED" },
+        });
+
+        if (updateResult.count === 0) {
+          const conflictErr = new Error("Concurrent update conflict. Request is no longer in COMPLETED status.");
+          conflictErr.statusCode = 409;
+          conflictErr.code = "CONCURRENT_STATUS_CONFLICT";
+          throw conflictErr;
+        }
+
+        const documentReturn = await tx.documentReturn.create({
+          data: {
+            requestId: Number(requestId),
+            cycleNumber,
+            reasonCode,
+            notes: notes ? notes.trim() : null,
+            returnedObjectKey: objectKey,
+            returnedFileName: file.originalname || "returned_document",
+            returnedFileType: file.mimetype || "application/octet-stream",
+            returnedFileSize: file.size || null,
+            returnedByUserId: Number(userId),
+          },
+          select: {
+            id: true,
+            requestId: true,
+            cycleNumber: true,
+            reasonCode: true,
+            notes: true,
+            returnedFileName: true,
+            returnedFileType: true,
+            returnedFileSize: true,
+            returnedAt: true,
+            returnedByUserId: true,
+            correctedFileName: true,
+            correctedFileType: true,
+            correctedFileSize: true,
+            correctedAt: true,
+            correctedByStaffId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        await tx.requestHistory.create({
+          data: {
+            requestId: Number(requestId),
+            actorId: Number(userId),
+            action: "DOCUMENT_RETURNED",
+            notes: `Document returned for correction (Cycle ${cycleNumber}). Reason: ${DOCUMENT_RETURN_REASONS[reasonCode] || reasonCode}${notes ? ` - ${notes.trim()}` : ""}`,
+          },
+        });
+
+        await RequestNotificationService.notifyDocumentReturned({
+          parishionerId: Number(userId),
+          parishId: request.parishId,
+          requestId: Number(requestId),
+          trackingNumber: request.trackingNumber,
+          reasonLabel: DOCUMENT_RETURN_REASONS[reasonCode] || reasonCode,
+          returnCycle: cycleNumber,
+          tx,
+        });
+
+        return documentReturn;
+      }, { maxWait: 10000, timeout: 20000 });
+    } catch (dbErr) {
+      try {
+        await DocumentReturnStorageService.delete(objectKey);
+      } catch (cleanupErr) {
+        logger.error(
+          { cleanupErr, objectKey, requestId },
+          "Failed to delete uploaded return document after database transaction error."
+        );
+      }
+      throw dbErr;
+    }
+  }
+
+  /**
+   * Retrieves return cycle history for a request owned by the parishioner.
+   */
+  async getReturnHistory(requestId, userId) {
+    const request = await prisma.documentRequest.findFirst({
+      where: { id: Number(requestId), userId: Number(userId) },
+    });
+    if (!request) {
+      const error = new Error("Document request not found or does not belong to this user.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return prisma.documentReturn.findMany({
+      where: { requestId: Number(requestId) },
+      orderBy: { cycleNumber: "asc" },
+      select: {
+        id: true,
+        requestId: true,
+        cycleNumber: true,
+        reasonCode: true,
+        notes: true,
+        returnedFileName: true,
+        returnedFileType: true,
+        returnedFileSize: true,
+        returnedAt: true,
+        returnedByUserId: true,
+        correctedFileName: true,
+        correctedFileType: true,
+        correctedFileSize: true,
+        correctedAt: true,
+        correctedByStaffId: true,
+        createdAt: true,
+        updatedAt: true,
+        returnedByUser: {
+          select: { id: true, fullName: true },
+        },
+        correctedByStaff: {
+          select: { id: true, fullName: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Securely streams returned or corrected document files for a request owned by the parishioner.
+   */
+  async getReturnFileStream(requestId, returnId, type, userId) {
+    if (!["returned", "corrected"].includes(type)) {
+      const error = new Error("Invalid file type requested.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const request = await prisma.documentRequest.findFirst({
+      where: { id: Number(requestId), userId: Number(userId) },
+    });
+    if (!request) {
+      const error = new Error("Document request not found or does not belong to this user.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const returnRecord = await prisma.documentReturn.findFirst({
+      where: { id: Number(returnId), requestId: Number(requestId) },
+    });
+    if (!returnRecord) {
+      const error = new Error("Return cycle record not found for this request.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const key = type === "returned" ? returnRecord.returnedObjectKey : returnRecord.correctedObjectKey;
+    const fileName = type === "returned" ? returnRecord.returnedFileName : returnRecord.correctedFileName;
+    const mimeType = type === "returned" ? returnRecord.returnedFileType : returnRecord.correctedFileType;
+    const fileSize = type === "returned" ? returnRecord.returnedFileSize : returnRecord.correctedFileSize;
+
+    if (!key) {
+      const error = new Error(`No ${type} document has been uploaded for this return cycle.`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const stream = await DocumentReturnStorageService.download(key);
+    return {
+      stream,
+      fileName: fileName || `${type}_document`,
+      mimeType: mimeType || "application/octet-stream",
+      fileSize,
+    };
   }
 }

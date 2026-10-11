@@ -341,3 +341,111 @@ export const uploadRegistrantIdFiles = (req, res, next) => {
   });
 };
 
+const singleDocumentUpload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter,
+});
+
+export const uploadReturnDocumentFile = (req, res, next) => {
+  singleDocumentUpload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            success: false,
+            code: "RETURN_FILE_TOO_LARGE",
+            message: "Return document exceeds the allowable 5MB limit.",
+            errors: [{ field: "file", message: "File exceeds 5MB." }],
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_MULTIPART_UPLOAD",
+          message: err.message,
+          errors: [],
+        });
+      }
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        code: err.code || "INVALID_FILE_TYPE",
+        message: err.message,
+        errors: [],
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        code: "RETURN_FILE_REQUIRED",
+        message: "A defective document file is required.",
+        errors: [{ field: "file", message: "File is required." }],
+      });
+    }
+
+    try {
+      FileValidator.validateReturnDocument(req.file, "file");
+      return next();
+    } catch (validationErr) {
+      return res.status(validationErr.statusCode || 400).json({
+        success: false,
+        code: validationErr.code || "RETURN_FILE_INVALID",
+        message: validationErr.message,
+        errors: validationErr.field ? [{ field: validationErr.field, message: validationErr.message }] : [],
+      });
+    }
+  });
+};
+
+export const uploadCorrectedDocumentFile = (req, res, next) => {
+  singleDocumentUpload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            success: false,
+            code: "CORRECTED_FILE_TOO_LARGE",
+            message: "Corrected document exceeds the allowable 5MB limit.",
+            errors: [{ field: "file", message: "File exceeds 5MB." }],
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_MULTIPART_UPLOAD",
+          message: err.message,
+          errors: [],
+        });
+      }
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        code: err.code || "INVALID_FILE_TYPE",
+        message: err.message,
+        errors: [],
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        code: "CORRECTED_FILE_REQUIRED",
+        message: "A corrected document file is required.",
+        errors: [{ field: "file", message: "File is required." }],
+      });
+    }
+
+    try {
+      FileValidator.validateCorrectedDocument(req.file, "file");
+      return next();
+    } catch (validationErr) {
+      return res.status(validationErr.statusCode || 400).json({
+        success: false,
+        code: validationErr.code || "CORRECTED_FILE_INVALID",
+        message: validationErr.message,
+        errors: validationErr.field ? [{ field: validationErr.field, message: validationErr.message }] : [],
+      });
+    }
+  });
+};

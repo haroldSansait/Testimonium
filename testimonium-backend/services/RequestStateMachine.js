@@ -12,6 +12,7 @@ export const DocumentRequestStatus = {
   COMPLETED: "COMPLETED",
   REJECTED: "REJECTED",
   CANCELLED: "CANCELLED",
+  RETURNED: "RETURNED",
 };
 
 // Strict transitions mapping:
@@ -62,7 +63,12 @@ const TRANSITIONS = {
   [DocumentRequestStatus.READY_FOR_PICKUP]: [
     DocumentRequestStatus.COMPLETED,
   ],
-  [DocumentRequestStatus.COMPLETED]: [],
+  [DocumentRequestStatus.COMPLETED]: [
+    DocumentRequestStatus.RETURNED,
+  ],
+  [DocumentRequestStatus.RETURNED]: [
+    DocumentRequestStatus.READY_FOR_PICKUP,
+  ],
   [DocumentRequestStatus.REJECTED]: [],
   [DocumentRequestStatus.CANCELLED]: [],
 };

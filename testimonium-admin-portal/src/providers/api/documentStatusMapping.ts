@@ -12,6 +12,7 @@ export function mapDocumentStatusToBackend(status: string | undefined): string |
     case 'Ready for Pickup': return 'READY_FOR_PICKUP';
     case 'Released':
     case 'Completed': return 'COMPLETED';
+    case 'Returned for Correction': return 'RETURNED';
     case 'Rejected': return 'REJECTED';
     case 'Cancelled': return 'CANCELLED';
     default: return status;

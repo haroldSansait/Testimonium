@@ -82,9 +82,21 @@ const DocumentRequestTemplates = {
       };
     }
     if (newStatus === "READY_FOR_PICKUP") {
+      if (oldStatus === "RETURNED") {
+        return {
+          title: "Corrected Document Ready for Pickup",
+          message: `Your corrected document (Tracking #: ${trackingNumber}) is ready. Please pick it up from the parish office and return the defective document.`,
+        };
+      }
       return {
         title: "Document Ready for Pickup",
         message: `Your requested document (Tracking #: ${trackingNumber}) is ready. Please pick it up from the parish office.`,
+      };
+    }
+    if (newStatus === "RETURNED") {
+      return {
+        title: "Document Returned for Correction",
+        message: `Your document return request for Tracking #: ${trackingNumber} has been received and is being processed by parish staff.`,
       };
     }
     if (newStatus === "COMPLETED") {
@@ -132,6 +144,20 @@ const DocumentRequestTemplates = {
     return {
       title: "Document Request Cancelled",
       message: `Request (Tracking #: ${trackingNumber}) has been cancelled by the parishioner.`,
+    };
+  },
+
+  /**
+   * Admin-facing message when a released document is returned by a parishioner.
+   * @param {string} trackingNumber
+   * @param {string} [reasonLabel]
+   * @returns {{ title: string, message: string }}
+   */
+  adminDocumentReturned(trackingNumber, reasonLabel = "") {
+    const reasonText = reasonLabel ? ` Reason: ${reasonLabel}.` : "";
+    return {
+      title: "Document Returned for Correction",
+      message: `A previously released document (Tracking #: ${trackingNumber}) was returned by the parishioner for correction.${reasonText}`,
     };
   },
 };
@@ -331,10 +357,17 @@ export class NotificationDispatcher {
 
     // -- Admin notifications (only for parishioner-initiated events) --
     if (notifyAdmins) {
-      const adminTemplate =
-        newStatus === "CANCELLED"
-          ? DocumentRequestTemplates.adminCancelled(trackingNumber)
-          : DocumentRequestTemplates.adminNewRequest(trackingNumber);
+      let adminTemplate;
+      if (newStatus === "CANCELLED") {
+        adminTemplate = DocumentRequestTemplates.adminCancelled(trackingNumber);
+      } else if (newStatus === "RETURNED") {
+        adminTemplate = DocumentRequestTemplates.adminDocumentReturned(
+          trackingNumber,
+          correctionContext?.reasonLabel || ""
+        );
+      } else {
+        adminTemplate = DocumentRequestTemplates.adminNewRequest(trackingNumber);
+      }
 
       const adminIds = await RecipientResolver.getAdminRecipients(parishId, tx);
 
@@ -355,7 +388,16 @@ export class NotificationDispatcher {
 
     const throwOnError = newStatus === "NEEDS_CORRECTION";
     await NotificationDispatcher._persist(payloads, client, { throwOnError });
-    await EmailOutboxService.enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId, correctionContext }, client);
+    await EmailOutboxService.enqueueDocumentTransition({
+      requestId,
+      oldStatus,
+      newStatus,
+      historyId,
+      correctionContext,
+      returnCycle: correctionContext?.returnCycle || null,
+      customTransitionKey: correctionContext?.customTransitionKey || null,
+      isCorrectedReturn: oldStatus === "RETURNED",
+    }, client);
   }
 
   /**

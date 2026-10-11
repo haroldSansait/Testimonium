@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DocumentType, DocumentRequestStatus } from "../shared/constants.js";
+import { DocumentType, DocumentRequestStatus, DocumentReturnReasonCode } from "../shared/constants.js";
 
 export const createRequestSchema = z.object({
   parishId: z.coerce.number().int().positive("Parish ID must be a positive integer"),
@@ -87,6 +87,14 @@ export const updateRequestStatusSchema = z.object({
   ]).optional().nullable(),
   correctionNote: z.string().trim().max(1000).optional().nullable(),
 }).superRefine((payload, ctx) => {
+  if (payload.status === DocumentRequestStatus.RETURNED) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["status"],
+      message: "The RETURNED status cannot be manually set by staff. Parishioners must submit a return request.",
+    });
+    return;
+  }
   if (payload.status !== DocumentRequestStatus.NEEDS_CORRECTION) return;
   if (!payload.correctionReasonCode) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["correctionReasonCode"], message: "A valid correction reason is required" });
@@ -96,4 +104,16 @@ export const updateRequestStatusSchema = z.object({
   } else if (new Set(payload.correctionRequirementIds).size !== payload.correctionRequirementIds.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["correctionRequirementIds"], message: "Duplicate requirement IDs are not allowed" });
   }
+});
+
+export const returnDocumentSchema = z.object({
+  reasonCode: z.enum(
+    Object.values(DocumentReturnReasonCode),
+    {
+      errorMap: () => ({
+        message: "Invalid return reason code. Must be one of the approved return reasons.",
+      }),
+    }
+  ),
+  notes: z.string().trim().max(1000, "Notes cannot exceed 1000 characters").optional().nullable(),
 });

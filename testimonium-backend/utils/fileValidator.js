@@ -426,4 +426,179 @@ export class FileValidator {
 
     return { signature, normalizedMime };
   }
+
+  /**
+   * Validates Post-Release Defective Return Document uploaded by parishioner:
+   *  - PDF, JPEG, PNG, and WebP
+   *  - Max 5 MB
+   *  - Verified by magic byte signature
+   */
+  static validateReturnDocument(file, field = "file") {
+    if (!file) {
+      throw new FileValidationError("Return document file is required.", {
+        code: "RETURN_FILE_REQUIRED",
+        statusCode: 400,
+        field,
+      });
+    }
+
+    if (file.size === 0 || !file.buffer || file.buffer.length === 0) {
+      throw new FileValidationError("Uploaded return document file is empty (0 bytes).", {
+        code: "RETURN_FILE_EMPTY",
+        statusCode: 400,
+        field,
+      });
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      throw new FileValidationError("Return document exceeds the allowable 5MB limit.", {
+        code: "RETURN_FILE_TOO_LARGE",
+        statusCode: 413,
+        field,
+      });
+    }
+
+    const rawMime = (file.mimetype || "").toLowerCase().trim();
+    const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+
+    const allowedMimes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedMimes.includes(normalizedMime)) {
+      throw new FileValidationError(
+        `Invalid file format (${file.mimetype || "unknown"}). Only PDF, JPEG, PNG, and WebP are allowed.`,
+        {
+          code: "RETURN_FILE_TYPE_INVALID",
+          statusCode: 415,
+          field,
+        }
+      );
+    }
+
+    const signature = detectFileSignature(file.buffer);
+    if (!signature || !["pdf", "jpeg", "png", "webp"].includes(signature)) {
+      throw new FileValidationError(
+        "File signature validation failed. File content does not match genuine PDF, JPEG, PNG, or WebP format.",
+        {
+          code: "INVALID_FILE_SIGNATURE",
+          statusCode: 400,
+          field,
+        }
+      );
+    }
+
+    const expectedSignatureByMime = {
+      "application/pdf": "pdf",
+      "image/jpeg": "jpeg",
+      "image/png": "png",
+      "image/webp": "webp",
+    };
+    if (signature !== expectedSignatureByMime[normalizedMime]) {
+      throw new FileValidationError(
+        "Return document MIME type does not match its binary content.",
+        {
+          code: "RETURN_FILE_TYPE_MISMATCH",
+          statusCode: 400,
+          field,
+        }
+      );
+    }
+
+    file.mimetype = normalizedMime;
+
+    return { signature, normalizedMime };
+  }
+
+  /**
+   * Validates Corrected Issued Document uploaded by staff:
+   *  - PDF, JPEG, PNG, and WebP
+   *  - Max 5 MB
+   *  - Verified by magic byte signature
+   */
+  static validateCorrectedDocument(file, field = "file") {
+    if (!file) {
+      throw new FileValidationError("Corrected document file is required.", {
+        code: "CORRECTED_FILE_REQUIRED",
+        statusCode: 400,
+        field,
+      });
+    }
+
+    if (file.size === 0 || !file.buffer || file.buffer.length === 0) {
+      throw new FileValidationError("Uploaded corrected document file is empty (0 bytes).", {
+        code: "CORRECTED_FILE_EMPTY",
+        statusCode: 400,
+        field,
+      });
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      throw new FileValidationError("Corrected document exceeds the allowable 5MB limit.", {
+        code: "CORRECTED_FILE_TOO_LARGE",
+        statusCode: 413,
+        field,
+      });
+    }
+
+    const rawMime = (file.mimetype || "").toLowerCase().trim();
+    const normalizedMime = rawMime === "image/jpg" ? "image/jpeg" : rawMime;
+
+    const allowedMimes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedMimes.includes(normalizedMime)) {
+      throw new FileValidationError(
+        `Invalid file format (${file.mimetype || "unknown"}). Only PDF, JPEG, PNG, and WebP are allowed.`,
+        {
+          code: "CORRECTED_FILE_TYPE_INVALID",
+          statusCode: 415,
+          field,
+        }
+      );
+    }
+
+    const signature = detectFileSignature(file.buffer);
+    if (!signature || !["pdf", "jpeg", "png", "webp"].includes(signature)) {
+      throw new FileValidationError(
+        "File signature validation failed. File content does not match genuine PDF, JPEG, PNG, or WebP format.",
+        {
+          code: "INVALID_FILE_SIGNATURE",
+          statusCode: 400,
+          field,
+        }
+      );
+    }
+
+    const expectedSignatureByMime = {
+      "application/pdf": "pdf",
+      "image/jpeg": "jpeg",
+      "image/png": "png",
+      "image/webp": "webp",
+    };
+    if (signature !== expectedSignatureByMime[normalizedMime]) {
+      throw new FileValidationError(
+        "Corrected document MIME type does not match its binary content.",
+        {
+          code: "CORRECTED_FILE_TYPE_MISMATCH",
+          statusCode: 400,
+          field,
+        }
+      );
+    }
+
+    file.mimetype = normalizedMime;
+
+    return { signature, normalizedMime };
+  }
 }
+
+export const validateReturnDocument = FileValidator.validateReturnDocument.bind(FileValidator);
+export const validateCorrectedDocument = FileValidator.validateCorrectedDocument.bind(FileValidator);

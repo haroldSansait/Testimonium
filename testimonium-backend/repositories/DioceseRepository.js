@@ -39,7 +39,7 @@ export class DioceseRepository {
     return prisma.documentRequest.count({
       where: {
         status: {
-          in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING", "READY_FOR_PICKUP"]
+          in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING", "READY_FOR_PICKUP", "RETURNED"]
         },
         isDraft: false,
       },
@@ -115,7 +115,7 @@ export class DioceseRepository {
             documentRequests: {
               where: {
                 status: {
-                  in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING", "READY_FOR_PICKUP"]
+                  in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING", "READY_FOR_PICKUP", "RETURNED"]
                 },
                 isDraft: false,
               },

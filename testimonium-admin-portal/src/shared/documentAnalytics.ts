@@ -22,6 +22,7 @@ export const documentStatusGroups = [
       { value: 'PROCESSING', label: 'Processing' },
       { value: 'READY_FOR_SIGNING', label: 'Ready for Signing' },
       { value: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
+      { value: 'RETURNED', label: 'Returned for Correction' },
     ],
   },
   {

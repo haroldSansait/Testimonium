@@ -73,7 +73,47 @@ export type RequestStatus =
   | 'cancelled'
   | 'expired'
   | 'needs-correction'
-  | 'needs_correction';
+  | 'needs_correction'
+  | 'returned';
+
+export const DOCUMENT_RETURN_REASONS = {
+  TYPOGRAPHICAL_OR_SPELLING: 'Typographical or spelling error',
+  INCORRECT_NAME: 'Incorrect name (registrant, parents, or sponsors)',
+  INCORRECT_SACRAMENTAL_DATE: 'Incorrect sacramental or birth date',
+  INCORRECT_RECORD_INFORMATION: 'Incorrect registry entry (book, page, or line)',
+  MISSING_INFORMATION: 'Missing information, signature, or official seal',
+  WRONG_DOCUMENT_ISSUED: 'Wrong sacramental document issued',
+  PRINTING_OR_FORMAT_DEFECT: 'Printing, smudging, or physical formatting defect',
+  OTHER_ISSUED_DOCUMENT_ERROR: 'Other error on issued document',
+} as const;
+
+export interface DocumentReturn {
+  id: number;
+  requestId: number;
+  cycleNumber: number;
+  reasonCode: string;
+  notes?: string | null;
+  returnedFileName: string;
+  returnedFileType?: string | null;
+  returnedFileSize?: number | null;
+  returnedAt: string;
+  returnedByUserId: number;
+  correctedFileName?: string | null;
+  correctedFileType?: string | null;
+  correctedFileSize?: number | null;
+  correctedAt?: string | null;
+  correctedByStaffId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  returnedByUser?: {
+    id: number;
+    fullName: string;
+  };
+  correctedByStaff?: {
+    id: number;
+    fullName: string;
+  };
+}
 
 export interface RequestAttachment {
   id: number;
@@ -156,6 +196,7 @@ export interface SacramentalRequest {
   correctionRequirementIds?: string[];
   correctionNote?: string | null;
   paymentCorrectionNote?: string | null;
+  returns?: DocumentReturn[];
 }
 
 export interface RescheduleHistoryEntry {

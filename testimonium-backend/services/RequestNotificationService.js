@@ -102,6 +102,33 @@ export class RequestNotificationService {
   }
 
   /**
+   * Notifies staff and parishioner when a released document is returned for correction.
+   */
+  static async notifyDocumentReturned({
+    parishionerId,
+    parishId,
+    requestId,
+    trackingNumber,
+    reasonLabel,
+    returnCycle,
+    tx = null,
+  }) {
+    await NotificationDispatcher.notifyDocumentStatusChange(
+      {
+        parishionerId,
+        parishId,
+        requestId,
+        trackingNumber,
+        oldStatus: "COMPLETED",
+        newStatus: "RETURNED",
+        notifyAdmins: true,
+        correctionContext: { reasonLabel, returnCycle },
+      },
+      tx
+    );
+  }
+
+  /**
    * Notifies recipients when a schedule request changes state.
    *
    * Updated signature (adds parishId and notifyAdmins flag).

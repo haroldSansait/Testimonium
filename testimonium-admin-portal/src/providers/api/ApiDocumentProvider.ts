@@ -1,6 +1,6 @@
 import api from '@/api/api';
 import type { DocumentProvider, DocumentRequestFilters } from '../interfaces';
-import type { DocumentRequest, DocumentStatus } from '@/types';
+import type { DocumentRequest, DocumentStatus, DocumentReturn } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
 import { getDocumentLabel, getDocumentTypeFilterParam } from '@/config/documents';
 import { mapDocumentStatusToBackend } from './documentStatusMapping';
@@ -27,6 +27,7 @@ interface BackendDocumentRequestDTO {
   dateProcessed: string | null;
   createdAt: string;
   updatedAt: string;
+  returns?: DocumentReturn[];
   user?: {
     id: number;
     fullName: string;
@@ -120,6 +121,8 @@ const mapDocumentStatus = (status: string): DocumentStatus => {
       return 'Rejected';
     case 'CANCELLED':
       return 'Cancelled';
+    case 'RETURNED':
+      return 'Returned for Correction';
     default:
       return 'Pending Review';
   }
@@ -171,6 +174,7 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
     attachments: dbItem.attachments || [],
     paymentTransactions: dbItem.paymentTransactions || [],
     requestHistory: dbItem.requestHistory || [],
+    returns: dbItem.returns || [],
     timeline
   };
 };
@@ -225,5 +229,25 @@ export const ApiDocumentProvider: DocumentProvider = {
       correctionNote,
     });
     return mapToFrontend(response.data.data);
+  },
+
+  async uploadCorrectedDocument(id: string, file: File): Promise<DocumentReturn> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post<{ data: DocumentReturn }>(
+      `/document-requests/${id}/corrected-document`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data.data;
+  },
+
+  async getReturnHistory(id: string): Promise<DocumentReturn[]> {
+    const response = await api.get<{ data: DocumentReturn[] }>(`/document-requests/${id}/returns`);
+    return response.data.data;
   }
 };

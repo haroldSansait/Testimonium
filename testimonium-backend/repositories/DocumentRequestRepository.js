@@ -65,6 +65,42 @@ export const listInclude = {
       createdAt: "asc",
     },
   },
+  returns: {
+    select: {
+      id: true,
+      requestId: true,
+      cycleNumber: true,
+      reasonCode: true,
+      notes: true,
+      returnedFileName: true,
+      returnedFileType: true,
+      returnedFileSize: true,
+      returnedAt: true,
+      returnedByUserId: true,
+      correctedFileName: true,
+      correctedFileType: true,
+      correctedFileSize: true,
+      correctedAt: true,
+      correctedByStaffId: true,
+      createdAt: true,
+      updatedAt: true,
+      returnedByUser: {
+        select: {
+          id: true,
+          fullName: true,
+        },
+      },
+      correctedByStaff: {
+        select: {
+          id: true,
+          fullName: true,
+        },
+      },
+    },
+    orderBy: {
+      cycleNumber: "asc",
+    },
+  },
 };
 
 
@@ -119,7 +155,7 @@ export class DocumentRequestRepository {
   async countStats(parishId) {
     const pendingWhere = {
       status: {
-        in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING"]
+        in: ["PENDING", "UNDER_REVIEW", "PAYMENT_PENDING", "PAYMENT_VERIFIED", "PROCESSING", "READY_FOR_SIGNING", "RETURNED"]
       },
       isDraft: false
     };

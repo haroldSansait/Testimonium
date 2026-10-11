@@ -5,6 +5,13 @@ import { RegistrantIdStorageService } from "../services/RegistrantIdStorageServi
 
 const documentRequestService = new DocumentRequestService();
 
+const parsePositiveId = (value) => {
+  const raw = String(value || "").trim();
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+};
+
 export const list = async (req, res, next) => {
   try {
     const { page, limit, search, status, documentType } = req.query;
@@ -268,5 +275,127 @@ export const streamReceipt = async (req, res, next) => {
     object.Body.pipe(res);
   } catch (error) {
     return next(error);
+  }
+};
+
+export const uploadCorrectedDocument = async (req, res, next) => {
+  try {
+    const requestId = parsePositiveId(req.params.id);
+    if (!requestId) {
+      return res.status(400).json({ success: false, code: "INVALID_REQUEST_ID", message: "Invalid document request ID." });
+    }
+    const staffId = req.user.id;
+    const staffRole = req.user.role;
+    const staffParishId = req.user.parish?.id || req.user.parishId;
+    const file = req.file;
+
+    const result = await documentRequestService.uploadCorrectedDocument({
+      requestId,
+      staffId,
+      staffRole,
+      staffParishId,
+      file,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Corrected document uploaded successfully.",
+      data: result,
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        ...(err.code ? { code: err.code } : {}),
+        message: err.message,
+      });
+    }
+    return next(err);
+  }
+};
+
+export const getReturnHistory = async (req, res, next) => {
+  try {
+    const requestId = parsePositiveId(req.params.id);
+    if (!requestId) {
+      return res.status(400).json({ success: false, code: "INVALID_REQUEST_ID", message: "Invalid document request ID." });
+    }
+    const staffRole = req.user.role;
+    const staffParishId = req.user.parish?.id || req.user.parishId;
+
+    const history = await documentRequestService.getReturnHistory(
+      requestId,
+      staffRole,
+      staffParishId
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: history,
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        ...(err.code ? { code: err.code } : {}),
+        message: err.message,
+      });
+    }
+    return next(err);
+  }
+};
+
+export const streamReturnFile = async (req, res, next) => {
+  try {
+    const requestId = parsePositiveId(req.params.id);
+    const returnId = parsePositiveId(req.params.returnId);
+    if (!requestId || !returnId) {
+      return res.status(400).json({ success: false, code: "INVALID_RETURN_FILE_ID", message: "Invalid request ID or return cycle ID." });
+    }
+    const { type } = req.params;
+    const staffRole = req.user.role;
+    const staffParishId = req.user.parish?.id || req.user.parishId;
+
+    if (!["returned", "corrected"].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_FILE_TYPE",
+        message: "Invalid file type requested. Must be 'returned' or 'corrected'.",
+      });
+    }
+
+    const { stream, fileName, mimeType, fileSize } = await documentRequestService.getReturnFileStream(
+      requestId,
+      returnId,
+      type,
+      staffRole,
+      staffParishId
+    );
+
+    const safeName = String(fileName || `${type}-document`).replace(/[^a-zA-Z0-9._-]/g, "_");
+    res.setHeader("Content-Type", mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (stream.ContentLength || fileSize) {
+      res.setHeader("Content-Length", stream.ContentLength || fileSize);
+    }
+
+    if (stream.Body && typeof stream.Body.pipe === "function") {
+      stream.Body.pipe(res);
+    } else if (typeof stream.pipe === "function") {
+      stream.pipe(res);
+    } else {
+      res.send(stream);
+    }
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        ...(err.code ? { code: err.code } : {}),
+        message: err.message,
+      });
+    }
+    return next(err);
   }
 };

@@ -121,6 +121,14 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
             </Text>
             <Ionicons name="chevron-forward" size={14} color={colors.danger} />
           </View>
+        ) : request.status === "RETURNED" ? (
+          <View style={[styles.alertBanner, styles.returnedBanner]}>
+            <Ionicons name="return-down-back-outline" size={15} color={colors.warning} />
+            <Text style={[styles.alertText, { color: colors.warning }]} allowFontScaling>
+              Returned for Correction — In Preparation
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.warning} />
+          </View>
         ) : null}
       </MotionPressable>
     </View>
@@ -237,6 +245,9 @@ const styles = StyleSheet.create({
   },
   correctionBanner: {
     backgroundColor: colors.dangerSoft,
+  },
+  returnedBanner: {
+    backgroundColor: colors.warningSoft || "#FFF8E1",
   },
   alertText: {
     ...fontStyles.captionMedium,

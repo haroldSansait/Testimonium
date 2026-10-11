@@ -75,14 +75,24 @@ export function renderEmail(emailType, payload) {
     };
   }
   if (emailType === "DOCUMENT_READY_FOR_PICKUP") {
+    const isCorrected = Boolean(payload.isCorrectedReturn);
     return {
-      subject: "TESTIMONIUM — Your Document Is Ready for Pickup",
-      ...layout("Your document is ready for pickup", [
-        `Hello ${name},`,
-        `Your requested document is ready for pickup at ${parish}.`,
-        `Tracking Number: <strong>${tracking}</strong><br>Document: ${service}`,
-        "Please follow the parish's pickup instructions.",
-      ]),
+      subject: isCorrected
+        ? "TESTIMONIUM — Your Corrected Document Is Ready for Pickup"
+        : "TESTIMONIUM — Your Document Is Ready for Pickup",
+      ...layout(
+        isCorrected
+          ? "Your corrected document is ready for pickup"
+          : "Your document is ready for pickup",
+        [
+          `Hello ${name},`,
+          isCorrected
+            ? `Your corrected document is ready for pickup at ${parish}. Please bring your defective document to exchange upon pickup.`
+            : `Your requested document is ready for pickup at ${parish}.`,
+          `Tracking Number: <strong>${tracking}</strong><br>Document: ${service}`,
+          "Please follow the parish's pickup instructions.",
+        ]
+      ),
     };
   }
   if (emailType === "SCHEDULE_SUBMITTED") {

@@ -27,7 +27,20 @@ export class EmailOutboxService {
     return this.enqueueDocumentTransition({ requestId, oldStatus, newStatus }, tx);
   }
 
-  static async enqueueDocumentTransition({ requestId, oldStatus, newStatus, historyId = null, request = null, correctionContext = null }, tx = null) {
+  static async enqueueDocumentTransition(
+    {
+      requestId,
+      oldStatus,
+      newStatus,
+      historyId = null,
+      request = null,
+      correctionContext = null,
+      returnCycle = null,
+      customTransitionKey = null,
+      isCorrectedReturn = false,
+    },
+    tx = null
+  ) {
     const client = tx || prisma;
     let emailType = null;
     let transitionKey = null;
@@ -64,7 +77,15 @@ export class EmailOutboxService {
     if (!full) return null;
 
     if (emailType === "DOCUMENT_READY_FOR_PICKUP") {
-      transitionKey = `document:${full.id}:ready:${full.updatedAt ? full.updatedAt.toISOString() : new Date().toISOString()}`;
+      if (customTransitionKey) {
+        transitionKey = customTransitionKey;
+      } else if (oldStatus === "RETURNED" || isCorrectedReturn) {
+        transitionKey = historyId
+          ? `document:${full.id}:ready:return-${returnCycle || "cycle"}-${historyId}`
+          : `document:${full.id}:ready:return-${returnCycle || "cycle"}-${full.updatedAt ? full.updatedAt.toISOString() : new Date().toISOString()}`;
+      } else {
+        transitionKey = `document:${full.id}:ready:${full.updatedAt ? full.updatedAt.toISOString() : new Date().toISOString()}`;
+      }
     }
 
     const enabled = await resolveAuthoritativePreference(full.user, full.userId, client);
@@ -82,6 +103,7 @@ export class EmailOutboxService {
         trackingNumber: full.trackingNumber,
         documentType: full.documentType,
         correctionContext: correctionContext || null,
+        isCorrectedReturn: Boolean(isCorrectedReturn || oldStatus === "RETURNED"),
       },
     }, client);
   }

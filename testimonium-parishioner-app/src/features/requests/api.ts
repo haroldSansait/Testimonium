@@ -16,6 +16,7 @@ import {
 import type {
   CreateDraftRequestPayload,
   DocumentRequestDetail,
+  DocumentReturn,
   DocumentRequestListFilters,
   DocumentRequestListResponse,
   DocumentRequirement,
@@ -508,5 +509,103 @@ export const useUploadPaymentReceipt = () => {
         queryKey: requestKeys.detail(user?.uid, variables.requestId),
       });
     },
+  });
+};
+
+export type ReturnDocumentFile = Pick<LocalSelectedFile, "uri" | "name" | "size" | "mimeType">;
+
+export interface ReturnDocumentPayload {
+  requestId: number | string;
+  reasonCode: string;
+  notes?: string;
+  file: ReturnDocumentFile;
+}
+
+/**
+ * Mutation: Return completed document for free correction
+ */
+export const returnDocument = async ({
+  requestId,
+  reasonCode,
+  notes,
+  file,
+}: ReturnDocumentPayload): Promise<DocumentReturn> => {
+  const normalizedFile = normalizeSupportingFile({
+    ...file,
+    requirementId: "document_return",
+    requirementLabel: "Defective issued document",
+  });
+  const createBody = () => {
+    const formData = new FormData();
+    formData.append("reasonCode", reasonCode);
+    if (notes && notes.trim()) {
+      formData.append("notes", notes.trim());
+    }
+    formData.append("file", {
+      uri: normalizedFile.uri,
+      name: normalizedFile.name,
+      type: normalizedFile.mimeType,
+    } as unknown as Blob);
+    return formData;
+  };
+
+  return apiClient.request<DocumentReturn>({
+    method: "POST",
+    path: `/requests/${requestId}/return-document`,
+    createBody,
+    isMultipart: true,
+    auth: true,
+    timeout: 45_000,
+  });
+};
+
+export const useReturnDocument = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: returnDocument,
+    retry: false,
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: requestKeys.lists(user?.uid),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: requestKeys.detail(user?.uid, variables.requestId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["requests", user?.uid, "returns", variables.requestId],
+      });
+    },
+  });
+};
+
+/**
+ * Fetch return history for an owned request
+ */
+export const fetchReturnHistory = async (
+  requestId: number | string,
+  signal?: AbortSignal
+): Promise<DocumentReturn[]> => {
+  return apiClient.request<DocumentReturn[]>({
+    path: `/requests/${requestId}/returns`,
+    signal,
+    auth: true,
+  });
+};
+
+export const useReturnHistory = (
+  requestId?: number | string | null,
+  options?: Partial<UseQueryOptions<DocumentReturn[]>>
+) => {
+  const { user } = useAuth();
+  const isValidId = Boolean(requestId && /^[1-9]\d*$/.test(String(requestId).trim()));
+
+  return useQuery({
+    queryKey: ["requests", user?.uid, "returns", requestId],
+    queryFn: ({ signal }) => fetchReturnHistory(requestId!, signal),
+    enabled: Boolean(user?.uid && isValidId),
+    staleTime: 30 * 1000,
+    ...options,
   });
 };

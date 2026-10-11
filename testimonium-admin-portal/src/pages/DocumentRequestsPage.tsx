@@ -8,11 +8,11 @@ import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { DocumentRequestTable } from '@/components/document-requests/DocumentRequestTable';
 import { SecureBlobViewer } from '@/components/document-requests/SecureBlobViewer';
-import { getDocumentRequests, updateDocumentStatus } from '@/services/documentRequestService';
+import { getDocumentRequests, updateDocumentStatus, uploadCorrectedDocument } from '@/services/documentRequestService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
-import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
+import { DOCUMENT_RETURN_REASONS, type DocumentRequest, type DocumentStatus, type DocumentType } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { canManageDocumentRequests } from '@/permissions/rolePermissions';
 import { cn } from '@/utils/cn';
@@ -39,6 +39,7 @@ const STATUS_OPTIONS: { label: string; value: DocumentStatus | 'all' }[] = [
   { label: 'Ready for Signing', value: 'Ready for Signing' },
   { label: 'Ready for Pickup', value: 'Ready for Pickup' },
   { label: 'Released', value: 'Released' },
+  { label: 'Returned for Correction', value: 'Returned for Correction' },
   { label: 'Rejected', value: 'Rejected' },
   { label: 'Needs Correction', value: 'Needs Correction' },
 ];
@@ -104,6 +105,50 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   const [registrantEvidence, setRegistrantEvidence] = useState<RegistrantIdEvidenceDetail | null>(null);
   const [registrantEvidenceState, setRegistrantEvidenceState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const updateInFlightRef = useRef(false);
+  const [correctedFile, setCorrectedFile] = useState<File | null>(null);
+  const [isUploadingCorrected, setIsUploadingCorrected] = useState(false);
+  const [correctedUploadError, setCorrectedUploadError] = useState<string | null>(null);
+  const [correctedUploadSuccess, setCorrectedUploadSuccess] = useState<string | null>(null);
+  const correctedUploadInFlightRef = useRef(false);
+
+  const activeReturn = request.returns && request.returns.length > 0
+    ? request.returns[request.returns.length - 1]
+    : null;
+  const hasActiveCorrectedUpload = Boolean(activeReturn?.correctedFileName);
+
+  const handleUploadCorrected = async () => {
+    if (!correctedFile || correctedUploadInFlightRef.current || hasActiveCorrectedUpload) return;
+    correctedUploadInFlightRef.current = true;
+    setIsUploadingCorrected(true);
+    setCorrectedUploadError(null);
+    setCorrectedUploadSuccess(null);
+    try {
+      await uploadCorrectedDocument(request.id, correctedFile);
+      setCorrectedUploadSuccess('Corrected document uploaded successfully.');
+      setCorrectedFile(null);
+      if (onRefetchRequest) {
+        await onRefetchRequest();
+      }
+    } catch (err: any) {
+      const isConflict = err.response?.status === 409 || err.response?.data?.code === 'CORRECTED_DOCUMENT_ALREADY_UPLOADED';
+      if (isConflict && onRefetchRequest) {
+        try {
+          await onRefetchRequest();
+        } catch {
+          setCorrectedUploadError('Another staff member already uploaded the corrected document. Close and reopen this request to load the current file.');
+          return;
+        }
+      }
+      setCorrectedUploadError(
+        isConflict
+          ? 'Another staff member already uploaded the corrected document. The latest cycle has been reloaded.'
+          : err.response?.data?.message || err.message || 'Failed to upload corrected document.'
+      );
+    } finally {
+      correctedUploadInFlightRef.current = false;
+      setIsUploadingCorrected(false);
+    }
+  };
   const loadingReqs = requirementsLoadState === 'loading';
 
   const loadRequirements = useCallback(async () => {
@@ -401,6 +446,24 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
             Complete / Release
           </button>
         );
+      case 'Returned for Correction':
+        return (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleAction('Ready for Pickup')}
+              disabled={isUpdating || !hasActiveCorrectedUpload}
+              title={!hasActiveCorrectedUpload ? 'Upload the corrected document before marking ready for pickup' : undefined}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            >
+              Mark Ready for Pickup
+            </button>
+            {!hasActiveCorrectedUpload && (
+              <span className="text-[11px] text-amber-700 font-medium">
+                Upload corrected document above to proceed
+              </span>
+            )}
+          </div>
+        );
       default:
         return null;
     }
@@ -504,6 +567,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
                   <span className={cn(
                     "px-2 py-0.5 rounded-full text-xs font-semibold border",
                     request.status === 'Released' && "bg-blue-50 text-blue-700 border-blue-200",
+                    request.status === 'Returned for Correction' && "bg-amber-50 text-amber-800 border-amber-300",
                     request.status === 'Ready for Pickup' && "bg-green-50 text-green-700 border-green-200",
                     request.status === 'Ready for Signing' && "bg-indigo-50 text-indigo-700 border-indigo-200",
                     request.status === 'Processing' && "bg-purple-50 text-purple-700 border-purple-200",
@@ -527,6 +591,161 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
                   The parishioner requested their own sacramental record. Identity verification is satisfied by their verified diocesan Government ID. No separate registrant ID images or signed authorization letter are required.
                 </span>
               </div>
+            </div>
+          )}
+
+          {/* Post-Release Document Return Workflow Section */}
+          {(request.status === 'Returned for Correction' || (request.returns && request.returns.length > 0)) && (
+            <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-3.5 text-xs text-amber-950">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="font-bold text-sm text-amber-900">
+                    Post-Release Document Return {request.status === 'Returned for Correction' ? '(Active Return Cycle)' : '(Resolved)'}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  100% Free Correction
+                </span>
+              </div>
+
+              {activeReturn && (
+                <div className="bg-white/80 border border-amber-200/60 rounded-xl p-3.5 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Return Cycle</span>
+                      <p className="font-semibold text-gray-800 mt-0.5">Cycle #{activeReturn.cycleNumber}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Defect Reason</span>
+                      <p className="font-semibold text-amber-900 mt-0.5">
+                        {DOCUMENT_RETURN_REASONS.find(r => r.code === activeReturn.reasonCode)?.label || activeReturn.reasonCode}
+                      </p>
+                    </div>
+                  </div>
+
+                  {activeReturn.notes && (
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Parishioner Note</span>
+                      <p className="text-gray-700 bg-gray-50 border border-gray-150 p-2.5 rounded-lg mt-1 text-xs">
+                        {activeReturn.notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Defective Document Evidence Viewer */}
+                  <div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">
+                      Parishioner-Submitted Defective Document
+                    </span>
+                    <SecureBlobViewer
+                      endpoint={`/document-requests/${request.id}/returns/${activeReturn.id}/file/returned`}
+                      fileName={activeReturn.returnedFileName}
+                      mimeType={activeReturn.returnedFileType}
+                      alt="Defective document scan/photo"
+                      compact
+                    />
+                  </div>
+
+                  {/* Corrected Document Upload Status / Form */}
+                  <div className="pt-3 border-t border-amber-100 space-y-2">
+                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                      Corrected Replacement Document (Issued Copy)
+                    </span>
+
+                    {activeReturn.correctedFileName ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg">
+                          <span className="font-semibold">✓ Corrected document on file: {activeReturn.correctedFileName}</span>
+                          <span className="text-[10px] text-gray-400">
+                            {activeReturn.correctedAt ? new Date(activeReturn.correctedAt).toLocaleString() : ''}
+                          </span>
+                        </div>
+                        <SecureBlobViewer
+                          endpoint={`/document-requests/${request.id}/returns/${activeReturn.id}/file/corrected`}
+                          fileName={activeReturn.correctedFileName}
+                          mimeType={activeReturn.correctedFileType}
+                          alt="Corrected document copy"
+                          compact
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-800 bg-amber-100/50 p-2 rounded-lg border border-amber-200">
+                        A corrected document must be uploaded before this request can be marked Ready for Pickup.
+                      </p>
+                    )}
+
+                    {canManage && request.status === 'Returned for Correction' && !hasActiveCorrectedUpload && (
+                      <div className="mt-2 space-y-2">
+                        {correctedUploadError && (
+                          <p className="text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
+                            {correctedUploadError}
+                          </p>
+                        )}
+                        {correctedUploadSuccess && (
+                          <p className="text-xs text-green-700 bg-green-50 p-2 rounded border border-green-200">
+                            {correctedUploadSuccess}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="file"
+                            accept=".pdf,image/png,image/jpeg,image/webp"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                setCorrectedFile(e.target.files[0]);
+                                setCorrectedUploadError(null);
+                                setCorrectedUploadSuccess(null);
+                              }
+                            }}
+                            disabled={isUploadingCorrected}
+                            className="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleUploadCorrected()}
+                            disabled={!correctedFile || isUploadingCorrected}
+                            className="px-3 py-1.5 bg-[#7B1C2A] hover:bg-[#601520] text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors flex-shrink-0"
+                          >
+                            {isUploadingCorrected ? 'Uploading...' : 'Upload Corrected Document'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Multi-cycle History */}
+              {request.returns && request.returns.length > 1 && (
+                <div className="pt-2 border-t border-amber-200/60 space-y-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">
+                    Earlier Return Cycles
+                  </span>
+                  <div className="space-y-1.5">
+                    {request.returns.slice(0, -1).map((ret) => (
+                      <div key={ret.id} className="bg-white/60 border border-gray-200 rounded-lg p-2.5 flex items-center justify-between text-xs text-gray-700">
+                        <div>
+                          <span className="font-semibold">Cycle #{ret.cycleNumber}:</span>{' '}
+                          <span>{DOCUMENT_RETURN_REASONS.find(r => r.code === ret.reasonCode)?.label || ret.reasonCode}</span>
+                          <span className="text-gray-400 block text-[10px]">
+                            Returned: {new Date(ret.returnedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex gap-2 text-[10px]">
+                          <SecureBlobViewer
+                            endpoint={`/document-requests/${request.id}/returns/${ret.id}/file/returned`}
+                            fileName={ret.returnedFileName}
+                            mimeType={ret.returnedFileType}
+                            alt="Prior defective document"
+                            compact
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

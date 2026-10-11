@@ -6,6 +6,7 @@ import type {
   DocumentRequest,
   DocumentType,
   DocumentStatus,
+  DocumentReturn,
   ScheduleRequest,
   ScheduleStatus,
   CalendarEvent,
@@ -127,6 +128,8 @@ export interface DocumentProvider {
     correctionReasonCode?: string,
     correctionNote?: string
   ): Promise<DocumentRequest>;
+  uploadCorrectedDocument?(id: string, file: File): Promise<DocumentReturn>;
+  getReturnHistory?(id: string): Promise<DocumentReturn[]>;
 }
 
 export interface ProposeReschedulePayload {

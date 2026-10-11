@@ -555,7 +555,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 </div>
                 <div className="text-xs text-text-primary">
                   <span className="text-text-muted font-medium">Requester (Account Owner): </span>
-                  <span className="font-bold">{appProfile?.firstName} {appProfile?.lastName}</span>
+                  <span className="font-bold">{appProfile?.fullName || 'Parishioner'}</span>
                 </div>
                 {relationship === 'Self' ? (
                   <p className="text-[11px] text-text-muted leading-relaxed">

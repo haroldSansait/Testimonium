@@ -13,6 +13,9 @@ import {
   uploadRegistrantId,
   getRegistrantIdMetadata,
   streamOwnedRegistrantIdSide,
+  returnDocument,
+  getReturnHistory,
+  streamReturnFile,
 } from "../controllers/ParishionerRequestController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
@@ -22,6 +25,7 @@ import {
   uploadRequestFiles,
   uploadReceiptFile,
   uploadRegistrantIdFiles,
+  uploadReturnDocumentFile,
 } from "../middlewares/uploadMiddleware.js";
 import { receiptUploadRateLimiter, registrantIdUploadRateLimiter } from "../middlewares/rateLimit.js";
 
@@ -50,7 +54,12 @@ router.get("/:id/attachments/:attachmentId/download", downloadAttachment);
 // Payment proof receipt upload (single file)
 router.post("/:id/receipt", receiptUploadRateLimiter, uploadReceiptFile, uploadReceipt);
 
-// Resubmit corrected documents
+// Resubmit corrected documents (Pre-release)
 router.post("/:id/resubmit-corrections", resubmitCorrections);
+
+// Post-Release Document Return workflow
+router.post("/:id/return-document", uploadReturnDocumentFile, returnDocument);
+router.get("/:id/returns", getReturnHistory);
+router.get("/:id/returns/:returnId/file/:type", streamReturnFile);
 
 export default router;

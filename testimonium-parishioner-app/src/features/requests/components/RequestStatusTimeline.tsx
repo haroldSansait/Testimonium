@@ -122,6 +122,10 @@ const formatActionLabel = (action: string): string => {
       return "Marked Ready for Pickup";
     case "COMPLETED":
       return "Completed & Released";
+    case "DOCUMENT_RETURNED":
+      return "Document Returned for Correction";
+    case "CORRECTED_DOCUMENT_UPLOADED":
+      return "Corrected Document Prepared";
     case "CANCELLED":
       return "Request Cancelled";
     case "REJECTED":

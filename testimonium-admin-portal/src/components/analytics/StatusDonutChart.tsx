@@ -40,6 +40,7 @@ const STATUS_COLORS: Record<string, { fill: string; badgeBg: string; text: strin
   // Corrections / Reschedule (Orange)
   NEEDS_CORRECTION: { fill: '#ea580c', badgeBg: 'bg-orange-50', text: 'text-orange-700' },
   PAYMENT_NEEDS_CORRECTION: { fill: '#ea580c', badgeBg: 'bg-orange-50', text: 'text-orange-700' },
+  RETURNED: { fill: '#b45309', badgeBg: 'bg-amber-50', text: 'text-amber-800' },
   PROPOSED_RESCHEDULE: { fill: '#ea580c', badgeBg: 'bg-orange-50', text: 'text-orange-700' },
 
   // Terminal Cancelled / Rejected (Rose)

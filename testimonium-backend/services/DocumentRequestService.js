@@ -8,6 +8,9 @@ import { DocumentRequirementService } from "./DocumentRequirementService.js";
 import { env } from "../config/env.js";
 import { CORRECTION_REASONS } from "../shared/constants.js";
 import { resolveRelationshipEvidence } from "../config/relationshipEvidence.js";
+import { DocumentReturnStorageService } from "./DocumentReturnStorageService.js";
+import { FileValidator } from "../utils/fileValidator.js";
+import { logger } from "../config/logger.js";
 
 export class DocumentRequestService {
   constructor(documentRequestRepository = new DocumentRequestRepository()) {
@@ -54,6 +57,13 @@ export class DocumentRequestService {
     if (actorRole === "PRIEST") {
       const error = new Error("Priests have read-only access to document requests.");
       error.statusCode = 403;
+      throw error;
+    }
+
+    if (targetStatus === "RETURNED") {
+      const error = new Error("The RETURNED status cannot be manually set by staff. Parishioners must submit a return request.");
+      error.statusCode = 400;
+      error.code = "RETURN_STATUS_PARISHIONER_ONLY";
       throw error;
     }
 
@@ -113,6 +123,23 @@ export class DocumentRequestService {
       let effectiveRemarks = remarks || `Status updated from ${currentStatus} to ${targetStatus}`;
       let correctionContext = null;
       let relationshipCorrectionSnapshot = null;
+
+      if (currentStatus === "RETURNED" && targetStatus === "READY_FOR_PICKUP") {
+        const latestReturn = await tx.documentReturn.findFirst({
+          where: { requestId },
+          orderBy: { cycleNumber: "desc" },
+        });
+        if (!latestReturn || !latestReturn.correctedObjectKey) {
+          const error = new Error("Cannot mark request Ready for Pickup: A corrected document must be uploaded for the active return cycle first.");
+          error.statusCode = 400;
+          error.code = "CORRECTED_DOCUMENT_REQUIRED";
+          throw error;
+        }
+        correctionContext = {
+          returnCycle: latestReturn.cycleNumber,
+          isCorrectedReturn: true,
+        };
+      }
 
       // If Needs Correction, strictly validate reason, requirement IDs, and optional note
       if (targetStatus === "NEEDS_CORRECTION") {
@@ -495,5 +522,314 @@ export class DocumentRequestService {
 
       return updatedRequest;
     });
+  }
+  /**
+   * Uploads a corrected issued document for an active return cycle.
+   */
+  async uploadCorrectedDocument({ requestId, staffId, staffRole, staffParishId, file }) {
+    if (!["SECRETARY", "DIOCESE_COORDINATOR"].includes(staffRole)) {
+      const error = new Error(
+        staffRole === "PRIEST"
+          ? "Priests have read-only access to document requests."
+          : "Unauthorized role."
+      );
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (!file) {
+      const error = new Error("A corrected document file is required.");
+      error.statusCode = 400;
+      error.code = "CORRECTED_FILE_REQUIRED";
+      throw error;
+    }
+
+    FileValidator.validateCorrectedDocument(file, "file");
+
+    const request = await prisma.documentRequest.findUnique({
+      where: { id: Number(requestId) },
+    });
+
+    if (!request) {
+      const error = new Error("Document request not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (staffRole === "SECRETARY" && request.parishId !== staffParishId) {
+      const error = new Error("Unauthorized: Request belongs to a different parish.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (request.status !== "RETURNED") {
+      const error = new Error("Corrected documents can only be uploaded when request is in RETURNED status.");
+      error.statusCode = 400;
+      error.code = "INVALID_REQUEST_STATUS";
+      throw error;
+    }
+
+    const activeReturn = await prisma.documentReturn.findFirst({
+      where: { requestId: Number(requestId) },
+      orderBy: { cycleNumber: "desc" },
+    });
+
+    if (!activeReturn) {
+      const error = new Error("No active return cycle found for this request.");
+      error.statusCode = 400;
+      error.code = "NO_ACTIVE_RETURN_CYCLE";
+      throw error;
+    }
+
+    const objectKey = DocumentReturnStorageService.createObjectKey(
+      Number(requestId),
+      activeReturn.cycleNumber,
+      "corrected"
+    );
+
+    await DocumentReturnStorageService.upload(objectKey, file);
+
+    try {
+      return await prisma.$transaction(async (tx) => {
+        if (typeof tx.$queryRaw === "function") {
+          await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${Number(requestId)} FOR UPDATE`;
+        }
+
+        const freshRequest = await tx.documentRequest.findUnique({
+          where: { id: Number(requestId) },
+        });
+
+        if (!freshRequest || freshRequest.status !== "RETURNED") {
+          const err = new Error("Request is no longer in RETURNED status.");
+          err.statusCode = 409;
+          err.code = "CONCURRENT_STATUS_CONFLICT";
+          throw err;
+        }
+
+        const currentActiveReturn = await tx.documentReturn.findFirst({
+          where: { requestId: Number(requestId) },
+          orderBy: { cycleNumber: "desc" },
+        });
+
+        if (!currentActiveReturn || currentActiveReturn.id !== activeReturn.id) {
+          const err = new Error("Active return cycle conflict. A newer cycle exists.");
+          err.statusCode = 409;
+          err.code = "CONCURRENT_CYCLE_CONFLICT";
+          throw err;
+        }
+
+        if (currentActiveReturn.correctedObjectKey) {
+          const err = new Error("A corrected document has already been committed for this return cycle. Reload to view the current file.");
+          err.statusCode = 409;
+          err.code = "CORRECTED_DOCUMENT_ALREADY_UPLOADED";
+          throw err;
+        }
+
+        const correctionClaim = await tx.documentReturn.updateMany({
+          where: {
+            id: activeReturn.id,
+            correctedObjectKey: null,
+            correctedRevision: 0,
+          },
+          data: {
+            correctedObjectKey: objectKey,
+            correctedFileName: file.originalname || "corrected_document",
+            correctedFileType: file.mimetype || "application/octet-stream",
+            correctedFileSize: file.size || null,
+            correctedAt: new Date(),
+            correctedByStaffId: Number(staffId),
+            correctedRevision: { increment: 1 },
+          },
+        });
+
+        if (correctionClaim.count !== 1) {
+          const err = new Error("A corrected document has already been committed for this return cycle. Reload to view the current file.");
+          err.statusCode = 409;
+          err.code = "CORRECTED_DOCUMENT_ALREADY_UPLOADED";
+          throw err;
+        }
+
+        const updatedReturn = await tx.documentReturn.findUnique({
+          where: { id: activeReturn.id },
+          select: {
+            id: true,
+            requestId: true,
+            cycleNumber: true,
+            reasonCode: true,
+            notes: true,
+            returnedFileName: true,
+            returnedFileType: true,
+            returnedFileSize: true,
+            returnedAt: true,
+            returnedByUserId: true,
+            correctedFileName: true,
+            correctedFileType: true,
+            correctedFileSize: true,
+            correctedAt: true,
+            correctedByStaffId: true,
+            correctedRevision: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        await tx.requestHistory.create({
+          data: {
+            requestId: Number(requestId),
+            actorId: Number(staffId),
+            action: "CORRECTED_DOCUMENT_UPLOADED",
+            notes: `Corrected document uploaded for Return Cycle ${activeReturn.cycleNumber} (${file.originalname}).`,
+          },
+        });
+
+        await AuditLogService.log(
+          staffId,
+          "Corrected Document Uploaded",
+          tx,
+          false,
+          {
+            affectedTable: "document_returns",
+            affectedRecordId: updatedReturn.id,
+            parishId: freshRequest.parishId,
+            metadata: {
+              requestId: Number(requestId),
+              cycleNumber: activeReturn.cycleNumber,
+              fileName: file.originalname,
+            },
+          }
+        );
+
+        return updatedReturn;
+      }, { maxWait: 10000, timeout: 20000 });
+    } catch (dbErr) {
+      try {
+        await DocumentReturnStorageService.delete(objectKey);
+      } catch (cleanupErr) {
+        logger.error(
+          { cleanupErr, objectKey, requestId },
+          "Failed to delete uploaded corrected document after database error."
+        );
+      }
+      throw dbErr;
+    }
+  }
+
+  /**
+   * Retrieves return cycles for staff review.
+   */
+  async getReturnHistory(requestId, staffRole, staffParishId) {
+    if (!["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"].includes(staffRole)) {
+      const error = new Error("Unauthorized role.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const request = await prisma.documentRequest.findUnique({
+      where: { id: Number(requestId) },
+    });
+
+    if (!request) {
+      const error = new Error("Document request not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (["SECRETARY", "PRIEST"].includes(staffRole) && request.parishId !== staffParishId) {
+      const error = new Error("Unauthorized: Request belongs to a different parish.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    return prisma.documentReturn.findMany({
+      where: { requestId: Number(requestId) },
+      orderBy: { cycleNumber: "asc" },
+      select: {
+        id: true,
+        requestId: true,
+        cycleNumber: true,
+        reasonCode: true,
+        notes: true,
+        returnedFileName: true,
+        returnedFileType: true,
+        returnedFileSize: true,
+        returnedAt: true,
+        returnedByUserId: true,
+        correctedFileName: true,
+        correctedFileType: true,
+        correctedFileSize: true,
+        correctedAt: true,
+        correctedByStaffId: true,
+        createdAt: true,
+        updatedAt: true,
+        returnedByUser: {
+          select: { id: true, fullName: true },
+        },
+        correctedByStaff: {
+          select: { id: true, fullName: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Securely streams returned or corrected document files for authorized staff.
+   */
+  async getReturnFileStream(requestId, returnId, type, staffRole, staffParishId) {
+    if (!["returned", "corrected"].includes(type)) {
+      const error = new Error("Invalid file type requested.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"].includes(staffRole)) {
+      const error = new Error("Unauthorized role.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const request = await prisma.documentRequest.findUnique({
+      where: { id: Number(requestId) },
+    });
+
+    if (!request) {
+      const error = new Error("Document request not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (["SECRETARY", "PRIEST"].includes(staffRole) && request.parishId !== staffParishId) {
+      const error = new Error("Unauthorized: Request belongs to a different parish.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const returnRecord = await prisma.documentReturn.findFirst({
+      where: { id: Number(returnId), requestId: Number(requestId) },
+    });
+
+    if (!returnRecord) {
+      const error = new Error("Return cycle record not found for this request.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const key = type === "returned" ? returnRecord.returnedObjectKey : returnRecord.correctedObjectKey;
+    const fileName = type === "returned" ? returnRecord.returnedFileName : returnRecord.correctedFileName;
+    const mimeType = type === "returned" ? returnRecord.returnedFileType : returnRecord.correctedFileType;
+    const fileSize = type === "returned" ? returnRecord.returnedFileSize : returnRecord.correctedFileSize;
+
+    if (!key) {
+      const error = new Error(`No ${type} document has been uploaded for this return cycle.`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const stream = await DocumentReturnStorageService.download(key);
+    return {
+      stream,
+      fileName: fileName || `${type}_document`,
+      mimeType: mimeType || "application/octet-stream",
+      fileSize,
+    };
   }
 }

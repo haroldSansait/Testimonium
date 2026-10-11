@@ -1,5 +1,5 @@
 import { providerFactory } from '@/providers/providerFactory';
-import type { DocumentRequest, DocumentStatus, DocumentType } from '@/types';
+import type { DocumentRequest, DocumentStatus, DocumentType, DocumentReturn } from '@/types';
 import type { PaginatedResponse } from '@/types/api';
 
 export interface DocumentRequestFilters {
@@ -32,4 +32,25 @@ export async function updateDocumentStatus(
     correctionReasonCode,
     correctionNote
   );
+}
+
+export async function uploadCorrectedDocument(
+  id: string,
+  file: File
+): Promise<DocumentReturn> {
+  const provider = providerFactory.getDocumentProvider();
+  if (provider.uploadCorrectedDocument) {
+    return provider.uploadCorrectedDocument(id, file);
+  }
+  throw new Error('Upload corrected document not supported by provider');
+}
+
+export async function getReturnHistory(
+  id: string
+): Promise<DocumentReturn[]> {
+  const provider = providerFactory.getDocumentProvider();
+  if (provider.getReturnHistory) {
+    return provider.getReturnHistory(id);
+  }
+  return [];
 }

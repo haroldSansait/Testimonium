@@ -3,6 +3,8 @@ export interface BackendUserProfile {
   firebaseUid: string;
   email: string;
   fullName: string;
+  firstName?: string | null;
+  lastName?: string | null;
   contactNumber?: string | null;
   address?: string | null;
   isVerified: boolean;
