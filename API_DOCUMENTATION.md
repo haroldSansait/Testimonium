@@ -250,6 +250,14 @@ Every rule mutation requires `expectedVersion`. A stale configuration returns `4
 | POST | `/schedule-requests/:id/propose-reschedule` | Staff / Coordinator / Priest | Propose a new date/time schedule (requires `expectedVersion`). |
 | POST | `/schedule-requests/:id/respond-reschedule` | Parishioner | Accept or decline a staff reschedule proposal (requires `expectedVersion`). |
 | POST | `/schedule-requests/:id/assign-priest` | Staff / Coordinator / Priest | Assign a priest to a schedule (requires `expectedVersion`). |
+| POST | `/schedule-requests/:id/assign-lay-minister` | Secretary / Coordinator | Assign the no-identity Lay Minister fallback to an eligible `FUNERAL` or `BLESSING` while preserving its date, time, event type, title, and status. Requires `expectedVersion` and `reason`; the server rechecks every active parish priest and rejects available or unverified candidates. |
+| GET | `/schedule-requests/:id/alternative-proposals` | Authorized participant | List retained alternative-date proposal history; stale open proposals are closed as `SUPERSEDED`. |
+| POST | `/schedule-requests/:id/alternative-proposals` | Owning parishioner | Submit a distinct available date/time for a priest-led replacement of a Lay-Minister-assigned Funeral/Blessing. Body: `proposedDate`, `timeSlot`, optional `note`. The original schedule row and version are unchanged. |
+| POST | `/schedule-requests/:id/alternative-proposals/:proposalId/withdraw` | Owning parishioner | Withdraw an open proposal using `expectedRevision`. |
+| POST | `/schedule-requests/:id/alternative-proposals/:proposalId/approve` | Secretary / Coordinator | Approve and nominate an active, same-parish, available priest using `priestId`, `expectedRevision`, and schedule `expectedVersion`. |
+| POST | `/schedule-requests/:id/alternative-proposals/:proposalId/decline` | Secretary / Coordinator | Decline an open proposal using `expectedRevision` and `reason`. |
+| POST | `/schedule-requests/:id/alternative-proposals/:proposalId/revoke` | Secretary / Coordinator | Revoke the pending nomination and return the proposal to `SUBMITTED`, invalidating older responses via `expectedRevision`. |
+| POST | `/schedule-requests/:id/alternative-proposals/:proposalId/priest-respond` | Nominated priest | Accept or reject the current nomination using `expectedRevision`. Acceptance revalidates and atomically applies the new interval/priest; rejection returns the proposal to `SUBMITTED` without changing the appointment. |
 | POST | `/schedule-requests/:id/priest-respond` | Priest | Accept or reject a priest assignment (requires `expectedVersion`). |
 | POST | `/schedule-requests/:id/emergency-reschedule` | Staff / Coordinator / Priest | Emergency reschedule with immediate slot reallocation and audit logging (requires `expectedVersion`, `targetDate`, `timeSlot`, `reason`). |
 | GET | `/schedule-availability/parishes/:parishId` | Staff / Coordinator | Fetch persisted weekday rules, service weekday rules, and date exceptions for a parish. |
@@ -262,7 +270,7 @@ Every rule mutation requires `expectedVersion`. A stale configuration returns `4
 | DELETE | `/parish-availabilities/:id` | Staff / Coordinator | Delete an availability block. |
 | GET | `/calendar/events` | Staff / Coordinator | Retrieve combined calendar events (including parish-private events) in the caller’s scope. |
 | GET | `/mass-schedules/:parishId` | Staff / Coordinator | List recurring mass templates. |
-| POST | `/mass-schedules/:parishId` | Secretary | Upsert a mass template. |
+| POST | `/mass-schedules/:parishId` | Secretary | Upsert a recurring Mass template. Assignment fields are presence-sensitive. `layMinisterAssigned: true` clears the priest and presents the slot as “Liturgy of the Word” after a conservative 14-day recurring availability check; `expectedUpdatedAt` protects assignment changes from stale editors. |
 | DELETE | `/mass-schedules/:id` | Secretary | Delete a template. |
 | POST | `/mass-schedules/:parishId/reset` | Secretary | Reset parish templates. |
 | POST | `/mass-schedules/:id/priest-respond` | Priest | Respond to template assignment. |
@@ -272,6 +280,8 @@ Every rule mutation requires `expectedVersion`. A stale configuration returns `4
 | PUT/PATCH | `/parish-events/:id` | Secretary / Coordinator | Update an event (requires `expectedVersion`). |
 | DELETE | `/parish-events/:id` | Secretary / Coordinator | Remove an event. |
 | POST | `/parish-events/:id/priest-respond` | Priest | Respond to an event assignment. |
+
+Lay Minister names are presentation-only: APIs expose `effectiveDisplayTitle` for individual schedules and `displayLabel` for Mass templates. Stored `Schedule.eventType`, `Schedule.displayTitle`, and `MassScheduleTemplate.label` are never rewritten. Proposal lifecycle states are `SUBMITTED`, `PRIEST_PENDING`, `APPLIED`, `DECLINED`, `WITHDRAWN`, and `SUPERSEDED`; at most one open proposal may exist for a schedule.
 
 ## Priest personal commitment schedules
 

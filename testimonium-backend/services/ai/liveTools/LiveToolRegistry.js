@@ -30,6 +30,7 @@ import {
 } from "../../ConflictHelper.js";
 import { normalizeTimeSlotString } from "../../BookingValidator.js";
 import { ParishEventService } from "../../ParishEventService.js";
+import { resolveMassDisplayLabel } from "../../../shared/LayMinisterPresentation.js";
 
 export class LiveToolRegistry {
   constructor({
@@ -1802,6 +1803,7 @@ export class LiveToolRegistry {
             dayType: true,
             timeSlot: true,
             label: true,
+            layMinisterAssigned: true,
           },
         });
         massSchedules = (templates || []).filter((t) => {
@@ -1830,7 +1832,7 @@ export class LiveToolRegistry {
 
     const massLines = massSchedules.map((m) => {
       const timeDisplay = m.timeSlot || m.time || "Regular Time";
-      const labelDisplay = m.label || "Holy Mass";
+      const labelDisplay = resolveMassDisplayLabel(m);
       const lang = m.language ? ` (${m.language})` : "";
       const loc = m.location ? ` — *${m.location}*` : "";
       return `- ⛪ **${labelDisplay}**: ${timeDisplay}${lang}${loc}`;
@@ -1857,7 +1859,9 @@ export class LiveToolRegistry {
         location: e.location,
       })),
       massSchedules: massSchedules.map((m) => ({
-        label: m.label || "Holy Mass",
+        label: resolveMassDisplayLabel(m),
+        configuredLabel: m.label || "Holy Mass",
+        layMinisterAssigned: Boolean(m.layMinisterAssigned),
         timeSlot: m.timeSlot || m.time || "Regular Time",
         language: m.language || null,
         location: m.location || null,

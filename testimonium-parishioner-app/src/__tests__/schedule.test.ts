@@ -7,6 +7,7 @@ import { scheduleKeys } from "../features/schedule/queryKeys";
 import {
   extractTimeSlotFromSchedule,
   formatScheduleDate,
+  getScheduleDisplayTitle,
   getScheduleStatusBadge,
   isRescheduleProposalPending,
   makeSchedulePayloadSignature,
@@ -61,6 +62,18 @@ describe("Phase 5A: Mobile Scheduling Types and Labels", () => {
 });
 
 describe("Phase 5A: Schedule Presentation and Manila-safe Date Helpers", () => {
+  it("prefers the server-authored effective title for Lay Minister fallback", () => {
+    const layMinisterSchedule: any = {
+      eventType: "FUNERAL",
+      displayTitle: "Funeral",
+      effectiveDisplayTitle: "Liturgy of the Word",
+      layMinisterAssigned: true,
+    };
+
+    expect(getScheduleDisplayTitle(layMinisterSchedule)).toBe("Liturgy of the Word");
+    expect(getScheduleDisplayTitle({ ...layMinisterSchedule, effectiveDisplayTitle: null })).toBe("Funeral");
+  });
+
   it("parses date-only strings without UTC shift", () => {
     const result = parseDateOnlySafe("2026-08-25");
     expect(result.year).toBe(2026);
@@ -309,4 +322,3 @@ describe("Phase 5-7 Regression: Schedule Terminology and Tab Route Purity", () =
     expect(routes.detail).not.toContain("/(tabs)/");
   });
 });
-

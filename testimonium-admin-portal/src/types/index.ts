@@ -204,6 +204,19 @@ export interface ScheduleRequest {
   rescheduleReason?: string;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  layMinisterAssigned?: boolean;
+  effectiveDisplayTitle?: string;
+  canProposeAlternativeDate?: boolean;
+  alternativeProposal?: {
+    id: number;
+    status: string;
+    proposedDate: string;
+    proposedStartDatetime: string;
+    note?: string | null;
+    nominatedPriestId?: number | null;
+    nominationRevision: number;
+    nominatedPriest?: { id: number; fullName: string } | null;
+  } | null;
   version?: number;
   timeline?: { status: string; date: string; note?: string }[];
   isParishEvent?: boolean;

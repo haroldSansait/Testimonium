@@ -4,6 +4,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,11 +21,12 @@ import { Divider } from "@/components/ui/Divider";
 import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
-import { useRespondReschedule, useScheduleDetail } from "./api";
+import { useAvailableSlots, useProposeAlternativeDate, useRespondReschedule, useScheduleDetail, useWithdrawAlternativeDate } from "./api";
 import {
   extractTimeSlotFromSchedule,
   formatScheduleDate,
   isRescheduleProposalPending,
+  getScheduleDisplayTitle,
 } from "./presentation";
 import { getScheduleEventLabel } from "./types";
 
@@ -32,6 +35,9 @@ export const ScheduleDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { contentBottomInset } = useAppLayoutMetrics();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [alternativeDate, setAlternativeDate] = useState("");
+  const [alternativeSlot, setAlternativeSlot] = useState("");
+  const [alternativeNote, setAlternativeNote] = useState("");
 
   const {
     data: schedule,
@@ -41,6 +47,14 @@ export const ScheduleDetailScreen: React.FC = () => {
   } = useScheduleDetail(id);
 
   const respondMutation = useRespondReschedule();
+  const proposeAlternativeMutation = useProposeAlternativeDate();
+  const withdrawAlternativeMutation = useWithdrawAlternativeDate();
+  const { data: alternativeSlots = [] } = useAvailableSlots(
+    schedule?.parishId,
+    alternativeDate || null,
+    schedule?.eventType,
+    { enabled: Boolean(schedule?.canProposeAlternativeDate && alternativeDate) }
+  );
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -102,6 +116,41 @@ export const ScheduleDetailScreen: React.FC = () => {
     );
   };
 
+  const handleAlternativeSubmit = async () => {
+    if (!schedule || !alternativeDate || !alternativeSlot) return;
+    setActionError(null);
+    try {
+      await proposeAlternativeMutation.mutateAsync({
+        scheduleId: schedule.id,
+        proposedDate: alternativeDate,
+        timeSlot: alternativeSlot,
+        note: alternativeNote,
+      });
+      setAlternativeDate("");
+      setAlternativeSlot("");
+      setAlternativeNote("");
+      Alert.alert("Request Submitted", "The original appointment remains unchanged while parish staff reviews your alternative date.");
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || "Unable to submit the alternative date.";
+      setActionError(message);
+      Alert.alert("Request Failed", message);
+    }
+  };
+
+  const handleAlternativeWithdraw = async () => {
+    if (!schedule?.alternativeProposal) return;
+    try {
+      await withdrawAlternativeMutation.mutateAsync({
+        scheduleId: schedule.id,
+        proposalId: schedule.alternativeProposal.id,
+        expectedRevision: schedule.alternativeProposal.nominationRevision,
+      });
+      Alert.alert("Request Withdrawn", "The original appointment remains unchanged.");
+    } catch (err: any) {
+      Alert.alert("Action Failed", err?.response?.data?.message || err?.message || "Unable to withdraw the request.");
+    }
+  };
+
   if (isLoading) {
     return (
       <Screen safeArea={true} style={styles.screen}>
@@ -158,9 +207,9 @@ export const ScheduleDetailScreen: React.FC = () => {
             <View style={styles.headerRow}>
               <View style={styles.titleWrap}>
                 <Text style={styles.titleText} allowFontScaling>
-                  {schedule.displayTitle || eventLabel}
+                  {getScheduleDisplayTitle(schedule)}
                 </Text>
-                {schedule.displayTitle && schedule.displayTitle !== eventLabel ? (
+                {getScheduleDisplayTitle(schedule) !== eventLabel ? (
                   <Text style={styles.subtitleText} allowFontScaling>
                     {eventLabel}
                   </Text>
@@ -257,13 +306,81 @@ export const ScheduleDetailScreen: React.FC = () => {
             </View>
           )}
 
+          {schedule.layMinisterAssigned ? (
+            <View style={styles.layMinisterBox}>
+              <View style={styles.proposalHeader}>
+                <Ionicons name="information-circle-outline" size={20} color={colors.warning} />
+                <Text style={styles.layMinisterTitle} allowFontScaling>Lay Minister Assigned</Text>
+              </View>
+              <Text style={styles.proposalDesc} allowFontScaling>
+                No priest was available for the current appointment. This service remains scheduled and will be led by a Lay Minister.
+              </Text>
+              {schedule.alternativeProposal && ["SUBMITTED", "PRIEST_PENDING"].includes(schedule.alternativeProposal.status) ? (
+                <View style={styles.alternativeForm}>
+                  <Text style={styles.proposedText} allowFontScaling>
+                    Alternative date status: {schedule.alternativeProposal.status === "PRIEST_PENDING" ? "Awaiting nominated priest" : "Awaiting parish review"}
+                  </Text>
+                  <Button
+                    title="Withdraw Alternative Request"
+                    variant="outline"
+                    size="md"
+                    onPress={() => void handleAlternativeWithdraw()}
+                    loading={withdrawAlternativeMutation.isPending}
+                  />
+                </View>
+              ) : schedule.canProposeAlternativeDate ? (
+                <View style={styles.alternativeForm}>
+                  <TextInput
+                    value={alternativeDate}
+                    onChangeText={(value) => {
+                      setAlternativeDate(value);
+                      setAlternativeSlot("");
+                    }}
+                    placeholder="YYYY-MM-DD"
+                    maxLength={10}
+                    style={styles.alternativeInput}
+                    accessibilityLabel="Alternative date"
+                  />
+                  <View style={styles.slotWrap}>
+                    {alternativeSlots.map((slot) => (
+                      <TouchableOpacity
+                        key={slot}
+                        onPress={() => setAlternativeSlot(slot)}
+                        style={[styles.slotChip, alternativeSlot === slot && styles.slotChipSelected]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[styles.slotChipText, alternativeSlot === slot && styles.slotChipTextSelected]}>{slot}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TextInput
+                    value={alternativeNote}
+                    onChangeText={setAlternativeNote}
+                    placeholder="Optional note to parish staff"
+                    maxLength={1000}
+                    multiline
+                    style={[styles.alternativeInput, styles.alternativeNote]}
+                    accessibilityLabel="Alternative date note"
+                  />
+                  <Button
+                    title="Request Priest-Led Alternative"
+                    size="md"
+                    onPress={() => void handleAlternativeSubmit()}
+                    disabled={!alternativeDate || !alternativeSlot}
+                    loading={proposeAlternativeMutation.isPending}
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           <Divider />
 
           {/* Record Section 1: Appointment Details */}
           <RecordSection
             title="Appointment Details"
             fields={[
-              { label: "Service / Sacrament", value: eventLabel },
+              { label: "Service / Sacrament", value: getScheduleDisplayTitle(schedule) },
               { label: "Requested Date", value: dateFormatted },
               { label: "Time Slot", value: timeSlot },
               ...(schedule.remarks
@@ -283,7 +400,9 @@ export const ScheduleDetailScreen: React.FC = () => {
                 : []),
               {
                 label: "Assigned Celebrant",
-                value: schedule.assignedPriest?.fullName || "To be assigned by parish",
+                value: schedule.layMinisterAssigned
+                  ? "Lay Minister"
+                  : (schedule.assignedPriest?.fullName || "To be assigned by parish"),
               },
             ]}
           />
@@ -447,5 +566,59 @@ const styles = StyleSheet.create({
   },
   proposalBtn: {
     flex: 1,
+  },
+  layMinisterBox: {
+    backgroundColor: "#FFFBEB",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  layMinisterTitle: {
+    ...fontStyles.captionBold,
+    color: "#92400E",
+    fontSize: 15,
+  },
+  alternativeForm: {
+    gap: spacing.sm,
+  },
+  alternativeInput: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    color: colors.textPrimary,
+    ...fontStyles.bodySmall,
+  },
+  alternativeNote: {
+    minHeight: 72,
+    textAlignVertical: "top",
+  },
+  slotWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  slotChip: {
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+  },
+  slotChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  slotChipText: {
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+  },
+  slotChipTextSelected: {
+    color: colors.textInverse,
   },
 });

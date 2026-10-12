@@ -250,6 +250,8 @@ export const RequestTrackingPage: React.FC = () => {
   const [scheduleSearching, setScheduleSearching] = useState(false);
   const [scheduleSearchError, setScheduleSearchError] = useState<string | null>(null);
   const [mobileScheduleView, setMobileScheduleView] = useState<'schedules' | 'details'>('schedules');
+  const [alternativeBusy, setAlternativeBusy] = useState(false);
+  const [alternativeError, setAlternativeError] = useState<string | null>(null);
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true);
@@ -280,6 +282,29 @@ export const RequestTrackingPage: React.FC = () => {
     if (found) return found;
     return searchedSchedule || (schedules.length > 0 ? schedules[0] : null);
   }, [schedules, selectedScheduleId, searchedSchedule]);
+
+  const handleWithdrawAlternative = async () => {
+    const proposal = selectedSchedule?.alternativeProposal;
+    if (!selectedSchedule || !proposal) return;
+    setAlternativeBusy(true);
+    setAlternativeError(null);
+    try {
+      await services.scheduler.withdrawAlternativeDate(
+        selectedSchedule.id,
+        proposal.id,
+        proposal.nominationRevision
+      );
+      const refreshed = await services.scheduler.getAppointmentById(selectedSchedule.id);
+      setSchedules((items) => items.map((item) => String(item.id) === String(refreshed.id) ? refreshed : item));
+      if (searchedSchedule && String(searchedSchedule.id) === String(refreshed.id)) {
+        setSearchedSchedule(refreshed);
+      }
+    } catch (err: any) {
+      setAlternativeError(err?.message || 'Unable to withdraw the alternative-date request.');
+    } finally {
+      setAlternativeBusy(false);
+    }
+  };
 
   const handleScheduleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -323,6 +348,8 @@ export const RequestTrackingPage: React.FC = () => {
   const getScheduleMilestones = (schedule: Appointment) => {
     const isPriestAssigned = Boolean(schedule.assignedPriestId || schedule.assignedPriestName);
     const isPriestAccepted = isPriestAssigned && schedule.priestResponseStatus === 'ACCEPTED';
+    const hasServiceLeader = isPriestAssigned || Boolean(schedule.layMinisterAssigned);
+    const serviceLeaderConfirmed = isPriestAccepted || Boolean(schedule.layMinisterAssigned);
     const isConfirmed = schedule.status === 'confirmed';
     const isCompleted = (schedule.status as string) === 'completed';
 
@@ -335,17 +362,21 @@ export const RequestTrackingPage: React.FC = () => {
       },
       {
         key: 'priest-assigned',
-        label: 'Priest Assigned',
-        done: isPriestAssigned,
-        desc: schedule.assignedPriestName
+        label: 'Service Leader Assigned',
+        done: hasServiceLeader,
+        desc: schedule.layMinisterAssigned
+          ? 'A Lay Minister will lead this service.'
+          : schedule.assignedPriestName
           ? `Assigned to Rev. Fr. ${schedule.assignedPriestName}.`
           : 'Parish office is assigning an available priest.',
       },
       {
         key: 'priest-accepted',
-        label: 'Priest Acceptance',
-        done: isPriestAccepted,
-        desc: isPriestAccepted
+        label: 'Assignment Confirmed',
+        done: serviceLeaderConfirmed,
+        desc: schedule.layMinisterAssigned
+          ? 'The Lay Minister assignment is confirmed; no priest acceptance is required.'
+          : isPriestAccepted
           ? 'Assigned priest has accepted the schedule.'
           : isPriestAssigned
           ? 'Awaiting acceptance from assigned priest.'
@@ -1886,10 +1917,14 @@ export const RequestTrackingPage: React.FC = () => {
                       </div>
 
                       <div className="space-y-1 sm:col-span-2">
-                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Assigned Priest</span>
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Service Leader</span>
                         <p className="font-semibold text-text-primary flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
-                          {selectedSchedule.assignedPriestName ? `Rev. Fr. ${selectedSchedule.assignedPriestName}` : 'Pending assignment by parish'}
+                          {selectedSchedule.layMinisterAssigned
+                            ? 'Lay Minister'
+                            : selectedSchedule.assignedPriestName
+                            ? `Rev. Fr. ${selectedSchedule.assignedPriestName}`
+                            : 'Pending assignment by parish'}
                         </p>
                         {selectedSchedule.assignedPriestName && selectedSchedule.priestResponseStatus === 'PENDING' && (
                           <p className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-100 inline-block mt-1">
@@ -1903,6 +1938,40 @@ export const RequestTrackingPage: React.FC = () => {
                         <p className="font-mono text-xs font-bold text-text-primary">{selectedSchedule.confirmationNumber}</p>
                       </div>
                     </div>
+
+                    {selectedSchedule.layMinisterAssigned && (
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                        <p className="font-bold">Lay Minister fallback</p>
+                        <p className="mt-1">
+                          No priest was available for the current appointment. The original appointment remains scheduled and will be led by a Lay Minister.
+                        </p>
+                        {selectedSchedule.alternativeProposal && ['SUBMITTED', 'PRIEST_PENDING'].includes(selectedSchedule.alternativeProposal.status) ? (
+                          <div className="mt-3 space-y-2">
+                            <p>
+                              Alternative date status: <strong>{selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING' ? 'Awaiting nominated priest' : 'Awaiting parish review'}</strong>
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={alternativeBusy}
+                              onClick={() => void handleWithdrawAlternative()}
+                            >
+                              {alternativeBusy ? 'Withdrawing…' : 'Withdraw alternative request'}
+                            </Button>
+                          </div>
+                        ) : selectedSchedule.canProposeAlternativeDate ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-3"
+                            onClick={() => navigate(`/dashboard/schedule/${selectedSchedule.id}`)}
+                          >
+                            Propose another date
+                          </Button>
+                        ) : null}
+                        {alternativeError && <p className="mt-2 text-red-700" role="alert">{alternativeError}</p>}
+                      </div>
+                    )}
 
                     <div className="pt-4 mt-4 border-t border-border flex justify-end">
                       <Button

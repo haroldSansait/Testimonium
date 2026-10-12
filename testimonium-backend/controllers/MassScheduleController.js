@@ -39,9 +39,20 @@ export const upsert = async (req, res, next) => {
     await validateParishAccess(req, parishId, "Mass Schedule Template Upsert");
 
     const actorId = req.user.id;
-    const { id, dayType, timeSlot, label, assignedPriestId } = req.body;
+    const { id, dayType, timeSlot, label, assignedPriestId, layMinisterAssigned, expectedUpdatedAt } = req.body;
 
-    const data = await service.upsertTemplate(parishId, { id, dayType, timeSlot, label, assignedPriestId, actorId });
+    const data = await service.upsertTemplate(parishId, {
+      id,
+      dayType,
+      timeSlot,
+      label,
+      assignedPriestId,
+      layMinisterAssigned,
+      expectedUpdatedAt,
+      assignedPriestIdPresent: Object.prototype.hasOwnProperty.call(req.body, "assignedPriestId"),
+      layMinisterAssignedPresent: Object.prototype.hasOwnProperty.call(req.body, "layMinisterAssigned"),
+      actorId,
+    });
     return res.status(200).json({ success: true, data });
   } catch (err) {
     return next(err);

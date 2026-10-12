@@ -118,6 +118,20 @@ export interface ScheduleItem {
   conflictFlag?: boolean;
   remarks?: string | null;
   displayTitle?: string | null;
+  effectiveDisplayTitle?: string | null;
+  layMinisterAssigned?: boolean;
+  canProposeAlternativeDate?: boolean;
+  alternativeProposal?: {
+    id: number;
+    status: string;
+    proposedDate: string;
+    proposedStartDatetime: string;
+    proposedEndDatetime: string;
+    note?: string | null;
+    nominatedPriestId?: number | null;
+    nominationRevision: number;
+    nominatedPriest?: { id: number; fullName: string } | null;
+  } | null;
   processedById?: number | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;

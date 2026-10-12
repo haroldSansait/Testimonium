@@ -69,6 +69,11 @@ export const assignPriestSchema = z.object({
   expectedVersion,
 });
 
+export const assignLayMinisterSchema = z.object({
+  expectedVersion,
+  reason: z.string().trim().min(5, "Assignment reason must contain at least 5 characters").max(1000),
+});
+
 export const priestAssignmentResponseSchema = z.object({
   status: z.enum(["ACCEPTED", "REJECTED"]),
   reason: z.string().trim().max(1000).optional().nullable(),
@@ -80,4 +85,28 @@ export const emergencyRescheduleSchema = z.object({
   timeSlot: z.string().trim().min(1, "Time slot is required").max(20),
   reason: z.string().trim().min(5, "Emergency reason must contain at least 5 characters").max(1000),
   expectedVersion,
+});
+
+export const submitAlternativeProposalSchema = z.object({
+  proposedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD."),
+  timeSlot: z.string().trim().min(1).max(20),
+  note: z.string().trim().max(1000).optional().nullable(),
+});
+
+export const alternativeProposalRevisionSchema = z.object({
+  expectedRevision: z.coerce.number().int().nonnegative(),
+});
+
+export const declineAlternativeProposalSchema = alternativeProposalRevisionSchema.extend({
+  reason: z.string().trim().min(5).max(1000),
+});
+
+export const nominateAlternativeProposalSchema = alternativeProposalRevisionSchema.extend({
+  priestId: strictPositiveIntSchema,
+  expectedVersion,
+});
+
+export const respondAlternativeProposalSchema = alternativeProposalRevisionSchema.extend({
+  status: z.enum(["ACCEPTED", "REJECTED"]),
+  reason: z.string().trim().max(1000).optional().nullable(),
 });

@@ -5,6 +5,7 @@
  * Models all legal status transitions, terminal-state immutability,
  * and the Confirmed Priest Invariant.
  */
+import { isLayMinisterEligibleEvent } from "../shared/LayMinisterPresentation.js";
 
 export const ScheduleStatus = {
   PENDING: "PENDING",
@@ -103,6 +104,13 @@ export function assertScheduleMutable(schedule) {
  * and has explicitly accepted the assignment.
  */
 export function requirePriestAccepted(schedule) {
+  if (
+    schedule?.layMinisterAssigned === true
+    && !schedule.assignedPriestId
+    && isLayMinisterEligibleEvent(schedule.eventType)
+  ) {
+    return;
+  }
   if (!schedule.assignedPriestId) {
     const err = new Error("A priest must be assigned to this schedule before it can be confirmed.");
     err.statusCode = 422;

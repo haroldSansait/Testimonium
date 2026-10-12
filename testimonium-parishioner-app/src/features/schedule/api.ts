@@ -321,3 +321,66 @@ export const useRespondReschedule = () => {
   });
 };
 
+export interface ProposeAlternativeDateInput {
+  scheduleId: number | string;
+  proposedDate: string;
+  timeSlot: string;
+  note?: string | null;
+}
+
+export const proposeAlternativeDate = async (input: ProposeAlternativeDateInput) =>
+  apiClient.request<NonNullable<ScheduleItem["alternativeProposal"]>>({
+    path: `/schedule-requests/${input.scheduleId}/alternative-proposals`,
+    method: "POST",
+    body: {
+      proposedDate: input.proposedDate,
+      timeSlot: input.timeSlot,
+      note: input.note?.trim() || null,
+    },
+    auth: true,
+  });
+
+export const useProposeAlternativeDate = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: proposeAlternativeDate,
+    onSuccess: (_proposal, input) => {
+      if (user?.uid) {
+        queryClient.invalidateQueries({ queryKey: scheduleKeys.detail(user.uid, input.scheduleId) });
+        queryClient.invalidateQueries({ queryKey: scheduleKeys.lists(user.uid) });
+      }
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+};
+
+export interface WithdrawAlternativeDateInput {
+  scheduleId: number | string;
+  proposalId: number;
+  expectedRevision: number;
+}
+
+export const withdrawAlternativeDate = async (input: WithdrawAlternativeDateInput) =>
+  apiClient.request<NonNullable<ScheduleItem["alternativeProposal"]>>({
+    path: `/schedule-requests/${input.scheduleId}/alternative-proposals/${input.proposalId}/withdraw`,
+    method: "POST",
+    body: { expectedRevision: input.expectedRevision },
+    auth: true,
+  });
+
+export const useWithdrawAlternativeDate = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: withdrawAlternativeDate,
+    onSuccess: (_proposal, input) => {
+      if (user?.uid) {
+        queryClient.invalidateQueries({ queryKey: scheduleKeys.detail(user.uid, input.scheduleId) });
+        queryClient.invalidateQueries({ queryKey: scheduleKeys.lists(user.uid) });
+      }
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+};
+

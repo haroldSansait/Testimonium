@@ -9,6 +9,7 @@ import type { MassScheduleTemplate } from '@/providers/interfaces';
 import { Plus, Trash2, Edit2, RotateCcw, Check, X, Clock, AlertTriangle, User } from 'lucide-react';
 import { Tooltip } from '@/components/ui/Tooltip';
 
+const LAY_MINISTER_VALUE = '__LAY_MINISTER__';
 
 export function MassSchedulePage() {
   const { applicationUser } = useAuth();
@@ -78,13 +79,20 @@ export function MassSchedulePage() {
     setDayType(t.dayType);
     setTimeSlot(t.timeSlot);
     setLabel(t.label);
-    setAssignedPriestId(t.assignedPriestId || '');
+    setAssignedPriestId(t.layMinisterAssigned ? LAY_MINISTER_VALUE : (t.assignedPriestId || ''));
     setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parishId) return;
+    if (assignedPriestId === LAY_MINISTER_VALUE) {
+      const confirmed = confirm(
+        'This changes the entire repeating Mass slot to Liturgy of the Word led by a Lay Minister. '
+        + 'The backend will verify every active priest across a bounded 14-day recurrence window. Continue?'
+      );
+      if (!confirmed) return;
+    }
     setSubmitting(true);
     try {
       await ParishManagementService.upsertMassSchedule(parishId, {
@@ -92,7 +100,11 @@ export function MassSchedulePage() {
         dayType,
         timeSlot,
         label,
-        assignedPriestId: assignedPriestId || undefined,
+        assignedPriestId: assignedPriestId && assignedPriestId !== LAY_MINISTER_VALUE
+          ? assignedPriestId
+          : null,
+        layMinisterAssigned: assignedPriestId === LAY_MINISTER_VALUE,
+        expectedUpdatedAt: editingTemplate?.updatedAt,
       });
       setSuccessMessage(editingTemplate ? 'Mass slot updated successfully.' : 'New Mass slot added successfully.');
       setShowModal(false);
@@ -218,8 +230,18 @@ export function MassSchedulePage() {
                         </div>
                         <div>
                           <p className="text-sm font-bold text-gray-800">{item.timeSlot}</p>
-                          <p className="text-[10px] text-gray-400 font-semibold">{item.label}</p>
-                          {item.assignedPriest && (
+                          <p className="text-[10px] text-gray-400 font-semibold">
+                            {item.layMinisterAssigned ? (item.displayLabel || 'Liturgy of the Word') : item.label}
+                          </p>
+                          {item.layMinisterAssigned && (
+                            <>
+                              <span className="flex items-center gap-1 text-[9px] text-amber-800 font-bold bg-amber-50 px-1.5 py-0.5 rounded mt-1 w-max">
+                                Lay Minister
+                              </span>
+                              <p className="text-[9px] text-gray-400 mt-1">Configured label: {item.label}</p>
+                            </>
+                          )}
+                          {!item.layMinisterAssigned && item.assignedPriest && (
                             <span className="flex items-center gap-1 text-[9px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded mt-1 w-max">
                               <User className="w-2.5 h-2.5" />
                               Priest: {item.assignedPriest.fullName} {item.assignedPriest.isAssistant ? '(Assistant)' : '(Primary)'}
@@ -327,8 +349,18 @@ export function MassSchedulePage() {
                       value: String(p.id),
                       label: `${p.name} ${p.isAssistant ? '(Assistant)' : '(Primary)'}`,
                     })),
+                    {
+                      value: LAY_MINISTER_VALUE,
+                      label: 'Lay Minister (last resort)',
+                      secondary: 'Liturgy of the Word',
+                    },
                   ]}
                 />
+                {assignedPriestId === LAY_MINISTER_VALUE && (
+                  <p className="text-[10px] leading-relaxed text-amber-700">
+                    This designation applies to the repeating slot, not one calendar occurrence. The original configured label, day, time, and recurrence remain unchanged.
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2.5 pt-4 border-t border-gray-100 bg-gray-50 -mx-6 -mb-6 px-6 py-4">

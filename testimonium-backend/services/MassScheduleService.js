@@ -9,8 +9,17 @@ import {
   parseManilaDateTime,
 } from "./ConflictHelper.js";
 import { lockParishSchedulingConfiguration, lockPriestsForScheduling, normalizePriestId } from "./SchedulingAvailability.js";
+import {
+  classifyPriestAvailability,
+  PriestAvailabilityClassification,
+} from "./ScheduleAvailabilityDomainService.js";
+import {
+  decorateMassTemplateForDisplay,
+  resolveMassDisplayLabel,
+} from "../shared/LayMinisterPresentation.js";
 
 const MASS_CONFLICT_DURATION_MS = 60 * 60 * 1000;
+const LAY_MINISTER_RECURRING_WINDOW_DAYS = 14;
 
 function addCandidateDates(set, startInput, endInput = startInput) {
   const start = new Date(startInput);
@@ -114,6 +123,65 @@ async function validateRecurringMassConflicts(
   }
 }
 
+async function validateRecurringLayMinisterEligibility(
+  tx,
+  priests,
+  dayType,
+  timeSlot,
+  excludeMassTemplateId,
+  actorId
+) {
+  if (!priests.length) return;
+  const todayStr = getManilaDateString(new Date());
+  let occurrenceCount = 0;
+  for (let offset = 0; offset < LAY_MINISTER_RECURRING_WINDOW_DAYS; offset += 1) {
+    const date = new Date(`${todayStr}T00:00:00.000+08:00`);
+    date.setUTCDate(date.getUTCDate() + offset);
+    const dateStr = getManilaDateString(date);
+    if (!massTemplateAppliesOnDate(dayType, dateStr)) continue;
+    occurrenceCount += 1;
+    const start = parseManilaDateTime(dateStr, timeSlot);
+    if (!start) {
+      const error = new Error("Invalid Mass time slot.");
+      error.statusCode = 400;
+      error.code = "INVALID_MASS_TIME_SLOT";
+      throw error;
+    }
+    const end = new Date(start.getTime() + MASS_CONFLICT_DURATION_MS);
+    for (const priest of priests) {
+      const classification = await classifyPriestAvailability({
+        priestId: priest.id,
+        date: dateStr,
+        startDatetime: start,
+        endDatetime: end,
+        excludeMassTemplateId,
+        timeSlot,
+        actorId,
+        actorRole: "SECRETARY",
+        tx,
+      });
+      if (classification === PriestAvailabilityClassification.AVAILABLE) {
+        const error = new Error("A parish priest is available for at least one occurrence in the 14-day verification window.");
+        error.statusCode = 409;
+        error.code = "LAY_MINISTER_PRIEST_AVAILABLE";
+        throw error;
+      }
+      if (classification === PriestAvailabilityClassification.UNKNOWN) {
+        const error = new Error("Priest availability could not be verified for every occurrence in the 14-day verification window.");
+        error.statusCode = 409;
+        error.code = "LAY_MINISTER_AVAILABILITY_UNVERIFIED";
+        throw error;
+      }
+    }
+  }
+  if (occurrenceCount === 0) {
+    const error = new Error("No applicable recurring Mass occurrence could be verified in the bounded window.");
+    error.statusCode = 422;
+    error.code = "MASS_RECURRENCE_UNVERIFIED";
+    throw error;
+  }
+}
+
 
 export class MassScheduleService {
   /**
@@ -131,7 +199,7 @@ export class MassScheduleService {
       await this.seedDefaults(parsedId);
     }
 
-    return prisma.massScheduleTemplate.findMany({
+    const templates = await prisma.massScheduleTemplate.findMany({
       where: { parishId: parsedId, isActive: true },
       include: {
         assignedPriest: { select: { id: true, fullName: true, isAssistant: true } }
@@ -141,14 +209,25 @@ export class MassScheduleService {
         { timeSlot: "asc" }
       ]
     });
+    return templates.map(decorateMassTemplateForDisplay);
   }
 
   /**
    * Creates or updates a Mass schedule template.
    */
-  async upsertTemplate(parishId, { id, dayType, timeSlot, label, assignedPriestId, actorId }) {
+  async upsertTemplate(parishId, {
+    id,
+    dayType,
+    timeSlot,
+    label,
+    assignedPriestId,
+    layMinisterAssigned,
+    assignedPriestIdPresent = false,
+    layMinisterAssignedPresent = false,
+    expectedUpdatedAt = null,
+    actorId,
+  }) {
     const parsedParishId = parseInt(parishId, 10);
-    const parsedPriestId = assignedPriestId ? normalizePriestId(assignedPriestId) : null;
     const parsedId = id ? parseInt(id, 10) : null;
 
     return prisma.$transaction(
@@ -163,7 +242,73 @@ export class MassScheduleService {
           throw error;
         }
 
-        const priestsToLock = [original?.assignedPriestId, parsedPriestId].filter((pId) => pId !== null && pId !== undefined);
+        let parsedPriestId = original?.assignedPriestId ?? null;
+        let targetLayMinister = original?.layMinisterAssigned ?? false;
+        if (!original) {
+          parsedPriestId = assignedPriestIdPresent && assignedPriestId
+            ? normalizePriestId(assignedPriestId)
+            : null;
+          targetLayMinister = layMinisterAssignedPresent && layMinisterAssigned === true;
+        } else {
+          if (layMinisterAssignedPresent && layMinisterAssigned === true) {
+            if (assignedPriestIdPresent && assignedPriestId) {
+              const error = new Error("Lay Minister and priest assignments cannot be selected together.");
+              error.statusCode = 400;
+              error.code = "INVALID_ASSIGNMENT";
+              throw error;
+            }
+            targetLayMinister = true;
+            parsedPriestId = null;
+          } else if (assignedPriestIdPresent) {
+            parsedPriestId = assignedPriestId ? normalizePriestId(assignedPriestId) : null;
+            targetLayMinister = false;
+          } else if (layMinisterAssignedPresent && layMinisterAssigned === false) {
+            targetLayMinister = false;
+          }
+        }
+        if (targetLayMinister && parsedPriestId) {
+          const error = new Error("Lay Minister and priest assignments cannot be selected together.");
+          error.statusCode = 400;
+          error.code = "INVALID_ASSIGNMENT";
+          throw error;
+        }
+
+        const assignmentChanged = Boolean(original) && (
+          original.assignedPriestId !== parsedPriestId
+          || Boolean(original.layMinisterAssigned) !== targetLayMinister
+        );
+        if (assignmentChanged && !expectedUpdatedAt) {
+          const error = new Error("Refresh the Mass schedule before changing its assignment.");
+          error.statusCode = 409;
+          error.code = "MASS_ASSIGNMENT_CONCURRENCY_CONFLICT";
+          throw error;
+        }
+        if (assignmentChanged && expectedUpdatedAt) {
+          const expected = new Date(expectedUpdatedAt);
+          if (Number.isNaN(expected.getTime()) || expected.getTime() !== original.updatedAt.getTime()) {
+            const error = new Error("Mass schedule assignment changed in another editor. Please refresh and retry.");
+            error.statusCode = 409;
+            error.code = "MASS_ASSIGNMENT_CONCURRENCY_CONFLICT";
+            throw error;
+          }
+        }
+
+        const eligiblePriests = targetLayMinister
+          ? await tx.user.findMany({
+              where: {
+                parishId: parsedParishId,
+                role: { roleName: "PRIEST" },
+                status: "ACTIVE",
+              },
+              select: { id: true },
+              orderBy: { id: "asc" },
+            })
+          : [];
+        const priestsToLock = [
+          original?.assignedPriestId,
+          parsedPriestId,
+          ...eligiblePriests.map((priest) => priest.id),
+        ].filter((pId) => pId !== null && pId !== undefined);
         await lockPriestsForScheduling(tx, priestsToLock);
         await validateAssignedPriest(tx, parsedPriestId, parsedParishId);
         await validateRecurringMassConflicts(
@@ -174,6 +319,16 @@ export class MassScheduleService {
           parsedId,
           actorId
         );
+        if (targetLayMinister) {
+          await validateRecurringLayMinisterEligibility(
+            tx,
+            eligiblePriests,
+            dayType,
+            timeSlot,
+            parsedId,
+            actorId
+          );
+        }
 
         const priestChanged = original?.assignedPriestId !== parsedPriestId;
         const data = {
@@ -181,9 +336,10 @@ export class MassScheduleService {
           timeSlot,
           label,
           assignedPriestId: parsedPriestId,
-          ...(priestChanged
+          layMinisterAssigned: targetLayMinister,
+          ...(priestChanged || Boolean(original?.layMinisterAssigned) !== targetLayMinister
             ? {
-                priestResponseStatus: parsedPriestId ? "PENDING" : null,
+                priestResponseStatus: parsedPriestId && !targetLayMinister ? "PENDING" : null,
                 priestResponseReason: null,
               }
             : {}),
@@ -201,7 +357,7 @@ export class MassScheduleService {
               data: {
                 parishId: parsedParishId,
                 ...data,
-                priestResponseStatus: parsedPriestId ? "PENDING" : null,
+                priestResponseStatus: parsedPriestId && !targetLayMinister ? "PENDING" : null,
                 isActive: true,
               },
               include: {
@@ -223,17 +379,20 @@ export class MassScheduleService {
               timeSlot: original.timeSlot,
               label: original.label,
               assignedPriestId: original.assignedPriestId,
+              layMinisterAssigned: original.layMinisterAssigned,
             } : undefined,
             newValues: {
               dayType,
               timeSlot,
               label,
               assignedPriestId: parsedPriestId,
+              layMinisterAssigned: targetLayMinister,
+              recurringAvailabilityWindowDays: targetLayMinister ? LAY_MINISTER_RECURRING_WINDOW_DAYS : undefined,
             },
           }
         );
 
-        if (parsedPriestId && (!original || priestChanged)) {
+        if (parsedPriestId && !targetLayMinister && (!original || priestChanged)) {
           await NotificationDispatcher.notifyPriestAssigned({
             parishionerId: null,
             parishId: parsedParishId,
@@ -244,7 +403,7 @@ export class MassScheduleService {
           }, tx);
         }
 
-        return template;
+        return decorateMassTemplateForDisplay(template);
       },
       {
         isolationLevel: "Serializable",

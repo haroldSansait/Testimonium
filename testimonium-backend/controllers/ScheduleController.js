@@ -422,6 +422,27 @@ export const assignPriest = async (req, res, next) => {
   }
 };
 
+export const assignLayMinister = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { expectedVersion, reason } = req.body;
+    const data = await scheduleService.assignLayMinister(id, {
+      expectedVersion,
+      reason,
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      actorParishId: req.user.parish?.id || req.user.parishId,
+    });
+    return res.status(200).json({
+      success: true,
+      message: "Lay Minister assigned successfully.",
+      data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const getPriestAvailability = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);

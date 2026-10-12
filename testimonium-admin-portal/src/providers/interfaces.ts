@@ -151,6 +151,7 @@ export interface PriestAvailabilityItem {
   priestId: number | string;
   available: boolean | null;
   reasonCode?: string;
+  unavailabilityConfirmed?: boolean;
 }
 
 export interface ScheduleProvider {
@@ -160,6 +161,10 @@ export interface ScheduleProvider {
   proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<ScheduleRequest>;
   assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest>;
+  assignLayMinister(id: string, reason: string, expectedVersion: number): Promise<ScheduleRequest>;
+  nominateAlternativeProposal(id: string, proposalId: number, priestId: string, expectedRevision: number, expectedVersion: number): Promise<NonNullable<ScheduleRequest['alternativeProposal']>>;
+  declineAlternativeProposal(id: string, proposalId: number, reason: string, expectedRevision: number): Promise<NonNullable<ScheduleRequest['alternativeProposal']>>;
+  revokeAlternativeProposalNomination(id: string, proposalId: number, expectedRevision: number): Promise<NonNullable<ScheduleRequest['alternativeProposal']>>;
   respondPriestAssignment(id: string, status: 'ACCEPTED' | 'REJECTED', reason: string | undefined, expectedVersion: number): Promise<ScheduleRequest>;
   emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest>;
   getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]>;
@@ -215,7 +220,10 @@ export interface MassScheduleTemplate {
   dayType: string;
   timeSlot: string;
   label: string;
+  displayLabel?: string;
   isActive: boolean;
+  layMinisterAssigned?: boolean;
+  updatedAt?: string;
   assignedPriestId?: string | null;
   assignedPriest?: {
     id: string;
@@ -223,6 +231,13 @@ export interface MassScheduleTemplate {
     isAssistant?: boolean;
   } | null;
 }
+
+export type MassScheduleUpsertInput = Partial<MassScheduleTemplate> & {
+  dayType: string;
+  timeSlot: string;
+  label: string;
+  expectedUpdatedAt?: string;
+};
 
 export interface ParishProvider {
   getParishes(filters: ParishFilters): Promise<Parish[]>;
@@ -233,7 +248,7 @@ export interface ParishProvider {
   deletePaymentQr(id: string): Promise<Parish>;
   archiveParish(id: string): Promise<void>;
   getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
-  upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate>;
+  upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate>;
   deleteMassSchedule(id: string): Promise<void>;
   resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
   getMapConfig(): Promise<Parish[]>;

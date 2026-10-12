@@ -757,7 +757,7 @@ test("Phase 4 Suite — Mutation Boundary Source Contracts", async (t) => {
     const source = readSource("services/ScheduleService.js");
     const versionedWrites = (source.match(/await updateScheduleAtVersion\(/g) || []).length;
     const historyAppends = (source.match(/await appendScheduleHistory\(/g) || []).length;
-    assert.equal(versionedWrites, 7);
+    assert.equal(versionedWrites, 8);
     assert.equal(historyAppends, versionedWrites);
     assert.match(source, /where: \{ id, version: expectedVersion \}/);
     assert.match(source, /version: \{ increment: 1 \}/);
@@ -771,12 +771,14 @@ test("Phase 4 Suite — Mutation Boundary Source Contracts", async (t) => {
       "proposeRescheduleSchema",
       "respondRescheduleSchema",
       "assignPriestSchema",
+      "assignLayMinisterSchema",
       "priestAssignmentResponseSchema",
       "emergencyRescheduleSchema",
+      "nominateAlternativeProposalSchema",
     ]) {
       assert.match(routes, new RegExp("validateBody\\(" + schema + "\\)"));
     }
-    assert.equal((schemas.match(/\bexpectedVersion,/g) || []).length, 6);
+    assert.equal((schemas.match(/\bexpectedVersion,/g) || []).length, 8);
     assert.doesNotMatch(schemas, /targetEndDatetime/);
   });
 

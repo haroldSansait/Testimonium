@@ -178,6 +178,35 @@ export class DemoSchedulerProvider implements ISchedulerProvider {
     return match;
   }
 
+  async proposeAlternativeDate(id: string, proposedDate: string, timeSlot: string, note?: string) {
+    const proposal = {
+      id: Date.now(),
+      status: 'SUBMITTED',
+      proposedDate,
+      proposedStartDatetime: `${proposedDate}T${timeSlot}`,
+      note: note || null,
+      nominationRevision: 0,
+    };
+    this.appointments = this.appointments.map((item) =>
+      item.id === id ? { ...item, alternativeProposal: proposal } : item
+    );
+    return proposal;
+  }
+
+  async withdrawAlternativeDate(id: string, proposalId: number, expectedRevision: number) {
+    const proposal = {
+      id: proposalId,
+      status: 'WITHDRAWN',
+      proposedDate: '',
+      proposedStartDatetime: '',
+      nominationRevision: expectedRevision + 1,
+    };
+    this.appointments = this.appointments.map((item) =>
+      item.id === id ? { ...item, alternativeProposal: proposal } : item
+    );
+    return proposal;
+  }
+
   async getAppointmentById(id: string): Promise<Appointment> {
     const match = this.appointments.find(a => a.id === id);
     if (!match) throw new Error(`Appointment ${id} not found`);

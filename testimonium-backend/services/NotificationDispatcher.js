@@ -788,6 +788,101 @@ export class NotificationDispatcher {
     }], client);
   }
 
+  static async notifyLayMinisterAssigned(
+    { parishionerId, scheduleId, originalDisplayTitle, effectiveDisplayTitle, requestedDate, timeSlot },
+    tx = null
+  ) {
+    if (!parishionerId) return;
+    const client = tx || prisma;
+    const when = [requestedDate, timeSlot].filter(Boolean).join(" at ");
+    await NotificationDispatcher._persist([{
+      userId: parishionerId,
+      title: "Lay Minister Assigned",
+      message: `No priest is available for your "${originalDisplayTitle}" appointment${when ? ` on ${when}` : ""}. It will proceed as "${effectiveDisplayTitle}" led by a Lay Minister. You may request another date when a priest is available.`,
+      type: "IN_APP",
+      referenceType: "SCHEDULE_REQUEST",
+      referenceId: scheduleId,
+    }], client);
+  }
+
+  static async notifyAlternativeProposal(
+    {
+      event,
+      parishionerId,
+      parishId,
+      scheduleId,
+      priestId = null,
+      displayTitle,
+      date = null,
+      timeSlot = null,
+      reason = null,
+    },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const payloads = [];
+    const when = [date, timeSlot].filter(Boolean).join(" at ");
+    const adminIds = parishId
+      ? await RecipientResolver.getAdminRecipients(parishId, tx)
+      : [];
+
+    const addAdmins = (title, message) => {
+      for (const userId of adminIds) {
+        payloads.push({
+          userId,
+          title,
+          message,
+          type: "IN_APP",
+          referenceType: "SCHEDULE_REQUEST",
+          referenceId: scheduleId,
+        });
+      }
+    };
+    const addParishioner = (title, message) => {
+      if (!parishionerId) return;
+      payloads.push({
+        userId: parishionerId,
+        title,
+        message,
+        type: "IN_APP",
+        referenceType: "SCHEDULE_REQUEST",
+        referenceId: scheduleId,
+      });
+    };
+
+    if (event === "SUBMITTED") {
+      addAdmins("Alternative Date Requested", `A parishioner requested ${when} for "${displayTitle}".`);
+    } else if (event === "PRIEST_PENDING") {
+      addParishioner("Alternative Date Under Priest Review", `Your request for ${when} was approved by parish staff and is awaiting the nominated priest's response.`);
+      if (priestId) {
+        payloads.push({
+          userId: priestId,
+          title: "Alternative Date Nomination",
+          message: `Please respond to the nomination for "${displayTitle}" on ${when}.`,
+          type: "IN_APP",
+          referenceType: "SCHEDULE_REQUEST",
+          referenceId: scheduleId,
+        });
+      }
+    } else if (event === "DECLINED") {
+      addParishioner("Alternative Date Declined", `Your alternative-date request was declined.${reason ? ` Reason: ${reason}` : ""}`);
+    } else if (event === "WITHDRAWN") {
+      addAdmins("Alternative Date Withdrawn", `The parishioner withdrew the alternative-date request for "${displayTitle}".`);
+    } else if (event === "PRIEST_REJECTED") {
+      addParishioner("Priest Nomination Declined", "The nominated priest could not accept the alternative date. Parish staff may nominate another priest.");
+      addAdmins("Alternative Priest Nomination Declined", `The nominated priest declined "${displayTitle}".${reason ? ` Reason: ${reason}` : ""}`);
+    } else if (event === "NOMINATION_REVOKED") {
+      addParishioner("Priest Nomination Reopened", "Parish staff reopened your alternative-date request and may nominate another priest.");
+    } else if (event === "APPLIED") {
+      addParishioner("Alternative Date Confirmed", `Your priest-led "${displayTitle}" appointment is confirmed for ${when}.`);
+      addAdmins("Alternative Date Applied", `The nominated priest accepted "${displayTitle}" for ${when}.`);
+    } else if (event === "SUPERSEDED") {
+      addParishioner("Alternative Date Request Closed", "Your alternative-date request is no longer valid because the original appointment changed.");
+    }
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------

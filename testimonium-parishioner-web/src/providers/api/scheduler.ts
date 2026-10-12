@@ -69,7 +69,7 @@ const mapAppointment = (s: any): Appointment => {
   }
 
   // Extract display title, checking displayTitle first, then fallback to remarks, then eventType
-  let serviceName = resolveDisplayTitle(s.eventType, s.displayTitle);
+  let serviceName = s.effectiveDisplayTitle || resolveDisplayTitle(s.eventType, s.displayTitle);
   if (!s.displayTitle && s.remarks) {
     const match = s.remarks.match(/Service:\s*([^.]+)/);
     if (match) {
@@ -117,6 +117,7 @@ const mapAppointment = (s: any): Appointment => {
     parishId: String(s.parishId),
     parishName,
     serviceName,
+    rawEventType: s.eventType,
     date: s.requestedDate ? new Date(s.requestedDate).toISOString().split("T")[0] : "",
     timeSlot,
     status,
@@ -133,6 +134,9 @@ const mapAppointment = (s: any): Appointment => {
     priestResponseStatus,
     version: typeof s.version === 'number' ? s.version : undefined,
     rescheduleHistory,
+    layMinisterAssigned: Boolean(s.layMinisterAssigned),
+    canProposeAlternativeDate: Boolean(s.canProposeAlternativeDate),
+    alternativeProposal: s.alternativeProposal || null,
   };
 };
 
@@ -216,6 +220,23 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     const response = await client.post<any>(`/schedule-requests/${id}/respond-reschedule`, payload);
     const item = response?.data !== undefined ? response.data : response;
     return mapAppointment(item);
+  }
+
+  async proposeAlternativeDate(id: string, proposedDate: string, timeSlot: string, note?: string) {
+    const response = await client.post<any>(`/schedule-requests/${id}/alternative-proposals`, {
+      proposedDate,
+      timeSlot,
+      note: note?.trim() || null,
+    });
+    return response?.data !== undefined ? response.data : response;
+  }
+
+  async withdrawAlternativeDate(id: string, proposalId: number, expectedRevision: number) {
+    const response = await client.post<any>(
+      `/schedule-requests/${id}/alternative-proposals/${proposalId}/withdraw`,
+      { expectedRevision }
+    );
+    return response?.data !== undefined ? response.data : response;
   }
 
   async getAppointmentById(id: string): Promise<Appointment> {

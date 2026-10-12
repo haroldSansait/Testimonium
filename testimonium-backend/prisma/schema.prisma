@@ -305,58 +305,61 @@ model ParishCouncilMember {
 }
 
 model User {
-  id                        Int                       @id @default(autoincrement()) @map("user_id")
-  firebaseUid               String?                   @unique @map("firebase_uid") @db.VarChar(128)
-  fullName                  String                    @map("full_name") @db.VarChar(150)
-  email                     String                    @unique @db.VarChar(150)
-  contactNumber             String?                   @map("contact_number") @db.VarChar(20)
-  address                   String?                   @db.Text
-  roleId                    Int                       @map("role_id")
-  parishId                  Int?                      @map("parish_id")
-  isAssistant               Boolean                   @default(false) @map("is_assistant")
-  isVerified                Boolean                   @default(false) @map("is_verified")
-  status                    UserStatus                @default(ACTIVE)
-  color                     String?                   @db.VarChar(50)
-  termsAcceptedAt           DateTime?                 @map("terms_accepted_at")
-  privacyAcceptedAt         DateTime?                 @map("privacy_accepted_at")
-  termsVersion              String?                   @map("terms_version") @db.VarChar(20)
-  privacyVersion            String?                   @map("privacy_version") @db.VarChar(20)
-  lastVerificationResentAt  DateTime?                 @map("last_verification_resent_at")
-  verificationResentCount   Int                       @default(0) @map("verification_resent_count")
-  emailNotificationsEnabled Boolean                   @default(true) @map("email_notifications_enabled")
-  createdAt                 DateTime                  @default(now()) @map("created_at")
-  updatedAt                 DateTime                  @updatedAt @map("updated_at")
-  role                      Role                      @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  parish                    Parish?                   @relation(fields: [parishId], references: [id], onDelete: SetNull)
-  documentRequests          DocumentRequest[]         @relation("DocumentRequestSubmitter")
-  processedDocumentRequests DocumentRequest[]         @relation("DocumentRequestProcessor")
-  schedules                 Schedule[]                @relation("ScheduleRequester")
-  processedSchedules        Schedule[]                @relation("ScheduleProcessor")
-  assignedSchedules         Schedule[]                @relation("SchedulePriestAssignment")
-  requestedSchedules        Schedule[]                @relation("ScheduleRequestedPriest")
-  availabilities            ParishAvailability[]
-  notifications             Notification[]
-  updatedFaqEntries         FaqKnowledgeBase[]        @relation("FaqUpdater")
-  chatbotLogs               ChatbotLog[]
-  activityLogs              ActivityLog[]
-  requestHistory            RequestHistory[]          @relation("RequestHistoryActor")
-  paymentTransactions       PaymentTransaction[]      @relation("PaymentTransactionVerifier")
-  createdParishEvents       ParishEvent[]             @relation("ParishEventCreator")
-  assignedParishEvents      ParishEvent[]             @relation("ParishEventPriest")
-  massTemplates             MassScheduleTemplate[]    @relation("MassTemplatePriest")
-  idempotencyKeys           IdempotencyKey[]
-  createdScheduleDateRules  ParishScheduleDateRule[]  @relation("ScheduleDateRuleCreator")
-  createdDailyReports       DailyReport[]             @relation("DailyReportCreator")
-  archivedDailyReports      DailyReport[]             @relation("DailyReportArchiver")
-  personalSchedules         PriestPersonalSchedule[]  @relation("PriestPersonalSchedules")
-  scheduleHistoryActor      ScheduleHistory[]         @relation("ScheduleHistoryActor")
-  approvedKnowledgeSources  KnowledgeSource[]         @relation("KnowledgeSourceApprovedBy")
-  updatedKnowledgeSources   KnowledgeSource[]         @relation("KnowledgeSourceUpdatedBy")
-  updatedCaloyConfigs       CaloyRuntimeConfig[]      @relation("CaloyRuntimeConfigUpdater")
-  governmentIdVerification  GovernmentIdVerification?
-  updatedLegalPolicies      LegalPolicy[]             @relation("LegalPolicyUpdater")
-  submittedDocumentReturns  DocumentReturn[]          @relation("DocumentReturnSubmitter")
-  correctedDocumentReturns  DocumentReturn[]          @relation("DocumentReturnCorrector")
+  id                            Int                           @id @default(autoincrement()) @map("user_id")
+  firebaseUid                   String?                       @unique @map("firebase_uid") @db.VarChar(128)
+  fullName                      String                        @map("full_name") @db.VarChar(150)
+  email                         String                        @unique @db.VarChar(150)
+  contactNumber                 String?                       @map("contact_number") @db.VarChar(20)
+  address                       String?                       @db.Text
+  roleId                        Int                           @map("role_id")
+  parishId                      Int?                          @map("parish_id")
+  isAssistant                   Boolean                       @default(false) @map("is_assistant")
+  isVerified                    Boolean                       @default(false) @map("is_verified")
+  status                        UserStatus                    @default(ACTIVE)
+  color                         String?                       @db.VarChar(50)
+  termsAcceptedAt               DateTime?                     @map("terms_accepted_at")
+  privacyAcceptedAt             DateTime?                     @map("privacy_accepted_at")
+  termsVersion                  String?                       @map("terms_version") @db.VarChar(20)
+  privacyVersion                String?                       @map("privacy_version") @db.VarChar(20)
+  lastVerificationResentAt      DateTime?                     @map("last_verification_resent_at")
+  verificationResentCount       Int                           @default(0) @map("verification_resent_count")
+  emailNotificationsEnabled     Boolean                       @default(true) @map("email_notifications_enabled")
+  createdAt                     DateTime                      @default(now()) @map("created_at")
+  updatedAt                     DateTime                      @updatedAt @map("updated_at")
+  role                          Role                          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  parish                        Parish?                       @relation(fields: [parishId], references: [id], onDelete: SetNull)
+  documentRequests              DocumentRequest[]             @relation("DocumentRequestSubmitter")
+  processedDocumentRequests     DocumentRequest[]             @relation("DocumentRequestProcessor")
+  schedules                     Schedule[]                    @relation("ScheduleRequester")
+  processedSchedules            Schedule[]                    @relation("ScheduleProcessor")
+  assignedSchedules             Schedule[]                    @relation("SchedulePriestAssignment")
+  requestedSchedules            Schedule[]                    @relation("ScheduleRequestedPriest")
+  availabilities                ParishAvailability[]
+  notifications                 Notification[]
+  updatedFaqEntries             FaqKnowledgeBase[]            @relation("FaqUpdater")
+  chatbotLogs                   ChatbotLog[]
+  activityLogs                  ActivityLog[]
+  requestHistory                RequestHistory[]              @relation("RequestHistoryActor")
+  paymentTransactions           PaymentTransaction[]          @relation("PaymentTransactionVerifier")
+  createdParishEvents           ParishEvent[]                 @relation("ParishEventCreator")
+  assignedParishEvents          ParishEvent[]                 @relation("ParishEventPriest")
+  massTemplates                 MassScheduleTemplate[]        @relation("MassTemplatePriest")
+  idempotencyKeys               IdempotencyKey[]
+  createdScheduleDateRules      ParishScheduleDateRule[]      @relation("ScheduleDateRuleCreator")
+  createdDailyReports           DailyReport[]                 @relation("DailyReportCreator")
+  archivedDailyReports          DailyReport[]                 @relation("DailyReportArchiver")
+  personalSchedules             PriestPersonalSchedule[]      @relation("PriestPersonalSchedules")
+  scheduleHistoryActor          ScheduleHistory[]             @relation("ScheduleHistoryActor")
+  createdAlternativeProposals   ScheduleAlternativeProposal[] @relation("ScheduleAlternativeProposalCreator")
+  nominatedAlternativeProposals ScheduleAlternativeProposal[] @relation("ScheduleAlternativeProposalPriest")
+  resolvedAlternativeProposals  ScheduleAlternativeProposal[] @relation("ScheduleAlternativeProposalResolver")
+  approvedKnowledgeSources      KnowledgeSource[]             @relation("KnowledgeSourceApprovedBy")
+  updatedKnowledgeSources       KnowledgeSource[]             @relation("KnowledgeSourceUpdatedBy")
+  updatedCaloyConfigs           CaloyRuntimeConfig[]          @relation("CaloyRuntimeConfigUpdater")
+  governmentIdVerification      GovernmentIdVerification?
+  updatedLegalPolicies          LegalPolicy[]                 @relation("LegalPolicyUpdater")
+  submittedDocumentReturns      DocumentReturn[]              @relation("DocumentReturnSubmitter")
+  correctedDocumentReturns      DocumentReturn[]              @relation("DocumentReturnCorrector")
 
   @@index([roleId])
   @@index([parishId])
@@ -412,30 +415,30 @@ model DocumentRequest {
 }
 
 model DocumentReturn {
-  id                 Int             @id @default(autoincrement()) @map("return_id")
-  requestId          Int             @map("request_id")
-  cycleNumber        Int             @default(1) @map("cycle_number")
-  reasonCode         String          @map("reason_code") @db.VarChar(50)
-  notes              String?         @db.Text
-  returnedObjectKey  String          @map("returned_object_key") @db.VarChar(255)
-  returnedFileName   String          @map("returned_file_name") @db.VarChar(255)
-  returnedFileType   String?         @map("returned_file_type") @db.VarChar(100)
-  returnedFileSize   Int?            @map("returned_file_size")
-  returnedAt         DateTime        @default(now()) @map("returned_at")
-  returnedByUserId   Int             @map("returned_by_user_id")
-  correctedObjectKey String?         @map("corrected_object_key") @db.VarChar(255)
-  correctedFileName  String?         @map("corrected_file_name") @db.VarChar(255)
-  correctedFileType  String?         @map("corrected_file_type") @db.VarChar(100)
-  correctedFileSize  Int?            @map("corrected_file_size")
-  correctedAt        DateTime?       @map("corrected_at")
-  correctedByStaffId Int?            @map("corrected_by_staff_id")
-  correctedRevision  Int             @default(0) @map("corrected_revision")
-  createdAt          DateTime        @default(now()) @map("created_at")
-  updatedAt          DateTime        @updatedAt @map("updated_at")
+  id                 Int       @id @default(autoincrement()) @map("return_id")
+  requestId          Int       @map("request_id")
+  cycleNumber        Int       @default(1) @map("cycle_number")
+  reasonCode         String    @map("reason_code") @db.VarChar(50)
+  notes              String?   @db.Text
+  returnedObjectKey  String    @map("returned_object_key") @db.VarChar(255)
+  returnedFileName   String    @map("returned_file_name") @db.VarChar(255)
+  returnedFileType   String?   @map("returned_file_type") @db.VarChar(100)
+  returnedFileSize   Int?      @map("returned_file_size")
+  returnedAt         DateTime  @default(now()) @map("returned_at")
+  returnedByUserId   Int       @map("returned_by_user_id")
+  correctedObjectKey String?   @map("corrected_object_key") @db.VarChar(255)
+  correctedFileName  String?   @map("corrected_file_name") @db.VarChar(255)
+  correctedFileType  String?   @map("corrected_file_type") @db.VarChar(100)
+  correctedFileSize  Int?      @map("corrected_file_size")
+  correctedAt        DateTime? @map("corrected_at")
+  correctedByStaffId Int?      @map("corrected_by_staff_id")
+  correctedRevision  Int       @default(0) @map("corrected_revision")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  request            DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  returnedByUser     User            @relation("DocumentReturnSubmitter", fields: [returnedByUserId], references: [id], onDelete: Restrict)
-  correctedByStaff   User?           @relation("DocumentReturnCorrector", fields: [correctedByStaffId], references: [id], onDelete: SetNull)
+  request          DocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  returnedByUser   User            @relation("DocumentReturnSubmitter", fields: [returnedByUserId], references: [id], onDelete: Restrict)
+  correctedByStaff User?           @relation("DocumentReturnCorrector", fields: [correctedByStaffId], references: [id], onDelete: SetNull)
 
   @@unique([requestId, cycleNumber])
   @@index([requestId, returnedAt])
@@ -645,37 +648,39 @@ model RequestHistory {
 }
 
 model Schedule {
-  id                    Int               @id @default(autoincrement()) @map("schedule_id")
-  userId                Int               @map("user_id")
-  parishId              Int               @map("parish_id")
-  assignedPriestId      Int?              @map("assigned_priest_id")
-  requestedPriestId     Int?              @map("requested_priest_id")
-  eventType             ScheduleEventType @map("event_type")
-  requestedDate         DateTime          @map("requested_date") @db.Date
-  startDatetime         DateTime?         @map("start_datetime")
-  endDatetime           DateTime?         @map("end_datetime")
-  location              String?           @db.VarChar(150)
-  proposedDate          DateTime?         @map("proposed_date") @db.Date
-  proposedStartDatetime DateTime?         @map("proposed_start_datetime")
-  proposedEndDatetime   DateTime?         @map("proposed_end_datetime")
-  rescheduleReason      String?           @map("reschedule_reason") @db.Text
-  status                ScheduleStatus    @default(REQUESTED)
-  conflictFlag          Boolean           @default(false) @map("conflict_flag")
-  remarks               String?           @db.Text
-  displayTitle          String?           @map("display_title") @db.VarChar(150)
-  processedById         Int?              @map("processed_by")
-  proposalVersion       Int               @default(0) @map("proposal_version")
-  version               Int               @default(1) @map("version")
-  priestResponseStatus  String?           @map("priest_response_status") @db.VarChar(50)
-  priestResponseReason  String?           @map("priest_response_reason") @db.Text
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  user                  User              @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)
-  parish                Parish            @relation(fields: [parishId], references: [id], onDelete: Restrict)
-  processedBy           User?             @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
-  assignedPriest        User?             @relation("SchedulePriestAssignment", fields: [assignedPriestId], references: [id], onDelete: SetNull)
-  requestedPriest       User?             @relation("ScheduleRequestedPriest", fields: [requestedPriestId], references: [id], onDelete: SetNull)
+  id                    Int                           @id @default(autoincrement()) @map("schedule_id")
+  userId                Int                           @map("user_id")
+  parishId              Int                           @map("parish_id")
+  assignedPriestId      Int?                          @map("assigned_priest_id")
+  requestedPriestId     Int?                          @map("requested_priest_id")
+  eventType             ScheduleEventType             @map("event_type")
+  requestedDate         DateTime                      @map("requested_date") @db.Date
+  startDatetime         DateTime?                     @map("start_datetime")
+  endDatetime           DateTime?                     @map("end_datetime")
+  location              String?                       @db.VarChar(150)
+  proposedDate          DateTime?                     @map("proposed_date") @db.Date
+  proposedStartDatetime DateTime?                     @map("proposed_start_datetime")
+  proposedEndDatetime   DateTime?                     @map("proposed_end_datetime")
+  rescheduleReason      String?                       @map("reschedule_reason") @db.Text
+  status                ScheduleStatus                @default(REQUESTED)
+  conflictFlag          Boolean                       @default(false) @map("conflict_flag")
+  remarks               String?                       @db.Text
+  displayTitle          String?                       @map("display_title") @db.VarChar(150)
+  processedById         Int?                          @map("processed_by")
+  proposalVersion       Int                           @default(0) @map("proposal_version")
+  version               Int                           @default(1) @map("version")
+  priestResponseStatus  String?                       @map("priest_response_status") @db.VarChar(50)
+  priestResponseReason  String?                       @map("priest_response_reason") @db.Text
+  layMinisterAssigned   Boolean                       @default(false) @map("lay_minister_assigned")
+  createdAt             DateTime                      @default(now()) @map("created_at")
+  updatedAt             DateTime                      @updatedAt @map("updated_at")
+  user                  User                          @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)
+  parish                Parish                        @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  processedBy           User?                         @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  assignedPriest        User?                         @relation("SchedulePriestAssignment", fields: [assignedPriestId], references: [id], onDelete: SetNull)
+  requestedPriest       User?                         @relation("ScheduleRequestedPriest", fields: [requestedPriestId], references: [id], onDelete: SetNull)
   history               ScheduleHistory[]
+  alternativeProposals  ScheduleAlternativeProposal[]
 
   @@index([userId])
   @@index([parishId])
@@ -702,6 +707,7 @@ model ScheduleHistory {
   status               ScheduleStatus @map("status")
   assignedPriestId     Int?           @map("assigned_priest_id")
   priestResponseStatus String?        @map("priest_response_status") @db.VarChar(50)
+  layMinisterAssigned  Boolean        @default(false) @map("lay_minister_assigned")
   reason               String         @map("reason") @db.Text
   actorId              Int?           @map("actor_id")
   actorRole            String         @map("actor_role") @db.VarChar(50)
@@ -715,6 +721,40 @@ model ScheduleHistory {
   @@index([createdAt])
   @@index([scheduleId, createdAt])
   @@map("schedule_history")
+}
+
+model ScheduleAlternativeProposal {
+  id                    Int       @id @default(autoincrement()) @map("proposal_id")
+  scheduleId            Int       @map("schedule_id")
+  createdById           Int       @map("created_by_id")
+  proposedDate          DateTime  @map("proposed_date") @db.Date
+  proposedStartDatetime DateTime  @map("proposed_start_datetime")
+  proposedEndDatetime   DateTime  @map("proposed_end_datetime")
+  note                  String?   @db.VarChar(1000)
+  status                String    @default("SUBMITTED") @db.VarChar(30)
+  nominatedPriestId     Int?      @map("nominated_priest_id")
+  priestResponseStatus  String?   @map("priest_response_status") @db.VarChar(30)
+  priestResponseReason  String?   @map("priest_response_reason") @db.VarChar(1000)
+  resolvedById          Int?      @map("resolved_by_id")
+  resolvedAt            DateTime? @map("resolved_at")
+  baseScheduleVersion   Int       @map("base_schedule_version")
+  baseRequestedDate     DateTime  @map("base_requested_date") @db.Date
+  baseStartDatetime     DateTime? @map("base_start_datetime")
+  nominationRevision    Int       @default(0) @map("nomination_revision")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  schedule        Schedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  createdBy       User     @relation("ScheduleAlternativeProposalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  nominatedPriest User?    @relation("ScheduleAlternativeProposalPriest", fields: [nominatedPriestId], references: [id], onDelete: SetNull)
+  resolvedBy      User?    @relation("ScheduleAlternativeProposalResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([scheduleId])
+  @@index([createdById])
+  @@index([nominatedPriestId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@map("schedule_alternative_proposals")
 }
 
 model PriestPersonalSchedule {
@@ -1015,6 +1055,7 @@ model MassScheduleTemplate {
   assignedPriestId     Int?     @map("assigned_priest_id")
   priestResponseStatus String?  @map("priest_response_status") @db.VarChar(50)
   priestResponseReason String?  @map("priest_response_reason") @db.Text
+  layMinisterAssigned  Boolean  @default(false) @map("lay_minister_assigned")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
   parish               Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)

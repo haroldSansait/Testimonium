@@ -1,5 +1,5 @@
 import api from '@/api/api';
-import type { ParishProvider, ParishFilters, MassScheduleTemplate, CreateParishPayload } from '../interfaces';
+import type { ParishProvider, ParishFilters, MassScheduleTemplate, MassScheduleUpsertInput, CreateParishPayload } from '../interfaces';
 import type { Parish } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
 
@@ -51,7 +51,7 @@ export const ApiParishProvider: ParishProvider = {
     return response.data.data;
   },
 
-  async upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate> {
+  async upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate> {
     const response = await api.post<ApiResponseEnvelope<MassScheduleTemplate>>(`/mass-schedules/${parishId}`, data);
     return response.data.data;
   },

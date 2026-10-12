@@ -2,6 +2,7 @@ import type {
   ParishProvider,
   ParishFilters,
   MassScheduleTemplate,
+  MassScheduleUpsertInput,
   CreateParishPayload,
   StaffAssignmentConfig,
 } from '../interfaces';
@@ -325,7 +326,7 @@ export const DemoParishProvider: ParishProvider = {
     return list;
   },
 
-  async upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate> {
+  async upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate> {
     const users = await DemoUserProvider.getUsers({});
     let priestObj = null;
     if (data.assignedPriestId) {

@@ -7,6 +7,7 @@
         "dev": "nodemon server.js",
         "start": "node server.js",
         "test:phase4": "node --test --test-isolation=none scripts/phase4_scheduling_foundation.test.js scripts/phase4_blocker_corrections.test.js",
+        "test:lay-minister": "node --test --test-isolation=none scripts/lay_minister_fallback.test.js",
         "test:phase4:db": "node --test scripts/phase4_db_concurrency.test.js",
         "test:phase3:db": "node --test scripts/phase3_phase4_concurrency.test.js",
         "test:mother-parish": "node --test --test-isolation=none scripts/mother_parish_uniqueness.test.js",

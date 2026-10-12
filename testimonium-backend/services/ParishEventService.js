@@ -3,6 +3,7 @@ import { AuditLogService } from "./AuditLogService.js";
 import { ConflictHelper, parseManilaDateTime } from "./ConflictHelper.js";
 import { lockPriestsForScheduling, normalizePriestId } from "./SchedulingAvailability.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
+import { resolveMassDisplayLabel } from "../shared/LayMinisterPresentation.js";
 
 function combineDateAndTime(date, timeStr) {
   try {
@@ -250,7 +251,9 @@ export class ParishEventService {
         expandedMasses.push({
           id: `mass-t-${t.id}-${formatDateOnly(date)}`,
           parishId: t.parishId,
-          title: t.label || "Holy Mass",
+          title: resolveMassDisplayLabel(t),
+          configuredLabel: t.label,
+          layMinisterAssigned: Boolean(t.layMinisterAssigned),
           eventType: "PRIVATE_MASS", // matches 'Holy Mass' category on frontend mapping
           description: `Regular Mass schedule - ${t.dayType} at ${t.timeSlot}.`,
           location: "Parish Sanctuary",

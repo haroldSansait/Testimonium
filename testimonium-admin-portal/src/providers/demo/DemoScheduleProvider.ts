@@ -126,6 +126,55 @@ export const DemoScheduleProvider: ScheduleProvider = {
     return updated;
   },
 
+  async assignLayMinister(id: string, _reason: string, _expectedVersion: number): Promise<ScheduleRequest> {
+    store = store.map((request) => request.id === id
+      ? {
+          ...request,
+          assignedPriest: 'Lay Minister',
+          assignedPriestId: undefined,
+          layMinisterAssigned: true,
+          effectiveDisplayTitle: request.rawEventType === 'FUNERAL' ? 'Rite of Committal' : 'Blessing',
+          appointmentTitle: request.rawEventType === 'FUNERAL' ? 'Rite of Committal' : 'Blessing',
+          version: (request.version ?? 1) + 1,
+        }
+      : request);
+    const updated = store.find((request) => request.id === id);
+    if (!updated) throw new Error('Schedule request not found');
+    return updated;
+  },
+
+  async nominateAlternativeProposal(_id: string, _proposalId: number, priestId: string, expectedRevision: number, _expectedVersion: number) {
+    return {
+      id: _proposalId,
+      status: 'PRIEST_PENDING',
+      proposedDate: new Date().toISOString(),
+      proposedStartDatetime: new Date().toISOString(),
+      nominatedPriestId: Number(priestId),
+      nominationRevision: expectedRevision + 1,
+    };
+  },
+
+  async declineAlternativeProposal(_id: string, proposalId: number, reason: string, expectedRevision: number) {
+    return {
+      id: proposalId,
+      status: 'DECLINED',
+      proposedDate: new Date().toISOString(),
+      proposedStartDatetime: new Date().toISOString(),
+      note: reason,
+      nominationRevision: expectedRevision + 1,
+    };
+  },
+
+  async revokeAlternativeProposalNomination(_id: string, proposalId: number, expectedRevision: number) {
+    return {
+      id: proposalId,
+      status: 'SUBMITTED',
+      proposedDate: new Date().toISOString(),
+      proposedStartDatetime: new Date().toISOString(),
+      nominationRevision: expectedRevision + 1,
+    };
+  },
+
   async emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest> {
     store = store.map(r => {
       if (r.id !== id) return r;

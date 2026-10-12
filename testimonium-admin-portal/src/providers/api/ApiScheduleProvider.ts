@@ -49,6 +49,10 @@ interface BackendScheduleRequestDTO {
   } | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  layMinisterAssigned?: boolean;
+  effectiveDisplayTitle?: string;
+  canProposeAlternativeDate?: boolean;
+  alternativeProposal?: ScheduleRequest['alternativeProposal'];
   isParishEvent?: boolean;
 }
 
@@ -128,7 +132,7 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
   }
 
   // Extract custom service/appointment title, checking displayTitle first, then fallback to remarks, then eventType
-  let appointmentTitle: string = resolveDisplayTitle(dbItem.eventType, dbItem.displayTitle);
+  let appointmentTitle: string = dbItem.effectiveDisplayTitle || resolveDisplayTitle(dbItem.eventType, dbItem.displayTitle);
   if (!dbItem.displayTitle && dbItem.remarks) {
     const match = dbItem.remarks.match(/Service:\s*([^.]+)/);
     if (match) {
@@ -136,7 +140,9 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     }
   }
 
-  const assignedPriest = dbItem.assignedPriest?.fullName || dbItem.processedBy?.fullName || 'TBD';
+  const assignedPriest = dbItem.layMinisterAssigned
+    ? 'Lay Minister'
+    : (dbItem.assignedPriest?.fullName || dbItem.processedBy?.fullName || 'TBD');
 
   let proposedDateStr = undefined;
   let proposedTimeStr = undefined;
@@ -190,6 +196,10 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     rescheduleReason: dbItem.rescheduleReason || undefined,
     priestResponseStatus: dbItem.priestResponseStatus || undefined,
     priestResponseReason: dbItem.priestResponseReason || undefined,
+    layMinisterAssigned: Boolean(dbItem.layMinisterAssigned),
+    effectiveDisplayTitle: dbItem.effectiveDisplayTitle || undefined,
+    canProposeAlternativeDate: Boolean(dbItem.canProposeAlternativeDate),
+    alternativeProposal: dbItem.alternativeProposal || null,
     version: dbItem.version ?? 1,
     isParishEvent: dbItem.isParishEvent || false,
     timeline: [
@@ -408,6 +418,38 @@ export const ApiScheduleProvider: ScheduleProvider = {
     }
   },
 
+  async assignLayMinister(id: string, reason: string, expectedVersion: number): Promise<ScheduleRequest> {
+    const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-lay-minister`, {
+      reason,
+      expectedVersion,
+    });
+    return mapToFrontend(response.data.data);
+  },
+
+  async nominateAlternativeProposal(id: string, proposalId: number, priestId: string, expectedRevision: number, expectedVersion: number) {
+    const response = await api.post<{ data: NonNullable<ScheduleRequest['alternativeProposal']> }>(
+      `/schedule-requests/${id}/alternative-proposals/${proposalId}/approve`,
+      { priestId, expectedRevision, expectedVersion }
+    );
+    return response.data.data;
+  },
+
+  async declineAlternativeProposal(id: string, proposalId: number, reason: string, expectedRevision: number) {
+    const response = await api.post<{ data: NonNullable<ScheduleRequest['alternativeProposal']> }>(
+      `/schedule-requests/${id}/alternative-proposals/${proposalId}/decline`,
+      { reason, expectedRevision }
+    );
+    return response.data.data;
+  },
+
+  async revokeAlternativeProposalNomination(id: string, proposalId: number, expectedRevision: number) {
+    const response = await api.post<{ data: NonNullable<ScheduleRequest['alternativeProposal']> }>(
+      `/schedule-requests/${id}/alternative-proposals/${proposalId}/revoke`,
+      { expectedRevision }
+    );
+    return response.data.data;
+  },
+
   async emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest> {
     optimisticScheduleStatuses[id] = 'Confirmed';
     try {
@@ -458,4 +500,3 @@ export const ApiScheduleProvider: ScheduleProvider = {
     return response.data.data || [];
   },
 };
-

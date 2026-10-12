@@ -37,6 +37,22 @@ export async function assignPriest(id: string, priestId: string, expectedVersion
   return providerFactory.getScheduleProvider().assignPriest(id, priestId, expectedVersion);
 }
 
+export async function assignLayMinister(id: string, reason: string, expectedVersion: number): Promise<ScheduleRequest> {
+  return providerFactory.getScheduleProvider().assignLayMinister(id, reason, expectedVersion);
+}
+
+export async function nominateAlternativeProposal(id: string, proposalId: number, priestId: string, expectedRevision: number, expectedVersion: number) {
+  return providerFactory.getScheduleProvider().nominateAlternativeProposal(id, proposalId, priestId, expectedRevision, expectedVersion);
+}
+
+export async function declineAlternativeProposal(id: string, proposalId: number, reason: string, expectedRevision: number) {
+  return providerFactory.getScheduleProvider().declineAlternativeProposal(id, proposalId, reason, expectedRevision);
+}
+
+export async function revokeAlternativeProposalNomination(id: string, proposalId: number, expectedRevision: number) {
+  return providerFactory.getScheduleProvider().revokeAlternativeProposalNomination(id, proposalId, expectedRevision);
+}
+
 export async function emergencyReschedule(id: string, payload: EmergencyReschedulePayload): Promise<ScheduleRequest> {
   return providerFactory.getScheduleProvider().emergencyReschedule(id, payload);
 }

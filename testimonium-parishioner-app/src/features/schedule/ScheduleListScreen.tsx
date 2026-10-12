@@ -26,6 +26,7 @@ import {
   extractTimeSlotFromSchedule,
   formatScheduleDate,
   isRescheduleProposalPending,
+  getScheduleDisplayTitle,
 } from "./presentation";
 import { getScheduleEventLabel, type ScheduleItem } from "./types";
 
@@ -83,9 +84,9 @@ export const ScheduleListScreen: React.FC = () => {
           <View style={styles.rowHeader}>
             <View style={styles.titleWrap}>
               <Text style={styles.eventTitle} numberOfLines={1} allowFontScaling>
-                {item.displayTitle || eventLabel}
+                {getScheduleDisplayTitle(item)}
               </Text>
-              {item.displayTitle && item.displayTitle !== eventLabel ? (
+              {getScheduleDisplayTitle(item) !== eventLabel ? (
                 <Text style={styles.eventSubtitle} numberOfLines={1} allowFontScaling>
                   {eventLabel}
                 </Text>
@@ -122,6 +123,11 @@ export const ScheduleListScreen: React.FC = () => {
               <Text style={styles.priestText} numberOfLines={1} allowFontScaling>
                 Celebrant: {item.assignedPriest.fullName}
               </Text>
+            </View>
+          ) : item.layMinisterAssigned ? (
+            <View style={styles.priestRow}>
+              <Ionicons name="person-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.priestText} allowFontScaling>Leader: Lay Minister</Text>
             </View>
           ) : null}
         </TouchableOpacity>

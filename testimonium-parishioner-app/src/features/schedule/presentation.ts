@@ -1,4 +1,5 @@
 import type { ScheduleItem, ScheduleStatus } from "./types";
+import { getScheduleEventLabel } from "./types";
 
 const MONTH_NAMES = [
   "January",
@@ -136,6 +137,11 @@ export const extractTimeSlotFromSchedule = (schedule: ScheduleItem): string => {
   return "TBD";
 };
 
+export const getScheduleDisplayTitle = (schedule: ScheduleItem): string =>
+  schedule.effectiveDisplayTitle
+  || schedule.displayTitle
+  || getScheduleEventLabel(schedule.eventType);
+
 export interface StatusBadgeInfo {
   label: string;
   bg: string;
@@ -259,4 +265,3 @@ export const getRecommendationBadges = (rec: {
   }
   return badges;
 };
-

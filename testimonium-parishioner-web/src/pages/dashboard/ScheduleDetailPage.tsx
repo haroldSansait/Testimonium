@@ -34,6 +34,11 @@ export const ScheduleDetailPage: React.FC = () => {
   const [responding, setResponding] = useState(false);
   const [responseError, setResponseError] = useState<string | null>(null);
   const [responseSuccess, setResponseSuccess] = useState<string | null>(null);
+  const [alternativeDate, setAlternativeDate] = useState('');
+  const [alternativeSlot, setAlternativeSlot] = useState('');
+  const [alternativeNote, setAlternativeNote] = useState('');
+  const [alternativeSlots, setAlternativeSlots] = useState<string[]>([]);
+  const [alternativeBusy, setAlternativeBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -59,6 +64,25 @@ export const ScheduleDetailPage: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!appointment || !alternativeDate || !appointment.rawEventType) {
+      setAlternativeSlots([]);
+      setAlternativeSlot('');
+      return;
+    }
+    let active = true;
+    services.scheduler.getAvailableSlots(appointment.parishId, alternativeDate, appointment.rawEventType)
+      .then((slots) => {
+        if (!active) return;
+        setAlternativeSlots(slots);
+        setAlternativeSlot((current) => slots.includes(current) ? current : '');
+      })
+      .catch(() => {
+        if (active) setAlternativeSlots([]);
+      });
+    return () => { active = false; };
+  }, [appointment, alternativeDate]);
 
   const handleRespond = async (accept: boolean) => {
     if (!appointment) return;
@@ -89,6 +113,48 @@ export const ScheduleDetailPage: React.FC = () => {
       void load();
     } finally {
       setResponding(false);
+    }
+  };
+
+  const handleAlternativeSubmit = async () => {
+    if (!appointment || !alternativeDate || !alternativeSlot) return;
+    setAlternativeBusy(true);
+    setResponseError(null);
+    try {
+      await services.scheduler.proposeAlternativeDate(
+        appointment.id,
+        alternativeDate,
+        alternativeSlot,
+        alternativeNote
+      );
+      setResponseSuccess('Your alternative-date request was submitted without changing the original appointment.');
+      setAlternativeDate('');
+      setAlternativeSlot('');
+      setAlternativeNote('');
+      await load();
+    } catch (err: any) {
+      setResponseError(err?.message || 'Unable to submit the alternative date.');
+    } finally {
+      setAlternativeBusy(false);
+    }
+  };
+
+  const handleAlternativeWithdraw = async () => {
+    const proposal = appointment?.alternativeProposal;
+    if (!appointment || !proposal) return;
+    setAlternativeBusy(true);
+    try {
+      await services.scheduler.withdrawAlternativeDate(
+        appointment.id,
+        proposal.id,
+        proposal.nominationRevision
+      );
+      setResponseSuccess('Your alternative-date request was withdrawn. The original appointment remains unchanged.');
+      await load();
+    } catch (err: any) {
+      setResponseError(err?.message || 'Unable to withdraw the alternative date.');
+    } finally {
+      setAlternativeBusy(false);
     }
   };
 
@@ -229,6 +295,56 @@ export const ScheduleDetailPage: React.FC = () => {
           {/* Reschedule history & changes */}
           {appointment.rescheduleHistory && appointment.rescheduleHistory.length > 0 && (
             <ScheduleRescheduleHistory history={appointment.rescheduleHistory} />
+          )}
+
+          {appointment.layMinisterAssigned && (
+            <div className="border border-amber-200 rounded-xl p-4 bg-amber-50 space-y-3">
+              <p className="text-sm font-semibold text-amber-950">Lay Minister assignment</p>
+              <p className="text-xs text-amber-900">
+                No priest was available for the current date and time. This service remains valid and will be led by a Lay Minister.
+              </p>
+              {appointment.alternativeProposal && ['SUBMITTED', 'PRIEST_PENDING'].includes(appointment.alternativeProposal.status) ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-amber-950">
+                    Alternative requested for <strong>{new Date(appointment.alternativeProposal.proposedDate).toLocaleDateString()}</strong>.
+                    {' '}Status: <strong>{appointment.alternativeProposal.status === 'PRIEST_PENDING' ? 'Awaiting nominated priest' : 'Awaiting parish review'}</strong>.
+                  </p>
+                  <Button size="sm" variant="outline" disabled={alternativeBusy} onClick={() => void handleAlternativeWithdraw()}>
+                    Withdraw request
+                  </Button>
+                </div>
+              ) : appointment.canProposeAlternativeDate ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="date"
+                    value={alternativeDate}
+                    onChange={(event) => setAlternativeDate(event.target.value)}
+                    className="border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  />
+                  <select
+                    value={alternativeSlot}
+                    onChange={(event) => setAlternativeSlot(event.target.value)}
+                    disabled={!alternativeDate || alternativeSlots.length === 0}
+                    className="border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white disabled:opacity-50"
+                  >
+                    <option value="">Select an available time</option>
+                    {alternativeSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                  </select>
+                  <textarea
+                    value={alternativeNote}
+                    onChange={(event) => setAlternativeNote(event.target.value)}
+                    maxLength={1000}
+                    rows={2}
+                    placeholder="Optional note to parish staff"
+                    className="sm:col-span-2 border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  />
+                  <Button size="sm" disabled={alternativeBusy || !alternativeDate || !alternativeSlot} onClick={() => void handleAlternativeSubmit()}>
+                    {alternativeBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Request priest-led alternative date
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           )}
 
           {/* Reschedule proposal response */}

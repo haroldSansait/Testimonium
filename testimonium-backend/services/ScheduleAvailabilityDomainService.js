@@ -27,6 +27,7 @@ import {
   normalizePriestId,
   normalizeParishId,
 } from "./SchedulingAvailability.js";
+import { ConflictHelper } from "./ConflictHelper.js";
 
 export { extractScheduleTimeSlot, normalizeTimeSlotString, normalizeParishId };
 
@@ -34,6 +35,51 @@ export const MAX_RECOMMENDATIONS = 6;
 
 export const GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE =
   "The selected preferred priest is not available for this request.";
+
+export const PriestAvailabilityClassification = Object.freeze({
+  AVAILABLE: "AVAILABLE",
+  CONFIRMED_UNAVAILABLE: "CONFIRMED_UNAVAILABLE",
+  UNKNOWN: "UNKNOWN",
+});
+
+export async function classifyPriestAvailability({
+  priestId,
+  date,
+  startDatetime,
+  endDatetime,
+  excludeScheduleId = null,
+  excludeMassTemplateId = null,
+  schedule = null,
+  timeSlot = null,
+  actorId = null,
+  actorRole = null,
+  tx = null,
+}) {
+  try {
+    await ConflictHelper.checkPriestConflict(
+      normalizePriestId(priestId),
+      date,
+      startDatetime,
+      endDatetime,
+      {
+        ...(excludeScheduleId ? { excludeScheduleId } : {}),
+        ...(excludeMassTemplateId ? { excludeMassTemplateId } : {}),
+        ...(schedule ? { schedule } : {}),
+        ...(timeSlot ? { timeSlot } : {}),
+        ...(tx ? { tx } : {}),
+        actorId,
+        actorRole,
+        isPriestOwner: false,
+      }
+    );
+    return PriestAvailabilityClassification.AVAILABLE;
+  } catch (error) {
+    if (error?.statusCode === 409 && error?.code === "PRIEST_CONFLICT") {
+      return PriestAvailabilityClassification.CONFIRMED_UNAVAILABLE;
+    }
+    return PriestAvailabilityClassification.UNKNOWN;
+  }
+}
 
 /**
  * Single strict requested-priest eligibility helper.

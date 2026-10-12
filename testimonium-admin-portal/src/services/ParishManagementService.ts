@@ -1,6 +1,6 @@
 import { providerFactory } from '@/providers/providerFactory';
 import type { Parish } from '@/types';
-import type { MassScheduleTemplate, CreateParishPayload } from '@/providers/interfaces';
+import type { MassScheduleTemplate, MassScheduleUpsertInput, CreateParishPayload } from '@/providers/interfaces';
 
 export interface ParishFilters {
   search?: string;
@@ -41,7 +41,7 @@ export const ParishManagementService = {
     return providerFactory.getParishProvider().getMassSchedule(parishId);
   },
 
-  async upsertMassSchedule(parishId: string, data: Partial<MassScheduleTemplate> & { dayType: string; timeSlot: string; label: string }): Promise<MassScheduleTemplate> {
+  async upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate> {
     return providerFactory.getParishProvider().upsertMassSchedule(parishId, data);
   },
 

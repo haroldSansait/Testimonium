@@ -113,6 +113,8 @@ export interface ISchedulerProvider {
     requestedPriestId?: number | null;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<Appointment>;
+  proposeAlternativeDate(id: string, proposedDate: string, timeSlot: string, note?: string): Promise<Appointment['alternativeProposal']>;
+  withdrawAlternativeDate(id: string, proposalId: number, expectedRevision: number): Promise<Appointment['alternativeProposal']>;
   getAppointmentById(id: string): Promise<Appointment>;
   getAppointmentByTracking(reference: string): Promise<Appointment>;
 }

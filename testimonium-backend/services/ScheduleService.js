@@ -1,7 +1,7 @@
 import { ScheduleRepository } from "../repositories/ScheduleRepository.js";
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
-import { ConflictHelper, parseManilaDateTime, parseManilaDateOnly, getManilaDateString, formatManilaTimeSlot } from "./ConflictHelper.js";
+import { ConflictHelper, parseManilaDateTime, parseManilaDateOnly, getManilaDateString, formatManilaTimeSlot, computeOperationalEndDatetime } from "./ConflictHelper.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { IdempotencyService, computeSchedulePayloadHash } from "./IdempotencyService.js";
 import {
@@ -31,6 +31,8 @@ import {
   loadParishAvailabilitySnapshot,
   validateRequestedPriestEligibility,
   GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE,
+  classifyPriestAvailability,
+  PriestAvailabilityClassification,
 } from "./ScheduleAvailabilityDomainService.js";
 import {
   ScheduleStatus,
@@ -41,8 +43,24 @@ import {
   mapIncomingScheduleStatus,
   assertScheduleMutable,
 } from "./ScheduleStateMachine.js";
+import {
+  decorateScheduleForDisplay,
+  isLayMinisterEligibleEvent,
+  resolveScheduleDisplayTitle,
+} from "../shared/LayMinisterPresentation.js";
+import { isAlternativeProposalStale } from "../shared/ScheduleAlternativeProposalPolicy.js";
 
 const TERMINAL_STATUSES = TERMINAL_SCHEDULE_STATUSES;
+const OPEN_ALTERNATIVE_PROPOSAL_STATUSES = ["SUBMITTED", "PRIEST_PENDING"];
+const ALTERNATIVE_PROPOSAL_INCLUDE = {
+  alternativeProposals: {
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    include: {
+      nominatedPriest: { select: { id: true, fullName: true } },
+    },
+  },
+};
 
 function authorizeStaffScheduleMutation(actorRole, actorParishId, scheduleParishId, action) {
   if (actorRole === "DIOCESE_COORDINATOR") return;
@@ -60,6 +78,24 @@ function authorizeStaffScheduleMutation(actorRole, actorParishId, scheduleParish
   }
 }
 
+function authorizeLayMinisterMutation(actorRole, actorParishId, scheduleParishId) {
+  if (!["SECRETARY", "DIOCESE_COORDINATOR"].includes(actorRole)) {
+    const error = new Error("Only a secretary or diocese coordinator may assign a Lay Minister.");
+    error.statusCode = 403;
+    error.code = "FORBIDDEN";
+    throw error;
+  }
+  if (
+    actorRole !== "DIOCESE_COORDINATOR"
+    && (!actorParishId || Number(actorParishId) !== Number(scheduleParishId))
+  ) {
+    const error = new Error("You do not have permission to assign a Lay Minister in another parish.");
+    error.statusCode = 403;
+    error.code = "FORBIDDEN";
+    throw error;
+  }
+}
+
 function requireExpectedVersion(value, action) {
   const version = Number(value);
   if (!Number.isInteger(version) || version < 1) {
@@ -71,14 +107,14 @@ function requireExpectedVersion(value, action) {
   return version;
 }
 
-function throwScheduleConcurrencyConflict() {
+export function throwScheduleConcurrencyConflict() {
   const error = new Error("Schedule was modified by another operation. Please refresh and retry.");
   error.statusCode = 409;
   error.code = "SCHEDULE_CONCURRENCY_CONFLICT";
   throw error;
 }
 
-async function updateScheduleAtVersion(tx, id, expectedVersion, data) {
+export async function updateScheduleAtVersion(tx, id, expectedVersion, data) {
   const result = await tx.schedule.updateMany({
     where: { id, version: expectedVersion },
     data: {
@@ -91,7 +127,7 @@ async function updateScheduleAtVersion(tx, id, expectedVersion, data) {
   }
 }
 
-async function appendScheduleHistory(tx, schedule, { reason, actorId, actorRole }) {
+export async function appendScheduleHistory(tx, schedule, { reason, actorId, actorRole }) {
   await tx.scheduleHistory.create({
     data: {
       scheduleId: schedule.id,
@@ -103,11 +139,70 @@ async function appendScheduleHistory(tx, schedule, { reason, actorId, actorRole 
       status: schedule.status,
       assignedPriestId: schedule.assignedPriestId,
       priestResponseStatus: schedule.priestResponseStatus,
+      layMinisterAssigned: Boolean(schedule.layMinisterAssigned),
       reason,
       actorId: Number.isInteger(Number(actorId)) ? Number(actorId) : null,
       actorRole: String(actorRole || "SYSTEM"),
     },
   });
+}
+
+async function supersedeOpenAlternativeProposals(tx, scheduleId, actorId = null) {
+  const proposals = await tx.scheduleAlternativeProposal.findMany({
+    where: {
+      scheduleId,
+      status: { in: OPEN_ALTERNATIVE_PROPOSAL_STATUSES },
+    },
+    select: { id: true, status: true, nominationRevision: true },
+  });
+  if (!proposals.length) return;
+  await tx.scheduleAlternativeProposal.updateMany({
+    where: {
+      scheduleId,
+      status: { in: OPEN_ALTERNATIVE_PROPOSAL_STATUSES },
+    },
+    data: {
+      status: "SUPERSEDED",
+      resolvedById: Number.isSafeInteger(Number(actorId)) ? Number(actorId) : null,
+      resolvedAt: new Date(),
+      nominationRevision: { increment: 1 },
+    },
+  });
+  const schedule = await tx.schedule.findUnique({
+    where: { id: scheduleId },
+    select: {
+      id: true,
+      userId: true,
+      parishId: true,
+      eventType: true,
+      displayTitle: true,
+      layMinisterAssigned: true,
+    },
+  });
+  for (const proposal of proposals) {
+    await AuditLogService.log(
+      actorId,
+      "Alternative Date Proposal Superseded",
+      tx,
+      !actorId,
+      {
+        affectedTable: "schedule_alternative_proposals",
+        affectedRecordId: proposal.id,
+        parishId: schedule?.parishId,
+        previousValues: { status: proposal.status, nominationRevision: proposal.nominationRevision },
+        newValues: { status: "SUPERSEDED", nominationRevision: proposal.nominationRevision + 1 },
+      }
+    );
+  }
+  if (schedule) {
+    await NotificationDispatcher.notifyAlternativeProposal({
+      event: "SUPERSEDED",
+      parishionerId: schedule.userId,
+      parishId: schedule.parishId,
+      scheduleId: schedule.id,
+      displayTitle: resolveScheduleDisplayTitle(schedule),
+    }, tx);
+  }
 }
 
 /**
@@ -238,17 +333,64 @@ export function isScheduleElapsed(schedule, now = new Date()) {
 export function sanitizeSchedulePriest(sched) {
   if (!sched) return sched;
   const result = { ...sched };
+  if (Array.isArray(result.alternativeProposals)) {
+    result.alternativeProposal = result.alternativeProposals[0] || null;
+    delete result.alternativeProposals;
+  }
   if (!result.requestedPriest) {
-    return {
+    return decorateScheduleForDisplay({
       ...result,
       requestedPriest: null,
-    };
+    });
   }
   result.requestedPriest = {
     id: result.requestedPriest.id,
     name: result.requestedPriest.fullName ?? result.requestedPriest.name ?? null,
   };
-  return result;
+  return decorateScheduleForDisplay(result);
+}
+
+async function expireStaleAlternativeProposal(schedule) {
+  const proposal = schedule?.alternativeProposals?.[0];
+  if (
+    !proposal
+    || !OPEN_ALTERNATIVE_PROPOSAL_STATUSES.includes(proposal.status)
+    || !isAlternativeProposalStale(schedule, proposal)
+  ) {
+    return;
+  }
+  const result = await prisma.scheduleAlternativeProposal.updateMany({
+    where: {
+      id: proposal.id,
+      status: { in: OPEN_ALTERNATIVE_PROPOSAL_STATUSES },
+      nominationRevision: proposal.nominationRevision,
+    },
+    data: {
+      status: "SUPERSEDED",
+      resolvedAt: new Date(),
+      nominatedPriestId: null,
+      priestResponseStatus: null,
+      nominationRevision: { increment: 1 },
+    },
+  });
+  if (result.count !== 1) return;
+  proposal.status = "SUPERSEDED";
+  proposal.nominatedPriestId = null;
+  proposal.priestResponseStatus = null;
+  proposal.nominationRevision += 1;
+  await AuditLogService.log(null, "Alternative Date Proposal Superseded", null, true, {
+    affectedTable: "schedule_alternative_proposals",
+    affectedRecordId: proposal.id,
+    parishId: schedule.parishId,
+    newValues: { status: "SUPERSEDED", nominationRevision: proposal.nominationRevision },
+  });
+  await NotificationDispatcher.notifyAlternativeProposal({
+    event: "SUPERSEDED",
+    parishionerId: schedule.userId,
+    parishId: schedule.parishId,
+    scheduleId: schedule.id,
+    displayTitle: resolveScheduleDisplayTitle(schedule),
+  });
 }
 
 export class ScheduleService {
@@ -297,8 +439,10 @@ export class ScheduleService {
           processedBy: { select: { id: true, fullName: true } },
           assignedPriest: { select: { id: true, fullName: true } },
           requestedPriest: { select: { id: true, fullName: true } },
+          ...ALTERNATIVE_PROPOSAL_INCLUDE,
         },
       });
+      await Promise.all(allUserSchedules.map(expireStaleAlternativeProposal));
 
       const filtered = allUserSchedules.map(sanitizeSchedulePriest).filter((sched) => {
         const elapsed = isScheduleElapsed(sched, now);
@@ -317,20 +461,38 @@ export class ScheduleService {
     }
 
     // Default standard listing (used by Web and Admin Portal)
+    const compoundFilters = [];
+    if (priestId) {
+      const parsedPriestId = parseInt(priestId, 10);
+      compoundFilters.push({
+        OR: [
+          { assignedPriestId: parsedPriestId },
+          {
+            alternativeProposals: {
+              some: {
+                nominatedPriestId: parsedPriestId,
+                status: "PRIEST_PENDING",
+              },
+            },
+          },
+        ],
+      });
+    }
+    if (search) {
+      compoundFilters.push({
+        OR: [
+          { user: { fullName: { contains: search, mode: "insensitive" } } },
+          { remarks: { contains: search, mode: "insensitive" } },
+          { displayTitle: { contains: search, mode: "insensitive" } },
+        ],
+      });
+    }
+
     const where = {
       ...(parishId ? { parishId: parseInt(parishId, 10) } : {}),
       ...(userId ? { userId: parseInt(userId, 10) } : {}),
-      ...(priestId ? { assignedPriestId: parseInt(priestId, 10) } : {}),
       ...(status ? { status } : {}),
-      ...(search
-        ? {
-            OR: [
-              { user: { fullName: { contains: search, mode: "insensitive" } } },
-              { remarks: { contains: search, mode: "insensitive" } },
-              { displayTitle: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
+      ...(compoundFilters.length ? { AND: compoundFilters } : {}),
     };
 
     const [data, total] = await Promise.all([
@@ -345,10 +507,12 @@ export class ScheduleService {
           processedBy: { select: { id: true, fullName: true } },
           assignedPriest: { select: { id: true, fullName: true } },
           requestedPriest: { select: { id: true, fullName: true } },
+          ...ALTERNATIVE_PROPOSAL_INCLUDE,
         },
       }),
       prisma.schedule.count({ where }),
     ]);
+    await Promise.all(data.map(expireStaleAlternativeProposal));
 
     return { data: data.map(sanitizeSchedulePriest), total };
   }
@@ -376,6 +540,7 @@ export class ScheduleService {
         processedBy: { select: { id: true, fullName: true, email: true } },
         assignedPriest: { select: { id: true, fullName: true, email: true } },
         requestedPriest: { select: { id: true, fullName: true } },
+        ...ALTERNATIVE_PROPOSAL_INCLUDE,
         history: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: {
@@ -413,6 +578,7 @@ export class ScheduleService {
         throw err;
       }
     }
+    await expireStaleAlternativeProposal(schedule);
 
     const rawHistory = schedule.history || [];
     delete schedule.history;
@@ -468,6 +634,7 @@ export class ScheduleService {
         },
         assignedPriest: { select: { id: true, fullName: true, email: true } },
         requestedPriest: { select: { id: true, fullName: true } },
+        ...ALTERNATIVE_PROPOSAL_INCLUDE,
         history: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: {
@@ -505,6 +672,7 @@ export class ScheduleService {
         throw err;
       }
     }
+    await expireStaleAlternativeProposal(schedule);
 
     const rawHistory = schedule.history || [];
     delete schedule.history;
@@ -1641,6 +1809,7 @@ export class ScheduleService {
           status: targetStatus,
           processedById: parseInt(processedById, 10),
         });
+        await supersedeOpenAlternativeProposals(tx, parsedId, processedById);
 
         const updated = await tx.schedule.findUnique({
           where: { id: parsedId },
@@ -1751,6 +1920,7 @@ export class ScheduleService {
           processedById: parseInt(actorId, 10),
           proposalVersion: { increment: 1 },
         });
+        await supersedeOpenAlternativeProposals(tx, parsedId, actorId);
 
         const updated = await tx.schedule.findUnique({
           where: { id: parsedId },
@@ -1774,6 +1944,193 @@ export class ScheduleService {
         }, tx);
 
         return updated;
+      },
+      {
+        isolationLevel: "Serializable",
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
+  }
+
+  /**
+   * Explicitly assigns a Lay Minister to an eligible Funeral or Blessing only
+   * after every active parish priest is authoritatively unavailable.
+   */
+  async assignLayMinister(id, {
+    expectedVersion,
+    reason,
+    actorId,
+    actorRole,
+    actorParishId,
+  }) {
+    const parsedId = parseInt(id, 10);
+    if (!Number.isSafeInteger(parsedId) || parsedId <= 0) {
+      const error = new Error("Invalid schedule ID.");
+      error.statusCode = 400;
+      error.code = "INVALID_ID";
+      throw error;
+    }
+    const version = requireExpectedVersion(expectedVersion, "assign a Lay Minister");
+    const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+    if (trimmedReason.length < 5 || trimmedReason.length > 1000) {
+      const error = new Error("Assignment reason is required and must be between 5 and 1000 characters.");
+      error.statusCode = 400;
+      error.code = "INVALID_REASON";
+      throw error;
+    }
+
+    const schedule = await prisma.schedule.findUnique({ where: { id: parsedId } });
+    if (!schedule) {
+      const error = new Error("Schedule request not found.");
+      error.statusCode = 404;
+      error.code = "SCHEDULE_NOT_FOUND";
+      throw error;
+    }
+    authorizeLayMinisterMutation(actorRole, actorParishId, schedule.parishId);
+    if (schedule.layMinisterAssigned) {
+      return decorateScheduleForDisplay(schedule);
+    }
+    if (schedule.version !== version) {
+      throwScheduleConcurrencyConflict();
+    }
+
+    return runVersionedScheduleTransaction(
+      async (tx) => {
+        await lockParishSchedulingConfiguration(tx, schedule.parishId);
+        const priests = await tx.user.findMany({
+          where: {
+            parishId: schedule.parishId,
+            role: { roleName: "PRIEST" },
+            status: "ACTIVE",
+          },
+          select: { id: true },
+          orderBy: { id: "asc" },
+        });
+        await lockPriestsForScheduling(tx, priests.map((priest) => priest.id));
+
+        const current = await tx.schedule.findUnique({
+          where: { id: parsedId },
+          include: {
+            user: { select: { id: true, fullName: true } },
+            parish: { select: { id: true, parishName: true } },
+          },
+        });
+        if (!current) {
+          const error = new Error("Schedule request not found.");
+          error.statusCode = 404;
+          error.code = "SCHEDULE_NOT_FOUND";
+          throw error;
+        }
+        authorizeLayMinisterMutation(actorRole, actorParishId, current.parishId);
+        if (current.layMinisterAssigned) {
+          return decorateScheduleForDisplay(current);
+        }
+        if (current.version !== version) {
+          throwScheduleConcurrencyConflict();
+        }
+        assertScheduleMutable(current);
+        if (!isLayMinisterEligibleEvent(current.eventType)) {
+          const error = new Error("Lay Minister assignment is available only for Funeral and Blessing appointments.");
+          error.statusCode = 422;
+          error.code = "LAY_MINISTER_EVENT_NOT_ELIGIBLE";
+          throw error;
+        }
+
+        let start = current.startDatetime ? new Date(current.startDatetime) : null;
+        const timeSlot = extractScheduleTimeSlot(current);
+        if ((!start || Number.isNaN(start.getTime())) && timeSlot) {
+          start = parseManilaDateTime(getManilaDateString(current.requestedDate), timeSlot);
+        }
+        const end = current.endDatetime
+          ? new Date(current.endDatetime)
+          : (start ? computeOperationalEndDatetime(start) : null);
+        if (!start || Number.isNaN(start.getTime()) || !end || Number.isNaN(end.getTime()) || end <= start) {
+          const error = new Error("The appointment interval cannot be verified.");
+          error.statusCode = 422;
+          error.code = "SCHEDULE_INTERVAL_UNRESOLVED";
+          throw error;
+        }
+        if (Date.now() >= start.getTime()) {
+          const error = new Error("A Lay Minister cannot be assigned after the appointment has started.");
+          error.statusCode = 409;
+          error.code = "SCHEDULE_ALREADY_STARTED";
+          throw error;
+        }
+
+        for (const priest of priests) {
+          const classification = await classifyPriestAvailability({
+            priestId: priest.id,
+            date: current.requestedDate,
+            startDatetime: start,
+            endDatetime: end,
+            excludeScheduleId: current.id,
+            schedule: current,
+            timeSlot,
+            actorId,
+            actorRole,
+            tx,
+          });
+          if (classification === PriestAvailabilityClassification.AVAILABLE) {
+            const error = new Error("A parish priest is available for this appointment.");
+            error.statusCode = 409;
+            error.code = "LAY_MINISTER_PRIEST_AVAILABLE";
+            throw error;
+          }
+          if (classification === PriestAvailabilityClassification.UNKNOWN) {
+            const error = new Error("Priest unavailability could not be verified.");
+            error.statusCode = 409;
+            error.code = "LAY_MINISTER_AVAILABILITY_UNVERIFIED";
+            throw error;
+          }
+        }
+
+        await appendScheduleHistory(tx, current, {
+          reason: trimmedReason,
+          actorId,
+          actorRole,
+        });
+        await updateScheduleAtVersion(tx, parsedId, version, {
+          assignedPriestId: null,
+          priestResponseStatus: null,
+          priestResponseReason: null,
+          layMinisterAssigned: true,
+          processedById: Number(actorId),
+        });
+
+        const updated = await tx.schedule.findUnique({
+          where: { id: parsedId },
+          include: {
+            user: { select: { id: true, fullName: true } },
+            parish: { select: { id: true, parishName: true } },
+          },
+        });
+        await AuditLogService.log(actorId, "Lay Minister Assigned", tx, false, {
+          affectedTable: "schedules",
+          affectedRecordId: parsedId,
+          parishId: updated.parishId,
+          previousValues: {
+            assignedPriestId: current.assignedPriestId,
+            layMinisterAssigned: current.layMinisterAssigned,
+            status: current.status,
+          },
+          newValues: {
+            assignedPriestId: null,
+            layMinisterAssigned: true,
+            status: updated.status,
+          },
+          metadata: { reason: trimmedReason, verifiedPriestCount: priests.length },
+        });
+        await NotificationDispatcher.notifyLayMinisterAssigned({
+          parishionerId: updated.userId,
+          scheduleId: updated.id,
+          originalDisplayTitle: current.displayTitle || current.eventType,
+          effectiveDisplayTitle: resolveScheduleDisplayTitle(updated),
+          requestedDate: getManilaDateString(updated.requestedDate),
+          timeSlot,
+        }, tx);
+
+        return decorateScheduleForDisplay(updated);
       },
       {
         isolationLevel: "Serializable",
@@ -1812,6 +2169,7 @@ export class ScheduleService {
     try {
       return await prisma.$transaction(
         async (tx) => {
+          await lockParishSchedulingConfiguration(tx, schedule.parishId);
           const priestsToLock = [schedule.assignedPriestId, parsedPriestId].filter((pId) => pId !== null && pId !== undefined);
           await lockPriestsForScheduling(tx, priestsToLock);
 
@@ -1857,7 +2215,7 @@ export class ScheduleService {
             throw err;
           }
 
-          if (current.assignedPriestId === parsedPriestId) {
+          if (current.assignedPriestId === parsedPriestId && !current.layMinisterAssigned) {
             return tx.schedule.findUnique({
               where: { id: parsedId },
               include: {
@@ -1889,9 +2247,11 @@ export class ScheduleService {
             assignedPriestId: parsedPriestId,
             priestResponseStatus: "PENDING",
             priestResponseReason: null,
+            layMinisterAssigned: false,
             status: nextStatus,
             processedById: parseInt(actorId, 10),
           });
+          await supersedeOpenAlternativeProposals(tx, parsedId, actorId);
 
           const updated = await tx.schedule.findUnique({
             where: { id: parsedId },
@@ -1906,7 +2266,7 @@ export class ScheduleService {
             parishionerId: updated.userId,
             parishId: updated.parishId,
             scheduleId: updated.id,
-            displayTitle: updated.displayTitle || updated.eventType,
+            displayTitle: resolveScheduleDisplayTitle(updated),
             priestId: parsedPriestId,
             priestName: updated.assignedPriest?.fullName || "Assigned Priest",
           }, tx);
@@ -1986,6 +2346,12 @@ export class ScheduleService {
 
     if (candidateStartDatetime) {
       targetStart = new Date(candidateStartDatetime);
+      targetEnd = Number.isNaN(targetStart.getTime())
+        ? null
+        : computeOperationalEndDatetime(targetStart);
+      targetTimeSlot = Number.isNaN(targetStart.getTime())
+        ? null
+        : formatManilaTimeSlot(targetStart);
       if (candidateDate) {
         const parsedDate = parseManilaDateOnly(candidateDate);
         if (parsedDate) {
@@ -2020,7 +2386,7 @@ export class ScheduleService {
               timeSlot: targetTimeSlot,
             },
             timeSlot: targetTimeSlot,
-            actorId: null, // Do not write conflict audit logs for routine read-only preflight checks
+            actorId: null,
             actorRole,
             isPriestOwner: false,
           }
@@ -2028,24 +2394,25 @@ export class ScheduleService {
         results.push({
           priestId: priest.id,
           available: true,
+          unavailabilityConfirmed: false,
         });
       } catch (conflictError) {
-        // Privacy invariant: do not expose private commitment title, notes, or calendar information
         const isExpectedConflict =
-          conflictError.statusCode === 409 &&
-          ["PRIEST_CONFLICT", "PRIEST_AVAILABILITY_UNDETERMINED"].includes(conflictError.code);
-
+          conflictError.statusCode === 409
+          && ["PRIEST_CONFLICT", "PRIEST_AVAILABILITY_UNDETERMINED"].includes(conflictError.code);
         if (isExpectedConflict) {
           results.push({
             priestId: priest.id,
             available: false,
             reasonCode: "PRIEST_UNAVAILABLE",
+            unavailabilityConfirmed: conflictError.code === "PRIEST_CONFLICT",
           });
         } else {
           results.push({
             priestId: priest.id,
             available: null,
             reasonCode: "AVAILABILITY_CHECK_FAILED",
+            unavailabilityConfirmed: false,
           });
         }
       }
@@ -2396,6 +2763,7 @@ export class ScheduleService {
             remarks: newRemarks,
             processedById: parseInt(actorId, 10),
           });
+          await supersedeOpenAlternativeProposals(tx, parsedId, actorId);
 
           return tx.schedule.findUnique({
             where: { id: parsedId },

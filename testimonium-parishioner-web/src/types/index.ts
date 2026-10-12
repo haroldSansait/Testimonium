@@ -211,6 +211,7 @@ export interface Appointment {
   parishId: string;
   parishName?: string;
   serviceName: string;
+  rawEventType?: string;
   date: string;
   timeSlot: string;
   status: 'booked' | 'confirmed' | 'cancelled' | 'proposed' | 'tentative';
@@ -227,6 +228,17 @@ export interface Appointment {
   notes?: string | null;
   version?: number;
   rescheduleHistory?: RescheduleHistoryEntry[];
+  layMinisterAssigned?: boolean;
+  canProposeAlternativeDate?: boolean;
+  alternativeProposal?: {
+    id: number;
+    status: string;
+    proposedDate: string;
+    proposedStartDatetime: string;
+    note?: string | null;
+    nominationRevision: number;
+    nominatedPriest?: { id: number; fullName: string } | null;
+  } | null;
 }
 
 export interface Announcement {

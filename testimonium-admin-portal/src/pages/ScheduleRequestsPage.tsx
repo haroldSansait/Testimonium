@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
-import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, getAvailableSlots, getPriestAvailability } from '@/services/scheduleRequestService';
+import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, assignLayMinister, getAvailableSlots, getPriestAvailability, nominateAlternativeProposal, declineAlternativeProposal, revokeAlternativeProposalNomination } from '@/services/scheduleRequestService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -33,14 +33,25 @@ interface DetailsModalProps {
   onStatusChange: (status: ScheduleStatus) => Promise<void>;
   onProposeReschedule: (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => Promise<void>;
   onAssignPriest: (priestId: string, priestName: string) => Promise<void>;
+  onAssignLayMinister: (reason: string) => Promise<void>;
+  onNominateAlternative: (priestId: string) => Promise<void>;
+  onDeclineAlternative: (reason: string) => Promise<void>;
+  onRevokeAlternative: () => Promise<void>;
   onEmergencyRescheduleSuccess?: (updated: ScheduleRequest) => void;
 }
 
-function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest, onEmergencyRescheduleSuccess }: DetailsModalProps) {
+function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest, onAssignLayMinister, onNominateAlternative, onDeclineAlternative, onRevokeAlternative, onEmergencyRescheduleSuccess }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showEmergencyRescheduleModal, setShowEmergencyRescheduleModal] = useState(false);
   const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
+  const [showLayMinisterModal, setShowLayMinisterModal] = useState(false);
+  const [layMinisterReason, setLayMinisterReason] = useState('');
+  const [proposalPriestId, setProposalPriestId] = useState('');
+  const [proposalDeclineReason, setProposalDeclineReason] = useState('');
+  const [proposalAvailability, setProposalAvailability] = useState<Record<string, boolean | null>>({});
+  const [loadingProposalAvailability, setLoadingProposalAvailability] = useState(false);
+  const [proposalAvailabilityError, setProposalAvailabilityError] = useState(false);
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
@@ -57,6 +68,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
 
   // Priest availability states
   const [priestAvailability, setPriestAvailability] = useState<Record<string, boolean | null>>({});
+  const [unavailabilityConfirmed, setUnavailabilityConfirmed] = useState<Record<string, boolean>>({});
   const [loadingAvailability, setLoadingAvailability] = useState(true);
   const [availabilityError, setAvailabilityError] = useState(false);
   const availabilityRequestGen = useRef(0);
@@ -72,10 +84,13 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       const availabilities = await getPriestAvailability(String(request.id));
       if (gen !== availabilityRequestGen.current) return;
       const map: Record<string, boolean | null> = {};
+      const confirmedMap: Record<string, boolean> = {};
       for (const item of availabilities) {
         map[String(item.priestId)] = item.available;
+        confirmedMap[String(item.priestId)] = item.unavailabilityConfirmed === true;
       }
       setPriestAvailability(map);
+      setUnavailabilityConfirmed(confirmedMap);
     } catch (err) {
       if (gen !== availabilityRequestGen.current) return;
       console.error('Failed to load priest availability:', err);
@@ -94,6 +109,37 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   }, [fetchAvailability]);
 
   useEffect(() => {
+    const proposal = request.alternativeProposal;
+    if (!proposal || proposal.status !== 'SUBMITTED') {
+      setProposalAvailability({});
+      setProposalAvailabilityError(false);
+      return;
+    }
+    let active = true;
+    setLoadingProposalAvailability(true);
+    setProposalAvailabilityError(false);
+    getPriestAvailability(String(request.id), {
+      date: proposal.proposedDate.slice(0, 10),
+      startDatetime: proposal.proposedStartDatetime,
+    })
+      .then((items) => {
+        if (!active) return;
+        setProposalAvailability(Object.fromEntries(items.map((item) => [String(item.priestId), item.available])));
+      })
+      .catch(() => {
+        if (!active) return;
+        setProposalAvailability({});
+        setProposalAvailabilityError(true);
+      })
+      .finally(() => {
+        if (active) setLoadingProposalAvailability(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [request.id, request.alternativeProposal]);
+
+  useEffect(() => {
     const fetchPriests = async () => {
       setLoadingPriests(true);
       try {
@@ -104,6 +150,8 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
         setPriests(list);
         if (request.assignedPriestId) {
           setSelectedPriestId(String(request.assignedPriestId));
+        } else if (request.layMinisterAssigned) {
+          setSelectedPriestId('__LAY_MINISTER__');
         } else {
           setSelectedPriestId('');
         }
@@ -166,10 +214,27 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
       setSelectedPriestId('');
       return;
     }
+    if (newPriestId === '__LAY_MINISTER__') {
+      setShowLayMinisterModal(true);
+      return;
+    }
     const priest = priests.find((p: any) => String(p.id) === String(newPriestId));
     const priestName = priest?.name || 'Selected Priest';
     setPriestValidationError(false);
     setConfirmPriestModal({ priestId: newPriestId, priestName });
+  };
+
+  const handleConfirmLayMinister = async () => {
+    if (layMinisterReason.trim().length < 5) return;
+    setIsUpdating(true);
+    try {
+      await onAssignLayMinister(layMinisterReason.trim());
+      setSelectedPriestId('__LAY_MINISTER__');
+      setShowLayMinisterModal(false);
+      setLayMinisterReason('');
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const handleConfirmPriestAssignment = async () => {
@@ -191,7 +256,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleApprove = async () => {
-    if (!request.assignedPriest || request.assignedPriest === 'TBD') {
+    if (!request.layMinisterAssigned && (!request.assignedPriest || request.assignedPriest === 'TBD')) {
       setPriestValidationError(true);
       return;
     }
@@ -238,16 +303,29 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const unavailablePriests = priests.filter(
-    (p: any) => !loadingAvailability && !availabilityError && priestAvailability[String(p.id)] === false
+    (p: any) =>
+      !loadingAvailability
+      && !availabilityError
+      && priestAvailability[String(p.id)] === false
+      && unavailabilityConfirmed[String(p.id)] === true
   );
   const unverifiedPriests = priests.filter(
-    (p: any) => !loadingAvailability && !availabilityError && priestAvailability[String(p.id)] === null
+    (p: any) =>
+      !loadingAvailability
+      && !availabilityError
+      && priestAvailability[String(p.id)] !== true
+      && unavailabilityConfirmed[String(p.id)] !== true
   );
   const allPriestsUnavailable =
     priests.length > 0 &&
     !loadingAvailability &&
     !availabilityError &&
     unavailablePriests.length === priests.length;
+  const layMinisterEligibleEvent = request.rawEventType === 'FUNERAL' || request.rawEventType === 'BLESSING';
+  const layMinisterVerified =
+    !loadingAvailability &&
+    !availabilityError &&
+    (priests.length === 0 || priests.every((priest: any) => unavailabilityConfirmed[String(priest.id)] === true));
 
   const allowsActions = request.status === 'Pending' || request.status === 'Under Review' || request.status === 'Tentative';
 
@@ -419,6 +497,49 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
               >
                 {isUpdating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {isUpdating ? 'Assigning...' : 'Confirm Assignment'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showLayMinisterModal && (
+          <div className="absolute inset-0 bg-white z-30 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <h3 className="text-base font-bold text-gray-900">Confirm Lay Minister Assignment</h3>
+                <button type="button" onClick={() => setShowLayMinisterModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-2">
+                <p>
+                  <strong>{request.rawEventType === 'FUNERAL' ? 'Rite of Committal' : 'Blessing'}</strong> will proceed at the existing date and time, led by a Lay Minister.
+                </p>
+                <p>The server will recheck every active parish priest before applying this last-resort assignment. The parishioner will be notified and may request another date.</p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Emergency / Assignment Reason</label>
+                <textarea
+                  value={layMinisterReason}
+                  onChange={(event) => setLayMinisterReason(event.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A]"
+                  placeholder="Explain why a Lay Minister is required..."
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button type="button" onClick={() => setShowLayMinisterModal(false)} className="px-4 py-2 text-xs font-semibold border rounded-lg">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmLayMinister()}
+                disabled={isUpdating || layMinisterReason.trim().length < 5}
+                className="px-4 py-2 text-xs font-semibold bg-amber-700 hover:bg-amber-800 text-white rounded-lg disabled:opacity-40"
+              >
+                {isUpdating ? 'Verifying...' : 'Assign Lay Minister'}
               </button>
             </div>
           </div>
@@ -622,10 +743,19 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                   ? 'Unable to verify priest availability'
                   : 'Select Priest (Primary / Assistant)...'
               }
-              options={priests.map((p: any) => {
+              options={[
+                ...priests.map((p: any) => {
                 const isAvail = priestAvailability[String(p.id)];
-                const isUnavailable = !loadingAvailability && !availabilityError && isAvail === false;
-                const isUnverified = !loadingAvailability && !availabilityError && isAvail === null;
+                const isUnavailable =
+                  !loadingAvailability
+                  && !availabilityError
+                  && isAvail === false
+                  && unavailabilityConfirmed[String(p.id)] === true;
+                const isUnverified =
+                  !loadingAvailability
+                  && !availabilityError
+                  && isAvail !== true
+                  && unavailabilityConfirmed[String(p.id)] !== true;
                 return {
                   value: String(p.id),
                   label: p.name,
@@ -633,9 +763,103 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                   badge: isUnavailable ? 'Unavailable' : isUnverified ? 'Unable to verify' : undefined,
                   disabled: isUnavailable || isUnverified,
                 };
-              })}
+                }),
+                ...(layMinisterEligibleEvent ? [{
+                  value: '__LAY_MINISTER__',
+                  label: 'Lay Minister (last resort)',
+                  secondary: priests.length === 0
+                    ? 'No active parish priests'
+                    : 'Rite/service fallback only',
+                  badge: layMinisterVerified ? 'Verified' : 'Cannot verify',
+                  disabled: !layMinisterVerified,
+                }] : []),
+              ]}
             />
           </div>
+
+          {request.alternativeProposal && ['SUBMITTED', 'PRIEST_PENDING'].includes(request.alternativeProposal.status) && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Parishioner Alternative Date Request</p>
+                <p className="text-sm font-semibold text-blue-950 mt-1">
+                  {new Date(request.alternativeProposal.proposedDate).toLocaleDateString()} at{' '}
+                  {new Date(request.alternativeProposal.proposedStartDatetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+                {request.alternativeProposal.note && <p className="text-xs text-blue-800 mt-1">{request.alternativeProposal.note}</p>}
+              </div>
+              {request.alternativeProposal.status === 'SUBMITTED' ? (
+                <>
+                  <CustomSelect
+                    value={proposalPriestId}
+                    onChange={setProposalPriestId}
+                    disabled={loadingProposalAvailability || proposalAvailabilityError}
+                    loading={loadingProposalAvailability}
+                    placeholder={
+                      loadingProposalAvailability
+                        ? 'Verifying proposed-slot availability...'
+                        : proposalAvailabilityError
+                        ? 'Unable to verify proposed slot'
+                        : 'Nominate an available priest'
+                    }
+                    options={priests.map((priest: any) => ({
+                      value: String(priest.id),
+                      label: priest.name,
+                      secondary: priest.isAssistant ? 'Assistant Priest' : 'Parish Priest',
+                      badge: proposalAvailability[String(priest.id)] === true
+                        ? 'Available'
+                        : proposalAvailability[String(priest.id)] === false
+                        ? 'Unavailable'
+                        : 'Unable to verify',
+                      disabled: proposalAvailability[String(priest.id)] !== true,
+                    }))}
+                  />
+                  {proposalAvailabilityError && (
+                    <p className="text-xs text-amber-800">Availability could not be verified. Refresh before nominating a priest.</p>
+                  )}
+                  <textarea
+                    value={proposalDeclineReason}
+                    onChange={(event) => setProposalDeclineReason(event.target.value)}
+                    placeholder="Decline reason (required only when declining)"
+                    className="w-full p-2.5 border border-blue-200 rounded-lg text-xs"
+                    rows={2}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        !proposalPriestId
+                        || proposalAvailability[proposalPriestId] !== true
+                        || loadingProposalAvailability
+                        || proposalAvailabilityError
+                        || isUpdating
+                      }
+                      onClick={() => void onNominateAlternative(proposalPriestId)}
+                      className="px-3 py-2 bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-40"
+                    >
+                      Approve &amp; Nominate
+                    </button>
+                    <button
+                      type="button"
+                      disabled={proposalDeclineReason.trim().length < 5 || isUpdating}
+                      onClick={() => void onDeclineAlternative(proposalDeclineReason.trim())}
+                      className="px-3 py-2 bg-white border border-red-300 text-red-700 rounded-lg text-xs font-semibold disabled:opacity-40"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-blue-900">
+                    Awaiting {request.alternativeProposal.nominatedPriest?.fullName || 'the nominated priest'}.
+                  </p>
+                  <button type="button" onClick={() => void onRevokeAlternative()} className="px-3 py-2 bg-white border rounded-lg text-xs font-semibold">
+                    Revoke Nomination
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -681,6 +905,14 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
           {allowsActions && (() => {
             const hasPriest = !!request.assignedPriest && request.assignedPriest !== 'TBD';
             const priestStatus = request.priestResponseStatus;
+            if (request.layMinisterAssigned) {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 font-medium">
+                  <Check className="w-3.5 h-3.5" />
+                  Lay Minister verified. This eligible appointment may remain or become Confirmed without priest acceptance.
+                </div>
+              );
+            }
             if (!hasPriest) {
               return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 font-medium">
@@ -717,12 +949,16 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                     onClick={() => void handleApprove()}
                     disabled={
                       isUpdating ||
-                      !request.assignedPriest ||
-                      request.assignedPriest === 'TBD' ||
-                      request.priestResponseStatus !== 'ACCEPTED'
+                      (!request.layMinisterAssigned && (
+                        !request.assignedPriest ||
+                        request.assignedPriest === 'TBD' ||
+                        request.priestResponseStatus !== 'ACCEPTED'
+                      ))
                     }
                     title={
-                      !request.assignedPriest || request.assignedPriest === 'TBD'
+                      request.layMinisterAssigned
+                        ? 'Approve & Confirm Lay-Minister-led service'
+                        : !request.assignedPriest || request.assignedPriest === 'TBD'
                         ? 'Assign a priest first'
                         : request.priestResponseStatus !== 'ACCEPTED'
                         ? 'Waiting for priest to accept this assignment'
@@ -1006,6 +1242,86 @@ export function ScheduleRequestsPage() {
     }
   };
 
+  const handleAssignLayMinister = async (reason: string) => {
+    if (!selectedRequest || typeof selectedRequest.version !== 'number') {
+      setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
+      return;
+    }
+    setIsMutating(true);
+    try {
+      const updated = await assignLayMinister(selectedRequest.id, reason, selectedRequest.version);
+      setRequests((current) => current.map((request) => request.id === updated.id ? updated : request));
+      setSelectedRequest(updated);
+      setToastMessage('Lay Minister assigned after authoritative availability verification.');
+    } catch (err: any) {
+      const conflictMsg = err?.response?.data?.message || err?.message || 'Failed.';
+      setToastMessage(`Unable to assign Lay Minister: ${conflictMsg}`);
+      throw err;
+    } finally {
+      setIsMutating(false);
+      void fetchRequests(true);
+    }
+  };
+
+  const updateSelectedProposal = (proposal: NonNullable<ScheduleRequest['alternativeProposal']>) => {
+    setSelectedRequest((current) => current ? { ...current, alternativeProposal: proposal } : current);
+    setRequests((current) => current.map((request) =>
+      request.id === selectedRequest?.id ? { ...request, alternativeProposal: proposal } : request
+    ));
+  };
+
+  const handleNominateAlternative = async (priestId: string) => {
+    const proposal = selectedRequest?.alternativeProposal;
+    if (!selectedRequest || !proposal || typeof selectedRequest.version !== 'number') return;
+    setIsMutating(true);
+    try {
+      const updated = await nominateAlternativeProposal(
+        selectedRequest.id,
+        proposal.id,
+        priestId,
+        proposal.nominationRevision,
+        selectedRequest.version
+      );
+      updateSelectedProposal(updated);
+      setToastMessage('Alternative date approved and sent to the nominated priest.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleDeclineAlternative = async (reason: string) => {
+    const proposal = selectedRequest?.alternativeProposal;
+    if (!selectedRequest || !proposal) return;
+    setIsMutating(true);
+    try {
+      updateSelectedProposal(await declineAlternativeProposal(
+        selectedRequest.id,
+        proposal.id,
+        reason,
+        proposal.nominationRevision
+      ));
+      setToastMessage('Alternative-date proposal declined.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleRevokeAlternative = async () => {
+    const proposal = selectedRequest?.alternativeProposal;
+    if (!selectedRequest || !proposal) return;
+    setIsMutating(true);
+    try {
+      updateSelectedProposal(await revokeAlternativeProposalNomination(
+        selectedRequest.id,
+        proposal.id,
+        proposal.nominationRevision
+      ));
+      setToastMessage('Priest nomination revoked. Another priest may now be selected.');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
   const handleEmergencyRescheduleSuccess = () => {
     setToastMessage('Appointment emergency rescheduled successfully.');
     setSelectedRequest(null);
@@ -1073,6 +1389,10 @@ export function ScheduleRequestsPage() {
           onStatusChange={handleStatusUpdate}
           onProposeReschedule={handleProposeReschedule}
           onAssignPriest={handleAssignPriest}
+          onAssignLayMinister={handleAssignLayMinister}
+          onNominateAlternative={handleNominateAlternative}
+          onDeclineAlternative={handleDeclineAlternative}
+          onRevokeAlternative={handleRevokeAlternative}
           onEmergencyRescheduleSuccess={handleEmergencyRescheduleSuccess}
         />
       )}

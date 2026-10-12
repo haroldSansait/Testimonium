@@ -6,6 +6,10 @@ import {
   parseManilaDateTime,
 } from "./ConflictHelper.js";
 import { normalizePriestId } from "./SchedulingAvailability.js";
+import {
+  resolveMassDisplayLabel,
+  resolveScheduleDisplayTitle,
+} from "../shared/LayMinisterPresentation.js";
 
 function combineDateAndTime(date, timeStr) {
   return parseManilaDateTime(date, timeStr);
@@ -74,7 +78,8 @@ export class CalendarService {
     const schedulesMapped = dbSchedules.map((s) => ({
       id: String(s.id),
       eventType: s.eventType,
-      displayTitle: s.displayTitle,
+      displayTitle: resolveScheduleDisplayTitle(s),
+      layMinisterAssigned: Boolean(s.layMinisterAssigned),
       requestedDate: s.requestedDate.toISOString(),
       startDatetime: s.startDatetime ? s.startDatetime.toISOString() : null,
       endDatetime: s.endDatetime ? s.endDatetime.toISOString() : null,
@@ -258,7 +263,9 @@ export class CalendarService {
         expandedMassEvents.push({
           id: `mass-${t.id}-${day}`,
           eventType: "MASS_INTENTION",
-          displayTitle: t.label || "Holy Mass",
+          displayTitle: resolveMassDisplayLabel(t),
+          configuredLabel: t.label,
+          layMinisterAssigned: Boolean(t.layMinisterAssigned),
           requestedDate: date.toISOString(),
           startDatetime: start ? start.toISOString() : null,
           endDatetime: end ? end.toISOString() : null,
@@ -397,7 +404,8 @@ export class CalendarService {
         id: `schedule-${s.id}`,
         scheduleId: s.id,
         eventType: s.eventType,
-        displayTitle: s.displayTitle || s.eventType,
+        displayTitle: resolveScheduleDisplayTitle(s),
+        layMinisterAssigned: Boolean(s.layMinisterAssigned),
         requestedDate: s.requestedDate.toISOString(),
         startDatetime: s.startDatetime ? s.startDatetime.toISOString() : null,
         endDatetime: s.endDatetime ? s.endDatetime.toISOString() : null,
@@ -519,7 +527,9 @@ export class CalendarService {
             mappedMass.push({
               id: `mass-${template.id}-${dateStr}`,
               eventType: "MASS_INTENTION",
-              displayTitle: template.label || "Holy Mass",
+              displayTitle: resolveMassDisplayLabel(template),
+              configuredLabel: template.label,
+              layMinisterAssigned: Boolean(template.layMinisterAssigned),
               requestedDate: new Date(`${dateStr}T00:00:00.000+08:00`).toISOString(),
               startDatetime: start ? start.toISOString() : null,
               endDatetime: null,
