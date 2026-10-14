@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download } from 'lucide-react';
+import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download, AlertTriangle } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
@@ -1940,34 +1940,57 @@ export const RequestTrackingPage: React.FC = () => {
                     </div>
 
                     {selectedSchedule.layMinisterAssigned && (
-                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                        <p className="font-bold">Lay Minister fallback</p>
-                        <p className="mt-1">
-                          No priest was available for the current appointment. The original appointment remains scheduled and will be led by a Lay Minister.
+                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-xs text-amber-900 space-y-3">
+                        <div className="flex items-center gap-2 font-bold text-amber-950">
+                          <AlertTriangle className="w-4 h-4 text-amber-700" />
+                          <span>Lay Minister fallback</span>
+                        </div>
+                        <p className="leading-relaxed">
+                          No priest was available for this appointment slot. The original appointment remains confirmed and will be led by an authorized Lay Minister.
                         </p>
                         {selectedSchedule.alternativeProposal && ['SUBMITTED', 'PRIEST_PENDING'].includes(selectedSchedule.alternativeProposal.status) ? (
-                          <div className="mt-3 space-y-2">
-                            <p>
-                              Alternative date status: <strong>{selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING' ? 'Awaiting nominated priest' : 'Awaiting parish review'}</strong>
+                          <div className="p-3 bg-white rounded-lg border border-amber-200/80 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-gray-900">Alternative Request:</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING'
+                                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                  : 'bg-amber-100/80 text-amber-800 border-amber-300'
+                              }`}>
+                                {selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING' ? 'Awaiting Nominated Priest' : 'Awaiting Parish Review'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-600">
+                              {selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING'
+                                ? `Parish office nominated Rev. Fr. ${selectedSchedule.alternativeProposal.nominatedPriest?.fullName || 'the celebrant'}. Confirmation pending.`
+                                : 'Parish office is reviewing priest availability to nominate a celebrant for your requested date.'}
                             </p>
+                            <div className="pt-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={alternativeBusy}
+                                onClick={() => void handleWithdrawAlternative()}
+                                className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                              >
+                                {alternativeBusy ? 'Withdrawing…' : 'Withdraw alternative request'}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : selectedSchedule.canProposeAlternativeDate ? (
+                          <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <span className="text-[11px] text-amber-800">
+                              Prefer a priest-led service? You may request an alternative date.
+                            </span>
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={alternativeBusy}
-                              onClick={() => void handleWithdrawAlternative()}
+                              onClick={() => navigate(`/dashboard/schedule/${selectedSchedule.id}`)}
+                              className="text-xs shrink-0"
                             >
-                              {alternativeBusy ? 'Withdrawing…' : 'Withdraw alternative request'}
+                              Request Alternative Date
                             </Button>
                           </div>
-                        ) : selectedSchedule.canProposeAlternativeDate ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="mt-3"
-                            onClick={() => navigate(`/dashboard/schedule/${selectedSchedule.id}`)}
-                          >
-                            Propose another date
-                          </Button>
                         ) : null}
                         {alternativeError && <p className="mt-2 text-red-700" role="alert">{alternativeError}</p>}
                       </div>

@@ -47,8 +47,11 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
   const [showLayMinisterModal, setShowLayMinisterModal] = useState(false);
   const [layMinisterReason, setLayMinisterReason] = useState('');
+  const [layMinisterError, setLayMinisterError] = useState<string | null>(null);
   const [proposalPriestId, setProposalPriestId] = useState('');
   const [proposalDeclineReason, setProposalDeclineReason] = useState('');
+  const [proposalActionError, setProposalActionError] = useState<string | null>(null);
+  const [pendingProposalAction, setPendingProposalAction] = useState<'nominate' | 'decline' | 'revoke' | null>(null);
   const [proposalAvailability, setProposalAvailability] = useState<Record<string, boolean | null>>({});
   const [loadingProposalAvailability, setLoadingProposalAvailability] = useState(false);
   const [proposalAvailabilityError, setProposalAvailabilityError] = useState(false);
@@ -227,13 +230,56 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   const handleConfirmLayMinister = async () => {
     if (layMinisterReason.trim().length < 5) return;
     setIsUpdating(true);
+    setLayMinisterError(null);
     try {
       await onAssignLayMinister(layMinisterReason.trim());
       setSelectedPriestId('__LAY_MINISTER__');
       setShowLayMinisterModal(false);
       setLayMinisterReason('');
+    } catch (err: any) {
+      console.error('Failed to assign lay minister:', err);
+      setLayMinisterError(err?.response?.data?.message || err?.message || 'Unable to assign Lay Minister. Active priests may still be available.');
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleProposalNominate = async () => {
+    if (!proposalPriestId || isUpdating || pendingProposalAction) return;
+    setPendingProposalAction('nominate');
+    setProposalActionError(null);
+    try {
+      await onNominateAlternative(proposalPriestId);
+    } catch (err: any) {
+      setProposalActionError(err?.response?.data?.message || err?.message || 'Failed to nominate priest.');
+    } finally {
+      setPendingProposalAction(null);
+    }
+  };
+
+  const handleProposalDecline = async () => {
+    if (proposalDeclineReason.trim().length < 5 || isUpdating || pendingProposalAction) return;
+    setPendingProposalAction('decline');
+    setProposalActionError(null);
+    try {
+      await onDeclineAlternative(proposalDeclineReason.trim());
+    } catch (err: any) {
+      setProposalActionError(err?.response?.data?.message || err?.message || 'Failed to decline proposal.');
+    } finally {
+      setPendingProposalAction(null);
+    }
+  };
+
+  const handleProposalRevoke = async () => {
+    if (isUpdating || pendingProposalAction) return;
+    setPendingProposalAction('revoke');
+    setProposalActionError(null);
+    try {
+      await onRevokeAlternative();
+    } catch (err: any) {
+      setProposalActionError(err?.response?.data?.message || err?.message || 'Failed to revoke nomination.');
+    } finally {
+      setPendingProposalAction(null);
     }
   };
 
@@ -506,40 +552,78 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
           <div className="absolute inset-0 bg-white z-30 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-                <h3 className="text-base font-bold text-gray-900">Confirm Lay Minister Assignment</h3>
-                <button type="button" onClick={() => setShowLayMinisterModal(false)} className="p-1 hover:bg-gray-100 rounded">
-                  <X className="w-5 h-5 text-gray-500" />
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-700">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">Confirm Lay Minister Assignment</h3>
+                    <p className="text-[11px] text-gray-500">Last-resort assignment for eligible liturgical services</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowLayMinisterModal(false); setLayMinisterError(null); }}
+                  disabled={isUpdating}
+                  className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-2">
-                <p>
-                  <strong>{request.rawEventType === 'FUNERAL' ? 'Rite of Committal' : 'Blessing'}</strong> will proceed at the existing date and time, led by a Lay Minister.
+
+              <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-2">
+                <p className="font-medium">
+                  <strong>{request.rawEventType === 'FUNERAL' ? 'Rite of Committal' : 'Blessing'}</strong> will proceed at the requested schedule ({request.preferredDate} at {request.preferredTime}), led by an authorized Lay Minister.
                 </p>
-                <p>The server will recheck every active parish priest before applying this last-resort assignment. The parishioner will be notified and may request another date.</p>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  The system will automatically recheck every active parish priest across the parish before applying this fallback. The parishioner will be notified and given the option to propose an alternative priest-led date.
+                </p>
               </div>
+
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Emergency / Assignment Reason</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                    Emergency / Assignment Reason <span className="text-red-500">*</span>
+                  </label>
+                  <span className={`text-[10px] font-medium ${layMinisterReason.trim().length >= 5 ? 'text-gray-400' : 'text-amber-600'}`}>
+                    {layMinisterReason.trim().length}/1000 (min. 5 chars)
+                  </span>
+                </div>
                 <textarea
                   value={layMinisterReason}
                   onChange={(event) => setLayMinisterReason(event.target.value)}
+                  disabled={isUpdating}
                   rows={4}
                   maxLength={1000}
-                  className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-[#7B1C2A]"
-                  placeholder="Explain why a Lay Minister is required..."
+                  className="w-full p-3 border border-gray-200 rounded-xl text-xs outline-none focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700/20 transition-all text-gray-800 placeholder:text-gray-400"
+                  placeholder="State the pastoral reason why a Lay Minister is necessary (e.g. all priests unavailable or assigned to prior sacramental duties)..."
                 />
+                {layMinisterError && (
+                  <div className="mt-2 flex items-center gap-1.5 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{layMinisterError}</span>
+                  </div>
+                )}
               </div>
             </div>
+
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <button type="button" onClick={() => setShowLayMinisterModal(false)} className="px-4 py-2 text-xs font-semibold border rounded-lg">
+              <button
+                type="button"
+                onClick={() => { setShowLayMinisterModal(false); setLayMinisterError(null); }}
+                disabled={isUpdating}
+                className="px-4 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+              >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void handleConfirmLayMinister()}
                 disabled={isUpdating || layMinisterReason.trim().length < 5}
-                className="px-4 py-2 text-xs font-semibold bg-amber-700 hover:bg-amber-800 text-white rounded-lg disabled:opacity-40"
+                className="px-4 py-2 text-xs font-semibold bg-amber-700 hover:bg-amber-800 text-white rounded-lg disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-xs"
               >
-                {isUpdating ? 'Verifying...' : 'Assign Lay Minister'}
+                {isUpdating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isUpdating ? 'Verifying Availability...' : 'Assign Lay Minister'}
               </button>
             </div>
           </div>
@@ -767,99 +851,202 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                 ...(layMinisterEligibleEvent ? [{
                   value: '__LAY_MINISTER__',
                   label: 'Lay Minister (last resort)',
-                  secondary: priests.length === 0
-                    ? 'No active parish priests'
-                    : 'Rite/service fallback only',
-                  badge: layMinisterVerified ? 'Verified' : 'Cannot verify',
+                  secondary: layMinisterVerified
+                    ? 'All active parish priests confirmed unavailable'
+                    : priests.length === 0
+                    ? 'No active parish priests in parish'
+                    : 'Permitted only when all priests are unavailable',
+                  badge: layMinisterVerified
+                    ? 'Eligible'
+                    : priests.some((p: any) => priestAvailability[String(p.id)] === true)
+                    ? 'Priests available'
+                    : 'Checking availability',
                   disabled: !layMinisterVerified,
                 }] : []),
               ]}
             />
           </div>
 
-          {request.alternativeProposal && ['SUBMITTED', 'PRIEST_PENDING'].includes(request.alternativeProposal.status) && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Parishioner Alternative Date Request</p>
-                <p className="text-sm font-semibold text-blue-950 mt-1">
-                  {new Date(request.alternativeProposal.proposedDate).toLocaleDateString()} at{' '}
-                  {new Date(request.alternativeProposal.proposedStartDatetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {request.alternativeProposal && ['SUBMITTED', 'PRIEST_PENDING'].includes(request.alternativeProposal.status) && (() => {
+            const proposal = request.alternativeProposal;
+            const isSubmitted = proposal.status === 'SUBMITTED';
+            const isPriestPending = proposal.status === 'PRIEST_PENDING';
+            const proposedDateFormatted = new Date(proposal.proposedDate).toLocaleDateString(undefined, {
+              weekday: 'short',
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            });
+            const proposedTimeFormatted = new Date(proposal.proposedStartDatetime).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+
+            return (
+              <div className="p-4 bg-indigo-50/70 border border-indigo-200/90 rounded-2xl space-y-3.5">
+                {/* Header & Status Distinction */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-indigo-100">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-indigo-700 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+                        Parishioner Alternative-Date Proposal
+                      </p>
+                      <p className="text-xs font-semibold text-gray-900 mt-0.5">
+                        {proposedDateFormatted} at {proposedTimeFormatted}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0 w-max',
+                      isSubmitted
+                        ? 'bg-amber-100/90 text-amber-800 border-amber-300'
+                        : 'bg-purple-100/90 text-purple-800 border-purple-300'
+                    )}
+                  >
+                    {isSubmitted ? 'Awaiting Parish Review' : 'Awaiting Priest Acceptance'}
+                  </span>
+                </div>
+
+                {/* Explanation Context */}
+                <p className="text-[11px] text-gray-600 leading-relaxed">
+                  {isSubmitted
+                    ? 'The parishioner has proposed this alternate date/time to receive a priest-led service. Please verify priest availability and nominate a celebrant, or decline if not possible.'
+                    : `Staff nominated Rev. Fr. ${proposal.nominatedPriest?.fullName || 'the assigned celebrant'}. Awaiting confirmation from the priest before finalizing.`}
                 </p>
-                {request.alternativeProposal.note && <p className="text-xs text-blue-800 mt-1">{request.alternativeProposal.note}</p>}
-              </div>
-              {request.alternativeProposal.status === 'SUBMITTED' ? (
-                <>
-                  <CustomSelect
-                    value={proposalPriestId}
-                    onChange={setProposalPriestId}
-                    disabled={loadingProposalAvailability || proposalAvailabilityError}
-                    loading={loadingProposalAvailability}
-                    placeholder={
-                      loadingProposalAvailability
-                        ? 'Verifying proposed-slot availability...'
-                        : proposalAvailabilityError
-                        ? 'Unable to verify proposed slot'
-                        : 'Nominate an available priest'
-                    }
-                    options={priests.map((priest: any) => ({
-                      value: String(priest.id),
-                      label: priest.name,
-                      secondary: priest.isAssistant ? 'Assistant Priest' : 'Parish Priest',
-                      badge: proposalAvailability[String(priest.id)] === true
-                        ? 'Available'
-                        : proposalAvailability[String(priest.id)] === false
-                        ? 'Unavailable'
-                        : 'Unable to verify',
-                      disabled: proposalAvailability[String(priest.id)] !== true,
-                    }))}
-                  />
-                  {proposalAvailabilityError && (
-                    <p className="text-xs text-amber-800">Availability could not be verified. Refresh before nominating a priest.</p>
-                  )}
-                  <textarea
-                    value={proposalDeclineReason}
-                    onChange={(event) => setProposalDeclineReason(event.target.value)}
-                    placeholder="Decline reason (required only when declining)"
-                    className="w-full p-2.5 border border-blue-200 rounded-lg text-xs"
-                    rows={2}
-                  />
-                  <div className="flex gap-2">
+
+                {/* Parishioner Note if provided */}
+                {proposal.note && (
+                  <div className="p-2.5 bg-white rounded-xl border border-indigo-100 text-xs text-gray-700 space-y-0.5">
+                    <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                      Parishioner Note:
+                    </span>
+                    <p className="italic leading-relaxed">&ldquo;{proposal.note}&rdquo;</p>
+                  </div>
+                )}
+
+                {/* Inline Action Error Alert */}
+                {proposalActionError && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <span>{proposalActionError}</span>
+                  </div>
+                )}
+
+                {/* Flow 1: SUBMITTED - Parish Staff Reviews & Nominates or Declines */}
+                {isSubmitted && (
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                        Nominate Celebrant for Proposed Slot <span className="text-red-500">*</span>
+                      </label>
+                      <CustomSelect
+                        value={proposalPriestId}
+                        onChange={(val) => {
+                          setProposalPriestId(val);
+                          setProposalActionError(null);
+                        }}
+                        disabled={loadingProposalAvailability || proposalAvailabilityError || isUpdating || pendingProposalAction !== null}
+                        loading={loadingProposalAvailability}
+                        placeholder={
+                          loadingProposalAvailability
+                            ? 'Verifying proposed-slot availability...'
+                            : proposalAvailabilityError
+                            ? 'Unable to verify proposed slot'
+                            : 'Select an available priest to nominate...'
+                        }
+                        options={priests.map((priest: any) => ({
+                          value: String(priest.id),
+                          label: priest.name,
+                          secondary: priest.isAssistant ? 'Assistant Priest' : 'Parish Priest',
+                          badge: proposalAvailability[String(priest.id)] === true
+                            ? 'Available'
+                            : proposalAvailability[String(priest.id)] === false
+                            ? 'Unavailable'
+                            : 'Unable to verify',
+                          disabled: proposalAvailability[String(priest.id)] !== true,
+                        }))}
+                      />
+                      {proposalAvailabilityError && (
+                        <p className="text-[11px] text-amber-800 mt-1">
+                          Priest availability for this date could not be verified automatically.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                        Decline Reason (required only if declining)
+                      </label>
+                      <textarea
+                        value={proposalDeclineReason}
+                        onChange={(event) => setProposalDeclineReason(event.target.value)}
+                        disabled={isUpdating || pendingProposalAction !== null}
+                        placeholder="State reason why proposed date cannot be accommodated (min. 5 chars)..."
+                        className="w-full p-2.5 border border-indigo-200/80 rounded-xl text-xs bg-white outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/20 text-gray-800 placeholder:text-gray-400"
+                        rows={2}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={
+                          !proposalPriestId
+                          || proposalAvailability[proposalPriestId] !== true
+                          || loadingProposalAvailability
+                          || proposalAvailabilityError
+                          || isUpdating
+                          || pendingProposalAction !== null
+                        }
+                        onClick={() => void handleProposalNominate()}
+                        className="px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        {pendingProposalAction === 'nominate' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        {pendingProposalAction === 'nominate' ? 'Nominating Celebrant...' : 'Approve & Nominate'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={proposalDeclineReason.trim().length < 5 || isUpdating || pendingProposalAction !== null}
+                        onClick={() => void handleProposalDecline()}
+                        className="px-3.5 py-2 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        {pendingProposalAction === 'decline' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        {pendingProposalAction === 'decline' ? 'Declining Proposal...' : 'Decline Proposal'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Flow 2: PRIEST_PENDING - Awaiting Priest Acceptance with Revoke Option */}
+                {isPriestPending && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-purple-50/70 border border-purple-200/80 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="w-4 h-4 text-purple-600 shrink-0" />
+                      <div className="text-xs">
+                        <span className="font-semibold text-purple-900 block">
+                          Nominated: Rev. Fr. {proposal.nominatedPriest?.fullName || 'Parish Celebrant'}
+                        </span>
+                        <span className="text-[11px] text-purple-700">
+                          Waiting for priest response. You may revoke if celebrant becomes unavailable.
+                        </span>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      disabled={
-                        !proposalPriestId
-                        || proposalAvailability[proposalPriestId] !== true
-                        || loadingProposalAvailability
-                        || proposalAvailabilityError
-                        || isUpdating
-                      }
-                      onClick={() => void onNominateAlternative(proposalPriestId)}
-                      className="px-3 py-2 bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-40"
+                      disabled={isUpdating || pendingProposalAction !== null}
+                      onClick={() => void handleProposalRevoke()}
+                      className="px-3.5 py-2 bg-white border border-purple-300 hover:bg-purple-100/60 text-purple-800 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors shrink-0 flex items-center gap-1.5 shadow-xs cursor-pointer"
                     >
-                      Approve &amp; Nominate
-                    </button>
-                    <button
-                      type="button"
-                      disabled={proposalDeclineReason.trim().length < 5 || isUpdating}
-                      onClick={() => void onDeclineAlternative(proposalDeclineReason.trim())}
-                      className="px-3 py-2 bg-white border border-red-300 text-red-700 rounded-lg text-xs font-semibold disabled:opacity-40"
-                    >
-                      Decline
+                      {pendingProposalAction === 'revoke' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      {pendingProposalAction === 'revoke' ? 'Revoking...' : 'Revoke Nomination'}
                     </button>
                   </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-blue-900">
-                    Awaiting {request.alternativeProposal.nominatedPriest?.fullName || 'the nominated priest'}.
-                  </p>
-                  <button type="button" onClick={() => void onRevokeAlternative()} className="px-3 py-2 bg-white border rounded-lg text-xs font-semibold">
-                    Revoke Nomination
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1284,6 +1471,11 @@ export function ScheduleRequestsPage() {
       );
       updateSelectedProposal(updated);
       setToastMessage('Alternative date approved and sent to the nominated priest.');
+    } catch (err: any) {
+      console.error('Failed to nominate alternative proposal:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to nominate priest.';
+      setToastMessage(`Error nominating priest: ${msg}`);
+      throw err;
     } finally {
       setIsMutating(false);
     }
@@ -1301,6 +1493,11 @@ export function ScheduleRequestsPage() {
         proposal.nominationRevision
       ));
       setToastMessage('Alternative-date proposal declined.');
+    } catch (err: any) {
+      console.error('Failed to decline alternative proposal:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to decline proposal.';
+      setToastMessage(`Error declining proposal: ${msg}`);
+      throw err;
     } finally {
       setIsMutating(false);
     }
@@ -1317,6 +1514,11 @@ export function ScheduleRequestsPage() {
         proposal.nominationRevision
       ));
       setToastMessage('Priest nomination revoked. Another priest may now be selected.');
+    } catch (err: any) {
+      console.error('Failed to revoke alternative nomination:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to revoke nomination.';
+      setToastMessage(`Error revoking nomination: ${msg}`);
+      throw err;
     } finally {
       setIsMutating(false);
     }

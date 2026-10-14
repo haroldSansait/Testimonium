@@ -23,6 +23,7 @@ export function MassSchedulePage() {
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
+  const [showLayMinisterConfirm, setShowLayMinisterConfirm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MassScheduleTemplate | null>(null);
   const [dayType, setDayType] = useState<string>('WEDNESDAY');
   const [timeSlot, setTimeSlot] = useState('06:00 AM');
@@ -83,16 +84,8 @@ export function MassSchedulePage() {
     setShowModal(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSave = async () => {
     if (!parishId) return;
-    if (assignedPriestId === LAY_MINISTER_VALUE) {
-      const confirmed = confirm(
-        'This changes the entire repeating Mass slot to Liturgy of the Word led by a Lay Minister. '
-        + 'The backend will verify every active priest across a bounded 14-day recurrence window. Continue?'
-      );
-      if (!confirmed) return;
-    }
     setSubmitting(true);
     try {
       await ParishManagementService.upsertMassSchedule(parishId, {
@@ -107,6 +100,7 @@ export function MassSchedulePage() {
         expectedUpdatedAt: editingTemplate?.updatedAt,
       });
       setSuccessMessage(editingTemplate ? 'Mass slot updated successfully.' : 'New Mass slot added successfully.');
+      setShowLayMinisterConfirm(false);
       setShowModal(false);
       void fetchSchedule();
     } catch (err: any) {
@@ -114,6 +108,16 @@ export function MassSchedulePage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parishId) return;
+    if (assignedPriestId === LAY_MINISTER_VALUE) {
+      setShowLayMinisterConfirm(true);
+      return;
+    }
+    await executeSave();
   };
 
   const handleDelete = async (id: string) => {
@@ -282,11 +286,11 @@ export function MassSchedulePage() {
       {/* Add/Edit Modal */}
       {showModal && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150"
           onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 bg-[#7B1C2A] text-white">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md my-8 animate-in zoom-in-95 duration-150 flex flex-col relative overflow-visible">
+            <div className="flex items-center justify-between px-6 py-4 bg-[#7B1C2A] text-white rounded-t-2xl">
               <h3 className="font-bold text-sm tracking-wide">
                 {editingTemplate ? 'Edit Mass Slot' : 'Add New Mass Slot'}
               </h3>
@@ -295,7 +299,7 @@ export function MassSchedulePage() {
               </button>
             </div>
             <form onSubmit={e => void handleSubmit(e)} className="p-6 space-y-4 text-xs font-semibold text-gray-500">
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 relative z-30">
                 <label className="block uppercase tracking-wider">Day Category</label>
                 <CustomSelect
                   value={dayType}
@@ -336,7 +340,7 @@ export function MassSchedulePage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 relative z-20">
                 <label className="block uppercase tracking-wider">Assigned Priest (Optional)</label>
                 <CustomSelect
                   value={assignedPriestId}
@@ -357,13 +361,13 @@ export function MassSchedulePage() {
                   ]}
                 />
                 {assignedPriestId === LAY_MINISTER_VALUE && (
-                  <p className="text-[10px] leading-relaxed text-amber-700">
+                  <p className="text-[10px] leading-relaxed text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200/60 mt-1">
                     This designation applies to the repeating slot, not one calendar occurrence. The original configured label, day, time, and recurrence remain unchanged.
                   </p>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-4 border-t border-gray-100 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-gray-100 bg-gray-50 -mx-6 -mb-6 px-6 py-4 rounded-b-2xl relative z-10">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
@@ -374,12 +378,55 @@ export function MassSchedulePage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-crimson-700 hover:bg-crimson-800 text-white rounded-lg font-bold"
+                  className="px-4 py-2 bg-crimson-700 hover:bg-crimson-800 text-white rounded-lg font-bold disabled:opacity-50 transition-colors"
                 >
                   {submitting ? 'Saving...' : 'Save time slot'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Lay Minister Confirmation Modal */}
+      {showLayMinisterConfirm && createPortal(
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={(e) => e.target === e.currentTarget && !submitting && setShowLayMinisterConfirm(false)}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+            </div>
+            <h3 className="text-base font-bold text-gray-900 mb-2 font-serif">
+              Assign Lay Minister to Recurring Slot?
+            </h3>
+            <p className="text-xs text-gray-600 leading-relaxed mb-4 text-left bg-amber-50/70 p-3.5 rounded-xl border border-amber-200/80">
+              This changes the <strong>entire recurring Mass slot</strong> ({dayLabels[dayType] || dayType} at {timeSlot}) to <strong>Liturgy of the Word</strong> led by a Lay Minister, rather than an individual calendar occurrence.
+            </p>
+            <p className="text-[11px] text-gray-500 mb-6 text-left">
+              The backend will verify priest unavailability across a 14-day recurrence window. The configured template label (&ldquo;{label}&rdquo;), day, and time will remain preserved.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowLayMinisterConfirm(false)}
+                disabled={submitting}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={() => void executeSave()}
+                disabled={submitting}
+                className="px-4 py-2 bg-crimson-700 hover:bg-crimson-800 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-colors flex items-center gap-1.5"
+              >
+                {submitting && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                {submitting ? 'Verifying & Saving...' : 'Confirm Assignment'}
+              </button>
+            </div>
           </div>
         </div>,
         document.body

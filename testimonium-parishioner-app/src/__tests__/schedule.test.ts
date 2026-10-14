@@ -322,3 +322,41 @@ describe("Phase 5-7 Regression: Schedule Terminology and Tab Route Purity", () =
     expect(routes.detail).not.toContain("/(tabs)/");
   });
 });
+
+describe("Phase 5A: SchedulingCalendar Component Helpers", () => {
+  const {
+    buildMonthCells,
+    isoForDay,
+    moveMonth,
+    MONTH_NAMES,
+    WEEKDAY_NAMES,
+  } = require("../features/schedule/components/SchedulingCalendar");
+
+  it("builds month cells correctly for standard months", () => {
+    // October 2026 starts on Thursday (index 4 in 0=Sun..6=Sat)
+    const cellsOct2026 = buildMonthCells(2026, 10);
+    // 4 leading blanks (0s) + 31 days
+    expect(cellsOct2026.slice(0, 4)).toEqual([0, 0, 0, 0]);
+    expect(cellsOct2026[4]).toBe(1);
+    expect(cellsOct2026[cellsOct2026.length - 1]).toBe(31);
+    expect(cellsOct2026).toHaveLength(35);
+  });
+
+  it("formats ISO string safely for day", () => {
+    expect(isoForDay(2026, 10, 5)).toBe("2026-10-05");
+    expect(isoForDay(2026, 12, 25)).toBe("2026-12-25");
+  });
+
+  it("moves month forward and backward across year boundaries", () => {
+    expect(moveMonth({ year: 2026, month: 10 }, 1)).toEqual({ year: 2026, month: 11 });
+    expect(moveMonth({ year: 2026, month: 12 }, 1)).toEqual({ year: 2027, month: 1 });
+    expect(moveMonth({ year: 2026, month: 1 }, -1)).toEqual({ year: 2025, month: 12 });
+  });
+
+  it("exports correct month and weekday names", () => {
+    expect(MONTH_NAMES).toHaveLength(12);
+    expect(MONTH_NAMES[0]).toBe("January");
+    expect(MONTH_NAMES[9]).toBe("October");
+    expect(WEEKDAY_NAMES).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+  });
+});
