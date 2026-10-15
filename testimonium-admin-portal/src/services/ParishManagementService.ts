@@ -1,6 +1,6 @@
 import { providerFactory } from '@/providers/providerFactory';
 import type { Parish } from '@/types';
-import type { MassScheduleTemplate, MassScheduleUpsertInput, CreateParishPayload } from '@/providers/interfaces';
+import type { MassScheduleTemplate, MassScheduleUpsertInput, MassOccurrenceConfirmation, CreateParishPayload } from '@/providers/interfaces';
 
 export interface ParishFilters {
   search?: string;
@@ -39,6 +39,14 @@ export const ParishManagementService = {
 
   async getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
     return providerFactory.getParishProvider().getMassSchedule(parishId);
+  },
+
+  async getMassOccurrences(parishId: string, from: string) {
+    return providerFactory.getParishProvider().getMassOccurrences(parishId, from);
+  },
+
+  async setMassOccurrenceLayMinister(parishId: string, templateId: number, date: string, confirmation: MassOccurrenceConfirmation, assign: boolean) {
+    return providerFactory.getParishProvider().setMassOccurrenceLayMinister(parishId, templateId, date, confirmation, assign);
   },
 
   async upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate> {

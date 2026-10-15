@@ -1,3 +1,4 @@
+import { MassOccurrencePanel } from '@/components/MassOccurrencePanel';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -283,6 +284,8 @@ export function MassSchedulePage() {
         })}
       </div>
 
+      {parishId && <MassOccurrencePanel parishId={parishId} templates={templates} />}
+
       {/* Add/Edit Modal */}
       {showModal && createPortal(
         <div
@@ -406,7 +409,7 @@ export function MassSchedulePage() {
               This changes the <strong>entire recurring Mass slot</strong> ({dayLabels[dayType] || dayType} at {timeSlot}) to <strong>Liturgy of the Word</strong> led by a Lay Minister, rather than an individual calendar occurrence.
             </p>
             <p className="text-[11px] text-gray-500 mb-6 text-left">
-              The backend will verify priest unavailability across a 14-day recurrence window. The configured template label (&ldquo;{label}&rdquo;), day, and time will remain preserved.
+              The backend will verify priest unavailability across a 7-day recurrence window. The configured template label (&ldquo;{label}&rdquo;), day, and time will remain preserved.
             </p>
             <div className="flex gap-3 justify-end">
               <button

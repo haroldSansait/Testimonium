@@ -214,6 +214,25 @@ export interface AnalyticsProvider {
   getParishStats(): Promise<ParishAnalyticsStat[]>;
 }
 
+export interface MassOccurrence {
+  templateId: number;
+  date: string;
+  timeSlot: string;
+  label: string;
+  displayLabel: string;
+  layMinisterAssigned: boolean;
+  recurringLayMinisterAssigned: boolean;
+  startAt: string | null;
+  assignedPriest: { id: number; fullName: string } | null;
+  override: { id: number; version: number; isActive: boolean; applies: boolean } | null;
+  classification: 'AVAILABLE' | 'CONFIRMED_UNAVAILABLE' | 'UNKNOWN' | 'NO_ACTIVE_PRIESTS';
+  priests: { id: number; fullName: string; isAssistant: boolean; classification: string }[];
+  weekStart: string;
+  availabilityToken: string;
+}
+export interface MassOccurrenceWeek { from: string; to: string; occurrences: MassOccurrence[]; outdatedOverrides: MassOccurrence[] }
+export interface MassOccurrenceConfirmation { weekStart: string; availabilityToken: string }
+
 export interface MassScheduleTemplate {
   id: string;
   parishId: string;
@@ -248,6 +267,8 @@ export interface ParishProvider {
   deletePaymentQr(id: string): Promise<Parish>;
   archiveParish(id: string): Promise<void>;
   getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;
+  getMassOccurrences(parishId: string, from: string): Promise<MassOccurrenceWeek>;
+  setMassOccurrenceLayMinister(parishId: string, templateId: number, date: string, confirmation: MassOccurrenceConfirmation, assign: boolean): Promise<void>;
   upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate>;
   deleteMassSchedule(id: string): Promise<void>;
   resetMassSchedule(parishId: string): Promise<MassScheduleTemplate[]>;

@@ -1,3 +1,4 @@
+import { effectiveMassOccurrence, activeMassOccurrenceOverride, massOverrideRange } from "../shared/MassOccurrenceOverride.js";
 import { prisma } from "../config/db.js";
 import {
   getManilaDateString,
@@ -186,6 +187,7 @@ export class CalendarService {
     const templates = await prisma.massScheduleTemplate.findMany({
       where: templateWhere,
       include: {
+        occurrenceOverrides: massOverrideRange(new Date(Date.UTC(parsedYear, parsedMonth - 1, 1)), new Date(Date.UTC(parsedYear, parsedMonth, 0))),
         parish: { select: { parishName: true } },
         assignedPriest: { select: { id: true, fullName: true, color: true } },
       },
@@ -224,21 +226,13 @@ export class CalendarService {
 
     const expandedMassEvents = [];
     const numDays = new Date(parsedYear, parsedMonth, 0).getDate();
-    const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-
     for (let day = 1; day <= numDays; day++) {
-      const date = new Date(parsedYear, parsedMonth - 1, day);
-      const dayOfWeek = date.getDay();
-      const currentDayName = dayNames[dayOfWeek];
+      const dateStr = new Date(Date.UTC(parsedYear, parsedMonth - 1, day)).toISOString().slice(0, 10);
+      const date = new Date(dateStr + "T00:00:00.000+08:00");
+      const dailyTemplates = templates.filter(t => massTemplateAppliesOnDate(t.dayType, dateStr));
 
-      const dailyTemplates = templates.filter((t) => {
-        if (t.dayType === currentDayName) return true;
-        // Keep compatibility with legacy WEEKDAY templates mapped to Wednesday and Friday
-        if (t.dayType === "WEEKDAY" && (currentDayName === "WEDNESDAY" || currentDayName === "FRIDAY")) return true;
-        return false;
-      });
-
-      for (const t of dailyTemplates) {
+      for (const savedTemplate of dailyTemplates) {
+        const t = effectiveMassOccurrence(savedTemplate, dateStr);
         const start = combineDateAndTime(date, t.timeSlot);
         const end = start ? new Date(start.getTime() + 60 * 60 * 1000) : null; // default 1 hour duration
 
@@ -496,6 +490,7 @@ export class CalendarService {
         isActive: true,
       },
       include: {
+        occurrenceOverrides: massOverrideRange(rangeStart, rangeEnd),
         parish: { select: { parishName: true } },
       },
     });
@@ -517,6 +512,7 @@ export class CalendarService {
           );
 
           for (const template of dayTemplates) {
+            if (activeMassOccurrenceOverride(template, dateStr)) continue;
             const isOnLeave = leaves.some((leave) =>
               getManilaDateString(leave.startDate) <= dateStr
               && getManilaDateString(leave.endDate) >= dateStr

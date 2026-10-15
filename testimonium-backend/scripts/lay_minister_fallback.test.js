@@ -428,3 +428,273 @@ test("failed or rejected alternative proposal responses never mutate the origina
     assert.equal(result.schedule.version, 4);
   });
 });
+import { activeMassOccurrenceOverride, effectiveMassOccurrence } from "../shared/MassOccurrenceOverride.js";
+import { evaluatePriestConflictFromSnapshot, getManilaDateString, massTemplateAppliesOnDate, parseManilaDateTime } from "../services/ConflictHelper.js";
+
+function occurrenceFixture() {
+  const template = {
+    id: 7, parishId: 10, dayType: "SUNDAY", timeSlot: "08:00 AM", label: "Sunday High Mass",
+    assignedPriestId: 201, assignedPriest: { id: 201, fullName: "Fr. Primary", isAssistant: false },
+    layMinisterAssigned: false, isActive: true, occurrenceRevision: 1,
+    updatedAt: new Date("2098-01-01T00:00:00Z"), occurrenceOverrides: [],
+  };
+  const priests = [template.assignedPriest, { id: 202, fullName: "Fr. Assistant", isAssistant: true }];
+  const state = { template, priests, mode: "unavailable", writes: 0, checks: [], audits: [], rosterReads: 0 };
+  const busy = [{ id: 1, startAt: new Date("2099-10-18T00:00:00Z"), endAt: new Date("2099-10-18T01:00:00Z"), title: "Private commitment" }];
+  const tx = {
+    $queryRaw: async () => [{ parish_id: 10, user_id: 201 }],
+    parish: { findUnique: async () => ({ schedulingConfigVersion: 1 }) },
+    user: {
+      findMany: async () => { state.rosterReads++; return state.priests; },
+      findUnique: async () => ({ role: { roleName: "SECRETARY" }, parishId: 10 }),
+    },
+    massScheduleTemplate: {
+      findMany: async ({ where }) => where.parishId ? [state.template] : [],
+      findUnique: async () => state.template,
+    },
+    parishAvailability: { findMany: async () => [] },
+    schedule: { findMany: async () => [] },
+    parishEvent: { findMany: async () => [] },
+    priestPersonalSchedule: {
+      findMany: async ({ where }) => {
+        if (state.mode === "unknown") throw new Error("availability storage offline");
+        return state.mode === "available" && where.priestId === 202 ? [] : busy;
+      },
+    },
+    massOccurrenceOverride: {
+      create: async ({ data }) => {
+        state.writes++;
+        const row = { id: 1, version: 1, ...data };
+        state.template.occurrenceOverrides.push(row);
+        return row;
+      },
+      update: async ({ data }) => {
+        state.writes++;
+        const row = state.template.occurrenceOverrides[0];
+        Object.assign(row, { ...data, version: row.version + 1 });
+        return row;
+      },
+    },
+    activityLog: { create: async ({ data }) => { state.audits.push(data); return data; } },
+  };
+  return { state, tx };
+}
+
+test("single-day Mass overrides use authoritative availability and preserve the recurring template", async t => {
+  const service = new MassScheduleService();
+  async function run(work) {
+    const { state, tx } = occurrenceFixture();
+    const restore = installTransactionMock(tx);
+    const original = ConflictHelper.checkPriestConflict;
+    ConflictHelper.checkPriestConflict = async (priestId, date, start, end, options) => {
+      state.checks.push({ priestId, date, start, end, options });
+      if (state.mode === "liveChanged") return;
+      if (state.mode === "unknown") throw new Error("storage offline");
+      if (state.mode === "available" && priestId === 202) return;
+      throw conflict();
+    };
+    try { await work(state); } finally { restore(); ConflictHelper.checkPriestConflict = original; }
+  }
+  const preview = () => service.getOccurrences(10, "2099-10-18");
+  const confirm = item => ({ weekStart: item.weekStart, availabilityToken: item.availabilityToken });
+  await t.test("only October 18 changes; the following Sunday remains priest-led; revocation restores it", () => run(async state => {
+    const week = await preview();
+    assert.equal(state.writes, 0);
+    const first = week.occurrences[0];
+    assert.equal(first.date, "2099-10-18");
+    assert.equal(first.classification, "CONFIRMED_UNAVAILABLE");
+    const next = await service.getOccurrences(10, "2099-10-25");
+    assert.equal(next.occurrences[0].classification, "AVAILABLE");
+    await service.setOccurrenceLayMinister(10, 7, first.date, confirm(first), 901, true);
+    assert.equal(state.checks.length, 2);
+    assert.ok(state.checks.every(check => check.end - check.start === 3600000 && check.options.excludeMassTemplateId === 7));
+    assert.equal(state.template.layMinisterAssigned, false);
+    assert.equal(state.template.assignedPriestId, 201);
+    const assigned = (await preview()).occurrences[0];
+    assert.equal(assigned.displayLabel, "Liturgy of the Word");
+    assert.equal(assigned.assignedPriest, null);
+    assert.equal((await service.getOccurrences(10, "2099-10-25")).occurrences[0].displayLabel, "Sunday High Mass");
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, first.date, confirm(first), 901, true), error => error.code === "MASS_OCCURRENCE_STALE");
+    await service.setOccurrenceLayMinister(10, 7, first.date, confirm(assigned), 901, false);
+    const restored = (await preview()).occurrences[0];
+    assert.equal(restored.displayLabel, "Sunday High Mass");
+    assert.equal(restored.assignedPriest.id, 201);
+    assert.equal(state.template.occurrenceOverrides[0].isActive, false);
+    assert.equal(state.audits.length, 2);
+  }));
+  await t.test("an available assistant prevents assignment and is named accurately", () => run(async state => {
+    state.mode = "available";
+    const item = (await preview()).occurrences[0];
+    assert.equal(item.classification, "AVAILABLE");
+    assert.equal(item.priests.find(priest => priest.classification === "AVAILABLE").fullName, "Fr. Assistant");
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "LAY_MINISTER_PRIEST_AVAILABLE");
+    assert.equal(state.writes, 0);
+  }));
+  await t.test("unknown availability fails closed, with no preview or save mutations", () => run(async state => {
+    state.mode = "unknown";
+    const item = (await preview()).occurrences[0];
+    assert.equal(item.classification, "UNKNOWN");
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "LAY_MINISTER_AVAILABILITY_UNVERIFIED");
+    assert.equal(state.writes, 0);
+  }));
+  await t.test("no active priests permits an explicitly confirmed dated designation", () => run(async state => {
+    state.priests = [];
+    const item = (await preview()).occurrences[0];
+    assert.equal(item.classification, "NO_ACTIVE_PRIESTS");
+    await service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true);
+    assert.equal(state.writes, 1);
+  }));
+  await t.test("changed scheduling data and changed live results require fresh review", () => run(async state => {
+    const item = (await preview()).occurrences[0];
+    state.mode = "available";
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "MASS_OCCURRENCE_STALE");
+    state.mode = "liveChanged";
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "MASS_OCCURRENCE_STALE");
+    assert.equal(state.writes, 0);
+  }));
+  await t.test("changed time, weekday, archive and parish never authorize a stale occurrence", () => run(async state => {
+    const item = (await preview()).occurrences[0];
+    state.template.timeSlot = "09:00 AM";
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "MASS_OCCURRENCE_STALE");
+    state.template.dayType = "FRIDAY";
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "INVALID_MASS_OCCURRENCE");
+    state.template.isActive = false;
+    await assert.rejects(service.setOccurrenceLayMinister(10, 7, item.date, confirm(item), 901, true), error => error.code === "INVALID_MASS_OCCURRENCE");
+    await assert.rejects(service.setOccurrenceLayMinister(11, 7, item.date, confirm(item), 901, true), error => error.code === "MASS_TEMPLATE_NOT_FOUND");
+    assert.equal(state.writes, 0);
+  }));
+  await t.test("every configured weekday and legacy WEEKDAY expand from saved recurrence", () => run(async state => {
+    for (const dayType of ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY", "WEEKDAY"]) {
+      state.template.dayType = dayType;
+      const week = await preview();
+      assert.equal(week.occurrences.length, dayType === "WEEKDAY" ? 2 : 1);
+      assert.ok(week.occurrences.every(item => massTemplateAppliesOnDate(dayType, item.date)));
+    }
+    assert.equal(state.rosterReads, 8);
+  }));
+});
+
+test("dated override conflict integrity uses saved date, time and revision in both engines", async () => {
+  const { state, tx } = occurrenceFixture();
+  const template = state.template;
+  const override = { id: 1, isActive: true, dayType: template.dayType, timeSlot: template.timeSlot, templateRevision: 1, occurrenceDate: new Date("2099-10-18T00:00:00Z") };
+  template.occurrenceOverrides = [override];
+  const snapshot = { leaves: [], schedules: [], events: [], personalSchedules: [], massTemplates: [template] };
+  const start = parseManilaDateTime("2099-10-18", "08:00 AM");
+  assert.equal(evaluatePriestConflictFromSnapshot(snapshot, start, new Date(+start + 3600000)).available, true);
+  const next = parseManilaDateTime("2099-10-25", "08:00 AM");
+  assert.equal(evaluatePriestConflictFromSnapshot(snapshot, next, new Date(+next + 3600000)).available, false);
+  assert.equal(effectiveMassOccurrence(template, "2099-10-18").assignedPriestId, null);
+  template.timeSlot = "09:00 AM";
+  assert.equal(activeMassOccurrenceOverride(template, "2099-10-18"), null);
+  template.timeSlot = "08:00 AM";
+  template.occurrenceRevision++;
+  assert.equal(activeMassOccurrenceOverride(template, "2099-10-18"), null);
+  template.occurrenceRevision = 1;
+  tx.parishAvailability.findFirst = async () => null;
+  tx.priestPersonalSchedule.findFirst = async () => null;
+  tx.massScheduleTemplate.findMany = async () => [template];
+  await ConflictHelper.checkPriestConflict(201, "2099-10-18", start, new Date(+start + 3600000), { tx });
+  await assert.rejects(ConflictHelper.checkPriestConflict(201, "2099-10-25", next, new Date(+next + 3600000), { tx }), error => error.code === "PRIEST_CONFLICT");
+  override.isActive = false;
+  assert.equal(evaluatePriestConflictFromSnapshot(snapshot, start, new Date(+start + 3600000)).available, false);
+});
+
+test("recurring eligibility checks exactly seven Manila calendar dates and rejects unknown availability", async () => {
+  const originalCheck = ConflictHelper.checkPriestConflict;
+  const today = getManilaDateString();
+  const weekday = new Date(today + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }).toUpperCase();
+  const template = { id: 7, parishId: 10, dayType: weekday, timeSlot: "08:00 AM", label: "Configured Mass", assignedPriestId: null, layMinisterAssigned: false, updatedAt: new Date(), isActive: true };
+  const tx = {
+    $queryRaw: async () => [{ parish_id: 10, user_id: 201 }],
+    massScheduleTemplate: { findUnique: async () => template, update: async ({ data }) => ({ ...template, ...data }) },
+    user: { findMany: async () => [{ id: 201 }], findUnique: async () => ({ role: { roleName: "SECRETARY" }, parishId: 10 }) },
+    activityLog: { create: async ({ data }) => data },
+  };
+  const restore = installTransactionMock(tx);
+  const dates = [];
+  const input = { id: 7, dayType: weekday, timeSlot: template.timeSlot, label: template.label, layMinisterAssigned: true, layMinisterAssignedPresent: true, expectedUpdatedAt: template.updatedAt, actorId: 901 };
+  try {
+    ConflictHelper.checkPriestConflict = async (id, date) => { dates.push(date); if (date === today) throw conflict(); };
+    await new MassScheduleService().upsertTemplate(10, input);
+    assert.deepEqual(dates, [today]); // The next weekly occurrence (day eight) is outside the seven-day window.
+    ConflictHelper.checkPriestConflict = async () => { throw new Error("unknown"); };
+    await assert.rejects(new MassScheduleService().upsertTemplate(10, input), error => error.code === "LAY_MINISTER_AVAILABILITY_UNVERIFIED" && error.message.includes("7-day"));
+  } finally { restore(); ConflictHelper.checkPriestConflict = originalCheck; }
+});
+import { CalendarService } from "../services/CalendarService.js";
+import { ParishEventService } from "../services/ParishEventService.js";
+import { LiveToolRegistry } from "../services/ai/liveTools/LiveToolRegistry.js";
+
+test("dated designation reaches Admin, public Web/Android and Caloy feeds exactly once", async () => {
+  const { state } = occurrenceFixture();
+  const template = { ...state.template, parish: { id: 10, parishName: "Test Parish" } };
+  template.occurrenceOverrides = [{ isActive: true, dayType: "SUNDAY", timeSlot: "08:00 AM", templateRevision: 1, occurrenceDate: new Date("2099-10-18T00:00:00Z") }];
+  const originals = [prisma.massScheduleTemplate.findMany, prisma.parishEvent.findMany, prisma.user.findMany, prisma.schedule.findMany, prisma.parishAvailability.findMany];
+  prisma.massScheduleTemplate.findMany = async () => [template];
+  prisma.parishEvent.findMany = async () => [];
+  prisma.user.findMany = async () => [];
+  prisma.schedule.findMany = async () => [];
+  prisma.parishAvailability.findMany = async () => [];
+  try {
+    const adminEvents = await new CalendarService().getEvents(2099, 10, 10);
+    const firstAdmin = adminEvents.filter(item => item.id === "mass-7-18");
+    assert.equal(firstAdmin.length, 1);
+    assert.equal(firstAdmin[0].displayTitle, "Liturgy of the Word");
+    assert.equal(firstAdmin[0].assignedPriest, null);
+    assert.equal(adminEvents.find(item => item.id === "mass-7-25").displayTitle, "Sunday High Mass");
+    const publicEvents = await new ParishEventService().getPublicEvents(2099, 10);
+    const firstPublic = publicEvents.filter(item => item.id === "mass-t-7-2099-10-18");
+    assert.equal(firstPublic.length, 1);
+    assert.equal(firstPublic[0].title, "Liturgy of the Word");
+    assert.match(firstPublic[0].description, /Lay Minister-led/);
+    assert.equal(publicEvents.find(item => item.id === "mass-t-7-2099-10-25").title, "Sunday High Mass");
+    const registry = new LiveToolRegistry({ prismaClient: {
+      parish: { findUnique: async () => ({ id: 10, parishName: "Test Parish", isActive: true }) },
+      parishEvent: { findMany: async () => [] },
+      massScheduleTemplate: { findMany: async () => [template] },
+    } });
+    const firstCaloy = await registry.getParishEventsForDate({ parishId: 10, date: "2099-10-18" });
+    assert.equal(firstCaloy.structuredFacts.massSchedules.length, 1);
+    assert.equal(firstCaloy.structuredFacts.massSchedules[0].label, "Liturgy of the Word");
+    assert.equal(firstCaloy.structuredFacts.massSchedules[0].layMinisterAssigned, true);
+    assert.equal(firstCaloy.liveData.massSchedules[0].occurrenceOverrides, undefined);
+    const nextCaloy = await registry.getParishEventsForDate({ parishId: 10, date: "2099-10-25" });
+    assert.equal(nextCaloy.structuredFacts.massSchedules[0].label, "Sunday High Mass");
+    assert.equal(nextCaloy.structuredFacts.massSchedules[0].layMinisterAssigned, false);
+  } finally {
+    [prisma.massScheduleTemplate.findMany, prisma.parishEvent.findMany, prisma.user.findMany, prisma.schedule.findMany, prisma.parishAvailability.findMany] = originals;
+  }
+});
+
+test("an archived or moved designation remains visible for revocation without generating an event", async () => {
+  const { state, tx } = occurrenceFixture();
+  state.template.occurrenceOverrides = [{ id: 1, version: 1, isActive: true, dayType: "SUNDAY", timeSlot: "08:00 AM", templateRevision: 1, occurrenceDate: new Date("2099-10-18T00:00:00Z") }];
+  state.template.dayType = "FRIDAY";
+  state.template.occurrenceRevision++;
+  const restore = installTransactionMock(tx);
+  try {
+    const service = new MassScheduleService();
+    const moved = await service.getOccurrences(10, "2099-10-18");
+    assert.equal(moved.occurrences.length, 1);
+    assert.equal(moved.occurrences[0].date, "2099-10-23");
+    assert.equal(moved.occurrences[0].layMinisterAssigned, false);
+    assert.equal(moved.outdatedOverrides.length, 1);
+    state.template.isActive = false;
+    const archived = await service.getOccurrences(10, "2099-10-18");
+    assert.equal(archived.occurrences.length, 0);
+    const item = archived.outdatedOverrides[0];
+    await service.setOccurrenceLayMinister(10, 7, item.date, { weekStart: item.weekStart, availabilityToken: item.availabilityToken }, 901, false);
+    assert.equal(state.template.occurrenceOverrides[0].isActive, false);
+  } finally { restore(); }
+});
+
+test("an unresolved legacy appointment is UNKNOWN in the weekly availability preview", async () => {
+  const { tx } = occurrenceFixture();
+  tx.schedule.findMany = async () => [{ id: 1, requestedDate: new Date("2099-10-18T00:00:00Z"), status: "CONFIRMED" }];
+  const restore = installTransactionMock(tx);
+  try {
+    const week = await new MassScheduleService().getOccurrences(10, "2099-10-18");
+    assert.equal(week.occurrences[0].classification, "UNKNOWN");
+  } finally { restore(); }
+});

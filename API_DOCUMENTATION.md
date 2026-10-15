@@ -270,7 +270,10 @@ Every rule mutation requires `expectedVersion`. A stale configuration returns `4
 | DELETE | `/parish-availabilities/:id` | Staff / Coordinator | Delete an availability block. |
 | GET | `/calendar/events` | Staff / Coordinator | Retrieve combined calendar events (including parish-private events) in the caller’s scope. |
 | GET | `/mass-schedules/:parishId` | Staff / Coordinator | List recurring mass templates. |
-| POST | `/mass-schedules/:parishId` | Secretary | Upsert a recurring Mass template. Assignment fields are presence-sensitive. `layMinisterAssigned: true` clears the priest and presents the slot as “Liturgy of the Word” after a conservative 14-day recurring availability check; `expectedUpdatedAt` protects assignment changes from stale editors. |
+| GET | `/mass-schedules/:parishId/occurrences?from=YYYY-MM-DD` | Parish staff / Diocese Coordinator | Read-only seven-day expansion of saved recurrence, dated override state, priest names/classifications, and a scheduling-state token. No conflicts' private details are returned. |
+| POST | `/mass-schedules/:parishId/occurrences/:templateId/:date/lay-minister` | Secretary | Confirm one future occurrence using `{ weekStart, availabilityToken }`. Rechecks authoritative availability under scheduling locks; rejects available priests, unknown availability, invalid recurrence, or stale state. Parent template remains unchanged. |
+| DELETE | `/mass-schedules/:parishId/occurrences/:templateId/:date/lay-minister` | Secretary | Same confirmation payload; revokes only the persisted dated override, restoring parent behavior. |
+| POST | `/mass-schedules/:parishId` | Secretary | Upsert a recurring Mass template. Assignment fields are presence-sensitive. `layMinisterAssigned: true` clears the priest and presents the slot as “Liturgy of the Word” after a conservative 7-day recurring availability check; `expectedUpdatedAt` protects assignment changes from stale editors. |
 | DELETE | `/mass-schedules/:id` | Secretary | Delete a template. |
 | POST | `/mass-schedules/:parishId/reset` | Secretary | Reset parish templates. |
 | POST | `/mass-schedules/:id/priest-respond` | Priest | Respond to template assignment. |

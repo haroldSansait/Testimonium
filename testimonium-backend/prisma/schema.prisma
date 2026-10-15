@@ -344,6 +344,8 @@ model User {
   createdParishEvents           ParishEvent[]                 @relation("ParishEventCreator")
   assignedParishEvents          ParishEvent[]                 @relation("ParishEventPriest")
   massTemplates                 MassScheduleTemplate[]        @relation("MassTemplatePriest")
+  createdMassOverrides          MassOccurrenceOverride[] @relation("MassOverrideCreator")
+  revokedMassOverrides          MassOccurrenceOverride[] @relation("MassOverrideRevoker")
   idempotencyKeys               IdempotencyKey[]
   createdScheduleDateRules      ParishScheduleDateRule[]      @relation("ScheduleDateRuleCreator")
   createdDailyReports           DailyReport[]                 @relation("DailyReportCreator")
@@ -1056,6 +1058,8 @@ model MassScheduleTemplate {
   priestResponseStatus String?  @map("priest_response_status") @db.VarChar(50)
   priestResponseReason String?  @map("priest_response_reason") @db.Text
   layMinisterAssigned  Boolean  @default(false) @map("lay_minister_assigned")
+  occurrenceRevision   Int      @default(1) @map("occurrence_revision")
+  occurrenceOverrides  MassOccurrenceOverride[]
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
   parish               Parish   @relation(fields: [parishId], references: [id], onDelete: Cascade)
@@ -1064,6 +1068,28 @@ model MassScheduleTemplate {
   @@index([parishId])
   @@index([dayType])
   @@map("mass_schedule_templates")
+}
+
+model MassOccurrenceOverride {
+  id               Int      @id @default(autoincrement()) @map("override_id")
+  templateId       Int      @map("template_id")
+  occurrenceDate   DateTime @map("occurrence_date") @db.Date
+  dayType          String   @map("day_type") @db.VarChar(20)
+  timeSlot         String   @map("time_slot") @db.VarChar(20)
+  templateRevision Int      @map("template_revision")
+  isActive         Boolean  @default(true) @map("is_active")
+  version          Int      @default(1)
+  createdById      Int      @map("created_by_id")
+  revokedById      Int?     @map("revoked_by_id")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  template         MassScheduleTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  createdBy        User     @relation("MassOverrideCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy        User?    @relation("MassOverrideRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, occurrenceDate])
+  @@map("mass_occurrence_overrides")
 }
 
 model ParishEvent {

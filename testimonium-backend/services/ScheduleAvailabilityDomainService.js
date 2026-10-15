@@ -379,7 +379,8 @@ export async function loadPriestConflictSnapshot(priestId, fromDateStr, toDateSt
         assignedPriestId: parsedPriestId,
         isActive: true,
       },
-      select: { id: true, label: true, timeSlot: true, dayType: true },
+      select: { id: true, label: true, timeSlot: true, dayType: true, occurrenceRevision: true,
+        occurrenceOverrides: { where: { occurrenceDate: { gte: prevDayDbDate, lte: nextDayDbDate }, isActive: true } } },
     }),
     // 5. Personal schedules (half-open overlap: startAt < candidateMax && endAt > rangeStart)
     client.priestPersonalSchedule.findMany({

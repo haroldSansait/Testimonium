@@ -687,7 +687,7 @@ test("Caloy Scheduling Intelligence & Live Directory Correction Pass", async (t)
           return [
           {
             id: 20,
-            dayType: "WEEKDAY",
+            dayType: "MONDAY",
             timeSlot: "06:00 AM",
             label: "Morning Mass",
             language: "Tagalog",

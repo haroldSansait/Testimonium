@@ -1,3 +1,4 @@
+import { getMassOccurrences, setMassOccurrenceLayMinister } from "./MassOccurrenceService.js";
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
@@ -19,7 +20,7 @@ import {
 } from "../shared/LayMinisterPresentation.js";
 
 const MASS_CONFLICT_DURATION_MS = 60 * 60 * 1000;
-const LAY_MINISTER_RECURRING_WINDOW_DAYS = 14;
+const LAY_MINISTER_RECURRING_WINDOW_DAYS = 7;
 
 function addCandidateDates(set, startInput, endInput = startInput) {
   const start = new Date(startInput);
@@ -161,13 +162,13 @@ async function validateRecurringLayMinisterEligibility(
         tx,
       });
       if (classification === PriestAvailabilityClassification.AVAILABLE) {
-        const error = new Error("A parish priest is available for at least one occurrence in the 14-day verification window.");
+        const error = new Error("A parish priest is available for at least one occurrence in the 7-day verification window.");
         error.statusCode = 409;
         error.code = "LAY_MINISTER_PRIEST_AVAILABLE";
         throw error;
       }
       if (classification === PriestAvailabilityClassification.UNKNOWN) {
-        const error = new Error("Priest availability could not be verified for every occurrence in the 14-day verification window.");
+        const error = new Error("Priest availability could not be verified for every occurrence in the 7-day verification window.");
         error.statusCode = 409;
         error.code = "LAY_MINISTER_AVAILABILITY_UNVERIFIED";
         throw error;
@@ -184,6 +185,12 @@ async function validateRecurringLayMinisterEligibility(
 
 
 export class MassScheduleService {
+  getOccurrences(parishId, from) { return getMassOccurrences(parishId, from); }
+
+  setOccurrenceLayMinister(parishId, templateId, date, input, actorId, assign) {
+    return setMassOccurrenceLayMinister(parishId, templateId, date, input, actorId, assign);
+  }
+
   /**
    * Retrieves active Mass schedule templates for a parish.
    */
@@ -335,6 +342,8 @@ export class MassScheduleService {
           dayType,
           timeSlot,
           label,
+          ...(original && (original.dayType !== dayType || original.timeSlot !== timeSlot || assignmentChanged)
+            ? { occurrenceRevision: { increment: 1 } } : {}),
           assignedPriestId: parsedPriestId,
           layMinisterAssigned: targetLayMinister,
           ...(priestChanged || Boolean(original?.layMinisterAssigned) !== targetLayMinister

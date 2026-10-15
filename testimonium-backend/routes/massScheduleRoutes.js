@@ -1,11 +1,15 @@
 import { Router } from "express";
-import { list, upsert, remove, reset, respondPriestAssignment } from "../controllers/MassScheduleController.js";
+import { list, upsert, remove, reset, respondPriestAssignment, occurrences, changeOccurrence } from "../controllers/MassScheduleController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 
 const router = Router();
 
 router.use(authenticateFirebaseToken);
+
+router.get("/:parishId/occurrences", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), occurrences);
+router.post("/:parishId/occurrences/:templateId/:date/lay-minister", checkRole(["SECRETARY"]), changeOccurrence(true));
+router.delete("/:parishId/occurrences/:templateId/:date/lay-minister", checkRole(["SECRETARY"]), changeOccurrence(false));
 
 // All staff can list templates
 router.get("/:parishId", list);

@@ -1,3 +1,4 @@
+import { activeMassOccurrenceOverride } from "../shared/MassOccurrenceOverride.js";
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
 
@@ -519,12 +520,14 @@ export class ConflictHelper {
             dayType: { in: [...applicableTypes] },
             id: excludeMassTemplateId ? { not: parseInt(excludeMassTemplateId, 10) } : undefined,
           },
-          select: { id: true, label: true, timeSlot: true, dayType: true },
+          select: { id: true, label: true, timeSlot: true, dayType: true, occurrenceRevision: true,
+            occurrenceOverrides: { where: { occurrenceDate: { in: databaseDates }, isActive: true } } },
         })
       : [];
     for (const template of templates) {
       for (const item of coveredDates) {
         if (!massTemplateAppliesOnDate(template.dayType, item.dateStr)) continue;
+        if (activeMassOccurrenceOverride(template, item.dateStr)) continue;
         const massStart = parseManilaDateTime(item.dateStr, template.timeSlot);
         const massEnd = massStart ? new Date(massStart.getTime() + MASS_CONFLICT_DURATION_MS) : null;
         if (massStart && massEnd && massStart < end && massEnd > start) {
@@ -664,6 +667,7 @@ export function evaluatePriestConflictFromSnapshot(snapshot, candidateStart, can
     if (template.isActive === false) continue;
     for (const item of coveredDates) {
       if (!massTemplateAppliesOnDate(template.dayType, item.dateStr)) continue;
+      if (activeMassOccurrenceOverride(template, item.dateStr)) continue;
       if (!template.timeSlot) {
         return { available: false, reason: "PRIEST_AVAILABILITY_UNDETERMINED" };
       }

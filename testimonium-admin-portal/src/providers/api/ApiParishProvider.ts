@@ -1,5 +1,5 @@
 import api from '@/api/api';
-import type { ParishProvider, ParishFilters, MassScheduleTemplate, MassScheduleUpsertInput, CreateParishPayload } from '../interfaces';
+import type { ParishProvider, ParishFilters, MassOccurrenceWeek, MassOccurrenceConfirmation, MassScheduleTemplate, MassScheduleUpsertInput, CreateParishPayload } from '../interfaces';
 import type { Parish } from '@/types';
 import type { ApiResponseEnvelope } from '@/types/api';
 
@@ -49,6 +49,19 @@ export const ApiParishProvider: ParishProvider = {
   async getMassSchedule(parishId: string): Promise<MassScheduleTemplate[]> {
     const response = await api.get<ApiResponseEnvelope<MassScheduleTemplate[]>>(`/mass-schedules/${parishId}`);
     return response.data.data;
+  },
+
+  async getMassOccurrences(parishId: string, from: string): Promise<MassOccurrenceWeek> {
+    const response = await api.get<ApiResponseEnvelope<MassOccurrenceWeek>>(
+      '/mass-schedules/' + parishId + '/occurrences', { params: { from } }
+    );
+    return response.data.data;
+  },
+
+  async setMassOccurrenceLayMinister(parishId: string, templateId: number, date: string, confirmation: MassOccurrenceConfirmation, assign: boolean): Promise<void> {
+    const url = '/mass-schedules/' + parishId + '/occurrences/' + templateId + '/' + date + '/lay-minister';
+    if (assign) await api.post(url, confirmation);
+    else await api.delete(url, { data: confirmation });
   },
 
   async upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate> {

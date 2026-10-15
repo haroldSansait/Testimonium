@@ -137,3 +137,23 @@ export const respondPriestAssignment = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const occurrences = async (req, res, next) => {
+  try {
+    await validateParishAccess(req, req.params.parishId, "Mass Occurrence Availability");
+    const data = await service.getOccurrences(req.params.parishId, req.query.from);
+    return res.json({ success: true, data });
+  } catch (error) { return next(error); }
+};
+
+export const changeOccurrence = (assign) => async (req, res, next) => {
+  try {
+    await validateParishAccess(req, req.params.parishId, "Mass Occurrence Lay Minister Assignment");
+    const data = await service.setOccurrenceLayMinister(
+      req.params.parishId, req.params.templateId, req.params.date, req.body, req.user.id, assign
+    );
+    return res.json({ success: true, data, message: assign
+      ? "This occurrence alone is now designated Liturgy of the Word. The recurring template remains unchanged."
+      : "The date-specific override was removed. This occurrence again follows its original Mass template." });
+  } catch (error) { return next(error); }
+};

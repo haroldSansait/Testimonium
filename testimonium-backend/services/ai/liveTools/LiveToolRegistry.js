@@ -1,3 +1,4 @@
+import { effectiveMassOccurrence, massOverrideRange } from "../../../shared/MassOccurrenceOverride.js";
 import { prisma } from "../../../config/db.js";
 import { TOOL_IDS } from "./liveToolSchemas.js";
 import {
@@ -21,6 +22,7 @@ import {
 import { ScheduleService } from "../../ScheduleService.js";
 import { ParishionerRequestRepository } from "../../../repositories/ParishionerRequestRepository.js";
 import {
+  massTemplateAppliesOnDate,
   getManilaDateString,
   parseStrictManilaDateOnly,
   parseManilaDateOnly,
@@ -1795,7 +1797,6 @@ export class LiveToolRegistry {
       if (templateDelegate?.findMany) {
         const pDate = parseManilaDateOnly(parsedDate.dateStr);
         const dayOfWeek = pDate ? new Date(Date.UTC(pDate.year, pDate.month - 1, pDate.day)).getUTCDay() : new Date(parsedDate.dateStr).getDay();
-        const targetDayType = dayOfWeek === 0 ? "SUNDAY" : "WEEKDAY";
         const templates = await templateDelegate.findMany({
           where: { parishId: pId, isActive: true },
           select: {
@@ -1804,13 +1805,19 @@ export class LiveToolRegistry {
             timeSlot: true,
             label: true,
             layMinisterAssigned: true,
+            occurrenceRevision: true,
+            occurrenceOverrides: massOverrideRange(parsedDate.databaseDate, parsedDate.databaseDate),
           },
         });
         massSchedules = (templates || []).filter((t) => {
           if (t.dayOfWeek !== undefined) {
             return Number(t.dayOfWeek) === Number(dayOfWeek);
           }
-          return t.dayType === targetDayType || !t.dayType;
+          return massTemplateAppliesOnDate(t.dayType, parsedDate.dateStr);
+        }).map(t => {
+          const effective = effectiveMassOccurrence(t, parsedDate.dateStr);
+          delete effective.occurrenceOverrides;
+          return effective;
         });
       }
     } catch {

@@ -326,6 +326,14 @@ export const DemoParishProvider: ParishProvider = {
     return list;
   },
 
+  async getMassOccurrences() {
+    throw new Error('Authoritative priest availability requires a connection to the parish server.');
+  },
+
+  async setMassOccurrenceLayMinister() {
+    throw new Error('Connect to the parish server to validate and save this assignment.');
+  },
+
   async upsertMassSchedule(parishId: string, data: MassScheduleUpsertInput): Promise<MassScheduleTemplate> {
     const users = await DemoUserProvider.getUsers({});
     let priestObj = null;

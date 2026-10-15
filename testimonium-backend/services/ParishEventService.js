@@ -1,31 +1,10 @@
+import { effectiveMassOccurrence, massOverrideRange } from "../shared/MassOccurrenceOverride.js";
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
-import { ConflictHelper, parseManilaDateTime } from "./ConflictHelper.js";
+import { ConflictHelper, parseManilaDateTime, massTemplateAppliesOnDate, formatManilaTimeSlot } from "./ConflictHelper.js";
 import { lockPriestsForScheduling, normalizePriestId } from "./SchedulingAvailability.js";
 import { NotificationDispatcher } from "./NotificationDispatcher.js";
 import { resolveMassDisplayLabel } from "../shared/LayMinisterPresentation.js";
-
-function combineDateAndTime(date, timeStr) {
-  try {
-    const d = new Date(date);
-    let [hourMin, period] = timeStr.split(" ");
-    let [hours, minutes] = hourMin.split(":").map(Number);
-    if (period === "PM" && hours < 12) hours += 12;
-    if (period === "AM" && hours === 12) hours = 0;
-    d.setUTCHours(hours, minutes, 0, 0);
-    return d;
-  } catch (err) {
-    return null;
-  }
-}
-
-function formatTime(date) {
-  const hours24 = date.getUTCHours();
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const period = hours24 >= 12 ? "PM" : "AM";
-  const hours12 = hours24 % 12 || 12;
-  return `${String(hours12).padStart(2, "0")}:${minutes} ${period}`;
-}
 
 function formatDateOnly(date) {
   return date.toISOString().slice(0, 10);
@@ -224,6 +203,7 @@ export class ParishEventService {
     const templates = await prisma.massScheduleTemplate.findMany({
       where: templateWhere,
       include: {
+        occurrenceOverrides: massOverrideRange(startOfMonth, new Date(startOfNextMonth.getTime() - 1)),
         parish: { select: { id: true, parishName: true } },
         assignedPriest: { select: { id: true, fullName: true } }
       }
@@ -231,21 +211,14 @@ export class ParishEventService {
 
     const expandedMasses = [];
     const numDays = new Date(parsedYear, parsedMonth, 0).getDate();
-    const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-
     for (let day = 1; day <= numDays; day++) {
       const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, day));
-      const dayOfWeek = date.getUTCDay();
-      const currentDayName = dayNames[dayOfWeek];
+      const dateStr = date.toISOString().slice(0, 10);
+      const dailyTemplates = templates.filter(t => massTemplateAppliesOnDate(t.dayType, dateStr));
 
-      const dailyTemplates = templates.filter((t) => {
-        if (t.dayType === currentDayName) return true;
-        if (t.dayType === "WEEKDAY" && (currentDayName === "WEDNESDAY" || currentDayName === "FRIDAY")) return true;
-        return false;
-      });
-
-      for (const t of dailyTemplates) {
-        const start = combineDateAndTime(date, t.timeSlot);
+      for (const savedTemplate of dailyTemplates) {
+        const t = effectiveMassOccurrence(savedTemplate, dateStr);
+        const start = parseManilaDateTime(dateStr, t.timeSlot);
         const end = start ? new Date(start.getTime() + 60 * 60 * 1000) : null;
         
         expandedMasses.push({
@@ -255,11 +228,13 @@ export class ParishEventService {
           configuredLabel: t.label,
           layMinisterAssigned: Boolean(t.layMinisterAssigned),
           eventType: "PRIVATE_MASS", // matches 'Holy Mass' category on frontend mapping
-          description: `Regular Mass schedule - ${t.dayType} at ${t.timeSlot}.`,
+          description: t.layMinisterAssigned
+            ? `Liturgy of the Word ? Lay Minister-led. ${t.dayType} at ${t.timeSlot}.`
+            : `Regular Mass schedule - ${t.dayType} at ${t.timeSlot}.`,
           location: "Parish Sanctuary",
           eventDate: date,
           startTime: t.timeSlot,
-          endTime: end ? formatTime(end) : t.timeSlot,
+          endTime: end ? formatManilaTimeSlot(end) : t.timeSlot,
           assignedPriestId: t.assignedPriestId,
           isActive: true,
           parish: t.parish,
