@@ -117,7 +117,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   const hasActiveCorrectedUpload = Boolean(activeReturn?.correctedFileName);
 
   const handleUploadCorrected = async () => {
-    if (!correctedFile || correctedUploadInFlightRef.current || hasActiveCorrectedUpload) return;
+    if (!canManage || !correctedFile || correctedUploadInFlightRef.current || hasActiveCorrectedUpload) return;
     correctedUploadInFlightRef.current = true;
     setIsUploadingCorrected(true);
     setCorrectedUploadError(null);
@@ -209,7 +209,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
     correctionReasonCode?: string,
     correctionNote?: string
   ) => {
-    if (updateInFlightRef.current) return;
+    if (!canManage || updateInFlightRef.current) return;
     updateInFlightRef.current = true;
     setIsUpdating(true);
     setErrorMessage(null);
@@ -239,7 +239,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   };
 
   const handleSendCorrection = async () => {
-    if (updateInFlightRef.current) return;
+    if (!canManage || updateInFlightRef.current) return;
     if (!correctionReasonCode) {
       setCorrectionModalError('Please select a reason for rejection.');
       return;
@@ -290,6 +290,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   };
 
   const handleSendPaymentCorrection = async () => {
+    if (!canManage) return;
     if (!paymentCorrectionNotes.trim()) {
       setErrorMessage('Please provide specific correction instructions for the payment proof.');
       return;
@@ -1482,7 +1483,7 @@ export function DocumentRequestsPage() {
     correctionReasonCode?: string,
     correctionNote?: string
   ) => {
-    if (!selectedRequest) return;
+    if (!canManage || !selectedRequest) return;
     setIsMutating(true);
 
     try {

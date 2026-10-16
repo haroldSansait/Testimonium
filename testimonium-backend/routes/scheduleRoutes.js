@@ -50,6 +50,7 @@ import {
 } from "../validators/scheduleSchemas.js";
 
 const router = Router();
+const managingStaffRoles = ["SECRETARY"];
 
 router.use(authenticateFirebaseToken);
 
@@ -64,19 +65,19 @@ router.post("/", validateBody(createScheduleSchema), create);
 router.get("/tracking/:reference", getByTracking);
 router.get("/:id/priest-availability", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), getPriestAvailability);
 router.get("/:id", getById);
-router.patch("/:id/status", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(updateScheduleStatusSchema), updateStatus);
-router.post("/:id/propose-reschedule", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(proposeRescheduleSchema), proposeReschedule);
+router.patch("/:id/status", checkRole(managingStaffRoles), validateBody(updateScheduleStatusSchema), updateStatus);
+router.post("/:id/propose-reschedule", checkRole(managingStaffRoles), validateBody(proposeRescheduleSchema), proposeReschedule);
 router.post("/:id/respond-reschedule", checkRole(["PARISHIONER"]), validateBody(respondRescheduleSchema), respondReschedule);
-router.post("/:id/assign-priest", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(assignPriestSchema), assignPriest);
-router.post("/:id/assign-lay-minister", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), validateBody(assignLayMinisterSchema), assignLayMinister);
+router.post("/:id/assign-priest", checkRole(managingStaffRoles), validateBody(assignPriestSchema), assignPriest);
+router.post("/:id/assign-lay-minister", checkRole(managingStaffRoles), validateBody(assignLayMinisterSchema), assignLayMinister);
 router.get("/:id/alternative-proposals", listAlternativeProposals);
 router.post("/:id/alternative-proposals", checkRole(["PARISHIONER"]), validateBody(submitAlternativeProposalSchema), submitAlternativeProposal);
 router.post("/:id/alternative-proposals/:proposalId/withdraw", checkRole(["PARISHIONER"]), validateBody(alternativeProposalRevisionSchema), withdrawAlternativeProposal);
-router.post("/:id/alternative-proposals/:proposalId/decline", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), validateBody(declineAlternativeProposalSchema), declineAlternativeProposal);
-router.post("/:id/alternative-proposals/:proposalId/approve", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), validateBody(nominateAlternativeProposalSchema), nominateAlternativeProposalPriest);
-router.post("/:id/alternative-proposals/:proposalId/revoke", checkRole(["SECRETARY", "DIOCESE_COORDINATOR"]), validateBody(alternativeProposalRevisionSchema), revokeAlternativeProposalNomination);
+router.post("/:id/alternative-proposals/:proposalId/decline", checkRole(managingStaffRoles), validateBody(declineAlternativeProposalSchema), declineAlternativeProposal);
+router.post("/:id/alternative-proposals/:proposalId/approve", checkRole(managingStaffRoles), validateBody(nominateAlternativeProposalSchema), nominateAlternativeProposalPriest);
+router.post("/:id/alternative-proposals/:proposalId/revoke", checkRole(managingStaffRoles), validateBody(alternativeProposalRevisionSchema), revokeAlternativeProposalNomination);
 router.post("/:id/alternative-proposals/:proposalId/priest-respond", checkRole(["PRIEST"]), validateBody(respondAlternativeProposalSchema), respondAlternativeProposalNomination);
 router.post("/:id/priest-respond", checkRole(["PRIEST"]), validateBody(priestAssignmentResponseSchema), respondPriestAssignment);
-router.post("/:id/emergency-reschedule", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), validateBody(emergencyRescheduleSchema), emergencyReschedule);
+router.post("/:id/emergency-reschedule", checkRole(managingStaffRoles), validateBody(emergencyRescheduleSchema), emergencyReschedule);
 
 export default router;

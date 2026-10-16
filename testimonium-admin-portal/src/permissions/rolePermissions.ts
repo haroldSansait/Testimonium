@@ -20,6 +20,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.VIEW_DOCUMENT_REQUESTS,
     PERMISSIONS.MANAGE_DOCUMENT_REQUESTS,
     PERMISSIONS.VIEW_SCHEDULE_REQUESTS,
+    PERMISSIONS.MANAGE_SCHEDULE_REQUESTS,
     PERMISSIONS.VIEW_CALENDAR,
     PERMISSIONS.VIEW_NOTIFICATIONS,
     PERMISSIONS.MANAGE_MASS_SCHEDULE,
@@ -41,7 +42,6 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   DIOCESE_COORDINATOR: [
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.VIEW_DOCUMENT_REQUESTS,
-    PERMISSIONS.MANAGE_DOCUMENT_REQUESTS,
     PERMISSIONS.VIEW_SCHEDULE_REQUESTS,
     PERMISSIONS.VIEW_CALENDAR,
     PERMISSIONS.VIEW_NOTIFICATIONS,
@@ -145,6 +145,11 @@ export function canManageCaloyLogs(role: UserRole | null | undefined): boolean {
 /** True when the role may manage (change status / approve / reject) document requests. */
 export function canManageDocumentRequests(role: UserRole | null | undefined): boolean {
   return hasPermission(role, PERMISSIONS.MANAGE_DOCUMENT_REQUESTS);
+}
+
+/** True when the role may manage schedule requests from the Admin Portal. */
+export function canManageScheduleRequests(role: UserRole | null | undefined): boolean {
+  return hasPermission(role, PERMISSIONS.MANAGE_SCHEDULE_REQUESTS);
 }
 
 /** True when the role may manage dynamic legal policies (Terms & Privacy). */

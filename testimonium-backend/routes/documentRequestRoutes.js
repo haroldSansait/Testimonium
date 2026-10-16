@@ -19,7 +19,7 @@ import { uploadCorrectedDocumentFile } from "../middlewares/uploadMiddleware.js"
 const router = Router();
 
 const staffRoles = ["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"];
-const managingStaffRoles = ["SECRETARY", "DIOCESE_COORDINATOR"];
+const managingStaffRoles = ["SECRETARY"];
 
 router.use(authenticateFirebaseToken);
 router.use(checkRole(staffRoles));

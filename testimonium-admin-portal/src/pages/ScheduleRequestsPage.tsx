@@ -16,6 +16,8 @@ import { cn } from '@/utils/cn';
 import { resolveEventType } from '@/shared/EventTypeCatalog';
 import type { ScheduleFilter } from '@/services/scheduleRequestService';
 import { EmergencyRescheduleModal } from '@/components/schedule-requests/EmergencyRescheduleModal';
+import { useAuth } from '@/hooks/useAuth';
+import { canManageScheduleRequests } from '@/permissions/rolePermissions';
 
 const FILTER_TABS: { label: string; value: ScheduleFilter }[] = [
   { label: 'All Requests', value: 'all' },
@@ -28,6 +30,7 @@ const FILTER_TABS: { label: string; value: ScheduleFilter }[] = [
 import { getManilaTodayDateString, isBeforeManilaToday } from '@/utils/date';
 
 interface DetailsModalProps {
+  canManage: boolean;
   request: ScheduleRequest;
   onClose: () => void;
   onStatusChange: (status: ScheduleStatus) => Promise<void>;
@@ -40,7 +43,7 @@ interface DetailsModalProps {
   onEmergencyRescheduleSuccess?: (updated: ScheduleRequest) => void;
 }
 
-function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onProposeReschedule, onAssignPriest, onAssignLayMinister, onNominateAlternative, onDeclineAlternative, onRevokeAlternative, onEmergencyRescheduleSuccess }: DetailsModalProps) {
+function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChange, onProposeReschedule, onAssignPriest, onAssignLayMinister, onNominateAlternative, onDeclineAlternative, onRevokeAlternative, onEmergencyRescheduleSuccess }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showEmergencyRescheduleModal, setShowEmergencyRescheduleModal] = useState(false);
@@ -203,6 +206,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   }, [proposedDate, request.parishId, request.eventType, request.appointmentTitle, request.rawEventType]);
 
   const handleAction = async (status: ScheduleStatus) => {
+    if (!canManage) return;
     setIsUpdating(true);
     try {
       await onStatusChange(status);
@@ -213,6 +217,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handlePriestSelectChange = (newPriestId: string) => {
+    if (!canManage) return;
     if (!newPriestId) {
       setSelectedPriestId('');
       return;
@@ -228,7 +233,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleConfirmLayMinister = async () => {
-    if (layMinisterReason.trim().length < 5) return;
+    if (!canManage || layMinisterReason.trim().length < 5) return;
     setIsUpdating(true);
     setLayMinisterError(null);
     try {
@@ -245,7 +250,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleProposalNominate = async () => {
-    if (!proposalPriestId || isUpdating || pendingProposalAction) return;
+    if (!canManage || !proposalPriestId || isUpdating || pendingProposalAction) return;
     setPendingProposalAction('nominate');
     setProposalActionError(null);
     try {
@@ -258,7 +263,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleProposalDecline = async () => {
-    if (proposalDeclineReason.trim().length < 5 || isUpdating || pendingProposalAction) return;
+    if (!canManage || proposalDeclineReason.trim().length < 5 || isUpdating || pendingProposalAction) return;
     setPendingProposalAction('decline');
     setProposalActionError(null);
     try {
@@ -271,7 +276,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleProposalRevoke = async () => {
-    if (isUpdating || pendingProposalAction) return;
+    if (!canManage || isUpdating || pendingProposalAction) return;
     setPendingProposalAction('revoke');
     setProposalActionError(null);
     try {
@@ -284,7 +289,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleConfirmPriestAssignment = async () => {
-    if (!confirmPriestModal) return;
+    if (!canManage || !confirmPriestModal) return;
     setIsUpdating(true);
     try {
       await onAssignPriest(confirmPriestModal.priestId, confirmPriestModal.priestName);
@@ -302,6 +307,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleApprove = async () => {
+    if (!canManage) return;
     if (!request.layMinisterAssigned && (!request.assignedPriest || request.assignedPriest === 'TBD')) {
       setPriestValidationError(true);
       return;
@@ -318,6 +324,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
   };
 
   const handleProposeReschedule = async () => {
+    if (!canManage) return;
     if (!proposedDate || isBeforeManilaToday(proposedDate) || !proposedTime || loadingSlots) {
       return;
     }
@@ -382,7 +389,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150 relative">
         {/* Reschedule Proposal Sub-Modal */}
-        {showRescheduleModal && (
+        {canManage && showRescheduleModal && (
           <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
@@ -467,7 +474,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
         )}
 
         {/* Priest Assignment Confirmation Sub-Modal */}
-        {confirmPriestModal && (
+        {canManage && confirmPriestModal && (
           <div className="absolute inset-0 bg-white z-30 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
@@ -548,7 +555,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
           </div>
         )}
 
-        {showLayMinisterModal && (
+        {canManage && showLayMinisterModal && (
           <div className="absolute inset-0 bg-white z-30 p-6 flex flex-col justify-between animate-in fade-in duration-150 rounded-2xl">
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
@@ -774,9 +781,21 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                 IMPORTANT!
               </div>
               <p className="text-amber-900 leading-relaxed font-medium">
-                No priests are available for this date and time.
-                <br />
-                Please propose a new schedule or reject the request.
+                {layMinisterEligibleEvent ||
+                request.rawEventType === 'FUNERAL' ||
+                request.rawEventType === 'BLESSING' ||
+                request.eventType === 'Funeral Mass' ||
+                request.eventType === 'House Blessing' ||
+                resolveEventType(request.appointmentTitle || request.eventType || '') === 'FUNERAL' ||
+                resolveEventType(request.appointmentTitle || request.eventType || '') === 'BLESSING' ? (
+                  'No priests are available for this date and time. You may assign a Lay Minister as a last resort, propose an alternative schedule, or reject the request.'
+                ) : (
+                  <>
+                    No priests are available for this date and time.
+                    <br />
+                    Please propose a new schedule or reject the request.
+                  </>
+                )}
               </p>
             </div>
           )}
@@ -816,7 +835,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
             <CustomSelect
               value={selectedPriestId}
               onChange={handlePriestSelectChange}
-              disabled={loadingPriests || loadingAvailability || availabilityError || isUpdating}
+              disabled={!canManage || loadingPriests || loadingAvailability || availabilityError || isUpdating}
               loading={loadingPriests || loadingAvailability}
               placeholder={
                 loadingPriests
@@ -935,7 +954,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                 )}
 
                 {/* Flow 1: SUBMITTED - Parish Staff Reviews & Nominates or Declines */}
-                {isSubmitted && (
+                {canManage && isSubmitted && (
                   <div className="space-y-3 pt-1">
                     <div className="space-y-1">
                       <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider">
@@ -1035,7 +1054,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                     </div>
                     <button
                       type="button"
-                      disabled={isUpdating || pendingProposalAction !== null}
+                      disabled={!canManage || isUpdating || pendingProposalAction !== null}
                       onClick={() => void handleProposalRevoke()}
                       className="px-3.5 py-2 bg-white border border-purple-300 hover:bg-purple-100/60 text-purple-800 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors shrink-0 flex items-center gap-1.5 shadow-xs cursor-pointer"
                     >
@@ -1129,7 +1148,12 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
 
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {allowsActions && (
+              {!canManage && (
+                <p className="text-xs text-gray-500 italic py-2">
+                  You have read-only access to schedule requests.
+                </p>
+              )}
+              {canManage && allowsActions && (
                 <>
                   <button
                     type="button"
@@ -1173,7 +1197,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
                   </button>
                 </>
               )}
-              {request.status === 'Confirmed' && (
+              {canManage && request.status === 'Confirmed' && (
                 <button
                   type="button"
                   onClick={() => setShowEmergencyRescheduleModal(true)}
@@ -1195,7 +1219,7 @@ function ScheduleRequestDetailsModal({ request, onClose, onStatusChange, onPropo
         </div>
 
         {/* Emergency Reschedule Modal */}
-        {showEmergencyRescheduleModal && (
+        {canManage && showEmergencyRescheduleModal && (
           <EmergencyRescheduleModal
             request={request}
             onClose={() => setShowEmergencyRescheduleModal(false)}
@@ -1230,6 +1254,8 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function ScheduleRequestsPage() {
+  const { role } = useAuth();
+  const canManage = canManageScheduleRequests(role);
   const location = useLocation();
   const [activeFilter, setActiveFilter] = useState<ScheduleFilter>('all');
   const [page, setPage] = useState(1);
@@ -1293,7 +1319,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleStatusUpdate = async (status: ScheduleStatus) => {
-    if (!selectedRequest) return;
+    if (!canManage || !selectedRequest) return;
     if (typeof selectedRequest.version !== 'number') {
       setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
       void fetchRequests(true);
@@ -1322,7 +1348,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleProposeReschedule = async (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => {
-    if (!selectedRequest) return;
+    if (!canManage || !selectedRequest) return;
     if (typeof selectedRequest.version !== 'number') {
       setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
       void fetchRequests(true);
@@ -1387,7 +1413,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleAssignPriest = async (priestId: string, priestName: string) => {
-    if (!selectedRequest) return;
+    if (!canManage || !selectedRequest) return;
     if (typeof selectedRequest.version !== 'number') {
       setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
       void fetchRequests(true);
@@ -1430,6 +1456,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleAssignLayMinister = async (reason: string) => {
+    if (!canManage) return;
     if (!selectedRequest || typeof selectedRequest.version !== 'number') {
       setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
       return;
@@ -1458,6 +1485,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleNominateAlternative = async (priestId: string) => {
+    if (!canManage) return;
     const proposal = selectedRequest?.alternativeProposal;
     if (!selectedRequest || !proposal || typeof selectedRequest.version !== 'number') return;
     setIsMutating(true);
@@ -1482,6 +1510,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleDeclineAlternative = async (reason: string) => {
+    if (!canManage) return;
     const proposal = selectedRequest?.alternativeProposal;
     if (!selectedRequest || !proposal) return;
     setIsMutating(true);
@@ -1504,6 +1533,7 @@ export function ScheduleRequestsPage() {
   };
 
   const handleRevokeAlternative = async () => {
+    if (!canManage) return;
     const proposal = selectedRequest?.alternativeProposal;
     if (!selectedRequest || !proposal) return;
     setIsMutating(true);
@@ -1560,6 +1590,13 @@ export function ScheduleRequestsPage() {
         </div>
       </div>
 
+      {!canManage && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-xs text-blue-800">
+          <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>You have read-only access to schedule requests.</span>
+        </div>
+      )}
+
       {/* Table Card */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isLoading ? (
@@ -1586,6 +1623,7 @@ export function ScheduleRequestsPage() {
       {/* Details Modal */}
       {selectedRequest && (
         <ScheduleRequestDetailsModal
+          canManage={canManage}
           request={selectedRequest}
           onClose={() => setSelectedRequest(null)}
           onStatusChange={handleStatusUpdate}
