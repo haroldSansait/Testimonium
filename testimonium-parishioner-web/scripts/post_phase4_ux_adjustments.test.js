@@ -261,11 +261,5 @@ test("Post-Phase 4 Suite — Source Contracts for UI Pages & Components", async 
       apiSource.includes("/schedule-requests/tracking/"),
       "ApiSchedulerProvider must query canonical /schedule-requests/tracking/ endpoint"
     );
-
-    const demoSource = fs.readFileSync(path.join(__dirname, "../src/providers/demo/scheduler.ts"), "utf8");
-    assert.ok(
-      demoSource.includes("getAppointmentByTracking(reference: string): Promise<Appointment>"),
-      "DemoSchedulerProvider must implement getAppointmentByTracking"
-    );
   });
 });

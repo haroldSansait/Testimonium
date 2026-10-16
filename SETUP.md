@@ -141,9 +141,6 @@ Edit `testimonium-admin-portal/.env`:
 # Backend API Base URL
 VITE_API_URL=http://localhost:5000/api/v1
 
-# Data Provider Mode ("api" for live backend, "demo" for offline mock state)
-VITE_DATA_PROVIDER=api
-
 # Firebase Client SDK
 VITE_FIREBASE_API_KEY="your_firebase_api_key"
 VITE_FIREBASE_AUTH_DOMAIN="testimonium-xxxx.firebaseapp.com"
@@ -160,9 +157,6 @@ Edit `testimonium-parishioner-web/.env`:
 ```env
 # Backend API Base URL (Note key name: VITE_API_BASE_URL)
 VITE_API_BASE_URL=http://localhost:5000/api/v1
-
-# Data Provider Mode ("api" for live backend, "demo" for offline mock state)
-VITE_PROVIDER_MODE=api
 
 # Admin Portal Gateway Link
 VITE_ADMIN_PORTAL_URL=http://localhost:5174
@@ -439,7 +433,7 @@ npm run build:all
 **Cause:** Missing or placeholder Firebase credentials in the frontends' `.env` files.  
 **Solution:**
 - Set `VITE_FIREBASE_API_KEY` and project keys in both `testimonium-admin-portal/.env` and `testimonium-parishioner-web/.env`.
-- Alternatively, for rapid UI testing without Firebase, set `VITE_DATA_PROVIDER=demo` in Admin Portal and `VITE_PROVIDER_MODE=demo` in Parishioner Web.
+- Both web portals always use their existing API providers and require valid Firebase configuration and a reachable backend.
 
 ### Q4: Mobile App displays `Network request failed` or cannot reach backend
 **Cause:** The phone is attempting to connect to `localhost`, which refers to the phone itself rather than your laptop.  

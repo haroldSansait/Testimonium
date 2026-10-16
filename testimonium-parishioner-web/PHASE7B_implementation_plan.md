@@ -1,3 +1,5 @@
+> Historical plan: Demo and Hybrid providers have since been removed. Both web portals now use their existing API providers exclusively; the provider-mode switches and demo-specific checks below are obsolete. See [SETUP.md](../SETUP.md) for current configuration.
+
 # Phase 7B — Backend Integration, Document Processing Pipeline & Transaction Engine
 
 Phase 7B transitions the Parishioner Portal from a demonstration frontend into a fully functional production client connected to the TESTIMONIUM Backend. This plan replaces all demo/stub API providers with live backend integrations and establishes the document processing pipeline, cloud storage workflows, transaction state machine, and OCR-assisted payment verification.

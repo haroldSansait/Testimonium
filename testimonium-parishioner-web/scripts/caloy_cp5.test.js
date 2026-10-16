@@ -16,7 +16,6 @@ const __dirname = path.dirname(__filename);
 
 const typesSource = fs.readFileSync(path.join(__dirname, "../src/providers/types.ts"), "utf-8");
 const apiChatSource = fs.readFileSync(path.join(__dirname, "../src/providers/api/chat.ts"), "utf-8");
-const demoChatSource = fs.readFileSync(path.join(__dirname, "../src/providers/demo/chat.ts"), "utf-8");
 const drawerSource = fs.readFileSync(path.join(__dirname, "../src/features/chat/components/CaloyDrawer.tsx"), "utf-8");
 const assistantSource = fs.readFileSync(path.join(__dirname, "../src/features/chat/components/CaloyAssistant.tsx"), "utf-8");
 const parishSelectorSource = fs.readFileSync(path.join(__dirname, "../src/features/chat/components/ParishSelector.tsx"), "utf-8");
@@ -77,11 +76,12 @@ test("CP5 Parishioner Web Caloy & RAG Integration Suite", async (t) => {
     assert.doesNotMatch(apiChatSource, /GEMINI|apiKey|AI_KEY/i, "ApiChatProvider must NOT contain or expose AI API keys");
   });
 
-  // 3. DemoChatProvider Contract
-  await t.test("3. DemoChatProvider: returns ChatResponse with sources and no messageId", () => {
-    assert.match(demoChatSource, /Promise<ChatResponse>/, "DemoChatProvider must return Promise<ChatResponse>");
-    assert.match(demoChatSource, /sources:\s*\[/, "DemoChatProvider must include sources array");
-    assert.doesNotMatch(demoChatSource, /messageId/, "DemoChatProvider must NOT contain messageId");
+  // 3. API-only ChatResponse Contract
+  await t.test("3. ApiChatProvider: preserves ChatResponse and normalizes sources without a fabricated answer", () => {
+    assert.match(apiChatSource, /Promise<ChatResponse>/, "ApiChatProvider must return Promise<ChatResponse>");
+    assert.match(apiChatSource, /answer:\s*response\.answer/, "Answer must come from the backend response");
+    assert.match(apiChatSource, /sources:\s*Array\.isArray\(response\.sources\)\s*\?\s*response\.sources\s*:\s*\[\]/, "ApiChatProvider must preserve valid sources and normalize absent sources");
+    assert.doesNotMatch(apiChatSource, /messageId/, "ApiChatProvider must NOT contain messageId");
   });
 
   // 4. Welcome Copy Scope

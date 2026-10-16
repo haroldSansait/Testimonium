@@ -93,13 +93,12 @@ test('Admin Portal — Mother Parish UI Polish Suite', async (t) => {
     assert.ok(pageContent.includes('ep-error-message'), 'Edit modal must render inline error banner with ep-error-message');
     assert.ok(pageContent.includes("showToast(errorMsg, 'error')"), 'Edit handler must display server error message in toast');
 
-    // Verification of single-mother-parish conflict behavior in DemoParishProvider source
-    const demoProviderPath = path.join(srcDir, 'providers/demo/DemoParishProvider.ts');
-    const demoContent = fs.readFileSync(demoProviderPath, 'utf8');
-    assert.ok(
-      demoContent.includes('Another parish is already designated as the Mother Parish. Unset it before designating a different parish.'),
-      'DemoParishProvider must enforce single Mother Parish rule with standard conflict message'
-    );
+    // Parish writes use the API provider; the backend enforces the single-Mother-Parish rule.
+    const factoryContent = fs.readFileSync(path.join(srcDir, 'providers/providerFactory.ts'), 'utf8');
+    const apiContent = fs.readFileSync(path.join(srcDir, 'providers/api/ApiParishProvider.ts'), 'utf8');
+    assert.match(factoryContent, /getParishProvider\(\): ParishProvider\s*\{\s*return ApiParishProvider;/);
+    assert.ok(apiContent.includes("api.post<ApiResponseEnvelope<Parish>>('/parishes', data)"));
+    assert.ok(apiContent.includes('api.put<ApiResponseEnvelope<Parish>>(`/parishes/${id}`, data)'));
 
     // Simulate backend conflict rejection
     const conflictError = {

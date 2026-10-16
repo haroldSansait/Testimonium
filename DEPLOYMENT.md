@@ -39,10 +39,10 @@ Never set `ENABLE_DEV_AUTH=true` in production. It bypasses Firebase token verif
 
 Vite and Expo variables are embedded at build time. Set them in each client’s environment before building.
 
-| Client | API setting | Provider setting | Other required settings |
+| Client | API setting | Data source | Other required settings |
 | --- | --- | --- | --- |
-| Parishioner web | `VITE_API_BASE_URL=https://api.example.org/api/v1` | `VITE_PROVIDER_MODE=api` | Firebase client variables; optional `VITE_ADMIN_PORTAL_URL` |
-| Admin portal | `VITE_API_URL=https://api.example.org/api/v1` | `VITE_DATA_PROVIDER=api` | Firebase client variables |
+| Parishioner web | `VITE_API_BASE_URL=https://api.example.org/api/v1` | Existing API providers (always) | Firebase client variables; optional `VITE_ADMIN_PORTAL_URL` |
+| Admin portal | `VITE_API_URL=https://api.example.org/api/v1` | Existing API providers (always) | Firebase client variables |
 | Parishioner mobile | `EXPO_PUBLIC_API_BASE_URL=https://api.example.org/api/v1` | N/A (direct API) | `google-services.json` (Android) / GoogleService-Info.plist (iOS) |
 
 Client variables are public configuration. Never put service-account keys, R2 secrets, or database URLs in them.

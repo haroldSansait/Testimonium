@@ -10,7 +10,7 @@ This document describes the architecture, data provider abstractions, state mana
 *   **Styling**: Tailwind CSS with custom Testimonium Crimson design system (`#7B1C2A`, `crimson-700`, `bg-red-50`)
 *   **Routing**: React Router 7 (`createBrowserRouter`)
 *   **Authentication & RBAC**: Firebase Authentication + Custom Claims + Just-In-Time (JIT) staff provisioning
-*   **Provider Architecture**: Pluggable Data Provider interfaces (`ParishProvider`, `DocumentRequestProvider`, `ScheduleProvider`, `ActivityLogProvider`) supporting seamless switching between `api` (REST API) and `demo` (in-memory mock) modes
+*   **Provider Architecture**: Data Provider interfaces (`ParishProvider`, `DocumentRequestProvider`, `ScheduleProvider`, `ActivityLogProvider`) backed exclusively by the existing API implementations through `providerFactory`
 
 ---
 

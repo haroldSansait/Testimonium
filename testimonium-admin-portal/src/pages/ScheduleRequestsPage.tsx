@@ -781,7 +781,9 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                 IMPORTANT!
               </div>
               <p className="text-amber-900 leading-relaxed font-medium">
-                {layMinisterEligibleEvent ||
+                {!canManage ? (
+                  'No priests are available for this date and time.'
+                ) : layMinisterEligibleEvent ||
                 request.rawEventType === 'FUNERAL' ||
                 request.rawEventType === 'BLESSING' ||
                 request.eventType === 'Funeral Mass' ||

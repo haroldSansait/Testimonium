@@ -1,3 +1,5 @@
+> Historical plan: Demo and Hybrid providers have since been removed. Both web portals now use their existing API providers exclusively; the provider-mode switches and demo-specific checks below are obsolete. See [SETUP.md](../SETUP.md) for current configuration.
+
 # TESTIMONIUM Parishioner Web Portal — Phase 7B
 # Backend Integration, Document Processing Pipeline & Transaction Engine
 

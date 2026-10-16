@@ -1,33 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, HelpCircle, Info, Menu } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { DATA_PROVIDER } from '@/config/demo';
 import { NotificationService } from '@/services/NotificationService';
 import { useState, useEffect, useCallback } from 'react';
 import { HelpModal } from '@/components/modals/HelpModal';
 import { AboutModal } from '@/components/modals/AboutModal';
 import { Tooltip } from '@/components/ui/Tooltip';
-
-const modeConfig = {
-  api: {
-    label: 'API Mode',
-    sub: 'Connected to Backend',
-    bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
-    dot: 'bg-emerald-500'
-  },
-  hybrid: {
-    label: 'Hybrid Mode',
-    sub: 'Mixed Data Sources',
-    bg: 'bg-amber-50 text-amber-700 border-amber-200/60',
-    dot: 'bg-amber-500'
-  },
-  demo: {
-    label: 'Demo Mode',
-    sub: 'Using Mock Data',
-    bg: 'bg-indigo-50 text-indigo-700 border-indigo-200/60',
-    dot: 'bg-indigo-500'
-  }
-};
 
 interface NavbarProps {
   className?: string;
@@ -37,9 +15,6 @@ interface NavbarProps {
 export function Navbar({ className, onOpenNavigation }: NavbarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-
-  const mode = (DATA_PROVIDER || 'demo') as 'demo' | 'api' | 'hybrid';
-  const cfg = modeConfig[mode] || modeConfig.demo;
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
@@ -66,24 +41,9 @@ export function Navbar({ className, onOpenNavigation }: NavbarProps) {
         className
       )}
     >
-      {/* Title & Mode Indicator */}
+      {/* Mobile navigation */}
       <div className="flex items-center gap-3">
         <button type="button" aria-label="Open navigation" onClick={onOpenNavigation} className="rounded-md p-2 text-gray-600 hover:bg-gray-100 lg:hidden"><Menu className="h-5 w-5" /></button>
-        <Tooltip content={`Connectivity mode: ${cfg.label} (${cfg.sub})`} side="bottom">
-          <div
-            tabIndex={0}
-            role="status"
-            aria-label={`Connectivity mode: ${cfg.label}, ${cfg.sub}`}
-            className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm cursor-default focus:outline-none focus:ring-2 focus:ring-crimson-700/20",
-              cfg.bg
-            )}
-          >
-            <span className={cn("w-2 h-2 rounded-full animate-pulse", cfg.dot)} />
-            <span className="font-semibold">{cfg.label}</span>
-            <span className="hidden sm:inline-block text-[10px] opacity-75 border-l pl-1.5 border-current/25">{cfg.sub}</span>
-          </div>
-        </Tooltip>
       </div>
 
       {/* Right actions */}
