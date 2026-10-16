@@ -135,6 +135,12 @@ export const env = {
   payment: {
     minConfidence: parseConfidence(process.env.PAYMENT_PROOF_MIN_CONFIDENCE, 0.75),
   },
+  emailTransport: (process.env.EMAIL_TRANSPORT || "smtp").trim().toLowerCase(),
+  gmail: {
+    clientId: process.env.GMAIL_CLIENT_ID?.trim(),
+    clientSecret: process.env.GMAIL_CLIENT_SECRET?.trim(),
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN?.trim(),
+  },
   smtp: {
     enabled: Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM_EMAIL),
     host: process.env.SMTP_HOST,

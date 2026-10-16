@@ -10,6 +10,7 @@ let timer = null;
 let activeDrain = null;
 
 function isPermanent(error) {
+  if (error?.code === "GMAIL_API_DELIVERY_ERROR") return error.permanent === true;
   if (error?.permanent === true) return true;
   if (Number(error?.responseCode) >= 500) return true;
   return ["EENVELOPE", "EMESSAGE"].includes(error?.code);
@@ -23,7 +24,7 @@ export class EmailOutboxWorker {
   static start() {
     if (timer || !emailService.isConfigured()) {
       if (!emailService.isConfigured()) {
-        logger.warn("[EmailOutbox] SMTP is not configured; queued email will remain durable until configuration is supplied.");
+        logger.warn("[EmailOutbox] Email delivery transport is not configured; queued email will remain durable until configuration is supplied.");
       }
       return;
     }
@@ -54,12 +55,10 @@ export class EmailOutboxWorker {
 
   static async claimOne() {
     const token = randomUUID();
-    // Keep a claim beyond every configured SMTP timeout phase so a second
+    // Keep a claim beyond every bounded delivery phase so a second
     // process cannot reclaim a message while the first send is still active.
-    const smtpTimeoutSeconds = Math.ceil((
-      env.smtp.connectionTimeoutMs + env.smtp.greetingTimeoutMs + env.smtp.socketTimeoutMs
-    ) / 1000) + 30;
-    const leaseSeconds = Math.max(env.smtp.workerLeaseSeconds, smtpTimeoutSeconds);
+    const deliveryTimeoutSeconds = Math.ceil(emailService.getDeliveryTimeoutMs() / 1000) + 30;
+    const leaseSeconds = Math.max(env.smtp.workerLeaseSeconds, deliveryTimeoutSeconds);
     const rows = await prisma.$queryRaw`
       WITH candidate AS (
         SELECT "email_outbox_id"
