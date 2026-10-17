@@ -82,6 +82,7 @@ const mapRequest = (req: any): SacramentalRequest => {
     id: String(req.id),
     parishId: String(req.parishId),
     documentType: mapBackendToFrontendDocType(req.documentType),
+    rawDocumentType: req.documentType,
     fee: parsedFee,
     status: mapBackendToFrontendStatus(req.status),
     submittedAt: req.dateRequested || req.createdAt,
@@ -96,11 +97,16 @@ const mapRequest = (req: any): SacramentalRequest => {
 
 export class ApiRequestProvider implements IRequestProvider {
   async getRequests(filters?: any): Promise<SacramentalRequest[]> {
-    const response = await client.get<any>("/requests", filters);
-    const list = Array.isArray(response)
-      ? response
-      : response?.data || response?.items || [];
-    return list.map(mapRequest);
+    // The client unwraps the pagination envelope. Traverse every page so older
+    // drafts remain discoverable even when recent submissions fill the first page.
+    const all: SacramentalRequest[] = [];
+    const limit = 100;
+    for (let page = 1; ; page += 1) {
+      const response = await client.get<any>("/requests", { ...filters, page, limit });
+      const list = Array.isArray(response) ? response : response?.data || response?.items || [];
+      all.push(...list.map(mapRequest));
+      if (list.length < limit) return [...new Map(all.map((item) => [item.id, item])).values()];
+    }
   }
 
   async getRequestById(id: string): Promise<SacramentalRequest | null> {
@@ -145,6 +151,15 @@ export class ApiRequestProvider implements IRequestProvider {
   async submitDraft(id: string): Promise<SacramentalRequest> {
     const data = await client.post<any>(`/requests/${id}/submit`);
     return mapRequest(data);
+  }
+
+  async updateDraft(id: string, details: Parameters<IRequestProvider['updateDraft']>[1]): Promise<SacramentalRequest> {
+    return mapRequest(await client.patch<any>(`/requests/${id}`, details));
+  }
+
+  async deleteDraft(id: string): Promise<{ id: string; cleanupQueued: boolean }> {
+    const result = await client.delete<{ id: number; cleanupQueued: boolean }>(`/requests/${id}`);
+    return { id: String(result.id), cleanupQueued: result.cleanupQueued };
   }
 
   async cancelRequest(id: string, remarks?: string): Promise<SacramentalRequest> {

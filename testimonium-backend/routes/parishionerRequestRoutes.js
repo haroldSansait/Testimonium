@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
   create,
+  updateDraft,
+  deleteDraft,
   submitDraft,
   cancel,
   list,
@@ -21,7 +23,7 @@ import {
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
-import { createRequestSchema } from "../validators/requestSchemas.js";
+import { createRequestSchema, updateDraftSchema } from "../validators/requestSchemas.js";
 import {
   uploadRequestFiles,
   uploadReceiptFile,
@@ -37,6 +39,8 @@ router.use(authenticateFirebaseToken);
 router.use(checkRole(["PARISHIONER"]));
 
 router.post("/", validateBody(createRequestSchema), create);
+router.patch("/:id", validateBody(updateDraftSchema), updateDraft);
+router.delete("/:id", deleteDraft);
 router.post("/:id/submit", submitDraft);
 router.post("/:id/cancel", cancel);
 router.get("/", list);

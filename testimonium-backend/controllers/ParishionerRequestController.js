@@ -45,6 +45,28 @@ export const create = async (req, res, next) => {
   }
 };
 
+export const deleteDraft = async (req, res, next) => {
+  try {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "Invalid request ID." });
+    const result = await requestService.deleteDraft(id, req.user.id);
+    return res.status(200).json({ success: true, message: "Draft deleted successfully.", data: result });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const updateDraft = async (req, res, next) => {
+  try {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "Invalid request ID." });
+    const draft = await requestService.updateDraft(id, req.user.id, req.body);
+    return res.status(200).json({ success: true, message: "Draft saved successfully.", data: draft });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 export const submitDraft = async (req, res, next) => {
   try {
     const userId = req.user.id;

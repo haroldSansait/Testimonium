@@ -182,6 +182,9 @@ export interface SacramentalRequest {
   relationship: string;
   purpose: string;
   isDraft: boolean;
+  rawDocumentType?: string;
+  parish?: { parishName: string };
+  registrantIdEvidence?: { frontUploadedAt?: string | null; backUploadedAt?: string | null } | null;
   submittedAt: string;
   updatedAt: string;
   requirements: string[]; // for backward compatibility/demo

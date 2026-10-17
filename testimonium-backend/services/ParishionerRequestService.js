@@ -15,7 +15,7 @@ import {
   computeRequestPayloadHash,
 } from "./IdempotencyService.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
-import { buildApplicantName } from "../utils/nameUtils.js";
+import { resolveRequestApplicantName } from "../utils/nameUtils.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 import {
   isSelfRelationship,
@@ -26,6 +26,18 @@ import { DocumentReturnStorageService } from "./DocumentReturnStorageService.js"
 import { DocumentReturnReasonCode, DOCUMENT_RETURN_REASONS } from "../shared/constants.js";
 import { FileValidator } from "../utils/fileValidator.js";
 import { logger } from "../config/logger.js";
+import { updateDraftSchema } from "../validators/requestSchemas.js";
+
+// Document request IDs are positive. Keep used creation keys as tombstones,
+// without a dangling request reference, so a delayed POST cannot resurrect a deleted draft.
+const DELETED_DRAFT_RESOURCE_ID = 0;
+const assertDraftNotDeleted = (record) => {
+  if (record?.resourceId !== DELETED_DRAFT_RESOURCE_ID) return;
+  const error = new Error("This saved draft was deleted. Start a new document request to continue.");
+  error.statusCode = 409;
+  error.code = "DRAFT_DELETED";
+  throw error;
+};
 
 export async function assertParishionerOwnerRole(userId, client = prisma) {
   const user = await client.user.findUnique({
@@ -124,28 +136,7 @@ export class ParishionerRequestService {
       throw error;
     }
 
-    let resolvedApplicantName = typeof requestData.applicantName === "string" ? requestData.applicantName.trim() : "";
-    if (requestData.applicantFirstName && requestData.applicantLastName) {
-      resolvedApplicantName = buildApplicantName({
-        firstName: requestData.applicantFirstName,
-        middleName: requestData.applicantMiddleName,
-        lastName: requestData.applicantLastName,
-      });
-    }
-
-    if (!resolvedApplicantName) {
-      const error = new Error("Applicant name is required.");
-      error.statusCode = 400;
-      error.code = "INVALID_APPLICANT_NAME";
-      throw error;
-    }
-
-    if (resolvedApplicantName.length > 150) {
-      const error = new Error("Applicant name must not exceed 150 characters.");
-      error.statusCode = 400;
-      error.code = "INVALID_APPLICANT_NAME";
-      throw error;
-    }
+    const resolvedApplicantName = resolveRequestApplicantName(requestData);
 
     // Canonical applicant name populated on requestData
     requestData.applicantName = resolvedApplicantName;
@@ -171,6 +162,7 @@ export class ParishionerRequestService {
           );
 
           if (existingRecord) {
+            assertDraftNotDeleted(existingRecord);
             if (existingRecord.payloadHash === payloadHash) {
               // Recover and return existing draft
               const existingDraft = await tx.documentRequest.findFirst({
@@ -342,6 +334,7 @@ export class ParishionerRequestService {
           prisma
         );
         if (winningRecord) {
+          assertDraftNotDeleted(winningRecord);
           if (winningRecord.payloadHash === payloadHash) {
             const winningDraft = await prisma.documentRequest.findFirst({
               where: { id: winningRecord.resourceId, userId },
@@ -373,6 +366,116 @@ export class ParishionerRequestService {
       }
       throw err;
     }
+  }
+
+  async deleteDraft(requestId, userId) {
+    return prisma.$transaction(async (tx) => {
+      await assertParishionerOwnerRole(userId, tx);
+      await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${Number(requestId)} AND "user_id" = ${userId} FOR UPDATE`;
+      const draft = await tx.documentRequest.findFirst({
+        where: { id: requestId, userId },
+        include: {
+          attachments: { select: { r2ObjectKey: true } },
+          registrantIdEvidence: { select: { frontObjectKey: true, backObjectKey: true } },
+          paymentTransactions: { select: { receipts: { select: { r2ObjectKey: true } } } },
+          returns: { select: { returnedObjectKey: true, correctedObjectKey: true } },
+        },
+      });
+      if (!draft) {
+        const error = new Error("Request not found or does not belong to this user.");
+        error.statusCode = 404;
+        throw error;
+      }
+      if (draft.isDraft !== true) {
+        const error = new Error("Submitted requests cannot be deleted. Only saved drafts can be deleted.");
+        error.statusCode = 409;
+        error.code = "REQUEST_NOT_DRAFT";
+        throw error;
+      }
+
+      // Capture every associated object before the existing foreign-key cascades
+      // remove attachment, evidence, history, correction, payment and return rows.
+      const attachmentKeys = new Set([
+        ...draft.attachments.map(item => item.r2ObjectKey),
+        draft.paymentProofObjectKey,
+        ...draft.paymentTransactions.flatMap(payment => payment.receipts.map(receipt => receipt.r2ObjectKey)),
+        ...draft.returns.flatMap(item => [item.returnedObjectKey, item.correctedObjectKey]),
+      ].filter(Boolean));
+      const privateKeys = new Set([draft.registrantIdEvidence?.frontObjectKey, draft.registrantIdEvidence?.backObjectKey].filter(Boolean));
+      for (const [keys, reasonCode] of [[attachmentKeys, "DRAFT_ATTACHMENT_DELETED"], [privateKeys, "DRAFT_REGISTRANT_ID_DELETED"]]) {
+        for (const objectKey of keys) {
+          await tx.privateObjectCleanupJob.upsert({
+            where: { objectKey },
+            create: { objectKey, reasonCode },
+            update: {
+              status: "PENDING", reasonCode, attemptCount: 0, nextAttemptAt: new Date(),
+              processingToken: null, processingAt: null, leaseExpiresAt: null, completedAt: null, lastErrorCode: null,
+            },
+          });
+        }
+      }
+      await tx.idempotencyKey.updateMany({
+        where: { userId, resourceType: "DOCUMENT_REQUEST_CREATE", resourceId: requestId },
+        data: { resourceId: DELETED_DRAFT_RESOURCE_ID },
+      });
+      // This audit entry survives removal of the draft's own request-history rows.
+      await AuditLogService.logOrThrow(userId, "Document Request Draft Deleted", tx, false, {
+        affectedTable: "document_requests", affectedRecordId: requestId, parishId: draft.parishId,
+        metadata: { trackingNumber: draft.trackingNumber, cleanupObjectCount: attachmentKeys.size + privateKeys.size },
+      });
+      await tx.documentRequest.delete({ where: { id: requestId } });
+      return { id: requestId, cleanupQueued: attachmentKeys.size + privateKeys.size > 0 };
+    }, { maxWait: 10000, timeout: 20000 });
+  }
+
+  async updateDraft(requestId, userId, input) {
+    // Also validate at the service boundary; never pass arbitrary input to Prisma.
+    const data = updateDraftSchema.parse(input);
+    if (data.applicantName !== undefined || data.applicantFirstName !== undefined) {
+      data.applicantName = resolveRequestApplicantName(data);
+    }
+    delete data.applicantFirstName;
+    delete data.applicantMiddleName;
+    delete data.applicantLastName;
+    if (data.relationship !== undefined) data.relationship = requireCanonicalRelationship(data.relationship);
+    return prisma.$transaction(async (tx) => {
+      await assertParishionerOwnerRole(userId, tx);
+      // Shares the submission/evidence-upload lock so the draft check stays valid until commit.
+      await tx.$queryRaw`SELECT "request_id" FROM "document_requests" WHERE "request_id" = ${Number(requestId)} AND "user_id" = ${userId} FOR UPDATE`;
+      const draft = await tx.documentRequest.findFirst({ where: { id: requestId, userId } });
+      if (!draft) {
+        const error = new Error("Request not found or does not belong to this user.");
+        error.statusCode = 404;
+        throw error;
+      }
+      if (draft.isDraft !== true) {
+        const error = new Error("This request has already been submitted. Draft details can no longer be edited.");
+        error.statusCode = 409;
+        error.code = "REQUEST_NOT_DRAFT";
+        throw error;
+      }
+      if (data.relationship !== undefined && data.relationship !== requireCanonicalRelationship(draft.relationship, { allowOmitted: true })) {
+        const letter = await tx.requestAttachment.findFirst({ where: { requestId, category: "authorization_letter" } });
+        const evidence = await tx.registrantIdEvidence.findUnique({ where: { requestId } });
+        if (letter || evidence?.frontObjectKey || evidence?.backObjectKey) {
+          const error = new Error("The relationship cannot be changed after relationship evidence has been uploaded. Keep the saved relationship or contact the parish office for assistance.");
+          error.statusCode = 409;
+          error.code = "DRAFT_RELATIONSHIP_EVIDENCE_CONFLICT";
+          throw error;
+        }
+      }
+      const changedFields = Object.keys(data).filter((key) => data[key] !== draft[key]);
+      if (!changedFields.length) return this.parishionerRequestRepository.update(requestId, {}, tx);
+      const saved = await this.parishionerRequestRepository.update(requestId, data, tx);
+      await tx.requestHistory.create({ data: {
+        requestId, actorId: userId, action: "DRAFT_UPDATED", remarks: "Parishioner updated saved draft details",
+      } });
+      await AuditLogService.log(userId, "Document Request Draft Updated", tx, false, {
+        affectedTable: "document_requests", affectedRecordId: requestId, parishId: draft.parishId,
+        metadata: { trackingNumber: draft.trackingNumber, changedFields },
+      });
+      return saved;
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**

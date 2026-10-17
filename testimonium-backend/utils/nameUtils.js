@@ -60,3 +60,17 @@ export const buildApplicantName = ({ firstName, middleName, lastName } = {}) => 
 
   return combined;
 };
+
+// Both draft creation and editing use the same canonical name validation.
+export const resolveRequestApplicantName = (data) => {
+  const name = data.applicantFirstName && data.applicantLastName
+    ? buildApplicantName({ firstName: data.applicantFirstName, middleName: data.applicantMiddleName, lastName: data.applicantLastName })
+    : (typeof data.applicantName === "string" ? data.applicantName.trim() : "");
+  if (!name || name.length > 150) {
+    const error = new Error(!name ? "Applicant name is required." : "Applicant name must not exceed 150 characters.");
+    error.statusCode = 400;
+    error.code = "INVALID_APPLICANT_NAME";
+    throw error;
+  }
+  return name;
+};

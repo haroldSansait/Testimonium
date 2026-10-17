@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download, AlertTriangle, FileEdit } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
@@ -22,6 +22,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
 import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
 import SecureFileActions from '../../components/files/SecureFileActions';
+import { Modal } from '../../components/ui/Modal';
 
 const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
   switch (status) {
@@ -190,7 +191,11 @@ export const RequestTrackingPage: React.FC = () => {
   const { requireCompleteProfile } = useProfileRequirement();
 
   const requestsQuery = useRequests();
-  const requests = requestsQuery.data ?? EMPTY_REQUESTS;
+  // Keep a completed deletion hidden even if a previously started poll returns stale data.
+  const [deletedDraftIds, setDeletedDraftIds] = useState<Set<string>>(() => new Set());
+  const requests = useMemo(() => (requestsQuery.data ?? EMPTY_REQUESTS).filter(request => !deletedDraftIds.has(String(request.id))), [requestsQuery.data, deletedDraftIds]);
+  const savedDrafts = requests.filter(request => request.isDraft === true);
+  const submittedRequests = requests.filter(request => request.isDraft === false);
   const { loading, error, refetch } = requestsQuery;
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -216,17 +221,22 @@ export const RequestTrackingPage: React.FC = () => {
   // Stable source of truth for selection is the ID, not a stale copied object
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [searchedRequest, setSearchedRequest] = useState<SacramentalRequest | null>(null);
+  const [draftToDelete, setDraftToDelete] = useState<SacramentalRequest | null>(null);
+  const [deletingDraft, setDeletingDraft] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const deleteInProgressRef = useRef(false);
 
   // Derive selectedRequest directly from latest polling/refetched requests array
   const selectedRequest = useMemo(() => {
-    if (!selectedRequestId) return null;
+    if (!selectedRequestId || deletedDraftIds.has(String(selectedRequestId))) return null;
     const found = requests.find(r => String(r.id) === String(selectedRequestId));
     if (found) return found;
     if (searchedRequest && String(searchedRequest.id) === String(selectedRequestId)) {
       return searchedRequest;
     }
     return null;
-  }, [requests, selectedRequestId, searchedRequest]);
+  }, [requests, selectedRequestId, searchedRequest, deletedDraftIds]);
 
   const authoritativePaymentAmount = useMemo(() => {
     if (!selectedRequest) return null;
@@ -552,7 +562,7 @@ export const RequestTrackingPage: React.FC = () => {
   // Sync selected request ID on initial load or query param change
   useEffect(() => {
     if (requests.length > 0) {
-      if (paramRequestId) {
+      if (paramRequestId && !deletedDraftIds.has(paramRequestId)) {
         const found = requests.find(r => String(r.id) === paramRequestId);
         if (found) {
           setSelectedRequestId(String(found.id));
@@ -568,7 +578,37 @@ export const RequestTrackingPage: React.FC = () => {
         setSelectedRequestId(String(requests[0].id));
       }
     }
-  }, [requests, selectedRequestId, paramRequestId, navigate]);
+  }, [requests, selectedRequestId, paramRequestId, navigate, deletedDraftIds]);
+
+  const openDraftDeletion = (draft: SacramentalRequest) => {
+    if (draft.isDraft !== true || deleteInProgressRef.current) return;
+    setDeleteError(null);
+    setDeleteMessage(null);
+    setDraftToDelete(draft);
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!draftToDelete || draftToDelete.isDraft !== true || deleteInProgressRef.current) return;
+    deleteInProgressRef.current = true;
+    setDeletingDraft(true);
+    setDeleteError(null);
+    try {
+      const result = await services.request.deleteDraft(String(draftToDelete.id));
+      const id = String(draftToDelete.id);
+      setDeletedDraftIds(previous => new Set([...previous, id]));
+      setSelectedRequestId(previous => String(previous) === id ? null : previous);
+      setSearchedRequest(previous => String(previous?.id) === id ? null : previous);
+      setDraftToDelete(null);
+      setMobileView('requests');
+      setDeleteMessage(result.cleanupQueued ? 'Draft deleted. Uploaded files are queued for secure cleanup.' : 'Draft deleted successfully.');
+      if (paramRequestId === id) navigate('/dashboard/track', { replace: true });
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Unable to delete this draft. Please try again.');
+    } finally {
+      deleteInProgressRef.current = false;
+      setDeletingDraft(false);
+    }
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -578,7 +618,7 @@ export const RequestTrackingPage: React.FC = () => {
     setSearchCompleted(true);
     try {
       const match = await services.request.getRequestByTrackingNumber(searchQuery.trim());
-      if (match) {
+      if (match && !deletedDraftIds.has(String(match.id))) {
         const matchId = String(match.id);
         const inList = requests.find(r => String(r.id) === matchId);
         if (inList) {
@@ -745,6 +785,8 @@ export const RequestTrackingPage: React.FC = () => {
         breadcrumbs={['Home', 'Request Tracking']}
       />
 
+      {deleteMessage && <p role="status" className="p-3 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-card">{deleteMessage}</p>}
+
       {/* Mode Switcher Tabs */}
       <div
         className="flex bg-app-page p-1 rounded-card border border-border max-w-md w-full"
@@ -883,11 +925,46 @@ export const RequestTrackingPage: React.FC = () => {
 
               {/* Submissions List */}
               <div className="bg-white rounded-card border border-border p-5 shadow-xs">
+                <div className="mb-3.5 border-b border-border pb-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileEdit size={16} className="text-crimson" />
+                    <h2 className="text-sm font-bold text-text-primary">Saved Drafts</h2>
+                  </div>
+                  {savedDrafts.length > 0 && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-crimson/10 text-crimson">
+                      {savedDrafts.length}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {savedDrafts.length === 0 && <p className="text-xs text-text-muted">No saved drafts.</p>}
+                  {savedDrafts.map(draft => (
+                    <div key={draft.id} className="p-3.5 rounded-button border border-border/80 bg-white hover:border-crimson/30 shadow-2xs transition-all space-y-2.5">
+                      <div className="flex justify-between items-center gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <FileText size={14} className="text-crimson shrink-0" />
+                          <span className="text-xs font-mono font-bold text-text-primary truncate">{draft.trackingNumber}</span>
+                        </div>
+                        <Badge variant="neutral">Draft</Badge>
+                      </div>
+                      <p className="text-xs text-text-muted capitalize">
+                        {draft.documentType} Certificate · <span className="text-text-primary font-medium">{draft.applicantName}</span>
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-0.5">
+                        <Button size="sm" variant="outline" className="font-semibold shadow-2xs" onClick={() => navigate(`/dashboard/request?draftId=${draft.id}`)}>Resume Draft</Button>
+                        <Button size="sm" variant="primary" onClick={() => openDraftDeletion(draft)}>Discard Draft</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-white rounded-card border border-border p-5 shadow-xs">
                 <div className="mb-3.5 border-b border-border pb-2.5">
                   <h2 className="text-sm font-bold text-text-primary">My Submitted Requests</h2>
                 </div>
                 <div className="space-y-2.5 pt-0">
-                  {requests.map(req => {
+                  {submittedRequests.length === 0 && <p className="text-xs text-text-muted">No submitted requests.</p>}
+                  {submittedRequests.map(req => {
                     const isSelected = selectedRequest?.id === req.id;
                     return (
                       <button
@@ -947,7 +1024,33 @@ export const RequestTrackingPage: React.FC = () => {
 
 
               {selectedRequest ? (
-                selectedRequest.status === 'payment-pending' ? authoritativePaymentAmount === null ? (
+                selectedRequest.isDraft === true ? (
+                  <Card className="border-border shadow-xs">
+                    <CardHeader className="border-b border-border pb-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <FileEdit className="w-5 h-5 text-crimson" />
+                          <CardTitle className="font-mono">{selectedRequest.trackingNumber}</CardTitle>
+                        </div>
+                        <Badge variant="neutral">Draft</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4 pt-4">
+                      <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-button space-y-1">
+                        <p className="text-xs font-semibold text-amber-900">Unsubmitted Draft</p>
+                        <p className="text-xs text-amber-800">This is a saved draft. It has not been submitted to the parish office.</p>
+                      </div>
+                      <div className="text-xs space-y-1">
+                        <span className="text-text-muted font-medium">Registrant: </span>
+                        <span className="font-bold text-text-primary">{selectedRequest.applicantName}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2.5 pt-2">
+                        <Button variant="outline" className="font-semibold" onClick={() => navigate(`/dashboard/request?draftId=${selectedRequest.id}`)}>Resume Draft</Button>
+                        <Button variant="primary" onClick={() => openDraftDeletion(selectedRequest)}>Discard Draft</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : selectedRequest.status === 'payment-pending' ? authoritativePaymentAmount === null ? (
                   <div className="p-5 bg-amber-50 border border-amber-200 rounded-card text-sm text-amber-900">
                     Payment instructions are unavailable because this request has no valid parish fee. Please contact the parish office.
                   </div>
@@ -2022,6 +2125,19 @@ export const RequestTrackingPage: React.FC = () => {
             </section>
           </div>
         </div>
+      )}
+
+      {draftToDelete && (
+        <Modal isOpen onClose={() => { if (!deleteInProgressRef.current) setDraftToDelete(null); }} title="Discard saved draft?" size="sm">
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">Discard draft {draftToDelete.trackingNumber}? Its saved details and uploaded requirements, including private registrant-ID images, will be permanently removed. This cannot be undone.</p>
+            {deleteError && <p role="alert" className="text-sm text-red-700">{deleteError}</p>}
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" disabled={deletingDraft} onClick={() => setDraftToDelete(null)}>Keep Draft</Button>
+              <Button variant="primary" loading={deletingDraft} onClick={handleDeleteDraft}>Discard Draft</Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Return Document for Correction Modal */}

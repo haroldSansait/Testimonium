@@ -64,6 +64,24 @@ export const createRequestSchema = z.object({
   }
 });
 
+// Strict allowlist: draft editing cannot change identity, fees or workflow state.
+export const updateDraftSchema = z.object({
+  applicantName: z.string().trim().min(1, "Applicant name is required").max(150).optional(),
+  applicantFirstName: createRequestSchema.shape.applicantFirstName,
+  applicantMiddleName: createRequestSchema.shape.applicantMiddleName,
+  applicantLastName: createRequestSchema.shape.applicantLastName,
+  relationship: z.string().trim().min(1).max(100).optional(),
+  purpose: z.string().nullable().optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, "Provide draft details to update")
+  .superRefine((data, ctx) => {
+    const hasNameParts = [data.applicantFirstName, data.applicantMiddleName, data.applicantLastName].some(value => value !== undefined);
+    if (!hasNameParts) return;
+    for (const field of ["applicantFirstName", "applicantLastName"]) {
+      if (!data[field]?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: "First name and last name are required when changing the applicant name" });
+    }
+    if (data.applicantName !== undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["applicantName"], message: "Provide separate name fields or a combined name, not both" });
+  });
+
 export const updateRequestStatusSchema = z.object({
   status: z.enum(
     Object.values(DocumentRequestStatus),

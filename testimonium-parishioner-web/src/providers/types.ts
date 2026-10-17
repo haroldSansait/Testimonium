@@ -42,6 +42,15 @@ export interface IRequestProvider {
   getRequests(): Promise<SacramentalRequest[]>;
   getRequestById(id: string): Promise<SacramentalRequest | null>;
   submitDraft(id: string): Promise<SacramentalRequest>;
+  updateDraft(id: string, details: {
+    applicantName?: string;
+    applicantFirstName?: string;
+    applicantMiddleName?: string;
+    applicantLastName?: string;
+    relationship: string;
+    purpose: string;
+  }): Promise<SacramentalRequest>;
+  deleteDraft(id: string): Promise<{ id: string; cleanupQueued: boolean }>;
   cancelRequest(id: string, remarks?: string): Promise<SacramentalRequest>;
   uploadFiles(id: string, files: File[], category?: string): Promise<RequestAttachment[]>;
   uploadRegistrantId(id: string, files: { front?: File; back?: File }): Promise<any>;

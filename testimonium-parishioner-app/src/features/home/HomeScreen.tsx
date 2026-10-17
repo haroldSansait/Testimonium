@@ -134,7 +134,7 @@ export const HomeScreen: React.FC = () => {
                   title="Complete"
                   size="sm"
                   variant="outline"
-                  onPress={() => router.push("/(app)/(tabs)/profile" as any)}
+                  onPress={() => router.push("/(app)/profile/edit" as any)}
                 />
               </View>
             )}

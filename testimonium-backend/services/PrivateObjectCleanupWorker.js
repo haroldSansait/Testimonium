@@ -3,6 +3,9 @@ import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { RegistrantIdStorageService } from "./RegistrantIdStorageService.js";
+import { R2Service, isMissingR2ObjectError } from "./R2Service.js";
+
+const r2Service = new R2Service();
 
 let timer = null;
 let activeDrain = null;
@@ -65,16 +68,29 @@ export class PrivateObjectCleanupWorker {
 
   static async process(job) {
     const where = { id: job.cleanup_job_id, status: "PROCESSING", processingToken: job.processing_token };
-    const referenced = await prisma.registrantIdEvidence.findFirst({
-      where: { OR: [{ frontObjectKey: job.object_key }, { backObjectKey: job.object_key }] },
-      select: { id: true },
-    });
-    if (referenced) {
-      await prisma.privateObjectCleanupJob.updateMany({ where, data: { status: "CANCELLED", processingToken: null, processingAt: null, leaseExpiresAt: null, completedAt: new Date() } });
-      return;
-    }
     try {
-      await RegistrantIdStorageService.delete(job.object_key);
+      // Only this server-created reason uses the document bucket. Existing ID
+      // cleanup jobs continue to use the dedicated private registrant-ID bucket.
+      const isDraftAttachment = job.reason_code === "DRAFT_ATTACHMENT_DELETED";
+      const referenced = isDraftAttachment
+        ? await prisma.requestAttachment.findFirst({ where: { r2ObjectKey: job.object_key }, select: { id: true } }) ||
+          await prisma.receiptUpload.findFirst({ where: { r2ObjectKey: job.object_key }, select: { id: true } }) ||
+          await prisma.documentRequest.findFirst({ where: { paymentProofObjectKey: job.object_key }, select: { id: true } }) ||
+          await prisma.documentReturn.findFirst({ where: { OR: [{ returnedObjectKey: job.object_key }, { correctedObjectKey: job.object_key }] }, select: { id: true } })
+        : await prisma.registrantIdEvidence.findFirst({
+          where: { OR: [{ frontObjectKey: job.object_key }, { backObjectKey: job.object_key }] },
+          select: { id: true },
+        });
+      if (referenced) {
+        await prisma.privateObjectCleanupJob.updateMany({ where, data: { status: "CANCELLED", processingToken: null, processingAt: null, leaseExpiresAt: null, completedAt: new Date() } });
+        return;
+      }
+      try {
+        if (isDraftAttachment) await r2Service.delete(job.object_key);
+        else await RegistrantIdStorageService.delete(job.object_key);
+      } catch (error) {
+        if (!isMissingR2ObjectError(error)) throw error;
+      }
       await prisma.privateObjectCleanupJob.updateMany({ where, data: { status: "COMPLETED", processingToken: null, processingAt: null, leaseExpiresAt: null, completedAt: new Date(), lastErrorCode: null } });
     } catch (error) {
       const exhausted = job.attempt_count >= env.registrantId.cleanupMaxAttempts;

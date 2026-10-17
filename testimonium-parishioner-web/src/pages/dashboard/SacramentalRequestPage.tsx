@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Copy, FileText, AlertCircle, ShieldCheck } from 'lucide-react';
+import { CheckCircle, Copy, FileText, AlertCircle, ShieldCheck, FileEdit } from 'lucide-react';
 import services from '../../providers/factory';
 import { useParishes, usePausePolling } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import { useAuth } from '../../contexts/AuthContext';
-import type { SacramentalRequest } from '../../types';
+import type { SacramentalRequest, RequestAttachment } from '../../types';
 import {
   CANONICAL_DOCUMENT_TYPES,
   DEFAULT_OFFERED_DOCUMENTS,
@@ -13,6 +13,7 @@ import {
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
 import { CustomSelect } from '../../components/ui/CustomSelect';
 import { Stepper } from '../../components/ui/Stepper';
@@ -30,11 +31,90 @@ const LocalImagePreview: React.FC<{ file: File; alt: string }> = ({ file, alt })
   return url ? <img src={url} alt={alt} className="w-full h-36 object-contain rounded bg-gray-900" /> : null;
 };
 
+const SURNAME_PARTICLES = new Set([
+  'DA', 'DE', 'DEL', 'DELA', 'DI', 'DOS', 'LA', 'LAS', 'LOS', 'SAN', 'SANTA', 'VAN', 'VON'
+]);
+
+const SUFFIXES = new Set([
+  'JR', 'JR.', 'JUNIOR', 'SR', 'SR.', 'SENIOR', 'II', 'III', 'IV', 'V'
+]);
+
+export function parseSavedApplicantName(savedName?: string | null): {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+} {
+  if (!savedName || typeof savedName !== 'string') {
+    return { firstName: '', middleName: '', lastName: '' };
+  }
+
+  const trimmed = savedName.trim().replace(/\s+/g, ' ');
+  if (!trimmed || trimmed.includes(',')) {
+    return { firstName: '', middleName: '', lastName: '' };
+  }
+
+  const tokens = trimmed.split(' ');
+  if (tokens.length < 2) {
+    return { firstName: '', middleName: '', lastName: '' };
+  }
+
+  const lastTokenUpper = tokens[tokens.length - 1].toUpperCase();
+  if (SUFFIXES.has(lastTokenUpper)) {
+    return { firstName: '', middleName: '', lastName: '' };
+  }
+
+  if (tokens.length === 2) {
+    return {
+      firstName: tokens[0],
+      middleName: '',
+      lastName: tokens[1],
+    };
+  }
+
+  if (tokens.length === 3) {
+    const middleUpper = tokens[1].toUpperCase();
+    if (SURNAME_PARTICLES.has(middleUpper)) {
+      return {
+        firstName: tokens[0],
+        middleName: '',
+        lastName: `${tokens[1]} ${tokens[2]}`,
+      };
+    }
+    return {
+      firstName: tokens[0],
+      middleName: tokens[1],
+      lastName: tokens[2],
+    };
+  }
+
+  if (tokens.length === 4) {
+    const secondUpper = tokens[1].toUpperCase();
+    const thirdUpper = tokens[2].toUpperCase();
+    if (SURNAME_PARTICLES.has(secondUpper) && SURNAME_PARTICLES.has(thirdUpper)) {
+      return {
+        firstName: tokens[0],
+        middleName: '',
+        lastName: `${tokens[1]} ${tokens[2]} ${tokens[3]}`,
+      };
+    }
+    if (SURNAME_PARTICLES.has(thirdUpper)) {
+      return {
+        firstName: tokens[0],
+        middleName: tokens[1],
+        lastName: `${tokens[2]} ${tokens[3]}`,
+      };
+    }
+  }
+
+  return { firstName: '', middleName: '', lastName: '' };
+}
+
 export const SacramentalRequestPage: React.FC = () => {
   usePausePolling(true);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryParishId = searchParams.get('parishId');
+  const draftId = searchParams.get('draftId');
 
   const parishesQuery = useParishes();
   const parishes = parishesQuery.data || [];
@@ -60,9 +140,20 @@ export const SacramentalRequestPage: React.FC = () => {
   const [applicantFirstName, setApplicantFirstName] = useState('');
   const [applicantMiddleName, setApplicantMiddleName] = useState('');
   const [applicantLastName, setApplicantLastName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
   const [relationship, setRelationship] = useState('Self');
   const [purpose, setPurpose] = useState('');
   const [registryYear, setRegistryYear] = useState('');
+  const [savedDraft, setSavedDraft] = useState<SacramentalRequest | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(Boolean(draftId));
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedAttachments, setSavedAttachments] = useState<RequestAttachment[]>([]);
+  const [savedIdSides, setSavedIdSides] = useState({ front: false, back: false });
+  const [requirementsError, setRequirementsError] = useState<string | null>(null);
+  const operationRef = useRef(false);
+  const loadedDraftIdRef = useRef<string | null>(null);
 
   // Dynamic Requirements State
   const [requirementsList, setRequirementsList] = useState<Array<{ id: string; label: string; required: boolean; description?: string }>>([]);
@@ -76,22 +167,71 @@ export const SacramentalRequestPage: React.FC = () => {
   const [registrantIdFront, setRegistrantIdFront] = useState<File | null>(null);
   const [registrantIdBack, setRegistrantIdBack] = useState<File | null>(null);
   const [registrantIdErrors, setRegistrantIdErrors] = useState<Record<string, string>>({});
-  const draftRef = useRef<{ id: string; fingerprint: string } | null>(null);
+  const draftRef = useRef<{ id: string } | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const uploadedInSessionRef = useRef<Record<string, File>>({});
 
   // Success State
   const [createdRequest, setCreatedRequest] = useState<SacramentalRequest | null>(null);
 
+  useEffect(() => {
+    if (!draftId || loadedDraftIdRef.current === draftId) return;
+    let active = true;
+    setLoadingDraft(true);
+    setDraftError(null);
+    setSavedDraft(null);
+    draftRef.current = null;
+    const load = async () => {
+      try {
+        if (!/^[1-9]\d*$/.test(draftId)) throw new Error('Invalid saved draft link.');
+        const draft = await services.request.getRequestById(draftId);
+        if (!draft) throw new Error('This saved draft could not be found.');
+        if (draft.isDraft !== true) throw new Error('This request has already been submitted. View it in My Submitted Requests.');
+        const type = draft.rawDocumentType || draft.documentType;
+        const config = await services.request.getDocumentRequirements(type, draft.parishId, draft.relationship || 'Self');
+        if (!active) return;
+        loadedDraftIdRef.current = draftId;
+        draftRef.current = { id: draft.id };
+        setSavedDraft(draft);
+        setSelectedParishId(draft.parishId);
+        setDocType(type);
+        const parsedName = parseSavedApplicantName(draft.applicantName);
+        setApplicantFirstName(parsedName.firstName);
+        setApplicantMiddleName(parsedName.middleName);
+        setApplicantLastName(parsedName.lastName);
+        setNameEdited(false);
+        setRelationship(draft.relationship || 'Self');
+        // Keep the canonical saved purpose intact, including any registry-year suffix.
+        setPurpose(draft.purpose || '');
+        setRegistryYear('');
+        setSavedAttachments(draft.attachments || []);
+        setSavedIdSides({ front: Boolean(draft.registrantIdEvidence?.frontUploadedAt), back: Boolean(draft.registrantIdEvidence?.backUploadedAt) });
+        setUploadedFilesByReq({});
+        setAuthLetterFile(null);
+        setRegistrantIdFront(null);
+        setRegistrantIdBack(null);
+        setRequirementsList(config?.requiredDocuments || []);
+        setCurrentStep(2);
+      } catch (err: any) {
+        if (active) setDraftError(err?.message || 'Unable to open this saved draft. Please return to tracking and try again.');
+      } finally {
+        if (active) setLoadingDraft(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [draftId]);
+
   // Sync selected parish with query params
   useEffect(() => {
-    if (parishes.length > 0) {
+    if (!draftId && !savedDraft && parishes.length > 0) {
       if (queryParishId) {
         setSelectedParishId(queryParishId);
       } else if (!selectedParishId) {
         setSelectedParishId(parishes[0].id);
       }
     }
-  }, [queryParishId, parishes, selectedParishId]);
+  }, [queryParishId, parishes, selectedParishId, draftId, savedDraft]);
 
   const selectedParish = parishes.find((p) => String(p.id) === String(selectedParishId));
   const availableDocList = selectedParish
@@ -106,32 +246,43 @@ export const SacramentalRequestPage: React.FC = () => {
 
   // Auto-reset docType if selected parish doesn't offer current docType
   useEffect(() => {
+    if (draftId || savedDraft) return;
     if (filteredDocTypes.length > 0 && !filteredDocTypes.some((d) => d.type === docType)) {
       setDocType(filteredDocTypes[0].type);
     } else if (filteredDocTypes.length === 0) {
       setDocType('');
     }
-  }, [selectedParishId, filteredDocTypes, docType]);
+  }, [selectedParishId, filteredDocTypes, docType, draftId, savedDraft]);
 
   // Fetch dynamic requirements when step becomes upload step
   useEffect(() => {
+    let active = true;
     if (currentStep === 3) {
       setLoadingReqs(true);
+      setRequirementsError(null);
       services.request.getDocumentRequirements(docType, selectedParishId, relationship)
         .then(res => {
+          if (!active) return;
           const reqs = res?.requiredDocuments || [];
           setRequirementsList(reqs);
           setLoadingReqs(false);
         })
         .catch(err => {
+          if (!active) return;
           console.error("Failed to load document requirements:", err);
           setRequirementsList([]);
+          setRequirementsError(err?.message || 'Unable to load requirements. Go Back and try again.');
           setLoadingReqs(false);
         });
     }
+    return () => { active = false; };
   }, [currentStep, docType, selectedParishId, relationship]);
 
   const steps = ['Select Parish', 'Document Details', 'Applicant Info', 'Upload Requirements', 'Confirmation'];
+  const hasCompleteNameParts = Boolean(applicantFirstName.trim() && applicantLastName.trim());
+  const hasValidApplicantName = savedDraft && !nameEdited
+    ? Boolean(savedDraft.applicantName.trim())
+    : hasCompleteNameParts;
 
   const handleNext = () => {
     if (currentStep === 0 && !selectedParishId) return;
@@ -157,10 +308,6 @@ export const SacramentalRequestPage: React.FC = () => {
   };
 
   const handleRelationshipChange = (newRel: string) => {
-    if (newRel !== relationship) {
-      draftRef.current = null;
-      idempotencyKeyRef.current = null;
-    }
     setRelationship(newRel);
   };
 
@@ -222,59 +369,109 @@ export const SacramentalRequestPage: React.FC = () => {
     });
   };
 
+  const persistDraft = async () => {
+    if (!hasValidApplicantName) throw new Error('First name and last name are required when entering or changing the registrant name.');
+    const finalPurpose = !savedDraft && registryYear
+      ? `${purpose} (Approximate Registry Year: ${registryYear})`
+      : purpose;
+    // Send explicit parts to the existing server-side name builder. Omitting all
+    // name fields keeps an untouched canonical saved name exactly as persisted.
+    const nameDetails = !savedDraft || nameEdited ? {
+      applicantFirstName: applicantFirstName.trim(),
+      applicantMiddleName: applicantMiddleName.trim() || undefined,
+      applicantLastName: applicantLastName.trim(),
+    } : {};
+    // Keep an unresolved creation key across refreshes, scoped to this account.
+    const storageKey = `document-draft-create:${appProfile?.id}`;
+    if (!idempotencyKeyRef.current && !draftRef.current) {
+      idempotencyKeyRef.current = sessionStorage.getItem(storageKey) || globalThis.crypto.randomUUID();
+      sessionStorage.setItem(storageKey, idempotencyKeyRef.current);
+    }
+    const draft = draftRef.current
+      ? await services.request.updateDraft(draftRef.current.id, { ...nameDetails, relationship, purpose: finalPurpose })
+      : await services.request.createRequest({
+        parishId: selectedParishId, documentType: docType as any,
+        ...nameDetails, relationship, purpose: finalPurpose,
+        idempotencyKey: idempotencyKeyRef.current || undefined,
+      });
+    if (draft.isDraft !== true) throw new Error('This request has already been submitted. View it in My Submitted Requests.');
+    draftRef.current = { id: draft.id };
+    loadedDraftIdRef.current = draft.id;
+    setSavedDraft(draft);
+    setNameEdited(false);
+    setPurpose(draft.purpose || '');
+    setRegistryYear('');
+    setSavedAttachments(draft.attachments || []);
+    sessionStorage.removeItem(storageKey);
+    // A refresh now reopens this exact draft; do not rehydrate over local file selections.
+    if (draftId !== draft.id) navigate(`/dashboard/request?draftId=${encodeURIComponent(draft.id)}`, { replace: true });
+    return draft;
+  };
+
+  const handleSaveDraft = async () => {
+    if (operationRef.current) return;
+    operationRef.current = true;
+    setSubmitting(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      await persistDraft();
+      setSaveMessage('Draft details saved. Resume later from Saved Drafts in Track Status. Selected local files stay in this tab and are uploaded only when you submit.');
+    } catch (err: any) {
+      setSaveError(err?.message || 'Unable to save draft. Please try again.');
+    } finally {
+      operationRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async () => {
+    if (operationRef.current || loadingReqs || requirementsError) return;
     if (isProfileIncomplete) {
       openProfileModal('request certificates');
       return;
     }
+    operationRef.current = true;
     setSubmitting(true);
     setSubmissionError(null);
     try {
-      // 1. Create request draft
-      // Append registry year to purpose to pass it along safely without schema adjustments
-      const finalPurpose = registryYear 
-        ? `${purpose} (Approximate Registry Year: ${registryYear})`
-        : purpose;
-
-      const payloadFingerprint = JSON.stringify({ selectedParishId, docType, applicantFirstName: applicantFirstName.trim(), applicantMiddleName: applicantMiddleName.trim(), applicantLastName: applicantLastName.trim(), relationship, finalPurpose });
-      if (draftRef.current && draftRef.current.fingerprint !== payloadFingerprint) {
-        draftRef.current = null;
-        idempotencyKeyRef.current = null;
-      }
-      if (!idempotencyKeyRef.current) idempotencyKeyRef.current = globalThis.crypto?.randomUUID?.() || `web_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const draft = draftRef.current ? { id: draftRef.current.id } : await services.request.createRequest({
-        parishId: selectedParishId,
-        documentType: docType as any,
-        applicantFirstName: applicantFirstName.trim(),
-        applicantMiddleName: applicantMiddleName.trim() || undefined,
-        applicantLastName: applicantLastName.trim(),
-        relationship,
-        purpose: finalPurpose,
-        idempotencyKey: idempotencyKeyRef.current,
-      });
-      if (!draftRef.current) draftRef.current = { id: draft.id, fingerprint: payloadFingerprint };
+      // Save corrections to the same draft before authoritative final validation.
+      const draft = await persistDraft();
 
       // 2. Upload requirements if any are present
-      const activeRequirementIds = new Set(requirementsList.filter((item) => item.required && item.id !== 'valid_id').map((item) => item.id));
-      const reqFiles = Object.entries(uploadedFilesByReq).filter(([id]) => activeRequirementIds.has(id));
+      const activeRequirementIds = new Set(requirementsList.filter((item) => item.id !== 'valid_id' && !['authorization_letter', 'registrant_id_front', 'registrant_id_back'].includes(item.id)).map((item) => item.id));
+      const reqFiles = Object.entries(uploadedFilesByReq).filter(([id, file]) => activeRequirementIds.has(id) && uploadedInSessionRef.current[id] !== file);
       for (const [reqId, file] of reqFiles) {
-        await services.request.uploadFiles(draft.id, [file], reqId);
+        const uploaded = await services.request.uploadFiles(draft.id, [file], reqId);
+        uploadedInSessionRef.current[reqId] = file;
+        setSavedAttachments(prev => [...prev.filter(item => item.category !== reqId), ...uploaded]);
       }
 
       // 2b. Upload mandatory relationship evidence for every non-Self request.
       if (relationship !== 'Self') {
-        if (!authLetterFile) {
+        if (!authLetterFile && !draft.attachments?.some(item => item.category === 'authorization_letter')) {
           setSubmissionError("An authorization letter is required when requesting a document for another person.");
           setSubmitting(false);
           return;
         }
-        if (!registrantIdFront || !registrantIdBack) {
+        if ((!registrantIdFront && !savedIdSides.front) || (!registrantIdBack && !savedIdSides.back)) {
           setSubmissionError("Front and back images of the registrant's Government ID are required.");
           setSubmitting(false);
           return;
         }
-        await services.request.uploadFiles(draft.id, [authLetterFile], 'authorization_letter');
-        await services.request.uploadRegistrantId(draft.id, { front: registrantIdFront, back: registrantIdBack });
+        if (authLetterFile && uploadedInSessionRef.current.authorization_letter !== authLetterFile) {
+          const uploaded = await services.request.uploadFiles(draft.id, [authLetterFile], 'authorization_letter');
+          uploadedInSessionRef.current.authorization_letter = authLetterFile;
+          setSavedAttachments(prev => [...prev.filter(item => item.category !== 'authorization_letter'), ...uploaded]);
+        }
+        const front = registrantIdFront && uploadedInSessionRef.current.registrant_id_front !== registrantIdFront ? registrantIdFront : undefined;
+        const back = registrantIdBack && uploadedInSessionRef.current.registrant_id_back !== registrantIdBack ? registrantIdBack : undefined;
+        if (front || back) {
+          await services.request.uploadRegistrantId(draft.id, { front, back });
+          if (front) uploadedInSessionRef.current.registrant_id_front = front;
+          if (back) uploadedInSessionRef.current.registrant_id_back = back;
+          setSavedIdSides(prev => ({ front: prev.front || Boolean(front), back: prev.back || Boolean(back) }));
+        }
       }
 
       // 3. Finalize and submit the request
@@ -300,6 +497,7 @@ export const SacramentalRequestPage: React.FC = () => {
         setSubmissionError(err?.message || "Failed to submit document request. Please review your information.");
       }
     } finally {
+      operationRef.current = false;
       setSubmitting(false);
     }
   };
@@ -309,6 +507,8 @@ export const SacramentalRequestPage: React.FC = () => {
       navigator.clipboard.writeText(createdRequest.trackingNumber);
     }
   };
+
+  if (draftError) return <ErrorState title="Unable to open saved draft" description={draftError} onRetry={() => navigate('/dashboard/track')} />;
 
   if (error) {
     return (
@@ -328,7 +528,7 @@ export const SacramentalRequestPage: React.FC = () => {
     );
   }
 
-  if (loading) {
+  if (loading || loadingDraft) {
     return (
       <div className="space-y-6" aria-busy="true">
         <PageHeader 
@@ -360,11 +560,16 @@ export const SacramentalRequestPage: React.FC = () => {
   }
 
   const isAuthLetterRequired = relationship !== 'Self';
-  const allReqsUploaded = requirementsList.every(req => {
+  const hasSavedAttachment = (id: string) => savedAttachments.some(item => item.category === id);
+  const allReqsUploaded = !loadingReqs && !requirementsError && requirementsList.every(req => {
     if (!req.required) return true;
     if (req.id === 'valid_id' && isGovIdVerified) return true;
-    return !!uploadedFilesByReq[req.id];
-  }) && (!isAuthLetterRequired || (!!authLetterFile && !!registrantIdFront && !!registrantIdBack));
+    if (req.id === 'authorization_letter') return !!authLetterFile || hasSavedAttachment(req.id);
+    if (req.id === 'registrant_id_front') return !!registrantIdFront || savedIdSides.front;
+    if (req.id === 'registrant_id_back') return !!registrantIdBack || savedIdSides.back;
+    return !!uploadedFilesByReq[req.id] || hasSavedAttachment(req.id);
+  }) && (!isAuthLetterRequired || ((!!authLetterFile || hasSavedAttachment('authorization_letter')) && (!!registrantIdFront || savedIdSides.front) && (!!registrantIdBack || savedIdSides.back)));
+  const canSaveDraft = Boolean(selectedParishId && docType && hasValidApplicantName);
 
   if (isProfileIncomplete) {
     return (
@@ -467,15 +672,9 @@ export const SacramentalRequestPage: React.FC = () => {
         breadcrumbs={['Home', 'Request Document']}
       />
 
-      {submissionError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-card flex items-center gap-2.5 text-red-800 text-xs sm:text-sm">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-          <span>{submissionError}</span>
-        </div>
-      )}
-
       <Card className="bg-white border-border shadow-sm">
         <CardContent className="p-6 sm:p-8">
+          <fieldset disabled={submitting} className="min-w-0 space-y-6">
           <div className="mb-8">
             <Stepper steps={steps} currentStep={currentStep} />
           </div>
@@ -489,7 +688,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 </label>
                 <p className="text-xs text-text-muted">Select the parish containing the original canonical record registry.</p>
               </div>
-              <CustomSelect
+              {savedDraft ? <p className="text-sm text-text-primary">{selectedParish?.name || savedDraft.parish?.parishName || `Parish #${selectedParishId}`} — Saved parish (read-only)</p> : <CustomSelect
                 value={selectedParishId}
                 onChange={setSelectedParishId}
                 placeholder="Select parish..."
@@ -500,7 +699,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 }))}
                 searchable
                 searchPlaceholder="Search parish by name or city..."
-              />
+              />}
               <div className="flex justify-end pt-4">
                 <Button onClick={handleNext}>Next Step</Button>
               </div>
@@ -516,7 +715,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 </label>
                 <p className="text-xs text-text-muted">Select from the official sacramental document types.</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {savedDraft ? <p className="text-sm text-text-primary">{CANONICAL_DOCUMENT_TYPES.find(doc => doc.type === docType)?.title || docType} — Saved document type (read-only)</p> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredDocTypes.map(doc => (
                   <button
                     key={doc.type}
@@ -531,7 +730,7 @@ export const SacramentalRequestPage: React.FC = () => {
                     <div className="text-[10px] text-text-muted mt-1 font-sans font-normal truncate">{doc.desc}</div>
                   </button>
                 ))}
-              </div>
+              </div>}
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev}>Back</Button>
                 <Button onClick={handleNext}>Next Step</Button>
@@ -541,9 +740,9 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Step 3: Registrant & Applicant Info */}
           {currentStep === 2 && (
-            <div className="space-y-5 max-w-xl mx-auto text-left">
+            <div className="space-y-4 max-w-xl mx-auto text-left">
               {/* Requester vs Registrant Distinction Card */}
-              <div className="p-4 bg-app-page border border-border rounded-card space-y-2">
+              <div className="p-3.5 bg-app-page border border-border rounded-card space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-crimson uppercase tracking-wider">
                     Identity Verification Context
@@ -562,7 +761,7 @@ export const SacramentalRequestPage: React.FC = () => {
                     You are requesting a sacramental document for <strong>yourself (Self)</strong>. The legal name entered below must correspond with your verified profile identity.
                   </p>
                 ) : (
-                  <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-button space-y-1">
+                  <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-button space-y-1">
                     <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       Third-Party Request: {relationship}
@@ -594,7 +793,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 ]}
               />
 
-              <div className="space-y-1 pt-1">
+              <div className="space-y-1 pt-0.5">
                 <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                   {relationship === 'Self' ? 'Registrant Legal Name (Self) *' : "Registrant's Legal Name *"}
                 </label>
@@ -606,7 +805,7 @@ export const SacramentalRequestPage: React.FC = () => {
                   label="First Name *"
                   placeholder="e.g. Juan"
                   value={applicantFirstName}
-                  onChange={e => setApplicantFirstName(e.target.value)}
+                  onChange={e => { setApplicantFirstName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                   required
                 />
@@ -614,28 +813,28 @@ export const SacramentalRequestPage: React.FC = () => {
                   label="Middle Name (Optional)"
                   placeholder="e.g. Santos"
                   value={applicantMiddleName}
-                  onChange={e => setApplicantMiddleName(e.target.value)}
+                  onChange={e => { setApplicantMiddleName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                 />
                 <Input
                   label="Last Name *"
                   placeholder="e.g. Dela Cruz"
                   value={applicantLastName}
-                  onChange={e => setApplicantLastName(e.target.value)}
+                  onChange={e => { setApplicantLastName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                <Input
+              <div className={savedDraft ? "pt-0.5" : "grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-0.5"}>
+                {!savedDraft && <Input
                   label="Approx. Registry Year (Optional)"
                   type="number"
                   placeholder="e.g. 1995"
                   value={registryYear}
                   onChange={e => setRegistryYear(e.target.value)}
                   className="h-[42px]"
-                />
+                />}
                 <Input
                   label="Purpose of Request"
                   placeholder="e.g. Marriage requirement, School, Passport"
@@ -644,7 +843,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-between pt-6">
+              <div className="flex justify-between pt-4">
                 <Button variant="outline" onClick={handlePrev}>Back</Button>
                 <Button onClick={handleNext} disabled={!applicantFirstName.trim() || !applicantLastName.trim()}>
                   Next Step
@@ -693,6 +892,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 </div>
               )}
 
+              {requirementsError && <p role="alert" className="text-sm text-red-700">{requirementsError}</p>}
               {loadingReqs ? (
                 <div className="space-y-3">
                   <Skeleton className="h-20 w-full rounded" />
@@ -730,6 +930,8 @@ export const SacramentalRequestPage: React.FC = () => {
                           </div>
                         )}
 
+                        {hasSavedAttachment(req.id) && <p className="text-xs text-emerald-800">Already uploaded: {savedAttachments.filter(item => item.category === req.id).map(item => item.fileName).join(', ')}. Choose a file below only to replace it.</p>}
+
                         {req.id === 'valid_id' && isGovIdVerified ? (
                           <div className="flex items-center gap-3 p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-button">
                             <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -741,7 +943,7 @@ export const SacramentalRequestPage: React.FC = () => {
                         ) : file ? (
                           <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
                             <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
-                              {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                              {file.name} ({(file.size / 1024).toFixed(1)} KB) — {uploadedInSessionRef.current[req.id] === file ? 'Uploaded' : 'Selected locally'}
                             </span>
                             <button
                               type="button"
@@ -809,10 +1011,12 @@ export const SacramentalRequestPage: React.FC = () => {
                     </div>
                   )}
 
+                  {hasSavedAttachment('authorization_letter') && <p className="text-xs text-emerald-800">Already uploaded: {savedAttachments.find(item => item.category === 'authorization_letter')?.fileName}. Choose a file only to replace it.</p>}
+
                   {authLetterFile ? (
                     <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
                       <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
-                        {authLetterFile.name} ({(authLetterFile.size / 1024).toFixed(1)} KB)
+                        {authLetterFile.name} ({(authLetterFile.size / 1024).toFixed(1)} KB) — {uploadedInSessionRef.current.authorization_letter === authLetterFile ? 'Uploaded' : 'Selected locally'}
                       </span>
                       <button
                         type="button"
@@ -868,11 +1072,12 @@ export const SacramentalRequestPage: React.FC = () => {
                           <p className="text-[11px] text-text-muted mt-0.5">Clear, readable JPEG or PNG image. Maximum 5 MB.</p>
                         </div>
                         {registrantIdErrors[side] ? <div className="p-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">{registrantIdErrors[side]}</div> : null}
+                        {savedIdSides[side] && <p className="text-xs text-emerald-800">Private registrant ID {side} image already uploaded. Choose a file only to replace it.</p>}
                         {selected ? (
                           <div className="space-y-2">
                             <LocalImagePreview file={selected} alt={`Selected registrant ID ${side}`} />
                             <div className="flex items-center justify-between text-xs">
-                              <span className="truncate max-w-[220px] font-mono font-semibold">{selected.name} - Selected</span>
+                              <span className="truncate max-w-[220px] font-mono font-semibold">{selected.name} - {uploadedInSessionRef.current[`registrant_id_${side}`] === selected ? 'Uploaded' : 'Selected locally'}</span>
                               <button type="button" onClick={() => side === 'front' ? setRegistrantIdFront(null) : setRegistrantIdBack(null)} className="text-crimson font-bold">Remove</button>
                             </div>
                           </div>
@@ -902,6 +1107,16 @@ export const SacramentalRequestPage: React.FC = () => {
                 <p className="text-[11px] text-amber-800">Previously selected non-Self evidence is kept only in this local wizard session and will not be uploaded for a Self request.</p>
               ) : null}
 
+              {submissionError && (
+                <div
+                  role="alert"
+                  className="p-4 bg-red-50 border border-red-200 rounded-card flex items-center gap-2.5 text-red-800 text-xs sm:text-sm"
+                >
+                  <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+                  <span>{submissionError}</span>
+                </div>
+              )}
+
               <div className="flex justify-between pt-6">
                 <Button variant="outline" onClick={handlePrev} disabled={submitting}>Back</Button>
                 <Button onClick={handleSubmit} loading={submitting} disabled={!allReqsUploaded}>Submit Request</Button>
@@ -909,7 +1124,39 @@ export const SacramentalRequestPage: React.FC = () => {
             </div>
           )}
 
-          {/* Step 5: Success / Confirmation */}
+          {/* Draft Actions & Status */}
+          {currentStep < 4 && (
+            <div className="max-w-xl mx-auto pt-6 border-t border-border/80">
+              <div className="p-4 rounded-card bg-app-page/70 border border-border/90 space-y-3 text-left">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileEdit className="w-4 h-4 text-crimson" />
+                    <span className="text-xs font-bold text-text-primary">
+                      {savedDraft ? (
+                        <>Draft <span className="font-mono">{savedDraft.trackingNumber}</span></>
+                      ) : (
+                        'Draft Details'
+                      )}
+                    </span>
+                  </div>
+                  {savedDraft && <Badge variant="neutral">Draft</Badge>}
+                </div>
+
+                {savedDraft && (
+                  <p className="text-xs text-text-muted">
+                    Saved Draft {savedDraft.trackingNumber}. Parish and document type are fixed after creation.
+                  </p>
+                )}
+                {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
+                {saveMessage && <p role="status" className="text-sm text-emerald-800">{saveMessage}</p>}
+                <div className="flex flex-wrap gap-2.5 pt-0.5">
+                  <Button variant="outline" className="font-semibold shadow-2xs hover:bg-white" onClick={handleSaveDraft} disabled={!canSaveDraft} loading={submitting}>Save Draft</Button>
+                  {savedDraft && <Button variant="outline" className="font-semibold shadow-2xs hover:bg-white" onClick={() => navigate('/dashboard/track')}>Back to Saved Drafts</Button>}
+                </div>
+                <p className="text-xs text-text-muted">Save Draft saves details without submitting. Files selected in this tab are uploaded when you submit; keep this tab open to retain them.</p>
+              </div>
+            </div>
+          )}
           {currentStep === 4 && createdRequest && (
             <div className="text-center max-w-md mx-auto space-y-6 py-6 animate-in fade-in zoom-in duration-fast">
               <div className="flex justify-center text-green-600">
@@ -951,6 +1198,7 @@ export const SacramentalRequestPage: React.FC = () => {
               </div>
             </div>
           )}
+          </fieldset>
         </CardContent>
       </Card>
 
