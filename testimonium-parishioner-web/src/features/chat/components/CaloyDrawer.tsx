@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, Church } from 'lucide-react';
+import { X, Send, Church, Maximize2, Minimize2, MapPin } from 'lucide-react';
+import caloyPic from '../../../assets/Caloy_pic.jpg';
 import { Button } from '../../../components/ui/Button';
 import services from '../../../providers/factory';
 import type { Parish } from '../../../types';
@@ -73,6 +74,8 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
   const [isTyping, setIsTyping] = useState(false);
   const [parishes, setParishes] = useState<Parish[]>([]);
   const [showManualParishSelect, setShowManualParishSelect] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const animatingIdsRef = useRef<Set<string>>(new Set());
 
   const [selectedParishId, setSelectedParishId] = useState<number | null>(() => {
     try {
@@ -108,6 +111,13 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
   const drawerRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Reset expansion to default right-side panel presentation when closed
+  useEffect(() => {
+    if (!isOpen) {
+      setIsExpanded(false);
+    }
+  }, [isOpen]);
 
   // Complete any active progressive reveal immediately (e.g. if user sends a new message)
   const completeActiveReveal = useCallback(() => {
@@ -263,6 +273,10 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     scrollToBottom();
   }, [messages, isTyping, scrollToBottom]);
 
+  useEffect(() => {
+    scrollToBottom(false);
+  }, [isExpanded, scrollToBottom]);
+
   // Core execution function for queries
   const executeQuery = async (
     questionText: string,
@@ -277,12 +291,14 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
     completeActiveReveal();
 
     if (appendUserMessage) {
+      const userMsgId = `u_${Date.now()}`;
       const userMsg: ChatMessage = {
-        id: `u_${Date.now()}`,
+        id: userMsgId,
         sender: 'user',
         text: cleanInput,
         timestamp: new Date().toISOString(),
       };
+      animatingIdsRef.current.add(userMsgId);
       setMessages((prev) => [...prev, userMsg]);
     }
 
@@ -336,6 +352,7 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
       const replyMsgId = `c_${Date.now()}`;
+      animatingIdsRef.current.add(replyMsgId);
 
       // Progressive reveal cadence: ~18ms ticks, finishing short answers in ~0.5s and long in ~1s
       const shouldAnimate = !prefersReducedMotion && fullAnswer && fullAnswer.length > 20;
@@ -441,8 +458,10 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
         errorText = 'Unable to connect to Caloy. Please check your internet connection and try again.';
       }
 
+      const errorMsgId = `c_${Date.now()}`;
+      animatingIdsRef.current.add(errorMsgId);
       const errorMsg: ChatMessage = {
-        id: `c_${Date.now()}`,
+        id: errorMsgId,
         sender: 'caloy',
         text: errorText,
         timestamp: new Date().toISOString(),
@@ -576,7 +595,7 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
       aria-hidden={!isOpen}
       inert={!isOpen}
     >
-      {/* Unpurgeable animation style for Caloy typing dots */}
+      {/* Unpurgeable animation style for Caloy typing dots and message entrance */}
       <style>{`
         @keyframes caloyDotPulse {
           0%, 80%, 100% {
@@ -599,6 +618,28 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
         .caloy-typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .caloy-typing-dot:nth-child(2) { animation-delay: -0.16s; }
         .caloy-typing-dot:nth-child(3) { animation-delay: 0s; }
+
+        @keyframes caloyMessageSlideUp {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .caloy-message-enter {
+          animation: caloyMessageSlideUp 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          will-change: transform, opacity;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .caloy-message-enter {
+            animation: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
       `}</style>
 
       {/* Backdrop */}
@@ -614,307 +655,368 @@ export const CaloyDrawer: React.FC<CaloyDrawerProps> = ({ isOpen, onClose, trigg
       <div
         ref={drawerRef}
         tabIndex={isOpen ? 0 : -1}
-        className={`relative w-full max-w-md bg-white h-full shadow-card flex flex-col z-10 border-l border-border transition-transform duration-300 ease-in-out transform ${
+        className={`relative w-full ${
+          isExpanded ? 'max-w-full' : 'max-w-md'
+        } bg-white h-full shadow-card flex flex-col z-10 ${
+          isExpanded ? '' : 'border-l border-border'
+        } transition-[max-width,transform] duration-300 ease-in-out transform ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         {/* Header */}
-        <div className="bg-crimson text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center font-serif font-bold text-lg">
-              C
+        <div className="bg-crimson text-white px-4 py-3 flex-shrink-0">
+          <div className={`flex items-center justify-between w-full ${isExpanded ? 'max-w-4xl mx-auto' : ''}`}>
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-full overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0 ring-1 ring-white/20">
+                <img
+                  src={caloyPic}
+                  alt="Caloy"
+                  className="w-full h-full object-cover object-center"
+                />
+              </div>
+              <div>
+                <h3 className="font-serif font-bold text-base leading-none">Caloy</h3>
+                <span className="text-xs text-white/75">Parish Assistant</span>
+              </div>
             </div>
-            <div>
-              <h3 className="font-serif font-bold text-base leading-none">Caloy</h3>
-              <span className="text-xs text-white/75">Parish Assistant</span>
+            <div className="flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-white transition-colors focus-ring"
+                aria-label={isExpanded ? "Restore standard chat panel" : "Expand chat to fullscreen"}
+                title={isExpanded ? "Restore standard chat panel" : "Expand chat to fullscreen"}
+              >
+                {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-full hover:bg-white/10 text-white transition-colors focus-ring"
+                aria-label="Close assistant"
+                title="Close assistant"
+              >
+                <X size={20} />
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-full hover:bg-white/10 text-white transition-colors focus-ring"
-            aria-label="Close assistant"
-          >
-            <X size={20} />
-          </button>
         </div>
 
         {/* Parish Context Bar / Chip */}
-        <div className="bg-app-page/90 border-b border-border px-3.5 py-2 text-xs flex items-center justify-between">
-          {selectedParish ? (
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
-              <span className="text-crimson font-bold text-sm">📍</span>
-              <span className="truncate font-semibold text-text-primary" title={selectedParish.name}>
-                {selectedParish.name}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-text-muted">
-              <Church className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-              <span className="truncate">Diocese-wide (All Parishes)</span>
-            </div>
-          )}
+        <div className="bg-app-page/90 border-b border-border px-3.5 py-2 text-xs flex-shrink-0">
+          <div className={`flex items-center justify-between w-full ${isExpanded ? 'max-w-4xl mx-auto' : ''}`}>
+            {selectedParish ? (
+              <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
+                {/* 📍 Lucide MapPin icon */}
+                <MapPin className="w-3.5 h-3.5 text-crimson flex-shrink-0" aria-hidden="true" />
+                <span className="truncate font-semibold text-text-primary" title={selectedParish.name}>
+                  {selectedParish.name}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-text-muted">
+                <Church className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                <span className="truncate">Diocese-wide (All Parishes)</span>
+              </div>
+            )}
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowManualParishSelect((prev) => !prev)}
-              disabled={isTyping}
-              className="text-xs text-crimson hover:underline font-semibold focus-ring px-1 py-0.5 rounded"
-              aria-label={selectedParish ? "Change selected parish" : "Select a parish"}
-            >
-              {selectedParish ? "Change" : "Select Parish"}
-            </button>
-            {selectedParish && (
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSelectParish(null)}
+                onClick={() => setShowManualParishSelect((prev) => !prev)}
                 disabled={isTyping}
-                className="text-text-muted hover:text-text-primary p-0.5 rounded hover:bg-gray-200 transition-colors focus-ring"
-                title="Clear parish filter to diocese-wide"
-                aria-label="Clear parish filter to diocese-wide"
+                className="text-xs text-crimson hover:underline font-semibold focus-ring px-1 py-0.5 rounded"
+                aria-label={selectedParish ? "Change selected parish" : "Select a parish"}
               >
-                <X className="w-3.5 h-3.5" />
+                {selectedParish ? "Change" : "Select Parish"}
               </button>
-            )}
+              {selectedParish && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectParish(null)}
+                  disabled={isTyping}
+                  className="text-text-muted hover:text-text-primary p-0.5 rounded hover:bg-gray-200 transition-colors focus-ring"
+                  title="Clear parish filter to diocese-wide"
+                  aria-label="Clear parish filter to diocese-wide"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Expandable Manual Parish Filter Selector */}
         {showManualParishSelect && (
-          <ParishSelector
-            selectedParishId={selectedParishId}
-            onSelectParish={(pId) => {
-              handleSelectParish(pId);
-              setShowManualParishSelect(false);
-            }}
-            disabled={isTyping}
-          />
+          <div className={`w-full ${isExpanded ? 'max-w-4xl mx-auto' : ''}`}>
+            <ParishSelector
+              selectedParishId={selectedParishId}
+              onSelectParish={(pId) => {
+                handleSelectParish(pId);
+                setShowManualParishSelect(false);
+              }}
+              disabled={isTyping}
+            />
+          </div>
         )}
 
         {/* Messages List Container */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 bg-app-base"
+          className="flex-1 overflow-y-auto p-4 bg-app-base"
           aria-live="polite"
         >
-          {messages.map((msg, idx) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-card p-3.5 text-xs sm:text-sm leading-relaxed ${
-                  msg.sender === 'user'
-                    ? 'bg-crimson text-white rounded-tr-none'
-                    : msg.isError
-                    ? 'bg-red-50 text-red-800 border border-red-200 rounded-tl-none shadow-sm'
-                    : 'bg-white text-text-primary border border-border rounded-tl-none shadow-sm'
-                }`}
-              >
-                {msg.sender === 'user' ? (
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
-                ) : (
-                  <SafeMarkdown text={msg.text} />
-                )}
-
-                {/* Live Data Badge for TESTIMONIUM verified live operational results */}
-                {msg.responseType === 'LIVE_DATA' && revealingMessageId !== msg.id && (
-                  <div className="mt-2 pt-2 border-t border-border/70 flex items-center justify-between text-[11px] text-emerald-700 font-medium">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-emerald-600 font-bold">✓</span>
-                      <span>Current TESTIMONIUM Data</span>
-                    </span>
-                    {msg.liveData?.asOf && (
-                      <span className="text-[10px] text-text-muted">
-                        Updated just now
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Inline Parish Clarification Selector */}
-                {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? selectedParishId : null))) && (() => {
-                  const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? selectedParishId : null);
-                  const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
-                  const selectedParishObj = isSelected ? parishes.find((p) => String(p.id) === String(effectiveVal)) : null;
-                  const selectedLabel = msg.selectedClarificationLabel || selectedParishObj?.name;
-
-                  return (
-                    <div className="mt-3 pt-2.5 border-t border-border/70">
-                      <label
-                        htmlFor={`parish-clarify-${msg.id}`}
-                        className="block text-[11px] font-medium text-text-muted mb-1.5"
-                      >
-                        {isSelected ? 'Selected parish:' : 'Select your parish to continue:'}
-                      </label>
-                      <CustomSelect
-                        id={`parish-clarify-${msg.id}`}
-                        disabled={isTyping || isSelected}
-                        value={isSelected ? String(effectiveVal) : ''}
-                        selectedLabel={selectedLabel}
-                        placeholder="Choose a parish..."
-                        options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
-                        onChange={(val) => {
-                          const num = Number(val);
-                          if (num && Number.isInteger(num) && num > 0) {
-                            handleInlineParishSelect(num, msg.id);
-                          }
-                        }}
-                        size="sm"
-                        aria-label="Select parish for clarification"
-                      />
-                    </div>
-                  );
-                })()}
-
-                {/* Inline Document Type Clarification Selector */}
-                {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastDocumentType : null))) && (() => {
-                  const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastDocumentType : null);
-                  const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
-                  const docOptions = msg.clarificationOptions && msg.clarificationOptions.length > 0
-                    ? msg.clarificationOptions.map((opt) => ({ value: String(opt.value), label: opt.label }))
-                    : DEFAULT_DOCUMENT_TYPE_OPTIONS;
-                  const selectedDocObj = isSelected ? docOptions.find((o) => String(o.value) === String(effectiveVal)) : null;
-                  const selectedLabel = msg.selectedClarificationLabel || selectedDocObj?.label || (isSelected ? String(effectiveVal) : undefined);
-
-                  return (
-                    <div className="mt-3 pt-2.5 border-t border-border/70">
-                      <label
-                        htmlFor={`doc-clarify-${msg.id}`}
-                        className="block text-[11px] font-medium text-text-muted mb-1.5"
-                      >
-                        {isSelected ? 'Selected document:' : 'Select document type to continue:'}
-                      </label>
-                      <CustomSelect
-                        id={`doc-clarify-${msg.id}`}
-                        disabled={isTyping || isSelected}
-                        value={isSelected ? String(effectiveVal) : ''}
-                        selectedLabel={selectedLabel}
-                        placeholder="Choose a document type..."
-                        options={docOptions}
-                        onChange={(val) => {
-                          if (val) {
-                            const found = docOptions.find((o) => String(o.value) === String(val));
-                            handleInlineDocTypeSelect(String(val), msg.id, found?.label);
-                          }
-                        }}
-                        size="sm"
-                        aria-label="Select document type for clarification"
-                      />
-                    </div>
-                  );
-                })()}
-
-                {/* Inline Schedule Event Clarification Selector */}
-                {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastScheduleEvent : null))) && (() => {
-                  const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastScheduleEvent : null);
-                  const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
-                  const eventOptions = (msg.clarificationOptions || []).map((opt) => ({
-                    value: String(opt.value),
-                    label: opt.label,
-                  }));
-                  const selectedEventObj = isSelected ? eventOptions.find((o) => String(o.value) === String(effectiveVal)) : null;
-                  const selectedLabel = msg.selectedClarificationLabel || selectedEventObj?.label || (isSelected ? String(effectiveVal) : undefined);
-
-                  return (
-                    <div className="mt-3 pt-2.5 border-t border-border/70">
-                      <label
-                        htmlFor={`event-clarify-${msg.id}`}
-                        className="block text-[11px] font-medium text-text-muted mb-1.5"
-                      >
-                        {isSelected ? 'Selected event/service:' : 'Select an event or service:'}
-                      </label>
-                      <CustomSelect
-                        id={`event-clarify-${msg.id}`}
-                        disabled={isTyping || isSelected}
-                        value={isSelected ? String(effectiveVal) : ''}
-                        selectedLabel={selectedLabel}
-                        placeholder="Choose an event or service..."
-                        options={eventOptions}
-                        onChange={(val) => {
-                          if (val) {
-                            const found = eventOptions.find((o) => String(o.value) === String(val));
-                            handleInlineEventTypeSelect(String(val), msg.id, found?.label);
-                          }
-                        }}
-                        size="sm"
-                        aria-label="Select schedule event for clarification"
-                      />
-                    </div>
-                  );
-                })()}
-
-                {/* Sources Section for verified answers (revealed after text completes) */}
-                {msg.sources && msg.sources.length > 0 && revealingMessageId !== msg.id && !msg.fallback && (
-                  <SourcesAccordion sources={msg.sources} />
-                )}
-
-                <span
-                  className={`text-[9px] block mt-1.5 ${
-                    msg.sender === 'user' ? 'text-white/65 text-right' : 'text-text-muted'
+          <div className={`space-y-4 ${isExpanded ? 'max-w-4xl mx-auto' : 'w-full'}`}>
+            {messages.map((msg, idx) => {
+              const isAnimating = animatingIdsRef.current.has(msg.id);
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex ${
+                    msg.sender === 'user'
+                      ? 'justify-end'
+                      : 'justify-start items-end space-x-2'
                   }`}
                 >
-                  {new Date(msg.timestamp).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-            </div>
-          ))}
+                  {msg.sender === 'caloy' && (
+                    <div
+                      className="w-7 h-7 rounded-full overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0 shadow-sm"
+                      aria-hidden="true"
+                    >
+                      <img
+                        src={caloyPic}
+                        alt=""
+                        className="w-full h-full object-cover object-center"
+                      />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[85%] rounded-card p-3.5 text-xs sm:text-sm leading-relaxed ${
+                      msg.sender === 'user'
+                        ? 'bg-crimson text-white rounded-tr-none'
+                        : msg.isError
+                        ? 'bg-red-50 text-red-800 border border-red-200 rounded-bl-none shadow-sm'
+                        : 'bg-white text-text-primary border border-border rounded-bl-none shadow-sm'
+                    } ${isAnimating ? 'caloy-message-enter' : ''}`}
+                    onAnimationEnd={(e) => {
+                      animatingIdsRef.current.delete(msg.id);
+                      e.currentTarget.classList.remove('caloy-message-enter');
+                    }}
+                  >
+                    {msg.sender === 'user' ? (
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                    ) : (
+                      <SafeMarkdown text={msg.text} />
+                    )}
 
-          {/* Typing Indicator */}
-          {isTyping && (
-            <div
-              className="flex justify-start items-end space-x-2"
-              role="status"
-              aria-label="Caloy is typing an answer"
-            >
-              <div className="w-7 h-7 rounded-full bg-crimson text-white flex items-center justify-center text-xs font-serif font-bold flex-shrink-0 shadow-sm">
-                C
+                    {/* Live Data Badge for TESTIMONIUM verified live operational results */}
+                    {msg.responseType === 'LIVE_DATA' && revealingMessageId !== msg.id && (
+                      <div className="mt-2 pt-2 border-t border-border/70 flex items-center justify-between text-[11px] text-emerald-700 font-medium">
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span>Current TESTIMONIUM Data</span>
+                        </span>
+                        {msg.liveData?.asOf && (
+                          <span className="text-[10px] text-text-muted">
+                            Updated just now
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline Parish Clarification Selector */}
+                    {msg.clarificationType === 'PARISH' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? selectedParishId : null))) && (() => {
+                      const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? selectedParishId : null);
+                      const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
+                      const selectedParishObj = isSelected ? parishes.find((p) => String(p.id) === String(effectiveVal)) : null;
+                      const selectedLabel = msg.selectedClarificationLabel || selectedParishObj?.name;
+
+                      return (
+                        <div className="mt-3 pt-2.5 border-t border-border/70">
+                          <label
+                            htmlFor={`parish-clarify-${msg.id}`}
+                            className="block text-[11px] font-medium text-text-muted mb-1.5"
+                          >
+                            {isSelected ? 'Selected parish:' : 'Select your parish to continue:'}
+                          </label>
+                          <CustomSelect
+                            id={`parish-clarify-${msg.id}`}
+                            disabled={isTyping || isSelected}
+                            value={isSelected ? String(effectiveVal) : ''}
+                            selectedLabel={selectedLabel}
+                            placeholder="Choose a parish..."
+                            options={parishes.map((p) => ({ value: String(p.id), label: p.name }))}
+                            onChange={(val) => {
+                              const num = Number(val);
+                              if (num && Number.isInteger(num) && num > 0) {
+                                handleInlineParishSelect(num, msg.id);
+                              }
+                            }}
+                            size="sm"
+                            aria-label="Select parish for clarification"
+                          />
+                        </div>
+                      );
+                    })()}
+
+                    {/* Inline Document Type Clarification Selector */}
+                    {msg.clarificationType === 'DOCUMENT_TYPE' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastDocumentType : null))) && (() => {
+                      const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastDocumentType : null);
+                      const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
+                      const docOptions = msg.clarificationOptions && msg.clarificationOptions.length > 0
+                        ? msg.clarificationOptions.map((opt) => ({ value: String(opt.value), label: opt.label }))
+                        : DEFAULT_DOCUMENT_TYPE_OPTIONS;
+                      const selectedDocObj = isSelected ? docOptions.find((o) => String(o.value) === String(effectiveVal)) : null;
+                      const selectedLabel = msg.selectedClarificationLabel || selectedDocObj?.label || (isSelected ? String(effectiveVal) : undefined);
+
+                      return (
+                        <div className="mt-3 pt-2.5 border-t border-border/70">
+                          <label
+                            htmlFor={`doc-clarify-${msg.id}`}
+                            className="block text-[11px] font-medium text-text-muted mb-1.5"
+                          >
+                            {isSelected ? 'Selected document:' : 'Select document type to continue:'}
+                          </label>
+                          <CustomSelect
+                            id={`doc-clarify-${msg.id}`}
+                            disabled={isTyping || isSelected}
+                            value={isSelected ? String(effectiveVal) : ''}
+                            selectedLabel={selectedLabel}
+                            placeholder="Choose a document type..."
+                            options={docOptions}
+                            onChange={(val) => {
+                              if (val) {
+                                const found = docOptions.find((o) => String(o.value) === String(val));
+                                handleInlineDocTypeSelect(String(val), msg.id, found?.label);
+                              }
+                            }}
+                            size="sm"
+                            aria-label="Select document type for clarification"
+                          />
+                        </div>
+                      );
+                    })()}
+
+                    {/* Inline Schedule Event Clarification Selector */}
+                    {msg.clarificationType === 'SCHEDULE_EVENT' && revealingMessageId !== msg.id && (idx === messages.length - 1 || Boolean(msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastScheduleEvent : null))) && (() => {
+                      const effectiveVal = msg.selectedClarificationValue ?? (idx < messages.length - 1 ? getConversationContext()?.lastScheduleEvent : null);
+                      const isSelected = effectiveVal !== null && effectiveVal !== undefined && effectiveVal !== '';
+                      const eventOptions = (msg.clarificationOptions || []).map((opt) => ({
+                        value: String(opt.value),
+                        label: opt.label,
+                      }));
+                      const selectedEventObj = isSelected ? eventOptions.find((o) => String(o.value) === String(effectiveVal)) : null;
+                      const selectedLabel = msg.selectedClarificationLabel || selectedEventObj?.label || (isSelected ? String(effectiveVal) : undefined);
+
+                      return (
+                        <div className="mt-3 pt-2.5 border-t border-border/70">
+                          <label
+                            htmlFor={`event-clarify-${msg.id}`}
+                            className="block text-[11px] font-medium text-text-muted mb-1.5"
+                          >
+                            {isSelected ? 'Selected event/service:' : 'Select an event or service:'}
+                          </label>
+                          <CustomSelect
+                            id={`event-clarify-${msg.id}`}
+                            disabled={isTyping || isSelected}
+                            value={isSelected ? String(effectiveVal) : ''}
+                            selectedLabel={selectedLabel}
+                            placeholder="Choose an event or service..."
+                            options={eventOptions}
+                            onChange={(val) => {
+                              if (val) {
+                                const found = eventOptions.find((o) => String(o.value) === String(val));
+                                handleInlineEventTypeSelect(String(val), msg.id, found?.label);
+                              }
+                            }}
+                            size="sm"
+                            aria-label="Select schedule event for clarification"
+                          />
+                        </div>
+                      );
+                    })()}
+
+                    {/* Sources Section for verified answers (revealed after text completes) */}
+                    {msg.sources && msg.sources.length > 0 && revealingMessageId !== msg.id && !msg.fallback && (
+                      <SourcesAccordion sources={msg.sources} />
+                    )}
+
+                    <span
+                      className={`text-[9px] block mt-1.5 ${
+                        msg.sender === 'user' ? 'text-white/65 text-right' : 'text-text-muted'
+                      }`}
+                    >
+                      {new Date(msg.timestamp).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Typing Indicator */}
+            {isTyping && (
+              <div
+                className="flex justify-start items-end space-x-2"
+                role="status"
+                aria-label="Caloy is typing an answer"
+              >
+                <div
+                  className="w-7 h-7 rounded-full overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0 shadow-sm"
+                  aria-hidden="true"
+                >
+                  <img
+                    src={caloyPic}
+                    alt=""
+                    className="w-full h-full object-cover object-center"
+                  />
+                </div>
+                <div className="bg-white border border-border rounded-card rounded-bl-none px-4 py-3 shadow-sm flex items-center space-x-2">
+                  <span className="caloy-typing-dot" />
+                  <span className="caloy-typing-dot" />
+                  <span className="caloy-typing-dot" />
+                  <span className="sr-only">Caloy is typing an answer</span>
+                </div>
               </div>
-              <div className="bg-white border border-border rounded-card rounded-tl-none px-4 py-3 shadow-sm flex items-center space-x-2">
-                <span className="caloy-typing-dot" />
-                <span className="caloy-typing-dot" />
-                <span className="caloy-typing-dot" />
-                <span className="sr-only">Caloy is typing an answer</span>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Input Bar */}
-        <form onSubmit={handleSend} className="p-3 bg-white border-t border-border flex flex-col gap-1.5">
-          <div className="flex items-center space-x-2">
-            <input
-              ref={inputRef}
-              type="text"
-              disabled={isTyping}
-              maxLength={MAX_QUESTION_LENGTH}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Ask Caloy about sacraments or parish guides..."
-              className="flex-1 px-3.5 py-2.5 text-sm bg-app-page border border-border rounded-button text-text-primary placeholder-text-muted focus-ring disabled:opacity-50"
-              aria-label="Message input to Caloy"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isTyping || !inputValue.trim()}
-              className="w-10 h-10 rounded-button flex items-center justify-center p-0 flex-shrink-0"
-              aria-label="Send message"
-            >
-              <Send size={16} />
-            </Button>
-          </div>
+        <form onSubmit={handleSend} className="p-3 bg-white border-t border-border flex-shrink-0">
+          <div className={`flex flex-col gap-1.5 ${isExpanded ? 'max-w-4xl mx-auto' : 'w-full'}`}>
+            <div className="flex items-center space-x-2">
+              <input
+                ref={inputRef}
+                type="text"
+                disabled={isTyping}
+                maxLength={MAX_QUESTION_LENGTH}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Ask Caloy about sacraments or parish guides..."
+                className="flex-1 px-3.5 py-2.5 text-sm bg-app-page border border-border rounded-button text-text-primary placeholder-text-muted focus-ring disabled:opacity-50"
+                aria-label="Message input to Caloy"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isTyping || !inputValue.trim()}
+                className="w-10 h-10 rounded-button flex items-center justify-center p-0 flex-shrink-0"
+                aria-label="Send message"
+              >
+                <Send size={16} />
+              </Button>
+            </div>
 
-          {/* Character counter */}
-          <div className="flex justify-between items-center px-1 text-[10px] text-text-muted">
-            <span>Press Enter to send</span>
-            <span className={remainingChars < 50 ? 'text-amber-600 font-medium' : ''}>
-              {inputValue.length}/{MAX_QUESTION_LENGTH}
-            </span>
+            {/* Character counter */}
+            <div className="flex justify-between items-center px-1 text-[10px] text-text-muted">
+              <span>Press Enter to send</span>
+              <span className={remainingChars < 50 ? 'text-amber-600 font-medium' : ''}>
+                {inputValue.length}/{MAX_QUESTION_LENGTH}
+              </span>
+            </div>
           </div>
         </form>
       </div>

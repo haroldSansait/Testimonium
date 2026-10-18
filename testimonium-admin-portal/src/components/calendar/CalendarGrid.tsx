@@ -40,13 +40,13 @@ export function CalendarGrid({ year, month, events, today, onEventClick, onMoreC
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse">
+      <table className="w-full border-collapse table-fixed min-w-[560px] sm:min-w-full">
         <thead>
           <tr>
             {DAYS_OF_WEEK.map((d) => (
               <th
                 key={d}
-                className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-2 px-3 text-center border-b border-gray-200 bg-white"
+                className="w-[14.2857%] text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-2 px-1 sm:px-2 text-center border-b border-gray-200 bg-white"
               >
                 {d}
               </th>
@@ -64,7 +64,7 @@ export function CalendarGrid({ year, month, events, today, onEventClick, onMoreC
                   <td
                     key={colIdx}
                     className={cn(
-                      'border border-gray-200 align-top p-2 h-24 min-w-[80px] w-[14.28%]',
+                      'border border-gray-200 align-top p-1.5 sm:p-2 h-24 w-[14.2857%] max-w-0 overflow-hidden',
                       !cell.inMonth && 'bg-gray-50',
                       cell.inMonth && 'bg-white cursor-pointer hover:bg-gray-50/70 transition-colors'
                     )}
@@ -81,7 +81,7 @@ export function CalendarGrid({ year, month, events, today, onEventClick, onMoreC
                     >
                       {cell.day}
                     </div>
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 min-w-0 overflow-hidden">
                       {dayEvents.slice(0, 3).map((evt) => (
                         <CalendarEventChip key={evt.id} event={evt} onClick={() => onEventClick?.(evt)} />
                       ))}
@@ -91,7 +91,7 @@ export function CalendarGrid({ year, month, events, today, onEventClick, onMoreC
                             e.stopPropagation();
                             onMoreClick?.(cell.day, dayEvents);
                           }}
-                          className="text-[10px] text-crimson-800 hover:text-crimson-900 font-bold hover:underline pl-1 cursor-pointer block text-left"
+                          className="text-[10px] text-crimson-800 hover:text-crimson-900 font-bold hover:underline pl-1 cursor-pointer block text-left truncate max-w-full"
                         >
                           +{dayEvents.length - 3} more
                         </button>

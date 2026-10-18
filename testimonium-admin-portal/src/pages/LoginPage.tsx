@@ -86,7 +86,7 @@ export function LoginPage() {
           className="w-24 h-24 rounded-full object-cover mb-4 shadow-md"
         />
         <h1
-          className="text-2xl font-bold tracking-widest text-gray-900 uppercase"
+          className="text-2xl font-bold tracking-widest text-crimson-700 uppercase"
           style={{ fontFamily: 'Playfair Display, serif', letterSpacing: '0.15em' }}
         >
           TESTIMONIUM

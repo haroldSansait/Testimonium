@@ -45,7 +45,7 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
 
   return (
     <div className="overflow-x-auto">
-      <div className="grid grid-cols-7 min-w-[720px] divide-x divide-gray-200 bg-white">
+      <div className="grid grid-cols-7 min-w-[560px] sm:min-w-full w-full divide-x divide-gray-200 bg-white">
         {weekDays.map((date, idx) => {
           const dayEvents = getEventsForDate(date);
           const isToday = 
@@ -62,7 +62,7 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
             <div 
               key={idx} 
               className={cn(
-                "flex flex-col min-h-[400px] p-2.5 sm:p-3 transition-colors",
+                "flex flex-col min-h-[400px] min-w-0 overflow-hidden p-2 sm:p-2.5 transition-colors",
                 isToday ? "bg-[#7B1C2A]/[0.03]" : "bg-white",
                 isSelected && !isToday && "bg-amber-50/20"
               )}
@@ -81,12 +81,12 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
                     }
                   }}
                   className={cn(
-                    "text-center pb-2.5 border-b border-gray-150 flex-shrink-0 cursor-pointer rounded-xl hover:bg-gray-100/70 p-2 transition-all group focus:outline-none focus:ring-1 focus:ring-crimson-700/50",
+                    "text-center pb-2 border-b border-gray-150 flex-shrink-0 cursor-pointer rounded-xl hover:bg-gray-100/70 p-1.5 sm:p-2 transition-all group focus:outline-none focus:ring-1 focus:ring-crimson-700/50 min-w-0",
                     isToday && "bg-[#7B1C2A]/[0.06] hover:bg-[#7B1C2A]/[0.1]"
                   )}
                 >
                   <span className={cn(
-                    "block text-[10px] font-bold uppercase tracking-wider",
+                    "block text-[10px] font-bold uppercase tracking-wider truncate",
                     isToday ? "text-[#7B1C2A]" : "text-gray-400 group-hover:text-gray-600"
                   )}>
                     {DAYS_OF_WEEK[idx]}
@@ -103,13 +103,13 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
               </Tooltip>
 
               {dayEvents.length > 0 && (
-                  <span className="block text-[9px] text-gray-400 font-medium mt-0.5 text-center">
-                    {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
-                  </span>
-                )}
+                <span className="block text-[9px] text-gray-400 font-medium mt-0.5 text-center truncate">
+                  {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
+                </span>
+              )}
 
               {/* Column Events */}
-              <div className="flex-1 overflow-y-auto space-y-1.5 pt-3 min-h-[220px]">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pt-3 min-h-[220px] min-w-0">
                 {dayEvents.length === 0 ? (
                   <div className="flex items-center justify-center h-28 text-[11px] text-gray-300 italic font-medium">
                     No events

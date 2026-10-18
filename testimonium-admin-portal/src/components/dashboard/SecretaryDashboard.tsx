@@ -67,7 +67,7 @@ export function SecretaryDashboard() {
       {/* Page greeting */}
       <div>
         <h1
-          className="text-4xl font-bold text-gray-900"
+          className="text-4xl font-bold text-crimson-700"
           style={{ fontFamily: 'Playfair Display, serif' }}
         >
           {greeting}

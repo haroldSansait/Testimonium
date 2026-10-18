@@ -32,14 +32,14 @@ export function CalendarEventChip({ event, onClick }: CalendarEventChipProps) {
     styleClasses = categoryStyles[event.category];
   }
 
-  const eventTooltipText = `${event.time} — ${event.title}${event.priest ? ` (Priest: ${event.priest})` : ''}`;
+  const eventTooltipText = `${event.time ? `${event.time} — ` : ''}${event.title}${event.priest ? ` (Priest: ${event.priest})` : ''}`;
 
   return (
-    <Tooltip content={eventTooltipText} side="top">
+    <Tooltip content={eventTooltipText} side="top" className="max-w-xs text-left break-words">
       <div
         role="button"
         tabIndex={0}
-        aria-label={`${event.time} ${event.title}${event.priest ? `, Priest: ${event.priest}` : ''}`}
+        aria-label={`${event.time ? `${event.time} ` : ''}${event.title}${event.priest ? `, Priest: ${event.priest}` : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           onClick?.();
@@ -53,11 +53,18 @@ export function CalendarEventChip({ event, onClick }: CalendarEventChipProps) {
         }}
         style={customStyle}
         className={cn(
-          'text-[10px] font-medium px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity focus:outline-none focus:ring-1 focus:ring-crimson-700/50',
+          'flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 transition-opacity focus:outline-none focus:ring-1 focus:ring-crimson-700/50 w-full min-w-0 max-w-full overflow-hidden leading-tight',
           styleClasses
         )}
       >
-        {event.time} {event.title}
+        {event.time && (
+          <span className="shrink-0 font-semibold tabular-nums">
+            {event.time}
+          </span>
+        )}
+        <span className="truncate min-w-0 flex-1">
+          {event.title}
+        </span>
       </div>
     </Tooltip>
   );
