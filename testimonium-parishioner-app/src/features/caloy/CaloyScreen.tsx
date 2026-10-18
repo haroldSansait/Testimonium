@@ -21,6 +21,7 @@ import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { AppHeader, IconButton } from "@/components/ui";
 import { useParishes } from "@/features/parishes/api";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { CaloyAvatar } from "./components/CaloyAvatar";
 import { CaloyMessageBubble } from "./components/CaloyMessageBubble";
 import { CaloyTypingIndicator } from "./components/CaloyTypingIndicator";
 import { useChatSession } from "./hooks/useChatSession";
@@ -162,6 +163,28 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
         subtitle="TESTIMONIUM Virtual Assistant"
         onBack={showBackButton ? () => router.back() : undefined}
         backAccessibilityLabel="Close Caloy"
+        headerTitle={
+          <View style={styles.headerTitleContainer}>
+            <CaloyAvatar size={36} />
+            <View style={styles.headerTextContainer}>
+              <Text
+                style={styles.headerTitle}
+                numberOfLines={1}
+                accessibilityRole="header"
+                allowFontScaling
+              >
+                Caloy
+              </Text>
+              <Text
+                style={styles.headerSubtitle}
+                numberOfLines={1}
+                allowFontScaling
+              >
+                TESTIMONIUM Virtual Assistant
+              </Text>
+            </View>
+          </View>
+        }
         rightAction={
           <IconButton
             onPress={handleConfirmClear}
@@ -534,5 +557,24 @@ const styles = StyleSheet.create({
   parishOptionTextSelected: {
     color: colors.primary,
     fontWeight: "700",
+  },
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    maxWidth: "100%",
+  },
+  headerTextContainer: {
+    justifyContent: "center",
+    flexShrink: 1,
+  },
+  headerTitle: {
+    ...fontStyles.heading,
+    color: colors.neutral[950],
+  },
+  headerSubtitle: {
+    ...fontStyles.caption,
+    color: colors.neutral[650],
+    marginTop: 1,
   },
 });

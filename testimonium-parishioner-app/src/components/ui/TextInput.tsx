@@ -20,6 +20,7 @@ export interface TextInputProps extends NativeTextInputProps {
   leftIcon?: keyof typeof Ionicons.glyphMap;
   rightIcon?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
+  inputContainerStyle?: StyleProp<ViewStyle>;
 }
 
 export const TextInput = React.forwardRef<NativeTextInput, TextInputProps>(
@@ -33,6 +34,7 @@ export const TextInput = React.forwardRef<NativeTextInput, TextInputProps>(
       leftIcon,
       rightIcon,
       containerStyle,
+      inputContainerStyle,
       style,
       onFocus,
       onBlur,
@@ -68,6 +70,7 @@ export const TextInput = React.forwardRef<NativeTextInput, TextInputProps>(
             styles.inputContainer,
             isFocused && styles.focused,
             Boolean(error) && styles.errorBorder,
+            inputContainerStyle,
           ]}
         >
           {leftIcon ? (

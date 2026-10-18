@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import type { CaloyClarificationOption, CaloyMessage } from "../types";
+import { CaloyAvatar } from "./CaloyAvatar";
 import { CaloyClarification } from "./CaloyClarification";
 import { CaloyLiveBadge } from "./CaloyLiveBadge";
 import { CaloyMarkdown } from "./CaloyMarkdown";
@@ -112,27 +112,26 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
       accessibilityRole="text"
       accessibilityLabel={`Caloy responded: ${message.text}`}
     >
-      <View
-        style={[
-          styles.caloyBubble,
-          message.isError && styles.errorBubble,
-        ]}
-      >
-        <View style={styles.caloyHeader}>
-          <View style={styles.caloyAvatar}>
-            <Ionicons name="sparkles" size={12} color={colors.primary} />
-          </View>
-          <Text style={styles.caloyName} allowFontScaling>
-            Caloy
-          </Text>
-          {formattedTime ? (
-            <Text style={styles.caloyTimestamp} allowFontScaling>
-              • {formattedTime}
+      <View style={styles.caloyRow}>
+        <CaloyAvatar size={28} />
+        <View
+          style={[
+            styles.caloyBubble,
+            message.isError && styles.errorBubble,
+          ]}
+        >
+          <View style={styles.caloyHeader}>
+            <Text style={styles.caloyName} allowFontScaling>
+              Caloy
             </Text>
-          ) : null}
-        </View>
+            {formattedTime ? (
+              <Text style={styles.caloyTimestamp} allowFontScaling>
+                • {formattedTime}
+              </Text>
+            ) : null}
+          </View>
 
-        <CaloyMarkdown content={displayedText} />
+          <CaloyMarkdown content={displayedText} />
 
         {/* Once reveal is done (or if static), show accessories */}
         {isFinished && (
@@ -159,6 +158,7 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
             )}
           </>
         )}
+        </View>
       </View>
     </Animated.View>
   );
@@ -202,8 +202,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     alignItems: "flex-start",
   },
+  caloyRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.xs,
+    maxWidth: "100%",
+  },
   caloyBubble: {
-    maxWidth: "88%",
+    flexShrink: 1,
+    maxWidth: "86%",
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderBottomLeftRadius: radii.xs,
@@ -227,14 +234,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
     marginBottom: spacing.xxs,
-  },
-  caloyAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
   },
   caloyName: {
     ...fontStyles.captionBold,

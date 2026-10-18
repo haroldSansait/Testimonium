@@ -1,15 +1,21 @@
 import { router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { AuthScaffold } from "@/components/auth";
-import { Button } from "@/components/ui/Button";
-import { Divider } from "@/components/ui/Divider";
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AuthButton, AuthScaffold } from "@/components/auth";
 import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { StateView } from "@/components/ui/StateView";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
 import { isGoogleAuthAvailable } from "@/services/auth/googleAuth";
-import { colors, fontStyles, spacing } from "@/theme/tokens";
+import { fontStyles, spacing } from "@/theme/tokens";
 
 export default function WelcomeScreen() {
   const {
@@ -65,101 +71,199 @@ export default function WelcomeScreen() {
   }
 
   return (
-    <AuthScaffold
-      title="Parishioner Portal"
-      subtitle="Access sacramental records, canonical appointments, and certificate tracking."
-    >
-      <View style={styles.content}>
-        <View style={styles.introBlock}>
-          <Text style={styles.welcomeHeading} allowFontScaling>
-            Welcome to TESTIMONIUM
-          </Text>
-          <Text style={styles.welcomeCopy} allowFontScaling>
-            Sign in to manage your sacramental requests, request canonical appointments, and connect with your parish in the Vicariate of Canlaon.
-          </Text>
-        </View>
+    <View style={styles.container}>
+      <StatusBar style="light" />
 
-        {googleError && (
-          <StateView.InlineError
-            message={googleError}
-            style={styles.errorBanner}
-          />
-        )}
+      {/* Full-screen Mt. Kanlaon background asset */}
+      <Image
+        source={require("../../assets/images/mt-kanlaon.png")}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+        accessibilityElementsHidden={true}
+        importantForAccessibility="no"
+      />
 
-        <View style={styles.actions}>
-          <Button
-            title="Sign In"
-            size="lg"
-            variant="primary"
-            fullWidth
-            onPress={() => router.push("/(auth)/login")}
-          />
+      {/* Balanced TESTIMONIUM deep-maroon overlay */}
+      <View style={styles.brandOverlay} />
 
-          <Button
-            title="Create an Account"
-            size="lg"
-            variant="outline"
-            fullWidth
-            onPress={() => router.push("/(auth)/register" as any)}
-          />
+      <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Top & Middle Brand Section */}
+          <View style={styles.brandSection}>
+            <View style={styles.dioceseBadge}>
+              <Text style={styles.dioceseText} allowFontScaling>
+                VICARIATE OF CANLAON
+              </Text>
+            </View>
 
-          {showGoogleButton && (
-            <>
-              <View style={styles.dividerRow}>
-                <Divider style={styles.dividerLine} />
-                <Text style={styles.dividerText} allowFontScaling>
-                  OR
-                </Text>
-                <Divider style={styles.dividerLine} />
+            <Text
+              style={styles.wordmark}
+              accessibilityRole="header"
+              allowFontScaling
+            >
+              TESTIMONIUM
+            </Text>
+
+            <View style={styles.subtitleWrapper}>
+              <Text style={styles.tagline} allowFontScaling>
+                Your parish services, made accessible.
+              </Text>
+            </View>
+          </View>
+
+          {/* Lower Section: Authentication Actions */}
+          <View style={styles.actionsSection}>
+            {googleError && (
+              <View style={styles.errorBannerWrapper}>
+                <StateView.InlineError
+                  message={googleError}
+                  style={styles.errorBanner}
+                />
               </View>
+            )}
 
-              <Button
-                title="Continue with Google"
-                size="lg"
-                variant="secondary"
-                fullWidth
-                leftComponent={<GoogleLogo size={20} />}
-                loading={isSigningIn}
-                disabled={isSigningIn}
-                onPress={() => {
-                  void handleGoogleSignIn();
-                }}
+            <View style={styles.buttonGroup}>
+              {/* Primary Pill Button */}
+              <AuthButton
+                title="Sign In"
+                variant="welcome-primary"
+                onPress={() => router.push("/(auth)/login")}
+                testID="welcome-sign-in-btn"
+                accessibilityLabel="Sign in to your account"
               />
-            </>
-          )}
 
-          <Text style={styles.footerNote} allowFontScaling>
-            Vicariate of Canlaon
-          </Text>
-        </View>
-      </View>
-    </AuthScaffold>
+              {/* Secondary Pill Button */}
+              <AuthButton
+                title="Create Account"
+                variant="welcome-outline"
+                onPress={() => router.push("/(auth)/register" as any)}
+                testID="welcome-register-btn"
+                accessibilityLabel="Create a new account"
+              />
+
+              {/* Google Sign-in */}
+              {showGoogleButton && (
+                <>
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText} allowFontScaling>
+                      OR
+                    </Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  <AuthButton
+                    title="Continue with Google"
+                    variant="welcome-google"
+                    leftComponent={<GoogleLogo size={20} />}
+                    loading={isSigningIn}
+                    disabled={isSigningIn}
+                    onPress={() => {
+                      void handleGoogleSignIn();
+                    }}
+                    testID="welcome-google-btn"
+                    accessibilityLabel="Continue with Google account"
+                  />
+                </>
+              )}
+            </View>
+
+            {/* Quiet Ecclesiastical Identity Footnote */}
+            <Text style={styles.footerNote} allowFontScaling>
+              Roman Catholic Diocese • Parishioner Portal
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    paddingVertical: spacing.md,
+  container: {
+    flex: 1,
+    backgroundColor: "#5C1520",
   },
-  introBlock: {
-    marginBottom: spacing.xl,
+  backgroundImage: {
+    ...StyleSheet.absoluteFill,
+    width: "100%",
+    height: "100%",
   },
-  welcomeHeading: {
-    ...fontStyles.titleSerif,
-    color: colors.neutral[950],
-    fontSize: 22,
-    lineHeight: 28,
-    marginBottom: spacing.xs,
+  brandOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(92, 21, 32, 0.84)",
   },
-  welcomeCopy: {
-    ...fontStyles.body,
-    color: colors.neutral[650],
-    lineHeight: 22,
+  safeArea: {
+    flex: 1,
   },
-  errorBanner: {
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.lg,
+  },
+  brandSection: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+  },
+  dioceseBadge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     marginBottom: spacing.md,
   },
-  actions: {
+  dioceseText: {
+    ...fontStyles.captionBold,
+    color: "rgba(255, 255, 255, 0.90)",
+    letterSpacing: 1.6,
+    fontSize: 12,
+    textAlign: "center",
+  },
+  wordmark: {
+    ...fontStyles.displaySerif,
+    color: "#FFFFFF",
+    fontSize: 34,
+    lineHeight: 42,
+    letterSpacing: 3,
+    textAlign: "center",
+    marginBottom: spacing.sm,
+  },
+  subtitleWrapper: {
+    maxWidth: 320,
+    alignItems: "center",
+  },
+  tagline: {
+    ...fontStyles.body,
+    fontSize: 16,
+    lineHeight: 24,
+    color: "rgba(255, 255, 255, 0.88)",
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  actionsSection: {
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
+    paddingTop: spacing.md,
+  },
+  errorBannerWrapper: {
+    marginBottom: spacing.md,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  errorBanner: {
+    margin: 0,
+  },
+  buttonGroup: {
     gap: spacing.md,
     width: "100%",
   },
@@ -167,21 +271,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginVertical: spacing.xs,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   dividerLine: {
     flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255, 255, 255, 0.35)",
   },
   dividerText: {
     ...fontStyles.caption,
-    color: colors.neutral[500],
-    fontWeight: "600",
-    letterSpacing: 0.5,
+    color: "rgba(255, 255, 255, 0.75)",
+    fontWeight: "700",
+    letterSpacing: 1,
+    fontSize: 12,
   },
   footerNote: {
     ...fontStyles.caption,
-    color: colors.neutral[500],
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
-    marginTop: spacing.md,
+    marginTop: spacing.xl,
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
 });

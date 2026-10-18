@@ -15,7 +15,6 @@ import { IconButton } from "@/components/ui/IconButton";
 import { ListRow } from "@/components/ui/ListRow";
 import { Divider } from "@/components/ui/Divider";
 import { StatusLabel } from "@/components/ui/StatusLabel";
-import { Button } from "@/components/ui/Button";
 import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { EventBannerCarousel } from "@/features/events/components/EventBannerCarousel";
@@ -24,7 +23,7 @@ import { useUnreadNotificationCount } from "@/features/notifications/api";
 import { useRequestList } from "@/features/requests/api";
 import { useScheduleList } from "@/features/schedule/api";
 import { useAuth } from "@/providers/AuthProvider";
-import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { colors, fontStyles, radii, shadows, spacing } from "@/theme/tokens";
 
 export const HomeScreen: React.FC = () => {
   const router = useRouter();
@@ -65,10 +64,10 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <Screen safeArea={true} style={styles.screen}>
-      {/* App Header with Notification Badge */}
+      {/* App Header with Branded TESTIMONIUM Wordmark and Notification Badge */}
       <AppHeader
         title="TESTIMONIUM"
-        subtitle="Diocese of San Carlos"
+        titleStyle={styles.brandTitle}
         rightAction={
           <View style={styles.bellContainer}>
             <IconButton
@@ -110,32 +109,39 @@ export const HomeScreen: React.FC = () => {
         }
       >
         <ContentColumn style={styles.column}>
-          {/* Greeting Banner */}
-          <View style={styles.greetingHeader}>
+          {/* Maroon Welcome Banner matching Web Portal */}
+          <View style={styles.welcomeBanner}>
             <Text style={styles.dioceseTag} allowFontScaling>
-              DIOCESE OF SAN CARLOS
+              DIOCESE OF SAN CARLOS • VICARIATE OF CANLAON
             </Text>
             <Text style={styles.greetingTitle} allowFontScaling>
               {greetingTitle}
             </Text>
             <Text style={styles.greetingSubtitle} allowFontScaling>
-              Canonical services and sacramental document records.
+              Manage document requests, schedule canonical appointments, and explore parish records across the Vicariate of Canlaon.
             </Text>
 
             {profile?.needsProfileCompletion && (
               <View style={styles.profileReminder}>
                 <View style={styles.profileReminderTextWrap}>
-                  <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                  <Ionicons name="alert-circle" size={18} color="#FDE68A" />
                   <Text style={styles.profileReminderText} allowFontScaling>
                     Complete your profile to access all services.
                   </Text>
                 </View>
-                <Button
-                  title="Complete"
-                  size="sm"
-                  variant="outline"
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Complete"
                   onPress={() => router.push("/(app)/profile/edit" as any)}
-                />
+                  style={({ pressed }) => [
+                    styles.profileReminderBtn,
+                    pressed && styles.profileReminderBtnPressed,
+                  ]}
+                >
+                  <Text style={styles.profileReminderBtnText} allowFontScaling>
+                    Complete
+                  </Text>
+                </Pressable>
               </View>
             )}
           </View>
@@ -312,6 +318,14 @@ const styles = StyleSheet.create({
   bellContainer: {
     position: "relative",
   },
+  brandTitle: {
+    ...fontStyles.titleSerif,
+    color: colors.primary,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
   unreadBadge: {
     position: "absolute",
     top: 4,
@@ -338,49 +352,76 @@ const styles = StyleSheet.create({
   column: {
     gap: spacing.lg,
   },
-  greetingHeader: {
-    paddingHorizontal: spacing.xxs,
-    gap: spacing.xxs,
+  welcomeBanner: {
+    backgroundColor: "#6B0F1A",
+    borderColor: "#4A0A12",
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs + 2,
+    ...shadows.md,
   },
   dioceseTag: {
     ...fontStyles.meta,
-    color: colors.primary,
+    color: "rgba(255, 255, 255, 0.75)",
     fontWeight: "700",
     letterSpacing: 0.8,
+    fontSize: 11,
+    lineHeight: 15,
   },
   greetingTitle: {
     ...fontStyles.titleSerif,
-    color: colors.textPrimary,
-    fontSize: 24,
-    lineHeight: 30,
+    color: "#FFFFFF",
+    fontSize: 22,
+    lineHeight: 28,
   },
   greetingSubtitle: {
     ...fontStyles.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 20,
+    color: "rgba(255, 255, 255, 0.85)",
+    lineHeight: 19,
   },
   profileReminder: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: radii.md,
-    padding: spacing.sm,
+    borderColor: "rgba(255, 255, 255, 0.22)",
+    borderRadius: radii.sm,
+    padding: spacing.sm + 2,
     marginTop: spacing.xs,
     gap: spacing.sm,
+    flexWrap: "wrap",
   },
   profileReminderTextWrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: spacing.xs + 2,
     flex: 1,
+    minWidth: 180,
   },
   profileReminderText: {
     ...fontStyles.caption,
-    color: colors.textSecondary,
+    color: "rgba(255, 255, 255, 0.95)",
+    fontWeight: "500",
     flex: 1,
+  },
+  profileReminderBtn: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: radii.button,
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.sm,
+  },
+  profileReminderBtnPressed: {
+    opacity: 0.9,
+  },
+  profileReminderBtnText: {
+    ...fontStyles.captionBold,
+    color: "#6B0F1A",
+    fontSize: 12,
   },
   section: {
     gap: spacing.xs,

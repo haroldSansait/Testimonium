@@ -17,10 +17,12 @@ import {
   loadCaloyState,
   saveCaloyState,
 } from "@/features/caloy/caloyStorage";
+import { CaloyAvatar } from "@/features/caloy/components/CaloyAvatar";
 import { CaloyClarification } from "@/features/caloy/components/CaloyClarification";
 import { CaloyLiveBadge } from "@/features/caloy/components/CaloyLiveBadge";
 import { CaloyMarkdown } from "@/features/caloy/components/CaloyMarkdown";
 import { CaloyMessageBubble } from "@/features/caloy/components/CaloyMessageBubble";
+import { CaloyTypingIndicator } from "@/features/caloy/components/CaloyTypingIndicator";
 import { CaloyVerifiedSources } from "@/features/caloy/components/CaloyVerifiedSources";
 import type { CaloyMessage, CaloySource } from "@/features/caloy/types";
 import { apiClient } from "@/services/api/client";
@@ -720,5 +722,52 @@ describe("Caloy Mobile - UI Components", () => {
     } finally {
       isReduceMotionSpy.mockRestore();
     }
+  });
+});
+
+describe("Caloy Avatar UI Enhancement", () => {
+  beforeEach(() => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(false);
+  });
+
+  it("renders CaloyAvatar as a circular image with accessible role", async () => {
+    const { findByLabelText } = await render(<CaloyAvatar size={36} />);
+    const avatar = await findByLabelText("Caloy avatar");
+    expect(avatar).toBeTruthy();
+  });
+
+  it("renders CaloyAvatar beside assistant messages and omits it for user messages", async () => {
+    const userMsg: CaloyMessage = {
+      id: "u1",
+      sender: "user",
+      text: "Hello Caloy",
+      timestamp: Date.now(),
+    };
+    const assistantMsg: CaloyMessage = {
+      id: "a1",
+      sender: "caloy",
+      text: "Hello! How may I assist you?",
+      timestamp: Date.now(),
+    };
+
+    const { queryAllByLabelText, findByText } = await render(
+      <>
+        <CaloyMessageBubble message={userMsg} />
+        <CaloyMessageBubble message={assistantMsg} />
+      </>
+    );
+
+    expect(await findByText("Hello Caloy")).toBeTruthy();
+    expect(await findByText("Hello! How may I assist you?")).toBeTruthy();
+
+    const avatars = queryAllByLabelText("Caloy avatar");
+    // Exactly one avatar for the assistant message, none for user message
+    expect(avatars).toHaveLength(1);
+  });
+
+  it("renders CaloyAvatar inside CaloyTypingIndicator", async () => {
+    const { findByLabelText, findByText } = await render(<CaloyTypingIndicator />);
+    expect(await findByText("Caloy is thinking...")).toBeTruthy();
+    expect(await findByLabelText("Caloy avatar")).toBeTruthy();
   });
 });

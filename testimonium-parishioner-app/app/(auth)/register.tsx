@@ -2,19 +2,15 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { AuthScaffold } from "@/components/auth/AuthScaffold";
+import { AuthButton, AuthScaffold } from "@/components/auth";
 import { LegalModal } from "@/components/legal/LegalModal";
-import { Button } from "@/components/ui/Button";
 import { GoogleLogo } from "@/components/ui/GoogleLogo";
 import { TextInput } from "@/components/ui/TextInput";
-import { FormSection } from "@/components/ui/FormSection";
-import { Divider } from "@/components/ui/Divider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useLegalPolicies } from "@/hooks/useLegalPolicies";
 import { isAppError } from "@/services/api/errors";
 import { isGoogleAuthAvailable } from "@/services/auth/googleAuth";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
-import { navigateBackOrReplace } from "@/services/navigation/back";
 import { evaluatePasswordStrength } from "@/utils/passwordStrength";
 
 export default function RegisterScreen() {
@@ -139,10 +135,20 @@ export default function RegisterScreen() {
   return (
     <AuthScaffold
       compactHero
-      title="Create Account"
-      subtitle="Register for sacramental services and certificate records with the Vicariate of Canlaon."
+      heroMinHeight={185}
+      roundedSurface
     >
       <View style={styles.formContainer}>
+        {/* Concise Heading & Subtitle */}
+        <View style={styles.headerBlock}>
+          <Text style={styles.heading} accessibilityRole="header" allowFontScaling>
+            Create Account
+          </Text>
+          <Text style={styles.subtitle} allowFontScaling>
+            Register to access parish services.
+          </Text>
+        </View>
+
         {/* Error Notice */}
         {error && (
           <View style={styles.errorContainer}>
@@ -159,192 +165,215 @@ export default function RegisterScreen() {
         )}
 
         {/* Section 1: Personal Details */}
-        <FormSection title="Personal Information">
-          <TextInput
-            label="First Name *"
-            value={firstName}
-            onChangeText={(val) => {
-              setFirstName(val);
-              if (error) setError(null);
-            }}
-            placeholder="e.g. Juan"
-            autoCapitalize="words"
-            editable={!isRegistering && !isSigningIn}
-          />
-          <TextInput
-            label="Middle Name (Optional)"
-            value={middleName}
-            onChangeText={setMiddleName}
-            placeholder="e.g. Santos"
-            autoCapitalize="words"
-            editable={!isRegistering && !isSigningIn}
-          />
-          <TextInput
-            label="Last Name *"
-            value={lastName}
-            onChangeText={(val) => {
-              setLastName(val);
-              if (error) setError(null);
-            }}
-            placeholder="e.g. Dela Cruz"
-            autoCapitalize="words"
-            editable={!isRegistering && !isSigningIn}
-          />
-          <TextInput
-            label="Suffix (Optional)"
-            value={suffix}
-            onChangeText={setSuffix}
-            placeholder="e.g. Jr., III"
-            autoCapitalize="words"
-            editable={!isRegistering && !isSigningIn}
-          />
-        </FormSection>
-
-        <Divider style={styles.sectionDivider} />
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle} allowFontScaling>
+            Personal Information
+          </Text>
+          <View style={styles.sectionFields}>
+            <TextInput
+              label="First Name *"
+              value={firstName}
+              onChangeText={(val) => {
+                setFirstName(val);
+                if (error) setError(null);
+              }}
+              placeholder="e.g. Juan"
+              autoCapitalize="words"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
+            <TextInput
+              label="Middle Name (Optional)"
+              value={middleName}
+              onChangeText={setMiddleName}
+              placeholder="e.g. Santos"
+              autoCapitalize="words"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
+            <TextInput
+              label="Last Name *"
+              value={lastName}
+              onChangeText={(val) => {
+                setLastName(val);
+                if (error) setError(null);
+              }}
+              placeholder="e.g. Dela Cruz"
+              autoCapitalize="words"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
+            <TextInput
+              label="Suffix (Optional)"
+              value={suffix}
+              onChangeText={setSuffix}
+              placeholder="e.g. Jr., III"
+              autoCapitalize="words"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
+          </View>
+        </View>
 
         {/* Section 2: Account Credentials */}
-        <FormSection title="Account Credentials">
-          <TextInput
-            label="Email Address *"
-            value={email}
-            onChangeText={(val) => {
-              setEmail(val);
-              if (error) setError(null);
-            }}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            placeholder="e.g. juan.delacruz@example.com"
-            leftIcon="mail-outline"
-            editable={!isRegistering && !isSigningIn}
-          />
-          <TextInput
-            label="Password *"
-            value={password}
-            onChangeText={(val) => {
-              setPassword(val);
-              if (error) setError(null);
-            }}
-            isPassword
-            autoComplete="new-password"
-            placeholder="Minimum 6 characters"
-            leftIcon="lock-closed-outline"
-            editable={!isRegistering && !isSigningIn}
-          />
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle} allowFontScaling>
+            Account Credentials
+          </Text>
+          <View style={styles.sectionFields}>
+            <TextInput
+              label="Email Address *"
+              value={email}
+              onChangeText={(val) => {
+                setEmail(val);
+                if (error) setError(null);
+              }}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              placeholder="e.g. juan.delacruz@example.com"
+              leftIcon="mail-outline"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
+            <TextInput
+              label="Password *"
+              value={password}
+              onChangeText={(val) => {
+                setPassword(val);
+                if (error) setError(null);
+              }}
+              isPassword
+              autoComplete="new-password"
+              placeholder="Minimum 6 characters"
+              leftIcon="lock-closed-outline"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
 
-          {/* Live Password Strength Indicator */}
-          {password.length > 0 && (
-            <View style={styles.strengthContainer} accessibilityLiveRegion="polite">
-              <View style={styles.strengthHeader}>
-                <Text style={styles.strengthLabelText}>Password Strength:</Text>
-                <Text
-                  style={[
-                    styles.strengthValueText,
-                    passwordStrength.level === "STRONG"
-                      ? styles.strengthStrong
-                      : passwordStrength.level === "MODERATE"
-                      ? styles.strengthModerate
-                      : styles.strengthWeak,
-                  ]}
-                >
-                  {passwordStrength.label.toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.strengthBarRow}>
-                <View
-                  style={[
-                    styles.strengthBarSegment,
-                    passwordStrength.score >= 1
-                      ? (passwordStrength.level === "STRONG"
-                        ? styles.barStrong
+            {/* Live Password Strength Indicator */}
+            {password.length > 0 && (
+              <View style={styles.strengthContainer} accessibilityLiveRegion="polite">
+                <View style={styles.strengthHeader}>
+                  <Text style={styles.strengthLabelText}>Password Strength:</Text>
+                  <Text
+                    style={[
+                      styles.strengthValueText,
+                      passwordStrength.level === "STRONG"
+                        ? styles.strengthStrong
                         : passwordStrength.level === "MODERATE"
-                        ? styles.barModerate
-                        : styles.barWeak)
-                      : styles.barInactive,
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.strengthBarSegment,
-                    passwordStrength.score >= 2
-                      ? (passwordStrength.level === "STRONG"
-                        ? styles.barStrong
-                        : passwordStrength.level === "MODERATE"
-                        ? styles.barModerate
-                        : styles.barWeak)
-                      : styles.barInactive,
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.strengthBarSegment,
-                    passwordStrength.score >= 3 ? styles.barStrong : styles.barInactive,
-                  ]}
-                />
+                        ? styles.strengthModerate
+                        : styles.strengthWeak,
+                    ]}
+                  >
+                    {passwordStrength.label.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.strengthBarRow}>
+                  <View
+                    style={[
+                      styles.strengthBarSegment,
+                      passwordStrength.score >= 1
+                        ? (passwordStrength.level === "STRONG"
+                          ? styles.barStrong
+                          : passwordStrength.level === "MODERATE"
+                          ? styles.barModerate
+                          : styles.barWeak)
+                        : styles.barInactive,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.strengthBarSegment,
+                      passwordStrength.score >= 2
+                        ? (passwordStrength.level === "STRONG"
+                          ? styles.barStrong
+                          : passwordStrength.level === "MODERATE"
+                          ? styles.barModerate
+                          : styles.barWeak)
+                        : styles.barInactive,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.strengthBarSegment,
+                      passwordStrength.score >= 3 ? styles.barStrong : styles.barInactive,
+                    ]}
+                  />
+                </View>
+                <Text style={styles.strengthFeedbackText}>{passwordStrength.feedback}</Text>
               </View>
-              <Text style={styles.strengthFeedbackText}>{passwordStrength.feedback}</Text>
-            </View>
-          )}
+            )}
 
-          <TextInput
-            label="Confirm Password *"
-            value={confirmPassword}
-            onChangeText={(val) => {
-              setConfirmPassword(val);
-              if (error) setError(null);
-            }}
-            isPassword
-            autoComplete="new-password"
-            placeholder="Re-enter your password"
-            leftIcon="lock-closed-outline"
-            editable={!isRegistering && !isSigningIn}
-          />
+            <TextInput
+              label="Confirm Password *"
+              value={confirmPassword}
+              onChangeText={(val) => {
+                setConfirmPassword(val);
+                if (error) setError(null);
+              }}
+              isPassword
+              autoComplete="new-password"
+              placeholder="Re-enter your password"
+              leftIcon="lock-closed-outline"
+              inputContainerStyle={styles.roundedInput}
+              editable={!isRegistering && !isSigningIn}
+            />
 
-          {/* Password Validation Hints */}
-          <View style={styles.passwordHints}>
-            <Text style={styles.hintTitle} allowFontScaling>
-              Password Requirements:
-            </Text>
-            <Text
-              style={[
-                styles.hintItem,
-                password.length >= 6 ? styles.hintValid : styles.hintMuted,
-              ]}
-              allowFontScaling
-            >
-              • Minimum 6 characters {password.length >= 6 ? "✓" : ""}
-            </Text>
-            {confirmPassword.length > 0 && (
+            {/* Password Validation Hints */}
+            <View style={styles.passwordHints}>
               <Text
                 style={[
                   styles.hintItem,
-                  password === confirmPassword ? styles.hintValid : styles.hintInvalid,
+                  password.length >= 6 ? styles.hintValid : styles.hintMuted,
                 ]}
                 allowFontScaling
               >
-                • Passwords {password === confirmPassword ? "match ✓" : "do not match ✗"}
+                • Minimum 6 characters {password.length >= 6 ? "✓" : ""}
               </Text>
-            )}
+              {confirmPassword.length > 0 && (
+                <Text
+                  style={[
+                    styles.hintItem,
+                    password === confirmPassword ? styles.hintValid : styles.hintInvalid,
+                  ]}
+                  allowFontScaling
+                >
+                  • Passwords {password === confirmPassword ? "match ✓" : "do not match ✗"}
+                </Text>
+              )}
+            </View>
           </View>
-        </FormSection>
-
-        <Divider style={styles.sectionDivider} />
+        </View>
 
         {/* Section 3: Legal Terms & Privacy */}
-        <FormSection title="Legal Terms & Privacy Consent">
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle} allowFontScaling>
+            Consent & Agreements
+          </Text>
+
           {isPoliciesLoading && (
             <Text style={styles.checkboxLabel} allowFontScaling>
               Loading authoritative legal policies...
             </Text>
           )}
+
           {isPoliciesError && (
             <View style={styles.errorContainer}>
               <Text accessibilityRole="alert" style={styles.errorText} allowFontScaling>
                 {policiesError?.message || "Authoritative legal policies are unavailable."}
               </Text>
-              <Button title="Retry" size="sm" variant="secondary" onPress={() => { void refetchPolicies(); }} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading legal policies"
+                onPress={() => { void refetchPolicies(); }}
+                style={styles.retryButton}
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
             </View>
           )}
+
           <View style={styles.legalCheckboxes}>
             <Pressable
               accessibilityRole="checkbox"
@@ -402,61 +431,65 @@ export default function RegisterScreen() {
               </View>
             </Pressable>
           </View>
-        </FormSection>
+        </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          <Button
-            title={isRegistering ? "Creating Account..." : "Register Account"}
-            size="lg"
+        {/* Primary Pill Registration Button */}
+        <View style={styles.actionsBlock}>
+          <AuthButton
+            title={isRegistering ? "Creating Account..." : "Create Account"}
             variant="primary"
-            fullWidth
             loading={isRegistering}
             disabled={!isFormValid || isRegistering || isSigningIn}
             onPress={() => {
               void handleSubmit();
             }}
+            testID="register-submit-btn"
+            accessibilityLabel="Create Account"
           />
 
+          {/* Alternative Google Sign-up */}
           {showGoogleButton && (
-            <>
+            <View style={styles.googleSection}>
               <View style={styles.dividerRow}>
-                <Divider style={styles.dividerLine} />
+                <View style={styles.dividerLine} />
                 <Text style={styles.dividerText} allowFontScaling>
                   OR
                 </Text>
-                <Divider style={styles.dividerLine} />
+                <View style={styles.dividerLine} />
               </View>
 
-              <Button
+              <AuthButton
                 title="Sign Up with Google"
-                size="lg"
-                variant="secondary"
-                fullWidth
+                variant="google"
                 leftComponent={<GoogleLogo size={20} />}
                 loading={isSigningIn}
                 disabled={isRegistering || isSigningIn}
                 onPress={() => {
                   void handleGoogleSignUp();
                 }}
+                testID="register-google-btn"
+                accessibilityLabel="Sign up with Google"
               />
-            </>
+            </View>
           )}
 
-          <Button
-            title="Already have an account? Sign In"
-            size="lg"
-            variant="outline"
-            fullWidth
-            disabled={isRegistering || isSigningIn}
-            onPress={() =>
-              navigateBackOrReplace(
-                router.canGoBack,
-                router.back,
-                () => router.replace("/(auth)/login")
-              )
-            }
-          />
+          {/* Small Navigation Link to Sign In */}
+          <View style={styles.footerRow}>
+            <Text style={styles.footerPromptText} allowFontScaling>
+              Already have an account?{" "}
+            </Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="Sign In"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => router.replace("/(auth)/login")}
+              disabled={isRegistering || isSigningIn}
+            >
+              <Text style={styles.footerLinkText} allowFontScaling>
+                Sign In
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -471,7 +504,23 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   formContainer: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  headerBlock: {
+    marginBottom: spacing.lg,
+  },
+  heading: {
+    ...fontStyles.titleSerif,
+    color: colors.neutral[950],
+    fontSize: 24,
+    lineHeight: 30,
+    marginBottom: spacing.xxs,
+  },
+  subtitle: {
+    ...fontStyles.body,
+    color: colors.neutral[650],
+    fontSize: 15,
+    lineHeight: 22,
   },
   errorContainer: {
     flexDirection: "row",
@@ -482,6 +531,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     gap: spacing.xs,
+    marginBottom: spacing.md,
   },
   errorText: {
     ...fontStyles.caption,
@@ -489,18 +539,47 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     flex: 1,
   },
+  sectionBlock: {
+    marginBottom: spacing.lg,
+  },
+  sectionTitle: {
+    ...fontStyles.captionBold,
+    fontSize: 13,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.neutral[650],
+    marginBottom: spacing.sm,
+  },
+  sectionFields: {
+    gap: spacing.md,
+  },
   passwordHints: {
     backgroundColor: colors.surfaceMuted,
     padding: spacing.sm,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.borderLight,
-    gap: 2,
-    marginTop: spacing.xxs,
+    gap: 4,
+    marginTop: -spacing.xs,
+  },
+  hintItem: {
+    ...fontStyles.caption,
+    fontSize: 12,
+  },
+  hintValid: {
+    color: colors.success,
+    fontWeight: "600",
+  },
+  hintInvalid: {
+    color: colors.danger,
+    fontWeight: "600",
+  },
+  hintMuted: {
+    color: colors.textSecondary,
   },
   strengthContainer: {
     gap: 4,
-    marginTop: -4,
+    marginTop: -spacing.xs,
   },
   strengthHeader: {
     flexDirection: "row",
@@ -553,28 +632,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 12,
   },
-  hintTitle: {
-    ...fontStyles.captionMedium,
-    color: colors.textPrimary,
-    fontWeight: "700",
-  },
-  hintItem: {
-    ...fontStyles.caption,
-  },
-  hintValid: {
-    color: colors.success,
-    fontWeight: "600",
-  },
-  hintInvalid: {
-    color: colors.danger,
-    fontWeight: "600",
-  },
-  hintMuted: {
-    color: colors.textSecondary,
-  },
   legalCheckboxes: {
     gap: spacing.sm,
-    paddingTop: spacing.xs,
   },
   checkboxRow: {
     flexDirection: "row",
@@ -582,8 +641,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   checkbox: {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     borderRadius: radii.xs,
     borderWidth: 1.5,
     borderColor: colors.borderStrong,
@@ -612,27 +671,63 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textDecorationLine: "underline",
   },
+  retryButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
+    backgroundColor: colors.brand[700],
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+  },
+  retryButtonText: {
+    ...fontStyles.captionBold,
+    color: "#FFFFFF",
+  },
+  actionsBlock: {
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  googleSection: {
+    width: "100%",
+    marginTop: spacing.sm,
+  },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: spacing.xs,
-    gap: spacing.sm,
+    marginVertical: spacing.md,
+    gap: spacing.md,
   },
   dividerLine: {
     flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.neutral[300],
   },
   dividerText: {
     ...fontStyles.caption,
     color: colors.neutral[500],
-    fontWeight: "600",
-    letterSpacing: 0.5,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    fontSize: 11,
   },
-  actions: {
-    gap: spacing.md,
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: spacing.xl,
+    paddingVertical: spacing.xs,
   },
-  sectionDivider: {
-    marginBottom: spacing.lg,
+  footerPromptText: {
+    ...fontStyles.body,
+    color: colors.neutral[650],
+    fontSize: 14,
+  },
+  footerLinkText: {
+    ...fontStyles.body,
+    color: colors.brand[700],
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  roundedInput: {
+    borderRadius: radii.md,
   },
 });

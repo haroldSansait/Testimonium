@@ -1,8 +1,8 @@
-import React from "react";
 import {
   StyleProp,
   StyleSheet,
   Text,
+  TextStyle,
   View,
   ViewStyle,
 } from "react-native";
@@ -11,8 +11,10 @@ import { colors, fontStyles, spacing } from "@/theme/tokens";
 import { IconButton } from "./IconButton";
 
 export interface AppHeaderProps {
-  title: string;
+  title?: string;
   subtitle?: string;
+  titleStyle?: StyleProp<TextStyle>;
+  headerTitle?: React.ReactNode;
   onBack?: () => void;
   backAccessibilityLabel?: string;
   rightAction?: React.ReactNode;
@@ -23,6 +25,8 @@ export interface AppHeaderProps {
 export const AppHeader: React.FC<AppHeaderProps> = ({
   title,
   subtitle,
+  titleStyle,
+  headerTitle,
   onBack,
   backAccessibilityLabel = "Go back",
   rightAction,
@@ -47,23 +51,31 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
         {!largeTitle ? (
           <View style={[styles.titleSlot, !onBack && styles.titleSlotNoBack]}>
-            <Text
-              style={[styles.title, !onBack && styles.titleNoBack]}
-              numberOfLines={2}
-              accessibilityRole="header"
-              allowFontScaling
-            >
-              {title}
-            </Text>
-            {subtitle ? (
-              <Text
-                style={[styles.subtitle, !onBack && styles.subtitleNoBack]}
-                numberOfLines={2}
-                allowFontScaling
-              >
-                {subtitle}
-              </Text>
-            ) : null}
+            {headerTitle ? (
+              headerTitle
+            ) : (
+              <>
+                {title ? (
+                  <Text
+                    style={[styles.title, !onBack && styles.titleNoBack, titleStyle]}
+                    numberOfLines={2}
+                    accessibilityRole="header"
+                    allowFontScaling
+                  >
+                    {title}
+                  </Text>
+                ) : null}
+                {subtitle ? (
+                  <Text
+                    style={[styles.subtitle, !onBack && styles.subtitleNoBack]}
+                    numberOfLines={2}
+                    allowFontScaling
+                  >
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </>
+            )}
           </View>
         ) : (
           <View style={styles.flexFill} />

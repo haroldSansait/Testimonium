@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { CaloyAvatar } from "./CaloyAvatar";
 
 export const CaloyTypingIndicator: React.FC = () => {
   const reduceMotion = useReducedMotion();
@@ -73,37 +74,40 @@ export const CaloyTypingIndicator: React.FC = () => {
       accessibilityRole="text"
       accessibilityLabel="Caloy is thinking"
     >
-      <View style={styles.bubble}>
-        <View style={styles.dotsRow}>
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                opacity: interpolateOpacity(dot1),
-                transform: [{ translateY: interpolateTranslate(dot1) }],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                opacity: interpolateOpacity(dot2),
-                transform: [{ translateY: interpolateTranslate(dot2) }],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                opacity: interpolateOpacity(dot3),
-                transform: [{ translateY: interpolateTranslate(dot3) }],
-              },
-            ]}
-          />
+      <View style={styles.row}>
+        <CaloyAvatar size={28} />
+        <View style={styles.bubble}>
+          <View style={styles.dotsRow}>
+            <Animated.View
+              style={[
+                styles.dot,
+                {
+                  opacity: interpolateOpacity(dot1),
+                  transform: [{ translateY: interpolateTranslate(dot1) }],
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.dot,
+                {
+                  opacity: interpolateOpacity(dot2),
+                  transform: [{ translateY: interpolateTranslate(dot2) }],
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.dot,
+                {
+                  opacity: interpolateOpacity(dot3),
+                  transform: [{ translateY: interpolateTranslate(dot3) }],
+                },
+              ]}
+            />
+          </View>
+          <Text style={styles.thinkingText}>Caloy is thinking...</Text>
         </View>
-        <Text style={styles.thinkingText}>Caloy is thinking...</Text>
       </View>
     </View>
   );
@@ -114,6 +118,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     alignItems: "flex-start",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.xs,
+    maxWidth: "100%",
   },
   bubble: {
     flexDirection: "row",

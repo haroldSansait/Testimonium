@@ -1,29 +1,45 @@
 import React from "react";
 import {
   Image,
+  Pressable,
   StyleProp,
   StyleSheet,
   Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { fontStyles, spacing } from "@/theme/tokens";
 
 export interface AuthBrandHeroProps {
   title?: string;
   subtitle?: string;
   compact?: boolean;
+  heroMinHeight?: number;
   style?: StyleProp<ViewStyle>;
+  onBack?: () => void;
+  showBack?: boolean;
 }
 
 export const AuthBrandHero: React.FC<AuthBrandHeroProps> = ({
   title,
   subtitle,
   compact = false,
+  heroMinHeight,
   style,
+  onBack,
+  showBack = false,
 }) => {
   return (
-    <View style={[styles.container, compact ? styles.compactContainer : styles.fullContainer, style]}>
+    <View
+      style={[
+        styles.container,
+        compact ? styles.compactContainer : styles.fullContainer,
+        heroMinHeight ? { minHeight: heroMinHeight } : null,
+        style,
+      ]}
+    >
       {/* Background Mt. Kanlaon image */}
       <Image
         source={require("../../../assets/images/mt-kanlaon.png")}
@@ -33,11 +49,33 @@ export const AuthBrandHero: React.FC<AuthBrandHeroProps> = ({
         importantForAccessibility="no"
       />
 
-      {/* Brand Color Overlay matching web */}
+      {/* Brand Color Overlay matching TESTIMONIUM deep maroon identity */}
       <View style={styles.brandOverlay} />
 
+      {/* Optional Top Back Button */}
+      {showBack && onBack ? (
+        <SafeAreaView edges={["top"]} style={styles.backSafeArea}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            onPress={onBack}
+            hitSlop={8}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </Pressable>
+        </SafeAreaView>
+      ) : null}
+
       {/* Brand & Editorial Heading */}
-      <View style={[styles.brandContent, compact ? styles.compactBrandContent : styles.fullBrandContent]}>
+      <View
+        style={[
+          styles.brandContent,
+          compact ? styles.compactBrandContent : styles.fullBrandContent,
+          heroMinHeight ? styles.authFormBrandContent : null,
+          showBack ? styles.contentWithBack : null,
+        ]}
+      >
         <Text style={styles.dioceseText} allowFontScaling>
           VICARIATE OF CANLAON
         </Text>
@@ -71,7 +109,7 @@ const styles = StyleSheet.create({
     minHeight: 220,
   },
   compactContainer: {
-    minHeight: 130,
+    minHeight: 140,
   },
   backgroundImage: {
     ...StyleSheet.absoluteFill,
@@ -82,9 +120,29 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(107, 15, 26, 0.85)",
   },
+  backSafeArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: spacing.sm,
+    marginTop: spacing.xs,
+    borderRadius: 22,
+    backgroundColor: "rgba(0, 0, 0, 0.20)",
+  },
   brandContent: {
     zIndex: 2,
     width: "100%",
+  },
+  contentWithBack: {
+    paddingTop: spacing.xs,
   },
   fullBrandContent: {
     paddingHorizontal: spacing.lg,
@@ -95,6 +153,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  authFormBrandContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.xl,
   },
   dioceseText: {
     ...fontStyles.captionBold,
