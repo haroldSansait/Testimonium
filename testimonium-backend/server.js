@@ -223,11 +223,11 @@ const logRateLimitSummary = () => {
 
 export const logAuthenticationPolicy = () => {
   const isProd = env.nodeEnv === "production";
-  const staffVerificationState = (!isProd && !env.adminEmailVerificationRequired) ? "DISABLED" : "REQUIRED";
+  const staffVerificationState = env.adminEmailVerificationRequired ? "REQUIRED" : "DISABLED";
 
-  if (isProd && process.env.ADMIN_EMAIL_VERIFICATION_REQUIRED === "false") {
+  if (isProd && !env.adminEmailVerificationRequired) {
     logger.warn(
-      "[SECURITY WARNING] ADMIN_EMAIL_VERIFICATION_REQUIRED=false configured in PRODUCTION environment! Email verification bypass is disabled for production safety."
+      "[AuthPolicy] Staff email/password verification is disabled in production by ADMIN_EMAIL_VERIFICATION_REQUIRED. Parishioner email/password verification remains required."
     );
   }
 

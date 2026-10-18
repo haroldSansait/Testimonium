@@ -7,10 +7,9 @@ import { env } from "../config/env.js";
  * Rules:
  * - Google provider ("google.com"): Never require additional email verification.
  * - Email/Password provider ("password"):
- *   - Production environment: Always require email verification for all roles.
- *   - Development environment:
- *     - PARISHIONER role: Always require email verification.
- *     - Staff roles (SECRETARY, PRIEST, DIOCESE_COORDINATOR, SUPER_ADMIN): Follow ADMIN_EMAIL_VERIFICATION_REQUIRED policy setting.
+ *   - PARISHIONER role: Always require email verification.
+ *   - Staff roles (SECRETARY, PRIEST, DIOCESE_COORDINATOR, SUPER_ADMIN): Follow ADMIN_EMAIL_VERIFICATION_REQUIRED in every environment.
+ *   - Other roles: Preserve mandatory verification in production.
  *
  * @param {Object} params
  * @param {string|Object} params.role User role string (e.g. "PARISHIONER", "SECRETARY") or role object with roleName
@@ -31,12 +30,13 @@ export const shouldRequireEmailVerification = ({
   // Normalize role string if role is passed as object { roleName } or string
   const roleName = typeof role === "string" ? role : role?.roleName;
 
-  // In production, verification is permanently enforced for all accounts
-  if (environment === "production") {
+  // Only existing staff roles may follow the configurable policy in production.
+  const isStaff = ["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR", "SUPER_ADMIN"].includes(roleName);
+  if (environment === "production" && !isStaff) {
     return true;
   }
 
-  // In development, PARISHIONER role always requires verification
+  // PARISHIONER and missing roles always require verification.
   if (!roleName || roleName === "PARISHIONER") {
     return true;
   }
