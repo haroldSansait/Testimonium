@@ -8,6 +8,7 @@ import {
   formatDate,
   formatDocumentType,
   formatFee,
+  formatStatus,
   isPaymentEligible,
   isDocumentCorrectionEligible,
 } from "../presentation";
@@ -20,6 +21,7 @@ export interface RequestCardProps {
 
 export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) => {
   const docTypeLabel = formatDocumentType(request.documentType);
+  const statusInfo = formatStatus(request.status, request.isDraft);
   const dateLabel = formatDate(request.dateRequested || request.createdAt);
   const feeLabel = formatFee(request.fee);
   const parishName = request.parish?.parishName || "Parish Document";
@@ -32,7 +34,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
       <MotionPressable
         onPress={() => onPress(request)}
         accessibilityRole="button"
-        accessibilityLabel={`${docTypeLabel} for ${request.applicantName}, status: ${request.status}, tracking number: ${request.trackingNumber || "Draft"}`}
+        accessibilityLabel={`${docTypeLabel} for ${request.applicantName}, status: ${statusInfo.label}, tracking number: ${request.trackingNumber || "Draft"}`}
         accessibilityHint="Opens request details"
         style={styles.pressable}
       >
@@ -44,7 +46,7 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
               {request.trackingNumber || "Draft Request"}
             </Text>
           </View>
-          <StatusLabel status={request.status} />
+          <StatusLabel status={request.isDraft ? "DRAFT" : request.status} />
         </View>
 
         {/* Document Type & Applicant */}

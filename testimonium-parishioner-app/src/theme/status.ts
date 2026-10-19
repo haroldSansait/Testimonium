@@ -44,13 +44,19 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
         accessibilityLabel: "Status: Pending Review by parish staff",
       };
     case "UNDER_REVIEW":
+      return {
+        label: "Under Staff Review",
+        intent: "info",
+        color: colors.information,
+        accessibilityLabel: "Status: Under Staff Review by parish staff",
+      };
     case "PROCESSING":
     case "READY_FOR_SIGNING":
       return {
-        label: "Under Review",
+        label: "In Preparation",
         intent: "info",
         color: colors.information,
-        accessibilityLabel: "Status: Under Review by parish staff",
+        accessibilityLabel: "Status: In Preparation by parish records",
       };
     case "NEEDS_CORRECTION":
     case "CORRECTION_REQUIRED":
@@ -67,21 +73,36 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
         color: colors.warning,
         accessibilityLabel: "Status: Returned for Correction, staff preparing replacement",
       };
+    case "PAYMENT_PENDING":
     case "READY_FOR_PAYMENT":
     case "AWAITING_PAYMENT":
       return {
-        label: "Awaiting Payment",
+        label: "Payment Required",
         intent: "info",
         color: colors.brand[700],
-        accessibilityLabel: "Status: Awaiting Payment from parishioner",
+        accessibilityLabel: "Status: Payment Required from parishioner",
       };
     case "PAYMENT_UNDER_REVIEW":
     case "RECEIPT_UNDER_REVIEW":
       return {
-        label: "Payment Review",
+        label: "Payment Under Review",
         intent: "info",
         color: colors.information,
-        accessibilityLabel: "Status: Payment receipt under review by staff",
+        accessibilityLabel: "Status: Payment Under Review by parish staff",
+      };
+    case "PAYMENT_NEEDS_CORRECTION":
+      return {
+        label: "Payment Correction",
+        intent: "danger",
+        color: colors.danger,
+        accessibilityLabel: "Status: Payment Correction, replacement receipt needed",
+      };
+    case "PAYMENT_VERIFIED":
+      return {
+        label: "Payment Verified",
+        intent: "success",
+        color: colors.success,
+        accessibilityLabel: "Status: Payment Verified",
       };
     case "READY_FOR_PICKUP":
     case "READY":
@@ -101,10 +122,10 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
       };
     case "REJECTED":
       return {
-        label: "Rejected",
+        label: "Declined",
         intent: "danger",
         color: colors.danger,
-        accessibilityLabel: "Status: Rejected by parish staff",
+        accessibilityLabel: "Status: Declined by parish staff",
       };
     case "CANCELLED":
     case "CANCELED":
@@ -123,8 +144,16 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
         color: colors.success,
         accessibilityLabel: "Status: Schedule confirmed",
       };
+    case "REQUESTED":
+      return {
+        label: "Pending Review",
+        intent: "neutral",
+        color: colors.brand[700],
+        accessibilityLabel: "Status: Pending Review by parish staff",
+      };
     case "PROPOSED_RESCHEDULE":
     case "RESCHEDULE_PROPOSED":
+    case "WAITING_PARISHIONER_RESPONSE":
       return {
         label: "Reschedule Proposed",
         intent: "info",
@@ -137,7 +166,8 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
       // Humanize UPPER_SNAKE_CASE
       const humanized = rawStatus
         .toLowerCase()
-        .split(/[_\s-]/)
+        .split(/[_\s-]+/)
+        .filter(Boolean)
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
       return {

@@ -16,6 +16,8 @@ export interface SafeBottomActionBarProps {
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
+const BOTTOM_BREATHING_ROOM = 10;
+
 export const SafeBottomActionBar: React.FC<SafeBottomActionBarProps> = ({
   children,
   style,
@@ -23,7 +25,9 @@ export const SafeBottomActionBar: React.FC<SafeBottomActionBarProps> = ({
   onLayout,
 }) => {
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, 16);
+  // Provide modest additional breathing room (8-12dp) above the Android system
+  // navigation bar and iOS home indicator, while respecting device safe-area insets.
+  const bottomPadding = Math.max(insets.bottom, spacing.md) + BOTTOM_BREATHING_ROOM;
 
   return (
     <View
@@ -51,6 +55,7 @@ const styles = StyleSheet.create({
   content: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     width: "100%",
     gap: spacing.sm,
   },

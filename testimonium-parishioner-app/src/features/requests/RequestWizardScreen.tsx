@@ -1,10 +1,13 @@
 import React, { useRef, useState } from "react";
 import {
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -73,7 +76,8 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const { profile, user } = useAuth();
   const feedback = useFeedback();
   const reduceMotion = useReducedMotion();
-  const { contentBottomInset } = useAppLayoutMetrics();
+  const { contentBottomInset, onBottomActionLayout } = useAppLayoutMetrics();
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [selectedParishOverride, setSelectedParishOverride] = useState<ParishDto | null>(null);
@@ -85,6 +89,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const [applicantLastName, setApplicantLastName] = useState("");
   const applicantName = [applicantFirstName.trim(), applicantMiddleName.trim(), applicantLastName.trim()].filter(Boolean).join(" ");
   const [relationship, setRelationship] = useState("Self");
+  const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
   const [purpose, setPurpose] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{
     firstName?: string;
@@ -243,6 +248,16 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       setSelectedDocType(docType);
       setSelectedFiles({});
     }
+  };
+
+  const handleSelectRelationship = (opt: string) => {
+    if (relationship !== opt) {
+      createdDraftIdRef.current = null;
+      draftFingerprintRef.current = null;
+      idempotencyKeyRef.current = null;
+    }
+    setRelationship(opt);
+    setIsRelationshipModalOpen(false);
   };
 
   // Step 3 -> Step 4
@@ -630,7 +645,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 </Text>
               ) : (
                 <Text style={[styles.verifiedIdSubtext, { marginTop: 4, color: "#92400e" }]}>
-                  Third-party request ({relationship}). Enter the registrant's name below. A signed Authorization Letter and the registrant's Government ID will be required in Step 4.
+                  {`Third-party request (${relationship}). Enter the registrant's name below. A signed Authorization Letter and the registrant's Government ID will be required in Step 4.`}
                 </Text>
               )}
             </View>
@@ -689,25 +704,23 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               title="Relationship to Record Holder *"
               description="Select your relationship to the person named on the sacramental record."
             >
-              <View style={styles.selectionList}>
-                {RELATIONSHIP_OPTIONS.map((opt) => (
-                  <SelectionRow
-                    key={opt}
-                    title={opt}
-                    selected={relationship === opt}
-                    onSelect={() => {
-                      if (relationship !== opt) {
-                        createdDraftIdRef.current = null;
-                        draftFingerprintRef.current = null;
-                        idempotencyKeyRef.current = null;
-                      }
-                      setRelationship(opt);
-                    }}
-                    mode="radio"
-                    accessibilityLabel={`Relationship: ${opt}`}
-                  />
-                ))}
-              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Relationship to Record Holder, current selection: ${relationship}`}
+                accessibilityHint="Opens a selection menu to choose your relationship to the record holder"
+                onPress={() => setIsRelationshipModalOpen(true)}
+                style={styles.dropdownTrigger}
+              >
+                <Text style={styles.dropdownValueText} allowFontScaling>
+                  {relationship}
+                </Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={20}
+                  color={colors.neutral[650]}
+                  style={styles.dropdownChevron}
+                />
+              </Pressable>
             </FormSection>
 
             <Divider />
@@ -932,7 +945,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       </ScrollView>
 
       {/* Safe Bottom Action Bar on All Steps */}
-      <SafeBottomActionBar>
+      <SafeBottomActionBar onLayout={onBottomActionLayout}>
         {step === 1 ? (
           <Button
             title="Continue to Document Type"
@@ -983,6 +996,63 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
           />
         ) : null}
       </SafeBottomActionBar>
+
+      {/* Relationship Selection Modal */}
+      <Modal
+        visible={isRelationshipModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsRelationshipModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setIsRelationshipModalOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close relationship selection menu"
+          />
+          <View
+            style={[
+              styles.modalSheet,
+              { paddingBottom: Math.max(insets.bottom, spacing.md) + 10 },
+            ]}
+            accessibilityViewIsModal={true}
+            accessibilityLabel="Relationship to Record Holder"
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} accessibilityRole="header" allowFontScaling>
+                Relationship to Record Holder
+              </Text>
+              <Pressable
+                onPress={() => setIsRelationshipModalOpen(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={22} color={colors.neutral[650]} />
+              </Pressable>
+            </View>
+            <Divider />
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalOptionsList}
+              bounces={false}
+            >
+              {RELATIONSHIP_OPTIONS.map((opt) => (
+                <SelectionRow
+                  key={opt}
+                  title={opt}
+                  selected={relationship === opt}
+                  onSelect={() => handleSelectRelationship(opt)}
+                  mode="radio"
+                  accessibilityLabel={`Relationship: ${opt}`}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 };
@@ -1158,5 +1228,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#047857",
     lineHeight: 17,
+  },
+  dropdownTrigger: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.neutral[300],
+    borderRadius: radii.control,
+    backgroundColor: colors.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+  },
+  dropdownValueText: {
+    ...fontStyles.body,
+    color: colors.neutral[950],
+  },
+  dropdownChevron: {
+    marginLeft: spacing.xs,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: "flex-end",
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFill,
+  },
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
+    maxHeight: "80%",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  modalTitle: {
+    ...fontStyles.subheading,
+    fontWeight: "700",
+    color: colors.neutral[950],
+  },
+  modalCloseBtn: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalScroll: {
+    maxHeight: 360,
+  },
+  modalOptionsList: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
   },
 });

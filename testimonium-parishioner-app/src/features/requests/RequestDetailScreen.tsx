@@ -367,7 +367,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                     </Text>
                   )}
                 </View>
-                <StatusLabel status={request.status} />
+                <StatusLabel status={request.isDraft ? "DRAFT" : request.status} />
               </View>
 
               <Text style={styles.statusDescription} allowFontScaling>

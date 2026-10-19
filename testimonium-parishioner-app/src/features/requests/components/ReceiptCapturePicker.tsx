@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +28,9 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
   onReceiptRemoved,
   disabled = false,
 }) => {
+  const { width, fontScale } = useWindowDimensions();
+  const isStacked = width < 360 || fontScale > 1.15;
+
   const handleRemove = () => {
     onReceiptRemoved();
   };
@@ -212,11 +216,15 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
           </View>
         </View>
       ) : (
-        <View style={styles.buttonRow}>
+        <View style={[styles.buttonRow, isStacked && styles.buttonRowStacked]}>
           <TouchableOpacity
             onPress={handlePickFromGallery}
             disabled={disabled}
-            style={[styles.inputButton, disabled && styles.inputButtonDisabled]}
+            style={[
+              styles.inputButton,
+              isStacked && styles.inputButtonStacked,
+              disabled && styles.inputButtonDisabled,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Choose receipt from photo gallery"
           >
@@ -224,9 +232,11 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
               name="images-outline"
               size={20}
               color={disabled ? colors.textMuted : colors.primary}
+              style={styles.inputButtonIcon}
             />
             <Text
               style={[styles.inputButtonText, disabled && styles.inputButtonTextDisabled]}
+              numberOfLines={2}
               allowFontScaling
             >
               Choose from Gallery
@@ -236,7 +246,11 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
           <TouchableOpacity
             onPress={handleTakePhoto}
             disabled={disabled}
-            style={[styles.inputButton, disabled && styles.inputButtonDisabled]}
+            style={[
+              styles.inputButton,
+              isStacked && styles.inputButtonStacked,
+              disabled && styles.inputButtonDisabled,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Take a photo of receipt using camera"
           >
@@ -244,9 +258,11 @@ export const ReceiptCapturePicker: React.FC<ReceiptCapturePickerProps> = ({
               name="camera-outline"
               size={20}
               color={disabled ? colors.textMuted : colors.primary}
+              style={styles.inputButtonIcon}
             />
             <Text
               style={[styles.inputButtonText, disabled && styles.inputButtonTextDisabled]}
+              numberOfLines={2}
               allowFontScaling
             >
               Take Photo
@@ -281,29 +297,44 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: "row",
     gap: spacing.sm,
+    width: "100%",
+  },
+  buttonRowStacked: {
+    flexDirection: "column",
   },
   inputButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
     borderWidth: 1,
     borderColor: colors.borderLight,
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceVariant,
+    minHeight: 52,
+    gap: spacing.xs,
+  },
+  inputButtonStacked: {
+    flex: 0,
+    width: "100%",
     minHeight: 48,
-    gap: 6,
   },
   inputButtonDisabled: {
     borderColor: colors.borderLight,
     backgroundColor: colors.surfaceMuted,
   },
+  inputButtonIcon: {
+    flexShrink: 0,
+  },
   inputButtonText: {
     ...fontStyles.captionMedium,
     color: colors.textPrimary,
     fontWeight: "600",
+    flexShrink: 1,
+    textAlign: "center",
   },
   inputButtonTextDisabled: {
     color: colors.textMuted,

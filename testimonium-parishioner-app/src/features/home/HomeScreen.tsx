@@ -21,7 +21,9 @@ import { EventBannerCarousel } from "@/features/events/components/EventBannerCar
 import { parseEventDateOnly } from "@/features/events/presentation";
 import { useUnreadNotificationCount } from "@/features/notifications/api";
 import { useRequestList } from "@/features/requests/api";
+import { formatDocumentType, formatStatus } from "@/features/requests/presentation";
 import { useScheduleList } from "@/features/schedule/api";
+import { getScheduleStatusBadge } from "@/features/schedule/presentation";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, shadows, spacing } from "@/theme/tokens";
 
@@ -192,9 +194,8 @@ export const HomeScreen: React.FC = () => {
             {recentRequests.length > 0 ? (
               <View style={styles.rowsContainer}>
                 {recentRequests.map((req, idx) => {
-                  const docTitle = req.documentType
-                    ? req.documentType.replace(/_/g, " ")
-                    : "Certificate Request";
+                  const docTitle = formatDocumentType(req.documentType);
+                  const statusInfo = formatStatus(req.status, req.isDraft);
                   const tracking = req.trackingNumber || `REQ-${req.id}`;
                   const parishName = req.parish?.parishName;
 
@@ -203,10 +204,10 @@ export const HomeScreen: React.FC = () => {
                       key={req.id}
                       title={docTitle}
                       subtitle={`Tracking: ${tracking}${parishName ? ` • ${parishName}` : ""}`}
-                      trailing={<StatusLabel status={req.status} />}
+                      trailing={<StatusLabel status={req.isDraft ? "DRAFT" : req.status} />}
                       showDivider={idx < recentRequests.length - 1}
                       onPress={() => router.push(`/(app)/requests/${req.id}` as any)}
-                      accessibilityLabel={`Request ${docTitle}, tracking ${tracking}`}
+                      accessibilityLabel={`Request ${docTitle}, tracking ${tracking}, status: ${statusInfo.label}`}
                     />
                   );
                 })}
@@ -253,6 +254,7 @@ export const HomeScreen: React.FC = () => {
                   const title = item.displayTitle || item.eventType.replace(/_/g, " ");
                   const dateStr = item.requestedDate;
                   const parishName = item.parish?.parishName;
+                  const statusInfo = getScheduleStatusBadge(item.status);
 
                   return (
                     <ListRow
@@ -262,7 +264,7 @@ export const HomeScreen: React.FC = () => {
                       trailing={<StatusLabel status={item.status} />}
                       showDivider={idx < upcomingAppointments.length - 1}
                       onPress={() => router.push(`/(app)/schedule/${item.id}` as any)}
-                      accessibilityLabel={`Appointment ${title} on ${dateStr}`}
+                      accessibilityLabel={`Appointment ${title} on ${dateStr}, status: ${statusInfo.label}`}
                     />
                   );
                 })}

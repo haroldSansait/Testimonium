@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, spacing } from "@/theme/tokens";
-import { formatDateTime } from "../presentation";
+import { formatActionLabel, formatDateTime, formatHistoryRemarks } from "../presentation";
 import type { RequestHistoryItem } from "../types";
 
 export interface RequestStatusTimelineProps {
@@ -50,6 +50,7 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
           const isLast = index === sortedHistory.length - 1;
           const formattedDate = formatDateTime(item.createdAt);
           const actorName = item.actor?.fullName || (item.actorId ? "Parish Staff" : "System");
+          const formattedRemarks = formatHistoryRemarks(item);
 
           return (
             <View key={item.id || index} style={styles.timelineItem}>
@@ -72,16 +73,16 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
               <View style={styles.contentColumn}>
                 <View style={styles.row}>
                   <Text style={styles.actionTitle} allowFontScaling>
-                    {formatActionLabel(item.action)}
+                    {formatActionLabel(item.action, item)}
                   </Text>
                   <Text style={styles.dateText} allowFontScaling>
                     {formattedDate}
                   </Text>
                 </View>
 
-                {item.remarks ? (
+                {formattedRemarks ? (
                   <Text style={styles.remarks} allowFontScaling>
-                    {item.remarks}
+                    {formattedRemarks}
                   </Text>
                 ) : null}
 
@@ -95,44 +96,6 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
       </View>
     </View>
   );
-};
-
-const formatActionLabel = (action: string): string => {
-  switch (action) {
-    case "DRAFT_CREATED":
-      return "Draft Initialized";
-    case "SUBMITTED":
-      return "Request Submitted";
-    case "UNDER_REVIEW":
-      return "Staff Review Started";
-    case "NEEDS_CORRECTION":
-      return "Correction Requested";
-    case "RESUBMITTED":
-      return "Corrections Resubmitted";
-    case "RECEIPT_UPLOADED":
-      return "Receipt Uploaded";
-    case "CORRECTED_PAYMENT_SUBMITTED":
-      return "Replacement Receipt Submitted";
-    case "PAYMENT_VERIFIED":
-      return "Payment Confirmed";
-    case "PROCESSING":
-    case "READY_FOR_SIGNING":
-      return "Preparation Underway";
-    case "READY_FOR_PICKUP":
-      return "Marked Ready for Pickup";
-    case "COMPLETED":
-      return "Completed & Released";
-    case "DOCUMENT_RETURNED":
-      return "Document Returned for Correction";
-    case "CORRECTED_DOCUMENT_UPLOADED":
-      return "Corrected Document Prepared";
-    case "CANCELLED":
-      return "Request Cancelled";
-    case "REJECTED":
-      return "Request Declined";
-    default:
-      return action.replace(/_/g, " ");
-  }
 };
 
 const styles = StyleSheet.create({

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { AuthScaffold } from "@/components/auth/AuthScaffold";
+import { AuthButton, AuthScaffold } from "@/components/auth";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/providers/AuthProvider";
 import { isAppError } from "@/services/api/errors";
@@ -125,17 +125,19 @@ export default function VerifyEmailScreen() {
 
         {/* Actions */}
         <View style={styles.actions}>
-          <Button
+          <AuthButton
             title={isCheckingVerification ? "Checking Status..." : "I've Verified My Email"}
-            size="lg"
+            variant="primary"
             loading={isCheckingVerification}
             disabled={isCheckingVerification}
             onPress={() => {
               void handleCheck();
             }}
+            testID="verify-email-check-btn"
+            accessibilityLabel="I've Verified My Email"
           />
 
-          <Button
+          <AuthButton
             title={
               isResending
                 ? "Sending..."
@@ -144,12 +146,13 @@ export default function VerifyEmailScreen() {
                 : "Resend Verification Email"
             }
             variant="outline"
-            size="lg"
             loading={isResending}
             disabled={isResending || cooldown > 0 || isCheckingVerification}
             onPress={() => {
               void handleResend();
             }}
+            testID="verify-email-resend-btn"
+            accessibilityLabel="Resend Verification Email"
           />
         </View>
 

@@ -96,7 +96,7 @@ export const ScheduleWizardScreen: React.FC = () => {
   const { profile } = useAuth();
   const feedback = useFeedback();
   const reduceMotion = useReducedMotion();
-  const { contentBottomInset } = useAppLayoutMetrics();
+  const { contentBottomInset, onBottomActionLayout } = useAppLayoutMetrics();
   const today = useMemo(() => getManilaDateParts(), []);
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -643,7 +643,7 @@ export const ScheduleWizardScreen: React.FC = () => {
               {/* Preferred Priest Section */}
               <View style={styles.priestSection}>
                 <Text style={styles.sectionHeading} allowFontScaling>
-                  Preferred Celebrant (Optional)
+                  Preferred Priest (Optional)
                 </Text>
                 <Text style={styles.sectionSubtext} allowFontScaling>
                   Preference only. Final assignment is determined by the parish.
@@ -652,7 +652,7 @@ export const ScheduleWizardScreen: React.FC = () => {
                 {eligiblePriestsQuery.isError ? (
                   <View style={styles.warningBanner}>
                     <Text style={styles.warningBannerText} allowFontScaling>
-                      Unable to load preferred celebrants. You can proceed without a preference.
+                      Unable to load preferred priests. You can proceed without a preference.
                     </Text>
                     <TouchableOpacity
                       accessibilityRole="button"
@@ -667,13 +667,11 @@ export const ScheduleWizardScreen: React.FC = () => {
                 ) : eligiblePriestsQuery.isLoading ? (
                   <Skeleton height={40} borderRadius={radii.sm} />
                 ) : (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.chipRow}
-                  >
+                  <View style={styles.chipRow}>
                     <TouchableOpacity
                       accessibilityRole="button"
+                      accessibilityLabel="No preference"
+                      accessibilityState={{ selected: requestedPriestId === null }}
                       onPress={() => setRequestedPriestId(null)}
                       style={[
                         styles.priestChip,
@@ -693,10 +691,13 @@ export const ScheduleWizardScreen: React.FC = () => {
 
                     {eligiblePriests.map((priest) => {
                       const isSelected = requestedPriestId === priest.id;
+                      const priestDisplayName = `${priest.name}${priest.isAssistant ? " (Assistant)" : ""}`;
                       return (
                         <TouchableOpacity
                           key={priest.id}
                           accessibilityRole="button"
+                          accessibilityLabel={priestDisplayName}
+                          accessibilityState={{ selected: isSelected }}
                           onPress={() => setRequestedPriestId(priest.id)}
                           style={[
                             styles.priestChip,
@@ -710,13 +711,12 @@ export const ScheduleWizardScreen: React.FC = () => {
                             ]}
                             allowFontScaling
                           >
-                            {priest.name}
-                            {priest.isAssistant ? " (Assistant)" : ""}
+                            {priestDisplayName}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
-                  </ScrollView>
+                  </View>
                 )}
               </View>
 
@@ -828,7 +828,7 @@ export const ScheduleWizardScreen: React.FC = () => {
                   { label: "Requested Date", value: selectedDate ? formatScheduleDate(selectedDate) : "" },
                   { label: "Time Slot", value: selectedSlot || "Not selected" },
                   {
-                    label: "Preferred Celebrant",
+                    label: "Preferred Priest",
                     value: requestedPriestId
                       ? `${eligiblePriests.find((p) => p.id === requestedPriestId)?.name || "Requested Priest"} (Preference)`
                       : "No preference",
@@ -860,7 +860,7 @@ export const ScheduleWizardScreen: React.FC = () => {
       </ScrollView>
 
       {/* Sticky Bottom Actions */}
-      <SafeBottomActionBar>
+      <SafeBottomActionBar onLayout={onBottomActionLayout}>
         {currentStep === 1 ? (
           <Button
             title="Continue to Service"
@@ -1093,6 +1093,7 @@ const styles = StyleSheet.create({
   },
   chipRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.xs,
     paddingVertical: spacing.xxs,
   },
@@ -1103,6 +1104,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     backgroundColor: colors.surfaceVariant,
+    maxWidth: "100%",
   },
   priestChipSelected: {
     borderColor: colors.primary,
@@ -1111,6 +1113,7 @@ const styles = StyleSheet.create({
   priestChipText: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+    flexShrink: 1,
   },
   priestChipTextSelected: {
     color: colors.primary,

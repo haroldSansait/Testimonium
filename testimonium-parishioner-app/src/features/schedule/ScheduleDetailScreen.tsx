@@ -608,7 +608,7 @@ export const ScheduleDetailScreen: React.FC = () => {
             title="Celebrant Information"
             fields={[
               ...(schedule.requestedPriest?.name
-                ? [{ label: "Preferred Celebrant", value: `${schedule.requestedPriest.name} (Preference)` }]
+                ? [{ label: "Preferred Priest", value: `${schedule.requestedPriest.name} (Preference)` }]
                 : []),
               {
                 label: "Assigned Celebrant",

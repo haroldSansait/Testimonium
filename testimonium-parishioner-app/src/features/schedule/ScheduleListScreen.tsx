@@ -25,6 +25,7 @@ import { useScheduleList } from "./api";
 import {
   extractTimeSlotFromSchedule,
   formatScheduleDate,
+  getScheduleStatusBadge,
   isRescheduleProposalPending,
   getScheduleDisplayTitle,
 } from "./presentation";
@@ -61,6 +62,7 @@ export const ScheduleListScreen: React.FC = () => {
     const eventLabel = getScheduleEventLabel(item.eventType);
     const dateFormatted = formatScheduleDate(item.requestedDate, "short");
     const timeSlot = extractTimeSlotFromSchedule(item);
+    const statusLabel = getScheduleStatusBadge(item.status).label;
 
     return (
       <View key={item.id}>
@@ -69,7 +71,7 @@ export const ScheduleListScreen: React.FC = () => {
           onPress={() => handleSchedulePress(item)}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel={`${eventLabel} at ${item.parish?.parishName || "Parish"}, status ${item.status}`}
+          accessibilityLabel={`${eventLabel} at ${item.parish?.parishName || "Parish"}, status: ${statusLabel}`}
         >
           {hasProposal && (
             <View style={styles.proposalBanner}>

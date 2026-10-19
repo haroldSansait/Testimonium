@@ -39,7 +39,7 @@ export interface PaymentScreenProps {
 
 export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
   const router = useRouter();
-  const { contentBottomInset } = useAppLayoutMetrics();
+  const { contentBottomInset, onBottomActionLayout } = useAppLayoutMetrics();
   const isValidId = Boolean(requestId && /^[1-9]\d*$/.test(String(requestId).trim()));
 
   const {
@@ -300,12 +300,14 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
       )}
 
       {isEligible && hasValidFee && (
-        <SafeBottomActionBar>
+        <SafeBottomActionBar onLayout={onBottomActionLayout}>
           <Button
             title={isUploading ? "Submitting Proof..." : "Submit Receipt for Review"}
             variant="primary"
             size="lg"
             icon="cloud-upload-outline"
+            fullWidth
+            style={styles.fullWidthAction}
             onPress={() => {
               void handleReceiptUpload();
             }}
@@ -421,5 +423,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
     lineHeight: 18,
+  },
+  fullWidthAction: {
+    width: "100%",
   },
 });
