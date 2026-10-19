@@ -1,3 +1,4 @@
+import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
 import React, { useState } from "react";
 import {
   Alert,
@@ -26,6 +27,7 @@ type FilterTab = "ALL" | "ACTIVE" | "COMPLETED";
 
 export const RequestListScreen: React.FC = () => {
   const router = useRouter();
+  const refreshOptions = useScreenRefresh();
   const { requireCompleteProfile } = useRequireCompleteProfile();
   const { contentBottomInset } = useAppLayoutMetrics();
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
@@ -35,10 +37,10 @@ export const RequestListScreen: React.FC = () => {
   const {
     data: response,
     isLoading,
-    isFetching,
     error,
     refetch,
-  } = useRequestList();
+  } = useRequestList({}, refreshOptions);
+  const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
 
   const requests = response?.data || [];
 
@@ -155,7 +157,7 @@ export const RequestListScreen: React.FC = () => {
             <Skeleton width="100%" height={100} style={styles.skeletonItem} />
             <Skeleton width="100%" height={100} style={styles.skeletonItem} />
           </View>
-        ) : error ? (
+        ) : error && !response ? (
           <View style={styles.centerContainer}>
             <EmptyState
               icon="alert-circle-outline"
@@ -196,8 +198,8 @@ export const RequestListScreen: React.FC = () => {
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
-                refreshing={isFetching && !isLoading}
-                onRefresh={() => void refetch()}
+                refreshing={refreshing}
+                onRefresh={() => void onRefresh()}
                 colors={[colors.primary]}
                 tintColor={colors.primary}
               />

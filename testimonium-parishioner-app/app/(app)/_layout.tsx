@@ -1,6 +1,10 @@
+import { useForegroundRefresh } from "@/hooks/useAutomaticRefresh";
+import { useNotifications } from "@/features/notifications/api";
 import { Stack } from "expo-router";
 
 export default function AppRootStackLayout() {
+  // One polling observer serves the list, Home bell, and tab badge cache subscribers.
+  useNotifications(useForegroundRefresh(30_000));
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

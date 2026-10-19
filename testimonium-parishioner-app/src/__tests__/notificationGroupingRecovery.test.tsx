@@ -14,7 +14,12 @@ import {
   useUnreadNotificationCount,
 } from "@/features/notifications/api";
 
+jest.mock("@/providers/AuthProvider", () => ({
+  useAuth: () => ({ user: { uid: "notification-test" } }),
+}));
+
 jest.mock("expo-router", () => ({
+  useIsFocused: () => true,
   useRouter: () => ({
     push: jest.fn(),
     replace: jest.fn(),

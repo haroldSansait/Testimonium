@@ -10,6 +10,7 @@ const mockBack = jest.fn();
 const mockUpdateProfile = jest.fn();
 
 jest.mock("expo-router", () => ({
+  useIsFocused: () => true,
   useRouter: () => ({
     push: mockPush,
     back: mockBack,

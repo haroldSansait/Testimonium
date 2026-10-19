@@ -1,3 +1,4 @@
+import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
 import React, { useRef, useState } from "react";
 import {
   Alert,
@@ -59,6 +60,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   requestId,
 }) => {
   const router = useRouter();
+  const refreshOptions = useScreenRefresh();
   const { profile } = useAuth();
   const isProfileGovIdVerified = Boolean(profile?.isGovernmentIdVerified);
   const { contentBottomInset } = useAppLayoutMetrics();
@@ -67,10 +69,9 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const {
     data: request,
     isLoading,
-    isFetching,
-    error,
     refetch,
-  } = useRequestDetail(isValidId ? requestId : null);
+  } = useRequestDetail(isValidId ? requestId : null, { ...refreshOptions, enabled: refreshOptions.enabled && isValidId });
+  const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
 
   const { data: requirements } = useDocumentRequirements(
     request
@@ -324,7 +325,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
           <Skeleton width="100%" height={160} style={styles.skeletonCard} />
           <Skeleton width="100%" height={140} style={styles.skeletonCard} />
         </View>
-      ) : error || !request || !statusInfo ? (
+      ) : !request || !statusInfo ? (
         <View style={styles.centerContainer}>
           <EmptyState
             icon="alert-circle-outline"
@@ -340,9 +341,9 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + spacing.md }]}
           refreshControl={
             <RefreshControl
-              refreshing={isFetching && !isLoading}
+              refreshing={refreshing}
               onRefresh={() => {
-                void refetch();
+                void onRefresh();
               }}
               colors={[colors.primary]}
               tintColor={colors.primary}

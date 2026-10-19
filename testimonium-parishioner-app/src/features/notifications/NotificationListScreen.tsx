@@ -1,3 +1,4 @@
+import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
 import React, { useMemo } from "react";
 import {
   Alert,
@@ -84,15 +85,18 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   showBackButton = true,
 }) => {
   const router = useRouter();
+  const refreshOptions = useScreenRefresh(false);
   const { contentBottomInset } = useAppLayoutMetrics();
 
   const {
-    data: notifications = [],
+    data: notificationData,
     isLoading,
-    isFetching,
     error,
     refetch,
-  } = useNotifications();
+  } = useNotifications(refreshOptions);
+  const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
+
+  const notifications = useMemo(() => notificationData ?? [], [notificationData]);
 
   const unreadCount = useUnreadNotificationCount();
   const markReadMutation = useMarkNotificationRead();
@@ -238,7 +242,7 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
           <Skeleton height={64} borderRadius={radii.xs} style={styles.skeleton} />
           <Skeleton height={64} borderRadius={radii.xs} style={styles.skeleton} />
         </View>
-      ) : error ? (
+      ) : error && !notificationData ? (
         <View style={styles.errorContainer}>
           <EmptyState
             icon="alert-circle-outline"
@@ -267,8 +271,8 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
           stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl
-              refreshing={isFetching && !isLoading}
-              onRefresh={refetch}
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
               colors={[colors.primary]}
               tintColor={colors.primary}
             />

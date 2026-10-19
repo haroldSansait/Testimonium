@@ -1,3 +1,4 @@
+import { useScreenRefresh } from "@/hooks/useAutomaticRefresh";
 import React, { useState } from "react";
 import {
   Alert,
@@ -40,6 +41,7 @@ import { getScheduleEventLabel } from "./types";
 
 export const ScheduleDetailScreen: React.FC = () => {
   const router = useRouter();
+  const refreshOptions = useScreenRefresh();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { contentBottomInset } = useAppLayoutMetrics();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -50,9 +52,8 @@ export const ScheduleDetailScreen: React.FC = () => {
   const {
     data: schedule,
     isLoading,
-    error,
     refetch,
-  } = useScheduleDetail(id);
+  } = useScheduleDetail(id, { ...refreshOptions, enabled: refreshOptions.enabled && Boolean(id) });
 
   const respondMutation = useRespondReschedule();
   const proposeAlternativeMutation = useProposeAlternativeDate();
@@ -195,7 +196,7 @@ export const ScheduleDetailScreen: React.FC = () => {
     );
   }
 
-  if (error || !schedule) {
+  if (!schedule) {
     return (
       <Screen safeArea={true} style={styles.screen}>
         <AppHeader title="Schedule Details" onBack={handleBack} />

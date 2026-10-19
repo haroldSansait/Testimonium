@@ -1,3 +1,4 @@
+import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
 import React from "react";
 import {
   Pressable,
@@ -29,21 +30,22 @@ import { colors, fontStyles, radii, shadows, spacing } from "@/theme/tokens";
 
 export const HomeScreen: React.FC = () => {
   const router = useRouter();
+  const refreshOptions = useScreenRefresh();
   const { profile, isRegistrationSession } = useAuth();
   const { contentBottomInset } = useAppLayoutMetrics();
 
-  const { data: requestsData, isFetching: isRequestsFetching, refetch: refetchRequests } = useRequestList({ limit: 3 });
-  const { data: scheduleData, isFetching: isScheduleFetching, refetch: refetchSchedule } = useScheduleList("upcoming");
+  const { data: requestsData, refetch: refetchRequests } = useRequestList({ limit: 3 }, refreshOptions);
+  const { data: scheduleData, refetch: refetchSchedule } = useScheduleList("upcoming", refreshOptions);
   const unreadNotificationsCount = useUnreadNotificationCount();
-
-  const isRefreshing = isRequestsFetching || isScheduleFetching;
 
   const handleRefresh = async () => {
     await Promise.all([
-      refetchRequests(),
-      refetchSchedule(),
+      refetchRequests({ cancelRefetch: false }),
+      refetchSchedule({ cancelRefetch: false }),
     ]);
   };
+
+  const { refreshing: isRefreshing, onRefresh } = useManualRefresh(handleRefresh);
 
   const firstName = profile?.fullName
     ? profile.fullName.trim().split(/\s+/)[0]
@@ -103,7 +105,7 @@ export const HomeScreen: React.FC = () => {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => {
-              void handleRefresh();
+              void onRefresh();
             }}
             colors={[colors.primary]}
             tintColor={colors.primary}

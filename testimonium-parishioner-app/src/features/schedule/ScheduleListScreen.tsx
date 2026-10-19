@@ -1,3 +1,4 @@
+import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
 import React, { useState } from "react";
 import {
   FlatList,
@@ -35,17 +36,20 @@ type ScopeTab = "upcoming" | "history";
 
 export const ScheduleListScreen: React.FC = () => {
   const router = useRouter();
+  const refreshOptions = useScreenRefresh();
   const { requireCompleteProfile } = useRequireCompleteProfile();
   const { contentBottomInset } = useAppLayoutMetrics();
   const [activeTab, setActiveTab] = useState<ScopeTab>("upcoming");
 
   const {
-    data: schedules = [],
+    data: scheduleData,
     isLoading,
-    isFetching,
     error,
     refetch,
-  } = useScheduleList(activeTab);
+  } = useScheduleList(activeTab, refreshOptions);
+  const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
+
+  const schedules = scheduleData ?? [];
 
   const handleStartBooking = () => {
     requireCompleteProfile(() => {
@@ -177,7 +181,7 @@ export const ScheduleListScreen: React.FC = () => {
             <Skeleton height={90} borderRadius={radii.sm} />
             <Skeleton height={90} borderRadius={radii.sm} />
           </View>
-        ) : error ? (
+        ) : error && !scheduleData ? (
           <View style={styles.errorContainer}>
             <EmptyState
               icon="alert-circle-outline"
@@ -195,8 +199,8 @@ export const ScheduleListScreen: React.FC = () => {
             contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + spacing.lg }]}
             refreshControl={
               <RefreshControl
-                refreshing={isFetching && !isLoading}
-                onRefresh={() => void refetch()}
+                refreshing={refreshing}
+                onRefresh={() => void onRefresh()}
                 colors={[colors.primary]}
                 tintColor={colors.primary}
               />
