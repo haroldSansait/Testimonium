@@ -170,10 +170,6 @@ export const useAppointments = () => {
   return useQuery(() => services.scheduler.getAppointments(), []);
 };
 
-export const useAnnouncements = () => {
-  return useQuery(() => services.announcement.getAnnouncements(), []);
-};
-
 export const useProfile = (uid: string) => {
   const query = useQuery(() => {
     if (!uid) return Promise.resolve(undefined);

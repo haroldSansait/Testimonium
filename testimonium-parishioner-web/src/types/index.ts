@@ -244,13 +244,6 @@ export interface Appointment {
   } | null;
 }
 
-export interface Announcement {
-  id: string;
-  title: string;
-  content: string;
-  date: string;
-}
-
 export type NotificationType =
   | 'document-submitted'
   | 'document-approved'

@@ -23,6 +23,7 @@ import ScheduleRescheduleHistory from '../../features/scheduler/components/Sched
 import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
 import SecureFileActions from '../../components/files/SecureFileActions';
 import { Modal } from '../../components/ui/Modal';
+import { formatActionLabel, formatHistoryRemarks } from '../../features/requests/presentation';
 
 const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'rejected' | 'neutral' | 'crimson' | 'correction' => {
   switch (status) {
@@ -1703,6 +1704,9 @@ export const RequestTrackingPage: React.FC = () => {
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 });
+                                const heading = formatActionLabel(h.action, h);
+                                const formattedRemarks = formatHistoryRemarks(h);
+                                const showRemarks = formattedRemarks && formattedRemarks.trim().toLowerCase() !== heading.trim().toLowerCase();
                                 return (
                                   <div key={h.id} className="relative text-left">
                                     <div className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full border-2 border-crimson bg-crimson text-white flex items-center justify-center">
@@ -1710,8 +1714,13 @@ export const RequestTrackingPage: React.FC = () => {
                                     </div>
                                     <div>
                                       <h4 className="text-xs font-bold text-text-primary">
-                                        {h.remarks || h.action.replace(/_/g, ' ')}
+                                        {heading}
                                       </h4>
+                                      {showRemarks && (
+                                        <p className="text-xs text-text-muted mt-0.5 whitespace-pre-line">
+                                          {formattedRemarks}
+                                        </p>
+                                      )}
                                       <p className="text-[10px] text-text-muted mt-0.5">
                                         {dateStr} {h.actor?.fullName ? `by ${h.actor.fullName}` : ''}
                                       </p>

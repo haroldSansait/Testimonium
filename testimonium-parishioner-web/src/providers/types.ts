@@ -2,7 +2,6 @@ import type {
   Parish, 
   SacramentalRequest, 
   Appointment, 
-  Announcement, 
   UserProfile, 
   AppNotification,
   Event,
@@ -152,10 +151,6 @@ export interface INotificationProvider {
   markAllAsRead(): Promise<void>;
 }
 
-export interface IAnnouncementProvider {
-  getAnnouncements(): Promise<Announcement[]>;
-}
-
 export interface ChatSource {
   id: number;
   title: string;
@@ -251,7 +246,6 @@ export interface IServiceProvider {
   request: IRequestProvider;
   scheduler: ISchedulerProvider;
   notification: INotificationProvider;
-  announcement: IAnnouncementProvider;
   chat: IChatProvider;
   map: IMapProvider;
   event: IEventProvider;

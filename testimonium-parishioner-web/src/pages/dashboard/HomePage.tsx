@@ -6,7 +6,6 @@ import {
   Calendar,
   Map,
   ArrowRight,
-  Megaphone,
   Clock,
   ExternalLink,
   MessageSquare,
@@ -27,7 +26,6 @@ import {
   useParishes,
   useRequests,
   useAppointments,
-  useAnnouncements,
   useProfile,
   useEvents,
   useFeaturedEvents
@@ -131,7 +129,6 @@ export const HomePage: React.FC = () => {
   const parishesQuery = useParishes();
   const requestsQuery = useRequests();
   const appointmentsQuery = useAppointments();
-  const announcementsQuery = useAnnouncements();
   const profileQuery = useProfile(user?.uid || '');
   const eventsQuery = useEvents();
   const featuredEventsQuery = useFeaturedEvents();
@@ -152,7 +149,6 @@ export const HomePage: React.FC = () => {
   // Safe data extractions (handle loading / error / undefined states gracefully)
   const requests = requestsQuery.data || [];
   const appointments = appointmentsQuery.data || [];
-  const announcements = announcementsQuery.data || [];
   const parishes = parishesQuery.data || [];
   const profile = profileQuery.data;
   const events = eventsQuery.data || [];
@@ -276,7 +272,6 @@ export const HomePage: React.FC = () => {
     parishesQuery.loading ||
     requestsQuery.loading ||
     appointmentsQuery.loading ||
-    announcementsQuery.loading ||
     profileQuery.loading ||
     eventsQuery.loading ||
     featuredEventsQuery.loading;
@@ -285,7 +280,6 @@ export const HomePage: React.FC = () => {
     parishesQuery.error ||
     requestsQuery.error ||
     appointmentsQuery.error ||
-    announcementsQuery.error ||
     profileQuery.error ||
     eventsQuery.error ||
     featuredEventsQuery.error;
@@ -294,7 +288,6 @@ export const HomePage: React.FC = () => {
     parishesQuery.refetch();
     requestsQuery.refetch();
     appointmentsQuery.refetch();
-    announcementsQuery.refetch();
     profileQuery.refetch();
     eventsQuery.refetch();
     featuredEventsQuery.refetch();
@@ -789,44 +782,6 @@ export const HomePage: React.FC = () => {
                     <Badge variant="ready" className="self-start sm:self-center">
                       {appt.status}
                     </Badge>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Diocese Announcements */}
-          <Card>
-            <CardHeader className="border-b border-border pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center space-x-2 text-sm sm:text-base">
-                <Megaphone size={17} className="text-crimson" />
-                <span>Diocese Announcements</span>
-              </CardTitle>
-              {announcements.length > 0 && (
-                <button
-                  onClick={() => navigate('/dashboard/notifications')}
-                  className="text-xs font-bold text-crimson hover:underline flex items-center gap-1 focus-ring rounded px-1"
-                >
-                  <span>All Alerts</span>
-                  <ArrowRight size={13} />
-                </button>
-              )}
-            </CardHeader>
-            <CardContent className="pt-3.5 space-y-4">
-              {announcements.length === 0 ? (
-                <EmptyState
-                  title="No announcements available"
-                  description="Check back later for diocese updates, parish events, and canonical notices."
-                  icon={<Bell size={32} className="text-text-muted/40" />}
-                />
-              ) : (
-                announcements.slice(0, 3).map(ann => (
-                  <div key={ann.id} className="pb-3 border-b border-border last:border-none last:pb-0 space-y-1">
-                    <time dateTime={ann.date} className="text-[11px] text-text-muted font-bold block">
-                      {new Date(ann.date).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}
-                    </time>
-                    <h4 className="font-semibold text-text-primary text-xs sm:text-sm">{ann.title}</h4>
-                    <p className="text-xs text-text-muted leading-relaxed">{ann.content}</p>
                   </div>
                 ))
               )}
