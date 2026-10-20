@@ -155,33 +155,31 @@ export const ParishMarker = React.memo(
             whileTap={{ scale: 0.95 }}
             className="relative cursor-grab active:cursor-grabbing"
           >
-            {/* Church SVG Pin */}
+            {/* Church SVG */}
             <svg
-              width="36"
-              height="44"
-              viewBox="0 0 36 44"
+              width="38"
+              height="42"
+              viewBox="0 0 38 42"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.35)]"
+              className="filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)]"
             >
-              {/* Outer Pin Teardrop Shape */}
-              <path
-                d="M18 0C8.05887 0 0 8.05887 0 18C0 29.5 18 44 18 44C18 44 36 29.5 36 18C36 8.05887 27.9411 0 18 0Z"
-                fill={pinColor}
-              />
-              {/* Inner Circle Glow Ring */}
-              <circle cx="18" cy="18" r="13" fill="#FFFFFF" fillOpacity="0.2" />
-              <circle cx="18" cy="18" r="11" fill="#FFFFFF" />
-              {/* Church / Cross Icon */}
-              <path
-                d="M18 9V24M14.5 13.5H21.5M12.5 24H23.5M13.5 24V21L18 17.5L22.5 21V24H13.5Z"
-                stroke={pinColor}
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill={pinColor}
-                fillOpacity="0.15"
-              />
+              {/* Latin Cross */}
+              <path d="M17 2H21V6H26V9.5H21V13H17V9.5H12V6H17V2Z" fill={pinColor} />
+              {/* Belfry / Bell Tower */}
+              <rect x="11.5" y="12.5" width="15" height="2" rx="0.5" fill={pinColor} />
+              <rect x="12.5" y="14.5" width="13" height="4.5" fill={pinColor} />
+              <path d="M17 19V16.5C17 15.4 17.9 14.5 19 14.5C20.1 14.5 21 15.4 21 16.5V19H17Z" fill="#FFFFFF" />
+              {/* Main Church Body & Gable Roof */}
+              <path d="M19 15L2 25V40.5H36V25L19 15Z" fill={pinColor} />
+              {/* Roof Trim / Eaves Dark Line for Definition */}
+              <path d="M1.5 25.5L19 15.5L36.5 25.5" stroke="rgba(0,0,0,0.35)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+              {/* Center Arched Doorway */}
+              <path d="M13.5 40.5V31.5C13.5 28.46 15.96 26 19 26C22.04 26 24.5 28.46 24.5 31.5V40.5H13.5Z" fill="#FFFFFF" />
+              {/* Left Window */}
+              <rect x="5.5" y="26.5" width="5.5" height="8.5" rx="2.75" fill="#FFFFFF" />
+              {/* Right Window */}
+              <rect x="27" y="26.5" width="5.5" height="8.5" rx="2.75" fill="#FFFFFF" />
             </svg>
 
             {/* Red "Needs Location" tiny badge */}
@@ -202,7 +200,7 @@ export const ParishMarker = React.memo(
 
           {/* Pin label (conditionally shown) */}
           {(parish.showLabel ?? true) && (
-            <div className="absolute top-11 whitespace-nowrap bg-gray-900/90 text-white text-[10px] px-1.5 py-0.5 rounded shadow border border-gray-700 pointer-events-none select-none font-medium z-[1001]">
+            <div className="absolute top-[43px] left-1/2 -translate-x-1/2 whitespace-nowrap text-center bg-white text-gray-800 text-[9px] font-medium px-1.5 py-0.5 rounded shadow-sm border border-gray-200 pointer-events-none select-none z-[1001]">
               {parish.name}
             </div>
           )}

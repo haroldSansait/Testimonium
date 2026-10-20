@@ -790,7 +790,7 @@ export const RequestTrackingPage: React.FC = () => {
 
       {/* Mode Switcher Tabs */}
       <div
-        className="flex bg-app-page p-1 rounded-card border border-border max-w-md w-full"
+        className="flex bg-app-page p-1 rounded-card border border-border max-w-md w-full mb-2 sm:mb-0"
         role="tablist"
         aria-label="Tracking category"
       >
@@ -800,15 +800,18 @@ export const RequestTrackingPage: React.FC = () => {
           role="tab"
           aria-selected={activeMode === 'documents'}
           aria-controls="tracking-mode-panel-documents"
-          onClick={() => setActiveMode('documents')}
-          className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-2 focus-ring ${
+          onClick={() => {
+            setActiveMode('documents');
+            setMobileView('requests');
+          }}
+          className={`flex-1 py-2 px-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 sm:gap-2 focus-ring ${
             activeMode === 'documents'
               ? 'bg-white text-crimson shadow-xs border border-border/50'
               : 'text-gray-600 hover:text-text-primary'
           }`}
         >
-          <FileText size={15} />
-          <span>Document Request</span>
+          <FileText size={15} className="shrink-0" />
+          <span className="truncate">Document Requests</span>
         </button>
         <button
           id="tracking-mode-tab-schedules"
@@ -816,15 +819,18 @@ export const RequestTrackingPage: React.FC = () => {
           role="tab"
           aria-selected={activeMode === 'schedules'}
           aria-controls="tracking-mode-panel-schedules"
-          onClick={() => setActiveMode('schedules')}
-          className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-2 focus-ring ${
+          onClick={() => {
+            setActiveMode('schedules');
+            setMobileScheduleView('schedules');
+          }}
+          className={`flex-1 py-2 px-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 sm:gap-2 focus-ring ${
             activeMode === 'schedules'
               ? 'bg-white text-crimson shadow-xs border border-border/50'
               : 'text-gray-600 hover:text-text-primary'
           }`}
         >
-          <Calendar size={15} />
-          <span>Schedule Request</span>
+          <Calendar size={15} className="shrink-0" />
+          <span className="truncate">Schedule Requests</span>
         </button>
       </div>
 
@@ -850,47 +856,6 @@ export const RequestTrackingPage: React.FC = () => {
         />
       ) : (
         <>
-          {/* Mobile Tab Switcher (<1024px) with Full ARIA Semantics */}
-          <div
-            className="flex lg:hidden bg-app-page p-1 rounded-card border border-border"
-            role="tablist"
-            aria-label="Request tracking views"
-          >
-            <button
-              id="tracking-tab-requests"
-              type="button"
-              onClick={() => setMobileView('requests')}
-              role="tab"
-              aria-selected={mobileView === 'requests'}
-              aria-controls="tracking-panel-requests"
-              className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring ${
-                mobileView === 'requests'
-                  ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-gray-600 hover:text-text-primary'
-              }`}
-            >
-              <FileText size={14} />
-              <span>My Requests ({requests.length})</span>
-            </button>
-            <button
-              id="tracking-tab-details"
-              type="button"
-              onClick={() => setMobileView('details')}
-              disabled={!selectedRequest}
-              role="tab"
-              aria-selected={mobileView === 'details'}
-              aria-controls="tracking-panel-details"
-              className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring disabled:opacity-40 ${
-                mobileView === 'details'
-                  ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-gray-600 hover:text-text-primary'
-              }`}
-            >
-              <Clock size={14} />
-              <span>Request Details</span>
-            </button>
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left Side: Search & Submissions List (Col-span 5 on desktop) */}
             <section
@@ -1009,19 +974,17 @@ export const RequestTrackingPage: React.FC = () => {
               aria-label={!isMobile ? "Request Details" : undefined}
               className={`flex flex-col gap-6 ${mobileView === 'requests' ? 'hidden lg:flex lg:col-span-7' : 'flex lg:col-span-7'}`}
             >
-              {/* Back button on mobile to return to list */}
-              {isMobile && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setMobileView('requests')}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-crimson bg-red-50 hover:bg-red-100 border border-crimson/20 rounded-button shadow-2xs transition-colors focus-ring cursor-pointer"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Back to Requests List</span>
-                  </button>
-                </div>
-              )}
+              {/* Back to My Requests button on mobile */}
+              <div className="lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileView('requests')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-crimson bg-red-50/80 hover:bg-red-100 border border-crimson/20 rounded-button shadow-2xs transition-colors focus-ring cursor-pointer"
+                >
+                  <ArrowLeft size={14} />
+                  <span>Back to My Requests</span>
+                </button>
+              </div>
 
 
               {selectedRequest ? (
@@ -1794,47 +1757,6 @@ export const RequestTrackingPage: React.FC = () => {
           aria-labelledby="tracking-mode-tab-schedules"
           className="space-y-6"
         >
-          {/* Mobile Tab Switcher (<1024px) for Schedule Tracking */}
-          <div
-            className="flex lg:hidden bg-app-page p-1 rounded-card border border-border"
-            role="tablist"
-            aria-label="Schedule tracking views"
-          >
-            <button
-              id="schedule-tab-list"
-              type="button"
-              onClick={() => setMobileScheduleView('schedules')}
-              role="tab"
-              aria-selected={mobileScheduleView === 'schedules'}
-              aria-controls="schedule-panel-list"
-              className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring ${
-                mobileScheduleView === 'schedules'
-                  ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              <Calendar size={14} />
-              <span>My Schedules ({schedules.length})</span>
-            </button>
-            <button
-              id="schedule-tab-details"
-              type="button"
-              onClick={() => setMobileScheduleView('details')}
-              disabled={!selectedSchedule}
-              role="tab"
-              aria-selected={mobileScheduleView === 'details'}
-              aria-controls="schedule-panel-details"
-              className={`flex-1 py-2 text-xs font-bold rounded-button transition-all flex items-center justify-center gap-1.5 focus-ring disabled:opacity-40 ${
-                mobileScheduleView === 'details'
-                  ? 'bg-white text-crimson shadow-xs border border-border/50'
-                  : 'text-gray-600 hover:text-text-primary'
-              }`}
-            >
-              <Clock size={14} />
-              <span>Schedule Details</span>
-            </button>
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left Side: Search & Schedules List (Col-span 5 on desktop) */}
             <section
@@ -1928,6 +1850,17 @@ export const RequestTrackingPage: React.FC = () => {
               aria-label={!isMobile ? "Schedule Request Details" : undefined}
               className={`flex-1 ${mobileScheduleView === 'schedules' ? 'hidden lg:block lg:col-span-7' : 'block lg:col-span-7'}`}
             >
+              {/* Back to My Schedules button on mobile */}
+              <div className="lg:hidden mb-4">
+                <button
+                  type="button"
+                  onClick={() => setMobileScheduleView('schedules')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-crimson bg-red-50/80 hover:bg-red-100 border border-crimson/20 rounded-button shadow-2xs transition-colors focus-ring cursor-pointer"
+                >
+                  <ArrowLeft size={14} />
+                  <span>Back to My Schedules</span>
+                </button>
+              </div>
               {scheduleSearching ? (
                 <Card className="p-8 text-center text-text-muted flex flex-col items-center gap-3">
                   <Loader2 className="w-8 h-8 animate-spin text-crimson" />

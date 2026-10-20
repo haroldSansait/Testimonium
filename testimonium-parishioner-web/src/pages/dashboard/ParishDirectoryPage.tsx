@@ -8,7 +8,8 @@ import {
   AlertTriangle,
   Map as MapIcon,
   Maximize2,
-  Minimize2
+  Minimize2,
+  X
 } from 'lucide-react';
 import { useParishes } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
@@ -47,7 +48,12 @@ export const ParishDirectoryPage: React.FC = () => {
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,6 +85,9 @@ export const ParishDirectoryPage: React.FC = () => {
     setMapZoom(14);
     setSearchQuery('');
     setSuggestions([]);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleLocateMe = () => {
@@ -267,21 +276,36 @@ export const ParishDirectoryPage: React.FC = () => {
         )}
 
         {/* Collapsible scrolling Parishes List sidebar overlay */}
-        <div className={`absolute left-4 top-4 bottom-4 w-72 bg-white/95 backdrop-blur-sm border border-border rounded-xl shadow-xl flex flex-col z-10 transition-all duration-350 pointer-events-auto ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-[290px]"
+        <div className={`absolute left-3 sm:left-4 top-3 sm:top-4 bottom-3 sm:bottom-4 w-[calc(100%-56px)] sm:w-72 max-w-sm bg-white/95 backdrop-blur-sm border border-border rounded-xl shadow-xl flex flex-col z-20 transition-all duration-350 pointer-events-auto ${
+          isSidebarOpen ? "translate-x-0 opacity-100" : "-translate-x-[115%] opacity-0 pointer-events-none"
         }`}>
           {/* Header */}
-          <div className="p-3 border-b border-border/60 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <MapIcon size={14} className="text-[#7B1C2A]" />
-              Parish Directory ({displayParishes.length})
-            </h3>
+          <div className="p-2.5 sm:p-3 border-b border-border/60 flex items-center justify-between bg-white/95 rounded-t-xl gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Mobile: Close (X) button positioned on the left to avoid collision with right-side map controls */}
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(false)}
+                className="sm:hidden p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg focus-ring transition-colors shrink-0"
+                title="Close parish list"
+                aria-label="Close parish list"
+              >
+                <X size={16} />
+              </button>
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5 truncate">
+                <MapIcon size={14} className="text-[#7B1C2A] shrink-0" />
+                <span className="truncate">Parish Directory ({displayParishes.length})</span>
+              </h3>
+            </div>
+            {/* Desktop: Close (X) button preserved on the right */}
             <button
+              type="button"
               onClick={() => setIsSidebarOpen(false)}
-              className="p-1 text-gray-400 hover:text-gray-600 rounded focus-ring"
-              title="Hide list"
+              className="hidden sm:inline-flex p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg focus-ring transition-colors shrink-0"
+              title="Close parish list"
+              aria-label="Close parish list"
             >
-              <Minimize2 size={14} />
+              <X size={16} />
             </button>
           </div>
           
@@ -309,37 +333,39 @@ export const ParishDirectoryPage: React.FC = () => {
         {/* Trigger to show sidebar when collapsed */}
         {!isSidebarOpen && (
           <button
+            type="button"
             onClick={() => setIsSidebarOpen(true)}
-            className="absolute left-4 top-4 z-10 p-2.5 bg-white border border-border text-text-muted hover:text-[#7B1C2A] rounded-button shadow-md transition-all focus-ring flex items-center gap-1.5 text-xs font-bold pointer-events-auto"
-            title="Show list"
+            className="absolute left-3 sm:left-4 top-3 sm:top-4 z-10 px-3 py-2 sm:p-2.5 bg-white/95 backdrop-blur-sm border border-border text-text-primary hover:text-[#7B1C2A] rounded-button shadow-md transition-all focus-ring flex items-center gap-1.5 text-xs font-bold pointer-events-auto active:scale-95"
+            title="Show Parish List"
+            aria-label="Show Parish List"
           >
-            <Maximize2 size={14} />
-            <span>Show List</span>
+            <MapIcon size={14} className="text-[#7B1C2A]" />
+            <span>Show Parish List</span>
           </button>
         )}
 
         {/* Map Floating Control Controls */}
-        <div className="absolute right-3.5 top-3.5 z-10 flex flex-col space-y-2">
+        <div className="absolute right-3 sm:right-3.5 top-3 sm:top-3.5 z-10 flex flex-col space-y-2">
           <button
             onClick={() => setIsFullScreen(!isFullScreen)}
-            className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
+            className="p-2 sm:p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
             title={isFullScreen ? "Exit Fullscreen" : "Fullscreen Mode"}
           >
-            {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            {isFullScreen ? <Minimize2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <Maximize2 size={16} className="sm:w-[18px] sm:h-[18px]" />}
           </button>
           <button
             onClick={handleLocateMe}
-            className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
+            className="p-2 sm:p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
             title="Locate Me"
           >
-            <Compass size={18} />
+            <Compass size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
           <button
             onClick={handleResetView}
-            className="p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
+            className="p-2 sm:p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
             title="Reset View"
           >
-            <RefreshCw size={18} />
+            <RefreshCw size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
         </div>
 

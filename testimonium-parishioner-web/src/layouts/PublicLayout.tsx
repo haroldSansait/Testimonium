@@ -23,13 +23,13 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
       {/* Header */}
       <header className="bg-white border-b border-border sticky top-0 z-30 shadow-xs">
-        <div className={isAuthPage ? "w-full px-6 md:px-10 lg:px-12" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"}>
+        <div className={isAuthPage ? "w-full px-4 sm:px-6 md:px-10 lg:px-12" : "max-w-7xl mx-auto px-3 sm:px-6 lg:px-8"}>
           <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
               {isAuthPage ? (
                 <Link
                   to="/"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-crimson transition-colors focus-ring px-2.5 py-1.5 rounded-button bg-app-page/60 hover:bg-red-50/60 border border-border/70 -ml-2.5"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-crimson transition-colors focus-ring px-2.5 py-1.5 rounded-button bg-app-page/60 hover:bg-red-50/60 border border-border/70 -ml-1 sm:-ml-2.5 whitespace-nowrap"
                   aria-label="Return to landing page"
                 >
                   <ArrowLeft size={14} />
@@ -41,29 +41,27 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
                   className="flex items-center focus-ring rounded-md text-left group"
                   aria-label="TESTIMONIUM Home"
                 >
-                  <span className="font-serif font-black text-2xl sm:text-3xl text-crimson tracking-wider leading-none group-hover:opacity-90 transition-opacity">
+                  <span className="font-serif font-black text-xl sm:text-3xl text-crimson tracking-wide sm:tracking-wider leading-none group-hover:opacity-90 transition-opacity whitespace-nowrap">
                     TESTIMONIUM
                   </span>
                 </Link>
               )}
             </div>
 
-
-
-            <nav className="flex items-center space-x-3 sm:space-x-4" aria-label="Public Navigation">
+            <nav className="flex items-center gap-1.5 sm:gap-4 shrink-0" aria-label="Public Navigation">
               {isAuthPage ? (
                 isLoginPage ? (
                   <Button
                     size="sm"
                     onClick={() => navigate('/signup')}
-                    className="min-h-[40px] px-4 font-semibold"
+                    className="min-h-[38px] sm:min-h-[40px] px-3 sm:px-4 text-xs sm:text-sm font-semibold whitespace-nowrap shadow-sm"
                   >
                     Register
                   </Button>
                 ) : (
                   <Link
                     to="/login"
-                    className="text-sm font-semibold text-crimson hover:underline px-3 py-2 focus-ring rounded-md min-h-[40px] flex items-center"
+                    className="text-xs sm:text-sm font-semibold text-crimson hover:underline px-2.5 sm:px-3 py-1.5 sm:py-2 focus-ring rounded-md min-h-[38px] sm:min-h-[40px] flex items-center whitespace-nowrap"
                   >
                     Log In
                   </Link>
@@ -72,14 +70,14 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
                 <>
                   <Link
                     to="/login"
-                    className="text-sm font-semibold text-text-primary hover:text-crimson transition-colors focus-ring px-3 py-2 rounded-md min-h-[40px] flex items-center"
+                    className="text-xs sm:text-sm font-semibold text-text-primary hover:text-crimson transition-colors focus-ring px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-md min-h-[38px] sm:min-h-[40px] flex items-center whitespace-nowrap shrink-0"
                   >
                     Log In
                   </Link>
                   <Button
                     size="sm"
                     onClick={() => navigate('/signup')}
-                    className="min-h-[40px] px-4 font-semibold shadow-sm"
+                    className="min-h-[38px] sm:min-h-[40px] px-3 sm:px-4 text-xs sm:text-sm font-semibold shadow-sm whitespace-nowrap shrink-0"
                   >
                     Register
                   </Button>

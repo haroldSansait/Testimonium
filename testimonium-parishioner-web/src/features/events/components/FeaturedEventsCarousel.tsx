@@ -37,7 +37,20 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
+  // Pagination container and active dot refs for auto-centering on mobile
+  const paginationContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeDotRef = useRef<HTMLButtonElement | null>(null);
+
   const totalSlides = events.length;
+
+  useEffect(() => {
+    if (paginationContainerRef.current && activeDotRef.current) {
+      const container = paginationContainerRef.current;
+      const dot = activeDotRef.current;
+      const scrollTarget = dot.offsetLeft - container.offsetWidth / 2 + dot.offsetWidth / 2;
+      container.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+    }
+  }, [currentIndex]);
 
   // Clear running slide timer
   const clearSlideTimer = useCallback(() => {
@@ -221,7 +234,7 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
 
       {/* Slides Container */}
       <div 
-        className="relative min-h-[440px] md:h-[390px] w-full rounded-2xl overflow-hidden bg-white border border-border/80 shadow-md transition-all duration-300"
+        className="relative w-full rounded-2xl overflow-hidden bg-white border border-border/80 shadow-md transition-all duration-300 md:h-[390px]"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -238,12 +251,14 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
               aria-label={`${idx + 1} of ${totalSlides}: ${event.title}`}
               aria-hidden={!isActive}
               inert={!isActive ? true : undefined}
-              className={`absolute inset-0 flex flex-col md:flex-row transition-all duration-500 ease-in-out ${
-                isActive ? 'opacity-100 z-10 pointer-events-auto scale-100' : 'opacity-0 z-0 pointer-events-none scale-[0.98]'
+              className={`transition-all duration-300 ease-in-out ${
+                isActive 
+                  ? 'relative flex flex-col w-full h-auto opacity-100 z-10 pointer-events-auto scale-100 md:absolute md:inset-0 md:flex-row md:h-full md:duration-500 animate-in fade-in' 
+                  : 'hidden md:flex md:flex-row md:absolute md:inset-0 md:h-full opacity-0 z-0 pointer-events-none scale-[0.98] md:duration-500'
               }`}
             >
               {/* Event Image Cover */}
-              <div className="relative w-full md:w-5/12 h-52 md:h-full bg-neutral-900 overflow-hidden flex-shrink-0">
+              <div className="relative w-full md:w-5/12 h-48 sm:h-52 md:h-full bg-neutral-900 overflow-hidden flex-shrink-0">
                 <img
                   src={event.coverImage}
                   alt={event.coverImageAlt}
@@ -277,20 +292,20 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
               </div>
 
               {/* Event Details Content Panel */}
-              <div className="flex-1 p-6 md:p-8 flex flex-col justify-between h-auto md:h-full bg-white text-text-primary">
-                <div className="space-y-4">
+              <div className="flex-1 p-4 sm:p-6 md:p-8 flex flex-col justify-between h-auto md:h-full bg-white text-text-primary">
+                <div className="space-y-3.5 sm:space-y-4">
                   <div>
                     <div className="hidden md:flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-wider">
                       <Building size={14} className="text-crimson" />
                       <span>{event.parishName}</span>
                     </div>
-                    <h3 className="font-serif font-bold text-xl md:text-2xl text-text-primary mt-1 leading-tight tracking-tight">
+                    <h3 className="font-serif font-bold text-lg sm:text-xl md:text-2xl text-text-primary mt-1 leading-tight tracking-tight">
                       {event.title}
                     </h3>
                   </div>
 
                   {/* Metadata coordinates */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-xs text-text-muted bg-app-page/70 p-3.5 rounded-xl border border-border/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 sm:gap-y-2.5 text-xs text-text-muted bg-app-page/70 p-3 sm:p-3.5 rounded-xl border border-border/50">
                     <div className="flex items-center space-x-2 min-w-0">
                       <Calendar size={15} className="text-crimson flex-shrink-0" />
                       <span className="font-medium text-text-primary truncate">
@@ -307,37 +322,37 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
                     </div>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-text-muted line-clamp-2 md:line-clamp-3 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-text-muted line-clamp-3 md:line-clamp-3 leading-relaxed">
                     {event.description}
                   </p>
                 </div>
 
                 {/* Actions Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border/50 mt-4 md:mt-0">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 pt-3.5 sm:pt-4 border-t border-border/50 mt-3.5 sm:mt-4 md:mt-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button 
                       size="sm"
                       onClick={() => onViewDetails(event)}
-                      className="bg-crimson hover:bg-crimson-dark text-white font-semibold text-xs px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95"
+                      className="bg-crimson hover:bg-crimson-dark text-white font-semibold text-xs px-3.5 sm:px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95 whitespace-nowrap"
                     >
                       <span>View Details</span>
-                      <ArrowRight size={13} className="ml-1.5" />
+                      <ArrowRight size={13} className="ml-1.5 shrink-0" />
                     </Button>
                     
                     <button
                       type="button"
                       onClick={(e) => handleExportGoogleCalendar(e, event)}
                       title="Add to Google Calendar"
-                      className="p-2 border border-border rounded-lg text-text-muted hover:text-crimson hover:bg-red-50/40 hover:border-crimson/30 transition-all text-xs font-semibold flex items-center gap-1.5"
+                      className="px-2.5 sm:px-3 py-2 border border-border rounded-lg text-text-muted hover:text-crimson hover:bg-red-50/40 hover:border-crimson/30 transition-all text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap"
                     >
-                      <CalendarPlus size={15} />
-                      <span className="hidden sm:inline">Add to Calendar</span>
+                      <CalendarPlus size={15} className="shrink-0" />
+                      <span className="inline text-xs font-semibold">Add to Calendar</span>
                     </button>
                   </div>
                   
                   {/* Participant indicators */}
                   {event.registrationRequired && event.currentParticipants !== undefined && event.maxParticipants !== undefined && (
-                    <span className="text-[11px] text-text-muted font-semibold bg-app-base py-1 px-3 rounded-full border border-border/60">
+                    <span className="text-[11px] text-text-muted font-semibold bg-app-base py-1 px-2.5 sm:px-3 rounded-full border border-border/60 whitespace-nowrap">
                       Slots: <strong className="text-text-primary">{event.currentParticipants}/{event.maxParticipants}</strong>
                     </span>
                   )}
@@ -364,46 +379,79 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
 
       {/* Navigation Controls Bar */}
       {totalSlides > 1 && (
-        <div className="flex items-center justify-between mt-3 px-1">
-          {/* Left: Pause/Play & Slide Counter */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsPaused(prev => !prev)}
-              className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-gray-100 transition-colors focus-ring"
-              title={isPaused ? "Resume Autoplay" : "Pause Autoplay"}
-              aria-label={isPaused ? "Resume Autoplay" : "Pause Autoplay"}
-            >
-              {isPaused ? <Play size={13} /> : <Pause size={13} />}
-            </button>
-            <span className="text-xs font-semibold text-text-muted">
-              {currentIndex + 1} / {totalSlides}
-            </span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-3 px-1 gap-2.5 sm:gap-0">
+          {/* Top row on mobile: Pause/Play + Counter on Left, Arrows on Right */}
+          <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2 sm:gap-2 sm:order-1">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsPaused(prev => !prev)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-gray-100 transition-colors focus-ring"
+                title={isPaused ? "Resume Autoplay" : "Pause Autoplay"}
+                aria-label={isPaused ? "Resume Autoplay" : "Pause Autoplay"}
+              >
+                {isPaused ? <Play size={13} /> : <Pause size={13} />}
+              </button>
+              <span className="text-xs font-semibold text-text-muted whitespace-nowrap select-none">
+                {currentIndex + 1} / {totalSlides}
+              </span>
+            </div>
+
+            {/* Mobile-only Arrow Buttons: aligned to the right of the counter/pause row */}
+            <div className="flex sm:hidden items-center gap-1.5">
+              <button
+                onClick={prevSlide}
+                disabled={isFirstSlide}
+                className={`p-1.5 rounded-lg bg-white border border-border transition-all focus-ring shadow-xs ${
+                  isFirstSlide
+                    ? 'opacity-40 text-text-muted/50 cursor-not-allowed'
+                    : 'text-text-muted hover:text-crimson hover:bg-gray-50 active:scale-95'
+                }`}
+                aria-label="Previous event slide"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              <button
+                onClick={nextSlide}
+                disabled={isLastSlide}
+                className={`p-1.5 rounded-lg bg-white border border-border transition-all focus-ring shadow-xs ${
+                  isLastSlide
+                    ? 'opacity-40 text-text-muted/50 cursor-not-allowed'
+                    : 'text-text-muted hover:text-crimson hover:bg-gray-50 active:scale-95'
+                }`}
+                aria-label="Next event slide"
+              >
+                <ChevronRight size={15} />
+              </button>
+            </div>
           </div>
 
-          {/* Center: Pagination Dot Indicators */}
+          {/* Pagination Dot Indicators: Row 2 on mobile, Center (order-2) on desktop */}
           <div 
+            ref={paginationContainerRef}
             role="tablist" 
             aria-label="Carousel Slides" 
-            className="flex items-center space-x-1.5"
+            className="flex items-center justify-center max-w-full overflow-x-auto py-1 px-1 space-x-1 sm:space-x-1.5 scrollbar-none sm:order-2"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {events.map((_, idx) => (
               <button
                 key={idx}
+                ref={idx === currentIndex ? activeDotRef : undefined}
                 role="tab"
                 aria-selected={idx === currentIndex}
                 aria-label={`Go to event slide ${idx + 1}`}
                 onClick={() => goToSlide(idx)}
-                className={`h-2 rounded-full transition-all duration-300 ${
+                className={`h-1.5 sm:h-2 rounded-full transition-all duration-300 flex-shrink-0 ${
                   idx === currentIndex 
-                    ? 'bg-crimson w-7' 
-                    : 'bg-border hover:bg-text-muted/50 w-2'
+                    ? 'bg-crimson w-5 sm:w-7' 
+                    : 'bg-border hover:bg-text-muted/50 w-1.5 sm:w-2'
                 }`}
               />
             ))}
           </div>
 
-          {/* Right: Prev/Next Arrow Buttons */}
-          <div className="flex items-center gap-1.5">
+          {/* Desktop-only Prev/Next Arrow Buttons (order-3 on desktop) */}
+          <div className="hidden sm:flex items-center gap-1.5 sm:order-3">
             <button
               onClick={prevSlide}
               disabled={isFirstSlide}
