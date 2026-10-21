@@ -3,6 +3,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
@@ -13,6 +14,7 @@ import type { ApplicationUser, UserRole } from '@/types/auth';
 import { type SessionState } from '@/config/sessionConfig';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import { useSubmissionProtection } from '@/context/SubmissionProtectionContext';
+import { setQueryScope } from '@/services/queryClient';
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 
@@ -21,6 +23,7 @@ export interface AuthContextValue {
   currentUser: FirebaseUser | null;
   /** Backend application profile — fetched after Firebase auth resolves */
   applicationUser: ApplicationUser | null;
+  profileError: Error | null;
   /** Shortcut to the backend role */
   role: UserRole | null;
   /** True while the initial auth state is being resolved */
@@ -54,6 +57,14 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [applicationUser, setApplicationUser] = useState<ApplicationUser | null>(null);
+  const [profileError, setProfileError] = useState<Error | null>(null);
+  const authGeneration = useRef(0);
+  const publishProfile = (profile: ApplicationUser) => {
+    if (['LOGGING_OUT', 'LOGGED_OUT'].includes(SessionService.getState())) return;
+    setQueryScope(auth.currentUser?.uid ?? null, profile.role, profile.parishId);
+    setApplicationUser(profile);
+    setProfileError(null);
+  };
   const [loading, setLoading] = useState(true);
   const [sessionState, setSessionState] = useState<SessionState>(SessionService.getState());
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
@@ -69,6 +80,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const unsubscribe = SessionService.subscribeState((newState) => {
       setSessionState(newState);
+      if (newState === 'LOGGING_OUT' || newState === 'LOGGED_OUT') {
+        ++authGeneration.current;
+        setApplicationUser(null);
+      }
       if (newState === 'WARNING') {
         setIsWarningModalOpen(true);
       } else if (newState === 'ACTIVE' || newState === 'LOGGING_OUT' || newState === 'LOGGED_OUT') {
@@ -80,18 +95,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // ── Fetch backend profile ────────────────────────────────────────────────
   const fetchApplicationUser = useCallback(async () => {
+    const uid = auth.currentUser?.uid;
+    const generation = authGeneration.current;
     try {
+      setProfileError(null);
       const profile = await AuthService.getApplicationUser();
-      setApplicationUser(profile);
-    } catch {
+      if (uid && uid === auth.currentUser?.uid && generation === authGeneration.current) publishProfile(profile);
+    } catch (error) {
       // Backend profile unavailable — clear app user but keep Firebase user
-      setApplicationUser(null);
+      if (uid === auth.currentUser?.uid && generation === authGeneration.current) {
+        setQueryScope(null);
+        setApplicationUser(null);
+        setProfileError(error instanceof Error ? error : new Error('Failed to load your profile. Please try again.'));
+      }
     }
   }, []);
 
   // ── Observe Firebase auth state ──────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser && !SessionService.startAuthenticatedSession(firebaseUser.uid)) return;
+      const generation = ++authGeneration.current;
+      setQueryScope(null);
+      setApplicationUser(null);
+      setProfileError(null);
+      setLoading(true);
       setCurrentUser(firebaseUser);
 
       if (firebaseUser) {
@@ -100,7 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setApplicationUser(null);
       }
 
-      setLoading(false);
+      if (generation === authGeneration.current) setLoading(false);
     });
 
     return unsubscribe;
@@ -133,7 +161,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = useCallback(
     async (email: string, password: string, rememberMe = false): Promise<void> => {
       const profile = await AuthService.signIn(email, password, rememberMe);
-      setApplicationUser(profile);
+      if (auth.currentUser?.email?.toLowerCase() === email.trim().toLowerCase()) publishProfile(profile);
     },
     []
   );
@@ -151,6 +179,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value: AuthContextValue = {
     currentUser,
     applicationUser,
+    profileError,
     role: applicationUser?.role ?? null,
     loading,
     sessionState,

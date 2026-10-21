@@ -1,4 +1,5 @@
 import { signOut, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { setQueryScope } from './queryClient';
 import { auth } from '@/config/firebase';
 import { SESSION_CONFIG, type SessionState, type LogoutReason, type SessionBroadcastEvent } from '@/config/sessionConfig';
 import { logSessionEvent } from '@/utils/sessionLogger';
@@ -11,6 +12,8 @@ type StateChangeListener = (state: SessionState, reason?: LogoutReason) => void;
 class SessionServiceImpl {
   private currentState: SessionState = 'ACTIVE';
   private logoutInProgress = false;
+  private sessionGeneration = 0;
+  private authenticatedUid: string | null = null;
   private refreshPromise: Promise<boolean> | null = null;
   private stateListeners = new Set<StateChangeListener>();
   private broadcastChannel: BroadcastChannel | null = null;
@@ -25,6 +28,20 @@ class SessionServiceImpl {
 
   public getState(): SessionState {
     return this.currentState;
+  }
+
+  // Only a newly observed, current Firebase identity can reopen a closed session.
+  // Ordinary transitions still cannot revive a session that is logging out.
+  public startAuthenticatedSession(firebaseUid: string): boolean {
+    if (auth.currentUser?.uid !== firebaseUid || this.currentState === 'LOGGING_OUT') return false;
+    if (this.authenticatedUid === firebaseUid && this.currentState !== 'LOGGED_OUT') return true;
+    this.sessionGeneration++;
+    this.authenticatedUid = firebaseUid;
+    this.logoutInProgress = false;
+    this.refreshPromise = null;
+    this.currentState = 'ACTIVE';
+    this.stateListeners.forEach(listener => listener('ACTIVE'));
+    return true;
   }
 
   public subscribeState(listener: StateChangeListener): () => void {
@@ -106,6 +123,8 @@ class SessionServiceImpl {
       return this.refreshPromise;
     }
 
+    const generation = this.sessionGeneration;
+    const isCurrent = () => generation === this.sessionGeneration;
     const previousState = this.currentState;
     this.transitionTo('REFRESHING');
 
@@ -120,6 +139,7 @@ class SessionServiceImpl {
         if (!force) {
           // Check token expiration threshold before hitting server
           const tokenResult = await user.getIdTokenResult();
+          if (!isCurrent()) return false;
           const expirationTime = new Date(tokenResult.expirationTime).getTime();
           const timeUntilExpiryMs = expirationTime - Date.now();
           const thresholdMs = SESSION_CONFIG.TOKEN_REFRESH_THRESHOLD_MINUTES * 60 * 1000;
@@ -134,28 +154,33 @@ class SessionServiceImpl {
         // Attempt refresh
         try {
           await user.getIdToken(true);
+          if (!isCurrent()) return false;
           logSessionEvent('Session Refreshed');
           this.transitionTo('ACTIVE');
           this.broadcastEvent({ type: 'SESSION_EXTENDED', timestamp: Date.now(), tabId: TAB_ID });
           return true;
         } catch (firstErr) {
+          if (!isCurrent()) return false;
           logSessionEvent('Network Refresh Retry', { error: (firstErr as Error).message });
           // Retry ONCE on transient failure
           try {
             await new Promise((res) => setTimeout(res, 1000));
+            if (!isCurrent()) return false;
             await user.getIdToken(true);
+            if (!isCurrent()) return false;
             logSessionEvent('Session Refreshed');
             this.transitionTo('ACTIVE');
             this.broadcastEvent({ type: 'SESSION_EXTENDED', timestamp: Date.now(), tabId: TAB_ID });
             return true;
           } catch (retryErr) {
+            if (!isCurrent()) return false;
             logSessionEvent('Refresh Failed', { error: (retryErr as Error).message });
             await this.logout('network');
             return false;
           }
         }
       } finally {
-        this.refreshPromise = null;
+        if (isCurrent()) this.refreshPromise = null;
       }
     })();
 
@@ -165,10 +190,13 @@ class SessionServiceImpl {
   // ── Idempotent Centralized Logout ────────────────────────────────────────
 
   public async logout(reason: LogoutReason = 'manual'): Promise<void> {
+    setQueryScope(null);
     if (this.logoutInProgress) {
       return; // Already logging out
     }
 
+    this.sessionGeneration++;
+    this.authenticatedUid = null;
     this.logoutInProgress = true;
     this.transitionTo('LOGGING_OUT', reason);
 

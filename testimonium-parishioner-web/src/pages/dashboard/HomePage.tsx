@@ -1,3 +1,4 @@
+import { useDashboardPreload } from '../../hooks/useDashboardPreload';
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -132,6 +133,8 @@ export const HomePage: React.FC = () => {
   const profileQuery = useProfile(user?.uid || '');
   const eventsQuery = useEvents();
   const featuredEventsQuery = useFeaturedEvents();
+  useDashboardPreload(!authLoading && [parishesQuery, requestsQuery, appointmentsQuery, profileQuery, eventsQuery, featuredEventsQuery]
+    .every(query => !query.loading && query.data !== undefined && !query.error));
 
   // Filter States
   const [filterParishId, setFilterParishId] = useState<string>('all');

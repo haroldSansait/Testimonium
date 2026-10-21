@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { CheckCheck, ChevronDown, Info } from 'lucide-react';
@@ -51,56 +52,56 @@ function NoticeModal({ notification, onClose }: NoticeModalProps) {
 
 export function NotificationsPage() {
   const navigate = useNavigate();
-  const [notifs, setNotifs] = useState<Notification[]>([]);
   const [selectedNotice, setSelectedNotice] = useState<Notification | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
 
-  const fetchNotifs = useCallback(async (silent = false) => {
-    if (!silent) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const data = await NotificationService.getNotifications();
-      setNotifs(data);
-    } catch (err: any) {
-      console.error('Failed to load notifications:', err);
-      if (!silent) {
-        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
-      }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchNotifs(false);
-  }, [fetchNotifs]);
+  const [isReading, setIsReading] = useState(false);
+  const readInFlight = useRef(false);
+  const notificationQuery = useCachedQuery(['notifications'], () => NotificationService.getNotifications(), {
+    enabled: !selectedNotice && !isReading,
+  });
+  const notifs = notificationQuery.data ?? [];
+  const isLoading = notificationQuery.loading;
+  const error = notificationQuery.error;
+  const fetchNotifs = notificationQuery.refetch;
 
   // Visibility-aware polling every 30 seconds, paused if loading or notice modal is open
   useAutoRefresh(
     () => void fetchNotifs(true),
-    { intervalMs: 30000, enabled: !isLoading && !selectedNotice }
+    { intervalMs: 30000, enabled: !isLoading && !selectedNotice && !isReading }
   );
 
-  const markAllRead = () => {
-    // Optimistic UI update
-    setNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    // Persist to backend
-    void NotificationService.markAllRead().then(() => {
+  const markAllRead = async () => {
+    if (readInFlight.current) return;
+    readInFlight.current = true;
+    setIsReading(true);
+    const original = [...notifs];
+    notificationQuery.setData(previous => previous?.map(n => ({ ...n, isRead: true })));
+    try {
+      await NotificationService.markAllRead();
       window.dispatchEvent(new Event('notifications-updated'));
-    });
+    } catch {
+      notificationQuery.setData(original);
+    } finally {
+      await fetchNotifs(true);
+      readInFlight.current = false;
+      setIsReading(false);
+    }
   };
 
   const handleNotificationAction = async (notif: Notification) => {
+    if (readInFlight.current) return;
+    readInFlight.current = true;
+    setIsReading(true);
     // 1. Mark as read
-    await NotificationService.markRead(notif.id);
-    window.dispatchEvent(new Event('notifications-updated'));
-    void fetchNotifs(true);
+    try {
+      await NotificationService.markRead(notif.id);
+      window.dispatchEvent(new Event('notifications-updated'));
+      await fetchNotifs(true);
+    } finally {
+      readInFlight.current = false;
+      setIsReading(false);
+    }
 
     // 2. Perform action based on notification type / reference properties
     if (notif.referenceType === 'DOCUMENT_REQUEST' && notif.referenceId) {

@@ -1,3 +1,4 @@
+import { useCachedQuery } from '@/hooks/useCachedQuery';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -878,7 +879,6 @@ export function CalendarPage() {
 
   const [selectedDate, setSelectedDate] = useState<Date>(now);
   const [view, setView] = useState<CalendarView>('Month');
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
   const [priests, setPriests] = useState<ManagedUser[]>([]);
@@ -924,19 +924,14 @@ export function CalendarPage() {
     localStorage.setItem('lastSelectedParishId', val);
   };
 
-  const fetchCalendarEvents = useCallback(() => {
-    if (applicationUser?.role === 'DIOCESE_COORDINATOR' && !selectedParishFilter) {
-      return Promise.resolve();
-    }
-    const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
-    return CalendarService.getEvents(year, month, filterId).then(setEvents);
-  }, [year, month, selectedParishFilter, applicationUser]);
+  const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
+  const calendarQuery = useCachedQuery(['calendar', { year, month, parishId: filterId }], () => CalendarService.getEvents(year, month, filterId), {
+    enabled: applicationUser?.role !== 'DIOCESE_COORDINATOR' || Boolean(selectedParishFilter),
+  });
+  const events = calendarQuery.data ?? [];
+  const fetchCalendarEvents = calendarQuery.refetch;
 
-  useEffect(() => {
-    void fetchCalendarEvents();
-  }, [fetchCalendarEvents]);
-
-  useAutoRefresh(fetchCalendarEvents, { intervalMs: 5000 });
+  useAutoRefresh(() => { void fetchCalendarEvents(); }, { intervalMs: 5000 });
 
   const fetchPriests = useCallback(async () => {
     if (!effectiveParishId) return;
@@ -1213,8 +1208,7 @@ export function CalendarPage() {
           onClose={() => setSelectedEvent(null)}
           role={applicationUser?.role}
           onSuccess={() => {
-            const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
-            void CalendarService.getEvents(year, month, filterId).then(setEvents);
+            void fetchCalendarEvents();
           }}
         />
       )}
@@ -1225,8 +1219,7 @@ export function CalendarPage() {
           parishId={effectiveParishId}
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
-            const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
-            void CalendarService.getEvents(year, month, filterId).then(setEvents);
+            void fetchCalendarEvents();
           }}
           onError={(msg) => showToast(msg, 'error')}
         />
@@ -1239,8 +1232,7 @@ export function CalendarPage() {
           onClose={() => setShowPriestSettings(false)}
           onSuccess={() => {
             void fetchPriests();
-            const filterId = applicationUser?.role === 'DIOCESE_COORDINATOR' ? selectedParishFilter : undefined;
-            void CalendarService.getEvents(year, month, filterId).then(setEvents);
+            void fetchCalendarEvents();
             showToast('Priest color updated successfully!', 'success');
           }}
           onError={(msg) => showToast(msg, 'error')}

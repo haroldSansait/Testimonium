@@ -1,3 +1,4 @@
+import { useCachedQuery } from '@/hooks/useCachedQuery';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -1193,15 +1194,12 @@ interface ToastState {
 export function UserManagementPage() {
   const { role } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('parishioners');
-  const [users, setUsers] = useState<ManagedUser[]>([]);
   const [search, setSearch] = useState('');
   const [staffRole, setStaffRole] = useState('all');
   const [status, setStatus] = useState('all');
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Auto-dismiss toast after 3s
   useEffect(() => {
@@ -1213,34 +1211,14 @@ export function UserManagementPage() {
   const showToast = (message: string, type: 'success' | 'error' = 'success') =>
     setToast({ message, type });
 
-  const fetchUsers = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      let roleFilter: string;
-      if (activeTab === 'parishioners') {
-        roleFilter = 'PARISHIONER';
-      } else {
-        roleFilter = staffRole === 'all' ? 'staff' : staffRole;
-      }
-
-      const result = await UserManagementService.getUsers({
-        search,
-        role: roleFilter,
-        status,
-      });
-      setUsers(result);
-    } catch (err: any) {
-      console.error('Failed to load users:', err);
-      setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeTab, search, staffRole, status]);
-
-  useEffect(() => {
-    void fetchUsers();
-  }, [fetchUsers]);
+  const filters = { search, role: activeTab === 'parishioners' ? 'PARISHIONER' : staffRole === 'all' ? 'staff' : staffRole, status };
+  const usersQuery = useCachedQuery(['users', 'list', filters], () => UserManagementService.getUsers(filters), {
+    enabled: modal.type === 'none' && !isSaving,
+  });
+  const users = usersQuery.data ?? [];
+  const isLoading = usersQuery.loading;
+  const error = usersQuery.error;
+  const fetchUsers = usersQuery.refetch;
 
   // Tab switch handler: resets search and role filter
   const handleTabSwitch = (tab: ActiveTab) => {

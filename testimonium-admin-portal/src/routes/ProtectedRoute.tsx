@@ -3,6 +3,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { hasPermission } from '@/permissions/rolePermissions';
 import type { Permission } from '@/permissions/permissions';
+import { useSyncExternalStore } from 'react';
+import { getQueryScope, subscribeQueryScope } from '@/services/queryClient';
+import { ErrorState } from '@/components/common/ErrorState';
 
 interface ProtectedRouteProps {
   /**
@@ -24,9 +27,10 @@ interface ProtectedRouteProps {
  * - Authenticated + permitted   → render the child route
  */
 export function ProtectedRoute({ requiredPermission }: ProtectedRouteProps) {
-  const { currentUser, role, loading } = useAuth();
+  const { currentUser, applicationUser, profileError, refreshUser, role, loading } = useAuth();
+  const cacheScope = useSyncExternalStore(subscribeQueryScope, getQueryScope);
 
-  if (loading) {
+  if (loading || (currentUser && !applicationUser && !profileError)) {
     return <LoadingOverlay />;
   }
 
@@ -34,9 +38,13 @@ export function ProtectedRoute({ requiredPermission }: ProtectedRouteProps) {
     return <Navigate to="/" replace />;
   }
 
+  if (profileError) {
+    return <ErrorState message={profileError.message} onRetry={() => { void refreshUser(); }} />;
+  }
+
   if (requiredPermission && !hasPermission(role, requiredPermission)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
-  return <Outlet />;
+  return <Outlet key={cacheScope ?? 'anonymous'} />;
 }

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { useState } from 'react';
 import api from '@/api/api';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Sparkles } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -39,33 +40,18 @@ interface CalendarEventItem {
 
 export function PriestMiniCalendar() {
   const [currentDate, setCurrentDate] = useState(() => new Date(Date.UTC(manilaNow.year, manilaNow.month - 1, 1)));
-  const [events, setEvents] = useState<CalendarEventItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number>(() => manilaNow.day);
 
   const year = currentDate.getUTCFullYear();
   const month = currentDate.getUTCMonth() + 1;
 
-  const fetchCalendar = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.get<{ data: CalendarEventItem[] }>('/calendar/priest', {
-        params: { year, month },
-      });
-      setEvents(res.data.data || []);
-    } catch (err: any) {
-      console.error('Failed to load priest calendar:', err);
-      setError('Could not load personal calendar.');
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month]);
-
-  useEffect(() => {
-    void fetchCalendar();
-  }, [fetchCalendar]);
+  const calendar = useCachedQuery(['calendar', 'priest', { year, month }], async () => {
+    const res = await api.get<{ data: CalendarEventItem[] }>('/calendar/priest', { params: { year, month } });
+    return res.data.data || [];
+  });
+  const events = calendar.data ?? [];
+  const loading = calendar.loading;
+  const error = calendar.error ? 'Could not load personal calendar.' : null;
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(Date.UTC(year, month - 2, 1)));

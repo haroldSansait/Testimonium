@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useDashboardPreload } from '@/hooks/useDashboardPreload';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TodayScheduleList } from '@/components/dashboard/TodayScheduleList';
 import { RecentAlerts } from '@/components/dashboard/RecentAlerts';
@@ -6,7 +7,6 @@ import { DashboardService } from '@/services/DashboardService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
-import type { StatCardData, TodayScheduleItem, RecentAlert } from '@/types';
 
 /**
  * SecretaryDashboard — parish-level view with pending requests,
@@ -16,45 +16,23 @@ import type { StatCardData, TodayScheduleItem, RecentAlert } from '@/types';
  * by the role-router in DashboardPage while keeping its own data-fetching logic.
  */
 export function SecretaryDashboard() {
-  const [statCards, setStatCards] = useState<StatCardData[]>([]);
-  const [todaySchedule, setTodaySchedule] = useState<TodayScheduleItem[]>([]);
-  const [recentAlerts, setRecentAlerts] = useState<RecentAlert[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dashboard = useCachedQuery(['dashboard'], async () => {
+    const [stats, schedule, alerts] = await Promise.all([
+      DashboardService.getStats(), DashboardService.getTodaySchedule(), DashboardService.getRecentAlerts(),
+    ]);
+    return { stats, schedule, alerts };
+  });
+  const statCards = dashboard.data?.stats ?? [];
+  const todaySchedule = dashboard.data?.schedule ?? [];
+  const recentAlerts = dashboard.data?.alerts ?? [];
+  const isLoading = dashboard.loading;
+  const error = dashboard.error;
+  const loadData = dashboard.refetch;
+  useDashboardPreload(dashboard.isSuccess);
 
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-
-  const loadData = useCallback(async (silent = false) => {
-    if (!silent) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const [stats, schedule, alerts] = await Promise.all([
-        DashboardService.getStats(),
-        DashboardService.getTodaySchedule(),
-        DashboardService.getRecentAlerts(),
-      ]);
-      setStatCards(stats);
-      setTodaySchedule(schedule);
-      setRecentAlerts(alerts);
-    } catch (err: any) {
-      console.error('Failed to load Secretary dashboard data:', err);
-      if (!silent) {
-        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
-      }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadData(false);
-  }, [loadData]);
 
   // Set up auto-refresh polling (every 60 seconds)
   useAutoRefresh(

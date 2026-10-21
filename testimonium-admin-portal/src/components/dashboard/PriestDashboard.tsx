@@ -1,3 +1,6 @@
+import { useDashboardPreload } from '@/hooks/useDashboardPreload';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import type { SetStateAction } from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TodayScheduleList } from '@/components/dashboard/TodayScheduleList';
@@ -8,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getScheduleRequests, respondPriestAssignment } from '@/services/scheduleRequestService';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { Check, XCircle } from 'lucide-react';
-import type { StatCardData, TodayScheduleItem, RecentAlert, ScheduleRequest } from '@/types';
+import type { ScheduleRequest } from '@/types';
 
 /**
  * PriestDashboard — same layout as SecretaryDashboard but with
@@ -18,10 +21,6 @@ import type { StatCardData, TodayScheduleItem, RecentAlert, ScheduleRequest } fr
  * the same parish-level information.
  */
 export function PriestDashboard() {
-  const [statCards, setStatCards] = useState<StatCardData[]>([]);
-  const [todaySchedule, setTodaySchedule] = useState<TodayScheduleItem[]>([]);
-  const [recentAlerts, setRecentAlerts] = useState<RecentAlert[]>([]);
-  const [pendingAssignments, setPendingAssignments] = useState<ScheduleRequest[]>([]);
   const [activeRespondId, setActiveRespondId] = useState<string | null>(null);
   const [respondAction, setRespondAction] = useState<'ACCEPTED' | 'REJECTED' | null>(null);
   const [reasonText, setReasonText] = useState('');
@@ -34,42 +33,42 @@ export function PriestDashboard() {
   const greeting =
     hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
-  const fetchAssignments = useCallback(async () => {
-    try {
-      const res = await getScheduleRequests({ filter: 'all', page: 1, pageSize: 100 });
-      const currentUserId = applicationUser?.id ? String(applicationUser.id) : null;
-      if (!currentUserId) {
-        setPendingAssignments([]);
-        return;
-      }
-
-      const pending = res.data.filter(r => {
-        // Identity Hardening: Strictly require schedule.assignedPriestId === currentPriest.userId
-        // Never use priest name, display name, or partial strings for identity decisions.
-        const isAssignedToCurrentPriest = Boolean(r.assignedPriestId && String(r.assignedPriestId) === currentUserId);
-
-        // Pending state: assignment has not reached terminal status (ACCEPTED or REJECTED)
-        const isPendingResponse = r.priestResponseStatus !== 'ACCEPTED' && r.priestResponseStatus !== 'REJECTED';
-
-        return isAssignedToCurrentPriest && isPendingResponse;
-      });
-      setPendingAssignments(pending);
-    } catch (err) {
-      console.error('Failed to load pending assignments:', err);
+  const paused = activeRespondId !== null || isSubmitting;
+  const assignments = useCachedQuery(['schedules', 'assignments', { filter: 'all', page: 1, pageSize: 100 }], async () => {
+    const res = await getScheduleRequests({ filter: 'all', page: 1, pageSize: 100 });
+    const currentUserId = applicationUser?.id ? String(applicationUser.id) : null;
+    if (!currentUserId) {
+      return [];
     }
-  }, [applicationUser]);
 
-  const loadDashboardData = useCallback(() => {
-    void Promise.all([
-      DashboardService.getStats(),
-      DashboardService.getTodaySchedule(),
-      DashboardService.getRecentAlerts(),
-    ]).then(([stats, schedule, alerts]) => {
-      setStatCards(stats);
-      setTodaySchedule(schedule);
-      setRecentAlerts(alerts);
+    const pending = res.data.filter(r => {
+      // Identity Hardening: Strictly require schedule.assignedPriestId === currentPriest.userId
+      // Never use priest name, display name, or partial strings for identity decisions.
+      const isAssignedToCurrentPriest = Boolean(r.assignedPriestId && String(r.assignedPriestId) === currentUserId);
+
+      // Pending state: assignment has not reached terminal status (ACCEPTED or REJECTED)
+      const isPendingResponse = r.priestResponseStatus !== 'ACCEPTED' && r.priestResponseStatus !== 'REJECTED';
+
+      return isAssignedToCurrentPriest && isPendingResponse;
     });
-  }, []);
+
+    return pending;
+  }, { enabled: !paused });
+  const pendingAssignments = assignments.data ?? [];
+  const setPendingAssignments = (update: SetStateAction<ScheduleRequest[]>) => assignments.setData(previous =>
+    typeof update === 'function' ? update(previous ?? []) : update);
+  const fetchAssignments = assignments.refetch;
+  const dashboard = useCachedQuery(['dashboard'], async () => {
+    const [stats, schedule, alerts] = await Promise.all([
+      DashboardService.getStats(), DashboardService.getTodaySchedule(), DashboardService.getRecentAlerts(),
+    ]);
+    return { stats, schedule, alerts };
+  }, { enabled: !paused });
+  const statCards = dashboard.data?.stats ?? [];
+  const todaySchedule = dashboard.data?.schedule ?? [];
+  const recentAlerts = dashboard.data?.alerts ?? [];
+  const loadDashboardData = dashboard.refetch;
+  useDashboardPreload(dashboard.isSuccess && assignments.isSuccess && !paused);
 
   // Set up visibility-aware 5-second polling, disabled when active action or submit is in progress
   useAutoRefresh(
@@ -79,11 +78,6 @@ export function PriestDashboard() {
     }, [fetchAssignments, loadDashboardData]),
     { intervalMs: 5000, enabled: activeRespondId === null && !isSubmitting }
   );
-
-  useEffect(() => {
-    loadDashboardData();
-    void fetchAssignments();
-  }, [loadDashboardData, fetchAssignments]);
 
   // Toast Auto-Dismissal
   useEffect(() => {

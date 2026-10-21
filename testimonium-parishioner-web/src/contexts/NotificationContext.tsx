@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { AppNotification } from '../types';
 import services from '../providers/factory';
 import { useAuth } from './AuthContext';
+import { useQuery } from '../hooks/useService';
+import { getQueryScope, getSessionSignal, queryClient, privateQueryKey } from '../services/queryClient';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -20,151 +22,69 @@ const POLL_INTERVAL_MS = 30000;
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const mutationQueue = useRef<Promise<void>>(Promise.resolve());
+  const mutating = useRef(false);
+  const query = useQuery(() => services.notification.getNotifications(), ['notifications'], {
+    staleTime: 30_000, pollInterval: POLL_INTERVAL_MS, requireFocus: false, respectPause: false,
+    refreshAllowed: () => !mutating.current,
+  });
+  const notifications = user ? query.data ?? [] : [];
+  const setNotifications = (update: (previous: AppNotification[]) => AppNotification[]) =>
+    query.setData(previous => update(previous ?? []));
+  const loading = Boolean(user) && query.loading;
+  const [actionError, setError] = useState<Error | null>(null);
+  const error = actionError ?? query.error ?? null;
   const [newlyArrivedIds, setNewlyArrivedIds] = useState<string[]>([]);
-  
-  // Use a ref to keep track of the current notifications for comparison in the poll interval
-  const notificationsRef = useRef<AppNotification[]>([]);
-  notificationsRef.current = notifications;
-
-  const fetchNotifications = useCallback(async (silent = false) => {
-    if (!silent) {
-      setLoading(true);
-    }
-    try {
-      const data = await services.notification.getNotifications();
-      
-      // If we already had notifications, we check for new arrivals
-      const prevIds = new Set(notificationsRef.current.map(n => n.id));
-      
-      // If it's a silent update (polling) and we had previous notifications, identify new ones
-      if (silent && prevIds.size > 0) {
-        const newIds: string[] = [];
-        data.forEach(n => {
-          if (!prevIds.has(n.id)) {
-            newIds.push(n.id);
-          }
-        });
-        
-        if (newIds.length > 0) {
-          setNewlyArrivedIds(prev => [...prev, ...newIds]);
-          // Clear the highlights after 8 seconds
-          setTimeout(() => {
-            setNewlyArrivedIds(prev => prev.filter(id => !newIds.includes(id)));
-          }, 8000);
-        }
-      }
-
-      setNotifications(data);
-      setError(null);
-    } catch (err) {
-      console.error("[NotificationProvider] Error fetching notifications:", err);
-      // Only set error state if it's not a silent poll to prevent disruptive error states on background failures
-      if (!silent) {
-        setError(err instanceof Error ? err : new Error(String(err)));
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
+  const previousIds = useRef<Set<string> | null>(null);
+  const highlightTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = highlightTimers.current;
+    return () => timers.forEach(clearTimeout);
   }, []);
-
-  const refresh = useCallback(() => fetchNotifications(false), [fetchNotifications]);
-
-  // Initial load when user changes
   useEffect(() => {
-    if (user) {
-      fetchNotifications(false);
-    } else {
-      setNotifications([]);
-      setNewlyArrivedIds([]);
-      setError(null);
-    }
-  }, [user, fetchNotifications]);
-
-  // Polling loop with tab visibility awareness
-  useEffect(() => {
-    if (!user) return;
-
-    let intervalId: any = null;
-
-    const startPolling = () => {
-      if (!intervalId) {
-        intervalId = setInterval(() => {
-          fetchNotifications(true);
-        }, POLL_INTERVAL_MS);
-      }
-    };
-
-    const stopPolling = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    // Start polling initially if tab is active
-    if (document.visibilityState === 'visible') {
-      startPolling();
-    }
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        // Fetch immediately and resume polling when tab becomes visible
-        fetchNotifications(true);
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [user, fetchNotifications]);
+    if (!query.data) return;
+    const ids = new Set(query.data.map(n => n.id));
+    const arrived = previousIds.current ? [...ids].filter(id => !previousIds.current!.has(id)) : [];
+    previousIds.current = ids;
+    if (!arrived.length) return;
+    setNewlyArrivedIds(previous => [...previous, ...arrived]);
+    const timer = setTimeout(() => {
+      setNewlyArrivedIds(previous => previous.filter(id => !arrived.includes(id)));
+      highlightTimers.current.delete(timer);
+    }, 8000);
+    highlightTimers.current.add(timer);
+  }, [query.data]);
+  const refetchNotifications = query.refetch;
+  const refresh = useCallback(async () => { setError(null); await refetchNotifications(); }, [refetchNotifications]);
 
   // Derive unread count directly from state
-  const unreadCount = useMemo(() => {
-    return notifications.filter(n => !n.read).length;
-  }, [notifications]);
+  const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Optimistic markAsRead
-  const markAsRead = async (id: string) => {
-    const originalNotifications = [...notifications];
-    
-    // Optimistic update
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-
-    try {
-      await services.notification.markAsRead(id);
-    } catch (err) {
-      console.error("[NotificationProvider] Failed to mark notification as read, rolling back:", err);
-      setNotifications(originalNotifications);
-      setError(err instanceof Error ? err : new Error(String(err)));
-    }
+  // Serialize actions so rollback cannot undo a later successful read action.
+  const markRead = (id?: string) => {
+    const scope = getQueryScope();
+    const sessionSignal = getSessionSignal();
+    const action = mutationQueue.current.then(async () => {
+      if (sessionSignal.aborted || !scope || scope !== getQueryScope()) return;
+      mutating.current = true;
+      const originals = new Map((queryClient.getQueryData<AppNotification[]>(privateQueryKey('notifications')) ?? []).map(n => [n.id, n.read]));
+      setNotifications(previous => previous.map(n => !id || n.id === id ? { ...n, read: true } : n));
+      try {
+        if (id) await services.notification.markAsRead(id);
+        else await services.notification.markAllAsRead();
+        if (!sessionSignal.aborted && scope === getQueryScope()) setError(null);
+      } catch (err) {
+        setNotifications(previous => previous.map(n => ((!id || n.id === id) && originals.has(n.id)) ? { ...n, read: originals.get(n.id)! } : n));
+        if (!sessionSignal.aborted && scope === getQueryScope()) setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        mutating.current = false;
+      }
+    });
+    mutationQueue.current = action;
+    return action;
   };
-
-  // Optimistic markAllAsRead
-  const markAllAsRead = async () => {
-    const originalNotifications = [...notifications];
-    
-    // Optimistic update
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-
-    try {
-      await services.notification.markAllAsRead();
-    } catch (err) {
-      console.error("[NotificationProvider] Failed to mark all as read, rolling back:", err);
-      setNotifications(originalNotifications);
-      setError(err instanceof Error ? err : new Error(String(err)));
-    }
-  };
+  const markAsRead = (id: string) => markRead(id);
+  const markAllAsRead = () => markRead();
 
   return (
     <NotificationContext.Provider

@@ -10,6 +10,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
+import { setQueryScope } from '../services/queryClient';
 import { SessionService } from '../services/SessionService';
 import { type SessionState, SESSION_CONFIG } from '../config/sessionConfig';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
@@ -66,6 +67,7 @@ export interface BackendUserProfile {
 interface AuthContextType {
   user: User | null;
   appProfile: BackendUserProfile | null;
+  profileError: Error | null;
   loading: boolean;
   sessionState: SessionState;
   isWarningModalOpen: boolean;
@@ -95,6 +97,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [appProfile, setAppProfile] = useState<BackendUserProfile | null>(null);
+  const [profileError, setProfileError] = useState<Error | null>(null);
+  const publishProfile = (profile: BackendUserProfile) => {
+    if (['LOGGING_OUT', 'LOGGED_OUT'].includes(SessionService.getState())) return;
+    setQueryScope(auth.currentUser?.uid ?? null, profile.role, profile.parish?.id);
+    setAppProfile(profile);
+    setProfileError(null);
+  };
   const [loading, setLoading] = useState(true);
   const [sessionState, setSessionState] = useState<SessionState>(SessionService.getState());
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
@@ -107,6 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const unsubscribe = SessionService.subscribeState((newState) => {
       setSessionState(newState);
+      if (newState === 'LOGGING_OUT' || newState === 'LOGGED_OUT') {
+        ++authGenerationRef.current;
+        setAppProfile(null);
+      }
       if (newState === 'WARNING') {
         setIsWarningModalOpen(true);
       } else if (newState === 'ACTIVE' || newState === 'LOGGING_OUT' || newState === 'LOGGED_OUT') {
@@ -117,6 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const performBackendLogin = async (currentUser: User, legal?: LegalPayload): Promise<BackendUserProfile> => {
+    const generation = authGenerationRef.current;
     const idToken = await currentUser.getIdToken();
     const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
@@ -159,7 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     console.debug('[AuthContext] Backend login successful:', { email: profile.email, isVerified: profile.emailVerified, needsProfileCompletion: profile.needsProfileCompletion, isNewUser });
-    if (auth.currentUser?.uid === currentUser.uid) setAppProfile(profile);
+    if (authGenerationRef.current === generation && auth.currentUser?.uid === currentUser.uid) publishProfile(profile);
     return profile;
   };
 
@@ -203,6 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const recordLegalAcceptance = async (legal: LegalPayload): Promise<BackendUserProfile | null> => {
     if (!auth.currentUser) return null;
     const expectedUid = auth.currentUser.uid;
+    const generation = authGenerationRef.current;
     const idToken = await auth.currentUser.getIdToken();
     const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
@@ -226,15 +241,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const profile = result?.data as BackendUserProfile;
     if (!profile) throw new Error('Malformed legal acceptance response: user profile missing.');
-    if (auth.currentUser?.uid === expectedUid) setAppProfile(profile);
+    if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUid) publishProfile(profile);
     return profile;
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && !SessionService.startAuthenticatedSession(currentUser.uid)) return;
       const generation = ++authGenerationRef.current;
+      setQueryScope(null);
+      setLoading(true);
       setUser(currentUser);
       setAppProfile(null);
+      setProfileError(null);
       if (currentUser) {
         if (!localStorage.getItem(SESSION_CONFIG.SESSION_START_KEY)) {
           localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
@@ -242,10 +261,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const profile = await fetchCurrentBackendProfile(currentUser);
           if (authGenerationRef.current === generation && auth.currentUser?.uid === currentUser.uid) {
-            setAppProfile(profile);
+            publishProfile(profile);
           }
-        } catch {
-          // Unverified email or backend rejection
+        } catch (error) {
+          if (authGenerationRef.current === generation && auth.currentUser?.uid === currentUser.uid) {
+            setProfileError(error instanceof Error ? error : new Error('Failed to load your profile. Please try again.'));
+          }
         }
       }
       if (authGenerationRef.current === generation) setLoading(false);
@@ -311,6 +332,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? auth.currentUser
         : null;
       const firebaseUser = existingPendingUser || (await createUserWithEmailAndPassword(auth, email, password)).user;
+      const generation = authGenerationRef.current;
       const displayName = [registrationProfile.firstName, registrationProfile.lastName].filter(Boolean).join(' ');
       await updateProfile(firebaseUser, { displayName });
       
@@ -347,7 +369,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!resData?.data || typeof resData.data !== 'object') {
         throw new Error('Malformed registration response: user profile missing.');
       }
-      if (auth.currentUser?.uid === firebaseUser.uid) setAppProfile(resData.data as BackendUserProfile);
+      if (authGenerationRef.current === generation && auth.currentUser?.uid === firebaseUser.uid) publishProfile(resData.data as BackendUserProfile);
 
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
       // Registration journey authoritative establish: new email/password account created
@@ -399,6 +421,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshProfile = async (): Promise<BackendUserProfile | null> => {
     if (!auth.currentUser) return null;
     const expectedUser = auth.currentUser;
+    const generation = authGenerationRef.current;
 
     if (refreshPromiseRef.current?.uid === expectedUser.uid) {
       console.debug('[AuthContext] Single-flight refreshProfile reusing existing request promise');
@@ -408,12 +431,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.debug('[AuthContext] refreshProfile start');
     const promise = (async () => {
       try {
+        setProfileError(null);
         const profile = await fetchCurrentBackendProfile(expectedUser);
-        if (auth.currentUser?.uid === expectedUser.uid) setAppProfile(profile);
+        if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) publishProfile(profile);
         console.debug('[AuthContext] refreshProfile completed cleanly');
         return profile;
+      } catch (error) {
+        if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) {
+          setProfileError(error instanceof Error ? error : new Error('Failed to load your profile. Please try again.'));
+        }
+        throw error;
       } finally {
-        if (refreshPromiseRef.current?.uid === expectedUser.uid) refreshPromiseRef.current = null;
+        if (authGenerationRef.current === generation && refreshPromiseRef.current?.uid === expectedUser.uid) refreshPromiseRef.current = null;
       }
     })();
     refreshPromiseRef.current = { uid: expectedUser.uid, promise };
@@ -426,6 +455,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         appProfile,
+        profileError,
         loading,
         sessionState,
         isWarningModalOpen,

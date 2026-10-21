@@ -1,3 +1,4 @@
+import { useQuery } from '../../hooks/useService';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -5,7 +6,6 @@ import {
   AlertCircle, Building, Loader2, User, AlertTriangle,
 } from 'lucide-react';
 import services from '../../providers/factory';
-import type { Appointment } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -29,9 +29,6 @@ const STATUS_STYLES: Record<string, string> = {
 export const ScheduleDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [appointment, setAppointment] = useState<Appointment | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [responding, setResponding] = useState(false);
   const [responseError, setResponseError] = useState<string | null>(null);
   const [responseSuccess, setResponseSuccess] = useState<string | null>(null);
@@ -46,30 +43,18 @@ export const ScheduleDetailPage: React.FC = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const appt = await services.scheduler.getAppointmentById(id);
-      setAppointment(appt);
-    } catch (err: any) {
-      const code = err?.status ?? err?.statusCode;
-      if (code === 404) {
-        setError('This schedule could not be found. It may have been removed or the link is invalid.');
-      } else if (code === 403) {
-        setError('You do not have access to this schedule.');
-      } else {
-        setError('Failed to load schedule details. Please check your connection and try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const scheduleQuery = useQuery(() => services.scheduler.getAppointmentById(id!), ['schedules', 'detail', id], {
+    enabled: Boolean(id), staleTime: 30_000, pollInterval: false,
+  });
+  const appointment = scheduleQuery.data;
+  const loading = scheduleQuery.loading;
+  const load = scheduleQuery.refetch;
+  const code = (scheduleQuery.error as { status?: number; statusCode?: number })?.status
+    ?? (scheduleQuery.error as { statusCode?: number })?.statusCode;
+  const error = !scheduleQuery.error ? null : code === 404
+    ? 'This schedule could not be found. It may have been removed or the link is invalid.'
+    : code === 403 ? 'You do not have access to this schedule.'
+    : 'Failed to load schedule details. Please check your connection and try again.';
 
   const fetchAvailableDates = useCallback(async () => {
     if (!appointment || !appointment.parishId || !appointment.rawEventType || !appointment.canProposeAlternativeDate) {
@@ -137,7 +122,7 @@ export const ScheduleDetailPage: React.FC = () => {
     setResponseSuccess(null);
     try {
       const updated = await services.scheduler.respondReschedule(appointment.id, accept, appointment.version);
-      setAppointment(updated);
+      scheduleQuery.setData(updated);
       setResponseSuccess(
         accept
           ? 'You have accepted the proposed reschedule. Your appointment is now confirmed.'

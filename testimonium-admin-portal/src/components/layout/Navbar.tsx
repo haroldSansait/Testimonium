@@ -1,3 +1,5 @@
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { queryClient, privateQueryKey, guardedQuery } from '@/services/queryClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, HelpCircle, Info, Menu } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -16,23 +18,26 @@ export function Navbar({ className, onOpenNavigation }: NavbarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const [unreadCount, setUnreadCount] = useState(0);
+  const notifications = useCachedQuery(['notifications'], () => NotificationService.getNotifications(), { enabled: false });
+  const unreadCount = (notifications.data ?? []).filter(n => !n.isRead).length;
   const [showHelp, setShowHelp] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
   const fetchUnread = useCallback(() => {
-    NotificationService.getNotifications()
-      .then((list) => {
-        setUnreadCount(list.filter((n) => !n.isRead).length);
-      })
-      .catch((err) => console.error('Failed to get notifications:', err));
+    void queryClient.fetchQuery({ queryKey: privateQueryKey('notifications'),
+      queryFn: guardedQuery(() => NotificationService.getNotifications()), staleTime: 30_000,
+    }).catch(() => {});
   }, []);
-
+  const refreshUnread = notifications.refetch;
   useEffect(() => {
     fetchUnread();
-    window.addEventListener('notifications-updated', fetchUnread);
-    return () => window.removeEventListener('notifications-updated', fetchUnread);
   }, [fetchUnread, pathname]);
+  useEffect(() => {
+    const refresh = () => { void refreshUnread(true); };
+    window.addEventListener('notifications-updated', refresh);
+    return () => window.removeEventListener('notifications-updated', refresh);
+  }, [refreshUnread]);
+
 
   return (
     <header

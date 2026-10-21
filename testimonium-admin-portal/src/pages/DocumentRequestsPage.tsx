@@ -1,3 +1,5 @@
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import type { SetStateAction } from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -1423,42 +1425,25 @@ export function DocumentRequestsPage() {
   const [documentType, setDocumentType] = useState<DocumentType | 'all'>('all');
   const [status, setStatus] = useState<DocumentStatus | 'all'>('all');
   const [page, setPage] = useState(1);
-  const [requests, setRequests] = useState<DocumentRequest[]>([]);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<DocumentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
 
   const PAGE_SIZE = 5;
 
-  const fetchRequests = useCallback(async (silent = false) => {
-    if (!silent) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const result = await getDocumentRequests({ search, documentType, status, page, pageSize: PAGE_SIZE });
-      setRequests(result.data);
-      setTotal(result.total);
-      setTotalPages(result.totalPages);
-    } catch (err: any) {
-      console.error('Failed to load document requests:', err);
-      if (!silent) {
-        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
-      }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [search, documentType, status, page]);
-
-  useEffect(() => {
-    void fetchRequests(false);
-  }, [fetchRequests]);
+  const filters = { search, documentType, status, page, pageSize: PAGE_SIZE };
+  const requestQuery = useCachedQuery(['requests', 'list', filters], () => getDocumentRequests(filters), {
+    enabled: !selectedRequest && !isMutating,
+  });
+  const requests = requestQuery.data?.data ?? [];
+  const total = requestQuery.data?.total ?? 0;
+  const totalPages = requestQuery.data?.totalPages ?? 1;
+  const isLoading = requestQuery.loading;
+  const error = requestQuery.error;
+  const fetchRequests = requestQuery.refetch;
+  const setRequests = (update: SetStateAction<DocumentRequest[]>) => requestQuery.setData(previous => previous ? {
+    ...previous, data: typeof update === 'function' ? update(previous.data) : update,
+  } : previous);
 
   // Set up auto-refresh polling (every 60 seconds), paused when loading, when modal is active, or when mutating
   useAutoRefresh(
@@ -1601,9 +1586,9 @@ export function DocumentRequestsPage() {
           onClose={() => setSelectedRequest(null)}
           onStatusChange={handleStatusUpdate}
           onRefetchRequest={async () => {
-            const result = await getDocumentRequests({ search, documentType, status, page, pageSize: PAGE_SIZE });
-            setRequests(result.data);
-            const fresh = result.data.find(r => r.id === selectedRequest.id);
+            const result = await fetchRequests(true);
+            if (result?.error) throw result.error;
+            const fresh = result?.data?.data.find(r => r.id === selectedRequest.id);
             if (fresh) setSelectedRequest(fresh);
           }}
           canManage={canManage}

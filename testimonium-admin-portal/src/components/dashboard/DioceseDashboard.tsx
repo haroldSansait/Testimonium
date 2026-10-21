@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useDashboardPreload } from '@/hooks/useDashboardPreload';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import {
@@ -12,7 +14,7 @@ import { DioceseDashboardService } from '@/services/DioceseDashboardService';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
-import type { DioceseStat, DioceseActivity, DioceseNotification, StatCardData } from '@/types';
+import type { DioceseActivity, DioceseNotification, StatCardData } from '@/types';
 
 // ─── Shared Detail Modal for Activity ─────────────────────────────────────────
 
@@ -186,46 +188,24 @@ function DioceseNotifications({ items }: DioceseNotificationsProps) {
 // ─── DioceseDashboard (main) ─────────────────────────────────────────────────
 
 export function DioceseDashboard() {
-  const [stats, setStats] = useState<DioceseStat[]>([]);
-  const [activity, setActivity] = useState<DioceseActivity[]>([]);
-  const [notifications, setNotifications] = useState<DioceseNotification[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<DioceseActivity | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dashboard = useCachedQuery(['diocese'], async () => {
+    const [stats, activity, notifications] = await Promise.all([
+      DioceseDashboardService.getStats(), DioceseDashboardService.getRecentActivity(), DioceseDashboardService.getNotifications(),
+    ]);
+    return { stats, activity, notifications };
+  }, { enabled: !selectedActivity });
+  const stats = dashboard.data?.stats ?? [];
+  const activity = dashboard.data?.activity ?? [];
+  const notifications = dashboard.data?.notifications ?? [];
+  const isLoading = dashboard.loading;
+  const error = dashboard.error;
+  const loadData = dashboard.refetch;
+  useDashboardPreload(dashboard.isSuccess);
 
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-
-  const loadData = useCallback(async (silent = false) => {
-    if (!silent) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const [s, a, n] = await Promise.all([
-        DioceseDashboardService.getStats(),
-        DioceseDashboardService.getRecentActivity(),
-        DioceseDashboardService.getNotifications(),
-      ]);
-      setStats(s);
-      setActivity(a);
-      setNotifications(n);
-    } catch (err: any) {
-      console.error('Failed to load dashboard data:', err);
-      if (!silent) {
-        setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
-      }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadData(false);
-  }, [loadData]);
 
   // Set up auto-refresh polling (every 60 seconds)
   useAutoRefresh(

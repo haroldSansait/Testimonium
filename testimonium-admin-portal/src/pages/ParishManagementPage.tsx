@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Pencil, Archive, X, Check, Church } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -530,15 +531,12 @@ export function ParishManagementPage() {
   const { role } = useAuth();
   const isDioceseCoordinator = role === 'DIOCESE_COORDINATOR';
 
-  const [parishes, setParishes] = useState<Parish[]>([]);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('all');
   const [status, setStatus] = useState('all');
   const [modal, setModal] = useState<ModalState>({ type: 'none' });
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Auto-dismiss toast after 3 s
   useEffect(() => {
@@ -550,23 +548,14 @@ export function ParishManagementPage() {
   const showToast = (message: string, type: 'success' | 'error' = 'success') =>
     setToast({ message, type });
 
-  const fetchParishes = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await ParishManagementService.getParishes({ search, type, status });
-      setParishes(result);
-    } catch (err: any) {
-      console.error('Failed to load parishes:', err);
-      setError(err?.message || 'Failed to connect to the backend server. Please verify your connection.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [search, type, status]);
-
-  useEffect(() => {
-    void fetchParishes();
-  }, [fetchParishes]);
+  const filters = { search, type, status };
+  const parishQuery = useCachedQuery(['parishes', 'list', filters], () => ParishManagementService.getParishes(filters), {
+    staleTime: 600_000, enabled: modal.type === 'none' && !isSaving,
+  });
+  const parishes = parishQuery.data ?? [];
+  const isLoading = parishQuery.loading;
+  const error = parishQuery.error;
+  const fetchParishes = parishQuery.refetch;
 
   // ── Wizard finish → addParish ──────────────────────────────────────────────
 

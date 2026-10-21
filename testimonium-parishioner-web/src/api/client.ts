@@ -1,5 +1,6 @@
 import { auth } from "../firebaseConfig";
 import { SessionService } from "../services/SessionService";
+import { mutationCache, getSessionSignal } from '../services/queryClient';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
 
@@ -22,6 +23,10 @@ interface RequestOptions extends RequestInit {
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const sessionSignal = getSessionSignal();
+  const requestUser = auth.currentUser;
+  const mutation = options.method && options.method !== 'GET' ? mutationCache(endpoint) : null;
+  await mutation?.cancel();
   const url = new URL(`${BASE_URL}${endpoint}`);
 
   // Query parameters mapping
@@ -37,9 +42,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const headers = new Headers(options.headers || {});
 
   // Firebase token injection
-  if (auth.currentUser) {
+  if (requestUser) {
     try {
-      const token = await auth.currentUser.getIdToken();
+      const token = await requestUser.getIdToken();
       headers.set("Authorization", `Bearer ${token}`);
     } catch (err) {
       console.warn("[API Client] Failed to retrieve Firebase ID token:", err);
@@ -54,6 +59,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const response = await fetch(url.toString(), {
     ...options,
     headers,
+    signal: options.signal ? AbortSignal.any([sessionSignal, options.signal]) : sessionSignal,
   });
 
   let responseData: any = {};
@@ -72,6 +78,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     }
   }
 
+  sessionSignal.throwIfAborted();
   if (!isOk) {
     if (response.status === 401) {
       // Trigger clean idempotent logout on 401 unauth response
@@ -86,10 +93,12 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     );
   }
 
+  await mutation?.invalidate();
   return responseData.data !== undefined ? responseData.data : (responseData as T);
 }
 
 async function requestBlob(endpoint: string): Promise<Blob> {
+  const sessionSignal = getSessionSignal();
   const url = new URL(`${BASE_URL}${endpoint}`);
   const headers = new Headers();
 
@@ -101,7 +110,8 @@ async function requestBlob(endpoint: string): Promise<Blob> {
     }
   }
 
-  const response = await fetch(url.toString(), { method: "GET", headers });
+  const response = await fetch(url.toString(), { method: "GET", headers, signal: sessionSignal });
+  sessionSignal.throwIfAborted();
   if (!response.ok) {
     let responseData: any = {};
     try {
@@ -109,6 +119,7 @@ async function requestBlob(endpoint: string): Promise<Blob> {
     } catch {
       responseData = { message: "Secure file could not be loaded." };
     }
+    sessionSignal.throwIfAborted();
     if (response.status === 401) {
       SessionService.logout('expired');
     }

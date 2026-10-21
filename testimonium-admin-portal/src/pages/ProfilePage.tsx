@@ -1,3 +1,5 @@
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { useRef } from 'react';
 import { useState, useEffect } from 'react';
 import {
   User,
@@ -154,9 +156,6 @@ interface ProfileData {
 export function ProfilePage() {
   const { applicationUser, currentUser, refreshUser } = useAuth();
 
-  const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -168,31 +167,22 @@ export function ProfilePage() {
   const [resetBanner, setResetBanner] = useState<{ message: string; isError: boolean } | null>(null);
 
   // ── Fetch full profile from backend ────────────────────────────────────
+  const profileQuery = useCachedQuery(['profile'], async () => {
+    const response = await api.get<{ data: any }>('/auth/profile');
+    const d = response.data.data;
+    return { fullName: d.fullName || '', contactNumber: d.contactNumber || '', email: d.email || '',
+      role: d.role || '', parishName: d.parish?.parishName || '' } as ProfileData;
+  }, { enabled: !saving });
+  const profileData = profileQuery.data;
+  const loading = profileQuery.loading;
+  const loadError = profileQuery.error;
+  const initialized = useRef(false);
   useEffect(() => {
-    const fetchProfile = async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const response = await api.get<{ data: any }>('/auth/profile');
-        const d = response.data.data;
-        const data: ProfileData = {
-          fullName: d.fullName || '',
-          contactNumber: d.contactNumber || '',
-          email: d.email || '',
-          role: d.role || '',
-          parishName: d.parish?.parishName || '',
-        };
-        setProfileData(data);
-        setFullName(data.fullName);
-        setContactNumber(data.contactNumber);
-      } catch (err: any) {
-        setLoadError(err?.message || 'Failed to load profile. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void fetchProfile();
-  }, []);
+    if (!profileData || initialized.current) return;
+    initialized.current = true;
+    setFullName(profileData.fullName);
+    setContactNumber(profileData.contactNumber);
+  }, [profileData]);
 
   // ── Save profile ────────────────────────────────────────────────────────
   const handleSave = async (e: React.FormEvent) => {

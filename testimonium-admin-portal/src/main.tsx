@@ -9,6 +9,8 @@ import { AppRouter } from '@/routes/AppRouter';
 import { SessionWarningModal } from '@/components/modals/SessionWarningModal';
 import { useAuth } from '@/hooks/useAuth';
 import '@/index.css';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/services/queryClient';
 
 // Initialize Axios interceptors once at startup.
 setupInterceptors();
@@ -42,7 +44,7 @@ if (!rootElement) throw new Error('Root element not found');
 
 createRoot(rootElement).render(
   <StrictMode>
-    <BrowserRouter>
+    <QueryClientProvider client={queryClient}><BrowserRouter>
       <SubmissionProtectionProvider>
         <AuthProvider>
           <TooltipProvider delayDuration={300} skipDelayDuration={150}>
@@ -50,6 +52,6 @@ createRoot(rootElement).render(
           </TooltipProvider>
         </AuthProvider>
       </SubmissionProtectionProvider>
-    </BrowserRouter>
+    </BrowserRouter></QueryClientProvider>
   </StrictMode>
 );
