@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "nodemon server.js",
         "start": "node server.js",
+        "test:android-push": "node --test --test-isolation=none scripts/android_push.test.js",
         "test:phase4": "node --test --test-isolation=none scripts/phase4_scheduling_foundation.test.js scripts/phase4_blocker_corrections.test.js",
         "test:lay-minister": "node --test --test-isolation=none scripts/lay_minister_fallback.test.js",
         "test:phase4:db": "node --test scripts/phase4_db_concurrency.test.js",

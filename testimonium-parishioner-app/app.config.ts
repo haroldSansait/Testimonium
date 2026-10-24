@@ -19,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: "com.testimonium.app",
     googleServicesFile: "./google-services.json",
-    permissions: ["CAMERA"],
+    permissions: ["CAMERA", "POST_NOTIFICATIONS"],
   },
 
   extra: {
@@ -31,6 +31,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
 
   plugins: [
+    ["expo-notifications", { defaultChannel: "testimonium-important", color: "#153E35" }],
     "expo-router",
     [
       "expo-build-properties",

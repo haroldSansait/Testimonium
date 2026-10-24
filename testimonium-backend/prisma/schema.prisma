@@ -335,6 +335,7 @@ model User {
   assignedSchedules             Schedule[]                    @relation("SchedulePriestAssignment")
   requestedSchedules            Schedule[]                    @relation("ScheduleRequestedPriest")
   availabilities                ParishAvailability[]
+  pushDevices                   PushDevice[]
   notifications                 Notification[]
   updatedFaqEntries             FaqKnowledgeBase[]            @relation("FaqUpdater")
   chatbotLogs                   ChatbotLog[]
@@ -798,6 +799,37 @@ model ParishAvailability {
   @@map("parish_availabilities")
 }
 
+model PushDevice {
+  id                  String @id @default(uuid())
+  token               String @unique @db.VarChar(2048)
+  userId              Int @map("user_id")
+  afterNotificationId Int @map("after_notification_id")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+  user                User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries          PushDelivery[]
+
+  @@index([userId])
+  @@map("push_devices")
+}
+
+model PushDelivery {
+  notificationId Int @map("notification_id")
+  deviceId       String @map("device_id")
+  status         String @default("QUEUED") @db.VarChar(20)
+  attempts       Int @default(0)
+  nextAttemptAt  DateTime @default(now()) @map("next_attempt_at")
+  leaseUntil     DateTime? @map("lease_until")
+  claimToken     String? @map("claim_token")
+  sentAt         DateTime? @map("sent_at")
+  lastErrorCode  String? @map("last_error_code") @db.VarChar(100)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  device         PushDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, deviceId])
+  @@index([status, nextAttemptAt])
+  @@map("push_deliveries")
+}
+
 model Notification {
   id            Int                        @id @default(autoincrement()) @map("notification_id")
   userId        Int                        @map("user_id")
@@ -808,6 +840,8 @@ model Notification {
   readAt        DateTime?                  @map("read_at")
   dateSent      DateTime                   @default(now()) @map("date_sent")
   createdAt     DateTime                   @default(now()) @map("created_at")
+  pushEvent     String?                    @map("push_event") @db.VarChar(100)
+  pushDeliveries PushDelivery[]
   referenceType NotificationReferenceType? @map("reference_type")
   referenceId   Int?                       @map("reference_id")
   user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -815,6 +849,7 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([dateSent])
+  @@index([pushEvent, id])
   @@map("notifications")
 }
 

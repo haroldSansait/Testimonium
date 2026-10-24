@@ -20,6 +20,7 @@ import { firebaseAuth } from "@/services/firebase";
 import { queryClient } from "@/services/queryClient";
 import { devDiagnostic, safeErrorDetails } from "@/services/devDiagnostics";
 import { clearCaloyStorage } from "@/features/caloy/caloyStorage";
+import { stopAndroidPush } from "@/features/notifications/nativePush";
 import type {
   AuthBootstrapState,
   BackendUserProfile,
@@ -99,6 +100,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const resetLocalState = useCallback(async () => {
     const priorUid = uidRef.current;
+    const pushCleanup = stopAndroidPush();
     if (priorUid) {
       await clearCaloyStorage(priorUid);
     }
@@ -117,6 +119,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsRegistrationSession(false);
       setState("NO_FIREBASE_USER");
     }
+    await pushCleanup;
   }, []);
 
   const commitProfile = useCallback(

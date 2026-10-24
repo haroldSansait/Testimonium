@@ -348,6 +348,7 @@ export class NotificationDispatcher {
     );
     payloads.push({
       userId: parishionerId,
+      pushEvent: `DOCUMENT:${newStatus}`,
       title: parishionerTemplate.title,
       message: parishionerTemplate.message,
       type: "IN_APP",
@@ -555,6 +556,7 @@ export class NotificationDispatcher {
     const template = ReceiptTemplates.parishionerLowConfidence(trackingNumber);
     const payloads = [{
       userId: parishionerId,
+      pushEvent: "PAYMENT:QUALITY_FAILED",
       title: template.title,
       message: template.message,
       type: "IN_APP",
@@ -608,6 +610,7 @@ export class NotificationDispatcher {
     const p = ScheduleTemplates.parishioner(displayTitle, newStatus);
     payloads.push({
       userId: parishionerId,
+      pushEvent: `SCHEDULE:${newStatus}`,
       title: p.title,
       message: p.message,
       type: "IN_APP",
@@ -717,6 +720,7 @@ export class NotificationDispatcher {
     if (parishionerId) {
       payloads.push({
         userId: parishionerId,
+        pushEvent: "SCHEDULE:EMERGENCY_RESCHEDULE",
         title: "Appointment Rescheduled",
         message: `Your appointment for "${displayTitle}" has been rescheduled to ${newDate} at ${newSlot}. Reason: ${reason}`,
         type: "IN_APP",
@@ -841,6 +845,7 @@ export class NotificationDispatcher {
       if (!parishionerId) return;
       payloads.push({
         userId: parishionerId,
+        pushEvent: `ALTERNATIVE:${event}`,
         title,
         message,
         type: "IN_APP",

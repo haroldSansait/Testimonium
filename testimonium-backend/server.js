@@ -41,6 +41,7 @@ import caloyAdminRoutes from "./routes/caloyAdminRoutes.js";
 import governmentIdVerificationRoutes from "./routes/governmentIdVerificationRoutes.js";
 import legalPolicyRoutes from "./routes/legalPolicyRoutes.js";
 import { EmailOutboxWorker } from "./services/EmailOutboxWorker.js";
+import { pushDeliveryWorker } from "./services/PushDeliveryWorker.js";
 import { knowledgeEmbeddingWorker } from "./services/KnowledgeEmbeddingWorker.js";
 import { caloyTelemetryRetentionWorker } from "./services/CaloyTelemetryRetentionWorker.js";
 import { RegistrantIdOcrWorker } from "./services/RegistrantIdOcrWorker.js";
@@ -259,6 +260,7 @@ const server = app.listen(env.port, () => {
   logRateLimitSummary();
   validateParishesOnStartup();
   EmailOutboxWorker.start();
+  pushDeliveryWorker.start();
   knowledgeEmbeddingWorker.start();
   caloyTelemetryRetentionWorker.start();
   RegistrantIdOcrWorker.start();
@@ -278,6 +280,7 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
     logger.info("[TESTIMONIUM] HTTP server closed.");
     try {
       await EmailOutboxWorker.stop();
+      await pushDeliveryWorker.stop();
       await knowledgeEmbeddingWorker.stop();
       await caloyTelemetryRetentionWorker.stop();
       await RegistrantIdOcrWorker.stop();

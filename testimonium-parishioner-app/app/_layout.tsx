@@ -8,12 +8,14 @@ import { FeedbackProvider } from '@/providers/FeedbackProvider';
 import { ProductIntroProvider, useProductIntro } from '@/providers/ProductIntroProvider';
 import { getProtectedRouteGuards } from '@/services/auth/guards';
 import { queryClient } from '@/services/queryClient';
+import { useAndroidPush } from '@/features/notifications/useAndroidPush';
 
 void SplashScreen.preventAutoHideAsync();
 
 const Router = () => {
   const { state } = useAuth();
   const { introCompleted } = useProductIntro();
+  useAndroidPush(introCompleted === true);
 
   const isResolving =
     introCompleted === null ||
