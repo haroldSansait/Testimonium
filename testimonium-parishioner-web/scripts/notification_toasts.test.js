@@ -22,42 +22,27 @@ const createNotification = (id, overrides = {}) => ({
   ...overrides
 });
 
-describe('In-App Notification Toast System', () => {
-  // 1. Initial unread notifications do not cause a popup flood
-  it('1. Initial unread notifications establish baseline and do not cause a popup flood', () => {
-    const historicalNotifications = Array.from({ length: 15 }, (_, i) =>
-      createNotification(`hist-${i + 1}`, { read: false })
-    );
-
-    // Simulated baseline arrival tracking
-    const seenNotificationIds = new Set();
-    const newlyArrivedIds = []; // On baseline load, newlyArrivedIds is empty
-
-    // When newlyArrivedIds is empty, all current notifications are recorded as seen without toasting
-    if (newlyArrivedIds.length === 0) {
-      historicalNotifications.forEach(n => seenNotificationIds.add(n.id));
-    }
-
-    // Filter genuinely new arrivals
-    const genuinelyNew = newlyArrivedIds.filter(id => !seenNotificationIds.has(id));
-
-    let state = { visible: [], queue: [], overflowCount: 0 };
-    if (genuinelyNew.length > 0) {
-      const itemsToToast = genuinelyNew.map(id => historicalNotifications.find(n => n.id === id));
-      state = toastLayerReducer(state, {
-        type: 'ENQUEUE_ARRIVALS',
-        items: itemsToToast,
-        maxVisible: MAX_VISIBLE_DESKTOP
+describe('Notification toast reducer and navigation regressions', () => {
+  it('login backlog reuses the queue for its third mobile item and summarizes the unqueued remainder', () => {
+    const items = [createNotification('newest'), createNotification('second'), createNotification('third')];
+    for (const maxVisible of [MAX_VISIBLE_DESKTOP, MAX_VISIBLE_MOBILE]) {
+      const state = toastLayerReducer({ visible: [], queue: [], overflowCount: 0 }, {
+        type: 'ENQUEUE_LOGIN_BACKLOG', items, remainingCount: 5, maxVisible,
       });
+      assert.equal(state.visible.length, maxVisible);
+      assert.deepEqual(state.queue.map(n => n.id), maxVisible === MAX_VISIBLE_MOBILE ? ['third'] : []);
+      assert.equal(state.overflowCount, 5);
+      assert.equal(state.loginOverflow, true);
+      const next = toastLayerReducer(state, { type: 'ENQUEUE_ARRIVALS', items: [createNotification('live')], maxVisible });
+      assert.equal(next.loginOverflow, true, 'Live arrivals preserve the pending login summary');
+      assert.equal(next.overflowCount, 5);
+      const dismissed = toastLayerReducer(next, { type: 'DISMISS_OVERFLOW' });
+      assert.equal(dismissed.overflowCount, 0);
+      assert.equal(dismissed.loginOverflow, false);
     }
-
-    assert.equal(state.visible.length, 0, 'No visible toasts should appear from historical baseline');
-    assert.equal(state.queue.length, 0, 'No queued toasts should appear from historical baseline');
-    assert.equal(seenNotificationIds.size, 15, 'All 15 historical notifications were recorded in baseline');
   });
-
-  // 2. One genuinely new unread notification produces one toast
-  it('2. One genuinely new unread notification produces one toast', () => {
+  // The real provider-to-toast delivery is tested in notification_integration.test.js.
+  it('ENQUEUE_ARRIVALS renders one reducer item with the seven-second duration', () => {
     let state = { visible: [], queue: [], overflowCount: 0 };
     const notif = createNotification('new-1', { read: false, title: 'Document Approved' });
 
@@ -74,42 +59,25 @@ describe('In-App Notification Toast System', () => {
     assert.equal(state.queue.length, 0);
   });
 
-  // 3. Duplicate polls do not generate duplicate toasts
-  it('3. Duplicate polls and repeated renders do not generate duplicate toasts', () => {
-    const seenNotificationIds = new Set();
-    let state = { visible: [], queue: [], overflowCount: 0 };
-
-    const notif = createNotification('poll-item-1', { read: false });
-
-    // Poll 1: arrival detected
-    const poll1Arrivals = ['poll-item-1'];
-    const newFromPoll1 = poll1Arrivals.filter(id => !seenNotificationIds.has(id));
-    newFromPoll1.forEach(id => seenNotificationIds.add(id));
-
-    state = toastLayerReducer(state, {
-      type: 'ENQUEUE_ARRIVALS',
-      items: [notif],
-      maxVisible: MAX_VISIBLE_DESKTOP
+  it('deduplicates repeated delivery against visible and queued notifications', () => {
+    const items = Array.from({ length: 5 }, (_, i) => createNotification(`duplicate-${i}`));
+    const state = toastLayerReducer({ visible: [], queue: [], overflowCount: 0 }, {
+      type: 'ENQUEUE_ARRIVALS', items, maxVisible: MAX_VISIBLE_DESKTOP,
     });
+    assert.equal(toastLayerReducer(state, { type: 'ENQUEUE_ARRIVALS', items, maxVisible: MAX_VISIBLE_DESKTOP }), state);
+  });
 
-    assert.equal(state.visible.length, 1);
-
-    // Poll 2 (30 seconds later): query returns the same notification
-    const poll2Arrivals = ['poll-item-1'];
-    const newFromPoll2 = poll2Arrivals.filter(id => !seenNotificationIds.has(id));
-
-    // Because 'poll-item-1' is already in seenNotificationIds, newFromPoll2 is empty
-    assert.equal(newFromPoll2.length, 0);
-
-    // Even if reducer was called with the same notification item, reducer deduplicates against visible and queue
-    state = toastLayerReducer(state, {
-      type: 'ENQUEUE_ARRIVALS',
-      items: [notif],
-      maxVisible: MAX_VISIBLE_DESKTOP
+  it('shrinking and expanding an existing stack preserve accepted notifications and FIFO order', () => {
+    const items = Array.from({ length: 8 }, (_, i) => createNotification(`resize-${i}`));
+    const desktop = toastLayerReducer({ visible: [], queue: [], overflowCount: 0 }, {
+      type: 'ENQUEUE_ARRIVALS', items, maxVisible: MAX_VISIBLE_DESKTOP,
     });
-
-    assert.equal(state.visible.length, 1, 'Still only 1 visible toast, no duplicates');
-    assert.equal(state.queue.length, 0, 'No duplicate in queue');
+    const mobile = toastLayerReducer(desktop, { type: 'SET_MAX_VISIBLE', maxVisible: MAX_VISIBLE_MOBILE });
+    assert.equal(mobile.visible.length, MAX_VISIBLE_MOBILE);
+    assert.deepEqual([...mobile.visible.map(t => t.notification.id), ...mobile.queue.map(n => n.id)], items.map(n => n.id));
+    const expanded = toastLayerReducer(mobile, { type: 'SET_MAX_VISIBLE', maxVisible: MAX_VISIBLE_DESKTOP });
+    assert.deepEqual(expanded.visible.map(t => t.notification.id), items.slice(0, 3).map(n => n.id));
+    assert.deepEqual(expanded.queue.map(n => n.id), items.slice(3).map(n => n.id));
   });
 
   // 4. Three simultaneous notifications are handled correctly
@@ -300,39 +268,6 @@ describe('In-App Notification Toast System', () => {
     assert.equal(getNotificationUrl(brokenRefNotif), '/dashboard/notifications?notificationId=broken-1');
   });
 
-  // 12. Clicking an unread notification uses existing mark-as-read behavior
-  it('12. Clicking a toast marks unread notification as read and removes only that toast', async () => {
-    const notif = createNotification('click-read-1', { read: false, referenceType: 'DOCUMENT_REQUEST', referenceId: 101 });
-    let markAsReadCalledWith = null;
-    const markAsRead = async (id) => {
-      markAsReadCalledWith = id;
-      notif.read = true;
-    };
-
-    let state = {
-      visible: [
-        { notification: notif, remainingMs: 5000, lastResumedAt: Date.now(), isHovered: false, isFocused: false }
-      ],
-      queue: [],
-      overflowCount: 0
-    };
-
-    // User clicks toast
-    if (!notif.read) {
-      await markAsRead(notif.id);
-    }
-    state = toastLayerReducer(state, {
-      type: 'REMOVE_VISIBLE',
-      id: notif.id,
-      maxVisible: MAX_VISIBLE_DESKTOP
-    });
-
-    assert.equal(markAsReadCalledWith, 'click-read-1');
-    assert.equal(notif.read, true);
-    assert.equal(state.visible.length, 0);
-    assert.equal(getNotificationUrl(notif), '/dashboard/track?requestId=101');
-  });
-
   // 13. Login/logout/account switching clears stale notification toast state
   it('13. Session transition (RESET) completely wipes visible, queued, and overflow state', () => {
     let state = {
@@ -393,35 +328,4 @@ describe('In-App Notification Toast System', () => {
     assert.ok(state.visible[0].lastResumedAt !== null, 'Timers resume when tab returns to visible');
   });
 
-  // 15. Existing general application toasts in ToastContext remain functional
-  it('15. Existing ToastContext items operate independently from notification toasts', () => {
-    // Ordinary app toasts use type: success | error | warning | info and a single string message
-    const appToasts = [
-      { id: 'app-toast-1', type: 'success', message: 'Profile updated successfully', duration: 4000 },
-      { id: 'app-toast-2', type: 'error', message: 'Failed to upload document', duration: 5000 }
-    ];
-
-    assert.equal(appToasts[0].type, 'success');
-    assert.equal(appToasts[1].type, 'error');
-    // Notification toasts have distinct AppNotification structures and top-right positioning
-    const notifToast = createNotification('notif-app-1', { title: 'New Status', message: 'Approved' });
-    assert.ok(notifToast.id);
-    assert.ok(notifToast.title);
-    assert.ok(notifToast.type);
-  });
-
-  // 16. Existing notification polling and QueryClient behavior are preserved
-  it('16. Notification polling configuration stays at 30s with unmutated TanStack query options', () => {
-    const pollConfig = {
-      staleTime: 30_000,
-      pollInterval: 30_000,
-      requireFocus: false,
-      respectPause: false
-    };
-
-    assert.equal(pollConfig.pollInterval, 30_000);
-    assert.equal(pollConfig.staleTime, 30_000);
-    assert.equal(pollConfig.requireFocus, false);
-    assert.equal(pollConfig.respectPause, false);
-  });
 });

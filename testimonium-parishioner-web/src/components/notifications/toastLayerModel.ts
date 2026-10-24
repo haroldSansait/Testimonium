@@ -17,11 +17,14 @@ export interface ToastLayerState {
   visible: ToastItem[];
   queue: AppNotification[];
   overflowCount: number;
+  loginOverflow?: boolean;
 }
 
 export type ToastLayerAction =
   | { type: 'ENQUEUE_ARRIVALS'; items: AppNotification[]; maxVisible: number }
+  | { type: 'ENQUEUE_LOGIN_BACKLOG'; items: AppNotification[]; remainingCount: number; maxVisible: number }
   | { type: 'REMOVE_VISIBLE'; id: string; maxVisible: number }
+  | { type: 'SET_MAX_VISIBLE'; maxVisible: number }
   | { type: 'PAUSE_TOAST'; id: string; isHovered?: boolean; isFocused?: boolean }
   | { type: 'RESUME_TOAST'; id: string; isHovered?: boolean; isFocused?: boolean }
   | { type: 'PAUSE_ALL' }
@@ -34,6 +37,22 @@ export const toastLayerReducer = (
   action: ToastLayerAction
 ): ToastLayerState => {
   switch (action.type) {
+    case 'ENQUEUE_LOGIN_BACKLOG':
+      return {
+        ...toastLayerReducer(state, { type: 'ENQUEUE_ARRIVALS', items: action.items, maxVisible: action.maxVisible }),
+        overflowCount: state.overflowCount + action.remainingCount,
+        loginOverflow: action.remainingCount > 0,
+      };
+    case 'SET_MAX_VISIBLE': {
+      // Keep FIFO order when shrinking; previously accepted cards precede the queue.
+      const visible = state.visible.slice(0, action.maxVisible);
+      const queue = [...state.visible.slice(action.maxVisible).map(item => item.notification), ...state.queue];
+      while (visible.length < action.maxVisible && queue.length > 0) {
+        visible.push({ notification: queue.shift()!, remainingMs: TOAST_DURATION_MS,
+          lastResumedAt: Date.now(), isHovered: false, isFocused: false });
+      }
+      return { ...state, visible, queue };
+    }
     case 'ENQUEUE_ARRIVALS': {
       const existingIds = new Set([
         ...state.visible.map(t => t.notification.id),
@@ -69,6 +88,7 @@ export const toastLayerReducer = (
       }
 
       return {
+        ...state,
         visible: nextVisible,
         queue: nextQueue,
         overflowCount: nextOverflow
@@ -175,7 +195,8 @@ export const toastLayerReducer = (
     case 'DISMISS_OVERFLOW':
       return {
         ...state,
-        overflowCount: 0
+        overflowCount: 0,
+        loginOverflow: false
       };
 
     case 'RESET':

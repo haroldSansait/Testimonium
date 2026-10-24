@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { 
   Bell, 
   Check, 
@@ -26,6 +26,7 @@ import type { AppNotification } from '../../types';
 
 export const NotificationsPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const targetNotificationId = searchParams.get('notificationId');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -43,40 +44,41 @@ export const NotificationsPage: React.FC = () => {
   } = useNotifications();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread'>('all');
+  const targetNotification = notifications.find(n => n.id === targetNotificationId);
+
+  useEffect(() => { setHighlightedId(null); }, [location.key]);
 
   // Handle deep-linked notificationId by ensuring visibility, scrolling into view, and highlighting
   useEffect(() => {
-    if (!targetNotificationId || loading || notifications.length === 0) return;
-    if (scrolledTargetRef.current === targetNotificationId) return;
-
-    const target = notifications.find(n => n.id === targetNotificationId);
-    if (!target) return; // Gracefully fall back if referenced notification is not present
+    if (!targetNotificationId || loading || error || !targetNotification) return;
+    if (scrolledTargetRef.current === location.key) return;
 
     // Ensure the targeted item is visible even if user is currently on unread tab and item is read
-    if (target.read && activeFilter === 'unread') {
+    if (targetNotification.read && activeFilter === 'unread') {
       setActiveFilter('all');
+      return; // Schedule the scroll after the all-notifications render commits.
     }
-
-    scrolledTargetRef.current = targetNotificationId;
-    setHighlightedId(targetNotificationId);
 
     const timer = setTimeout(() => {
       const element = document.getElementById(`notification-${targetNotificationId}`);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        element.focus();
+        element.focus({ preventScroll: true });
+        // A cancelled timer must never mark a deep link as handled.
+        scrolledTargetRef.current = location.key;
+        setHighlightedId(targetNotificationId);
       }
     }, 150);
 
-    const clearHighlightTimer = setTimeout(() => {
-      setHighlightedId(null);
-    }, 4000);
+    return () => clearTimeout(timer);
+  }, [targetNotificationId, location.key, loading, error, targetNotification, activeFilter]);
 
-    return () => {
-      clearTimeout(timer);
-      if (clearHighlightTimer) clearTimeout(clearHighlightTimer);
-    };
-  }, [targetNotificationId, loading, notifications, activeFilter]);
+  // Query updates must not cancel the eventual removal of a completed highlight.
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = setTimeout(() => setHighlightedId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
 
   const tabs: TabItem[] = [
     { id: 'all', label: 'All Notifications' },

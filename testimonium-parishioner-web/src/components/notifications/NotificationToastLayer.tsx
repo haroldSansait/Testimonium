@@ -55,7 +55,7 @@ const getNotificationIcon = (type: string) => {
 
 export const NotificationToastLayer: React.FC = () => {
   const navigate = useNavigate();
-  const { notifications, newlyArrivedIds, markAsRead } = useNotifications();
+  const { notifications, newlyArrivedIds, loginBacklog, markAsRead } = useNotifications();
   const { user } = useAuth();
 
   const [state, dispatch] = useReducer(toastLayerReducer, {
@@ -65,6 +65,7 @@ export const NotificationToastLayer: React.FC = () => {
   });
 
   const seenNotificationIds = useRef<Set<string>>(new Set());
+  const loginBacklogHandled = useRef(false);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const overflowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -84,6 +85,16 @@ export const NotificationToastLayer: React.FC = () => {
   }, []);
 
   const maxVisible = isMobile ? MAX_VISIBLE_MOBILE : MAX_VISIBLE_DESKTOP;
+  // Login summary is additional to the three desktop individuals. On mobile it
+  // waits for a free slot after the queued third item, keeping two visible cards.
+  const showOverflowCard = state.overflowCount > 0 &&
+    ((state.loginOverflow && !isMobile) || (state.visible.length < maxVisible && state.queue.length === 0));
+  const maxVisibleRef = useRef(maxVisible);
+  maxVisibleRef.current = maxVisible;
+
+  useEffect(() => {
+    dispatch({ type: 'SET_MAX_VISIBLE', maxVisible });
+  }, [maxVisible]);
 
   // Session reset: clear state if user logs out
   useEffect(() => {
@@ -113,17 +124,19 @@ export const NotificationToastLayer: React.FC = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  // Arrival detection & baseline establishing
+  useEffect(() => {
+    if (!user || !loginBacklog || loginBacklogHandled.current) return;
+    loginBacklogHandled.current = true;
+    loginBacklog.items.forEach(n => seenNotificationIds.current.add(n.id));
+    dispatch({ type: 'ENQUEUE_LOGIN_BACKLOG', ...loginBacklog, maxVisible });
+  }, [user, loginBacklog, maxVisible]);
+
+  // The provider alone detects arrivals and establishes the successful-query baseline.
+  // Consume its IDs once; never seed from a query render that precedes arrival publication.
   useEffect(() => {
     if (!user) return;
 
-    // 1. Initial baseline: when newlyArrivedIds is empty, seed seen IDs with all current notifications
-    if (!newlyArrivedIds || newlyArrivedIds.length === 0) {
-      notifications.forEach(n => seenNotificationIds.current.add(n.id));
-      return;
-    }
-
-    // 2. Genuinely new arrivals: filter out any ID that was already seen in this session
+    // Deduplicate delivery across highlights, rerenders and read-state updates.
     const genuinelyNew = newlyArrivedIds.filter(id => !seenNotificationIds.current.has(id));
     if (genuinelyNew.length === 0) return;
 
@@ -166,7 +179,7 @@ export const NotificationToastLayer: React.FC = () => {
       if (shouldRun && !hasTimer) {
         const timer = setTimeout(() => {
           timersRef.current.delete(item.notification.id);
-          dispatch({ type: 'REMOVE_VISIBLE', id: item.notification.id, maxVisible });
+          dispatch({ type: 'REMOVE_VISIBLE', id: item.notification.id, maxVisible: maxVisibleRef.current });
         }, item.remainingMs);
         timersRef.current.set(item.notification.id, timer);
       } else if (!shouldRun && hasTimer) {
@@ -179,12 +192,7 @@ export const NotificationToastLayer: React.FC = () => {
 
   // Auto-dismiss for the overflow summary card after 7 seconds
   useEffect(() => {
-    const showOverflow =
-      state.overflowCount > 0 &&
-      state.visible.length < maxVisible &&
-      state.queue.length === 0;
-
-    if (showOverflow) {
+    if (showOverflowCard) {
       if (!overflowTimerRef.current) {
         overflowTimerRef.current = setTimeout(() => {
           overflowTimerRef.current = null;
@@ -195,7 +203,7 @@ export const NotificationToastLayer: React.FC = () => {
       clearTimeout(overflowTimerRef.current);
       overflowTimerRef.current = null;
     }
-  }, [state.overflowCount, state.visible.length, state.queue.length, maxVisible]);
+  }, [showOverflowCard]);
 
   // Clean up all timers on unmount
   useEffect(() => {
@@ -244,11 +252,6 @@ export const NotificationToastLayer: React.FC = () => {
     dispatch({ type: 'DISMISS_OVERFLOW' });
   }, []);
 
-  const showOverflowCard =
-    state.overflowCount > 0 &&
-    state.visible.length < maxVisible &&
-    state.queue.length === 0;
-
   if (state.visible.length === 0 && !showOverflowCard) {
     return null;
   }
@@ -267,6 +270,7 @@ export const NotificationToastLayer: React.FC = () => {
           tabIndex={0}
           onClick={() => handleToastClick(toast.notification)}
           onKeyDown={e => {
+            if (e.target !== e.currentTarget) return;
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               handleToastClick(toast.notification);
@@ -281,9 +285,11 @@ export const NotificationToastLayer: React.FC = () => {
           onFocus={() =>
             dispatch({ type: 'PAUSE_TOAST', id: toast.notification.id, isFocused: true })
           }
-          onBlur={() =>
-            dispatch({ type: 'RESUME_TOAST', id: toast.notification.id, isFocused: false })
-          }
+          onBlur={e => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              dispatch({ type: 'RESUME_TOAST', id: toast.notification.id, isFocused: false });
+            }
+          }}
           className="pointer-events-auto bg-white border border-border/80 border-l-4 border-l-crimson rounded-card shadow-card hover:shadow-lg transition-all duration-200 cursor-pointer p-3.5 flex items-start gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson"
           aria-label={`Notification: ${toast.notification.title}. Click to view details.`}
         >
@@ -330,13 +336,14 @@ export const NotificationToastLayer: React.FC = () => {
           tabIndex={0}
           onClick={handleOverflowClick}
           onKeyDown={e => {
+            if (e.target !== e.currentTarget) return;
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               handleOverflowClick();
             }
           }}
           className="pointer-events-auto bg-white border border-border/80 border-l-4 border-l-crimson rounded-card shadow-card hover:shadow-lg transition-all duration-200 cursor-pointer p-3.5 flex items-center justify-between gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson"
-          aria-label={`${state.overflowCount} more new notifications. Click to open notification center.`}
+          aria-label={`${state.overflowCount} more ${state.loginOverflow ? 'unread' : 'new'} notifications. Click to open notification center.`}
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 bg-app-page rounded-button border border-border/40 flex-shrink-0">
@@ -344,7 +351,7 @@ export const NotificationToastLayer: React.FC = () => {
             </div>
             <div className="min-w-0">
               <h4 className="text-xs sm:text-sm font-semibold text-text-primary truncate group-hover:text-crimson transition-colors">
-                +{state.overflowCount} more new notification{state.overflowCount > 1 ? 's' : ''}
+                +{state.overflowCount} more {state.loginOverflow ? 'unread' : 'new'} notification{state.overflowCount > 1 ? 's' : ''}
               </h4>
               <p className="text-xs text-text-muted truncate">
                 Click to view all in Notification Center
