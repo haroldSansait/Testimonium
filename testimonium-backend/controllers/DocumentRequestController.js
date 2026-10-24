@@ -44,6 +44,24 @@ export const list = async (req, res, next) => {
   }
 };
 
+export const verifyCash = async (req, res, next) => {
+  try {
+    const id = parsePositiveId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ success: false, code: "INVALID_REQUEST_ID", message: "Invalid document request ID." });
+    }
+    const updated = await documentRequestService.verifyCash(
+      id, req.user.id, req.user.role, req.user.parish?.id || req.user.parishId
+    );
+    return res.status(200).json({ success: true, message: "Cash payment verified successfully.", data: updated });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, code: err.code, message: err.message });
+    }
+    return next(err);
+  }
+};
+
 export const updateStatus = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);

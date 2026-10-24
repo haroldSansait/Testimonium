@@ -180,6 +180,11 @@ const mapToFrontend = (dbItem: BackendDocumentRequestDTO): DocumentRequest => {
 };
 
 export const ApiDocumentProvider: DocumentProvider = {
+  async verifyCashPayment(id: string): Promise<DocumentRequest> {
+    const response = await api.post<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}/verify-cash`);
+    return mapToFrontend(response.data.data);
+  },
+
   async getDocumentRequests(
     filters: DocumentRequestFilters = {}
   ): Promise<PaginatedResponse<DocumentRequest>> {

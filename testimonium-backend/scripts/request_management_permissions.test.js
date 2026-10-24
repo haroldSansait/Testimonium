@@ -40,6 +40,7 @@ const scheduleBody = {
   proposedDate: "2099-10-20", targetDate: "2099-10-20", timeSlot: "09:00 AM", reason: "Pastoral scheduling conflict",
 };
 const mutations = [
+  [documents, "POST", "/1/verify-cash", {}, "verifyCash"],
   [documents, "PATCH", "/1/status", { status: "UNDER_REVIEW" }, "updateStatus"],
   [documents, "POST", "/1/corrected-document", {}, "uploadCorrectedDocument"],
   [schedules, "PATCH", "/1/status", scheduleBody, "updateStatus"],

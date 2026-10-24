@@ -41,6 +41,112 @@ export class DocumentRequestService {
   }
 
   /**
+   * Explicit staff-confirmed cash payment; ordinary receipt transitions stay separate.
+   */
+  async verifyCash(requestId, actorId, actorRole, actorParishId) {
+    const fail = (statusCode, message, code) => {
+      const error = new Error(message);
+      Object.assign(error, { statusCode, code });
+      throw error;
+    };
+    if (actorRole !== "SECRETARY") {
+      fail(403, "Unauthorized to verify cash payments.");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // Use the same request lock as receipt upload, serializing cash clicks,
+      // receipt resubmissions and competing status changes for this request.
+      await tx.$queryRaw`
+        SELECT "request_id" FROM "document_requests"
+        WHERE "request_id" = ${requestId} FOR UPDATE
+      `;
+      const request = await tx.documentRequest.findUnique({ where: { id: requestId } });
+      if (!request) fail(404, "Document request not found.");
+      if (!actorParishId || request.parishId !== actorParishId) {
+        fail(403, "Unauthorized: Request belongs to a different parish.");
+      }
+      const verifiedPayment = await tx.paymentTransaction.findFirst({
+        where: { requestId, status: "VERIFIED" },
+      });
+      if (request.paymentStatus === "CONFIRMED" || verifiedPayment) {
+        fail(409, "Payment has already been verified. Reload the request.", "DOCUMENT_REQUEST_CONCURRENCY_CONFLICT");
+      }
+      if (request.isDraft || !["PAYMENT_PENDING", "PAYMENT_NEEDS_CORRECTION"].includes(request.status)) {
+        fail(400, `Cannot verify cash payment from ${request.status}.`);
+      }
+      if (request.fee === null || request.fee === undefined) {
+        fail(400, "Cannot verify payment: Authoritative request fee amount is unavailable.");
+      }
+
+      const claim = await tx.documentRequest.updateMany({
+        where: { id: requestId, status: request.status, paymentStatus: request.paymentStatus, updatedAt: request.updatedAt },
+        data: { status: "PAYMENT_VERIFIED", paymentStatus: "CONFIRMED" },
+      });
+      if (claim.count !== 1) {
+        fail(409, "Document request status changed elsewhere. Reload and try again.", "DOCUMENT_REQUEST_CONCURRENCY_CONFLICT");
+      }
+
+      // Retain every prior receipt, OCR result, reference and creation date.
+      // Pending attempts are closed, never reclassified as verified digital proof.
+      const resolved = await tx.paymentTransaction.updateMany({
+        where: { requestId, status: "PENDING" },
+        data: { status: "REJECTED" },
+      });
+      // The existing OCR worker checks isSuperseded under this same request
+      // lock. Retire prior digital attempts so late OCR cannot undo cash payment.
+      await tx.receiptUpload.updateMany({
+        where: { transaction: { requestId }, isSuperseded: false },
+        data: { isSuperseded: true },
+      });
+      const verifiedAt = new Date();
+      const payment = await tx.paymentTransaction.create({
+        data: {
+          requestId,
+          amount: request.fee,
+          provider: "CASH",
+          status: "VERIFIED",
+          verifiedById: actorId,
+          verifiedAt,
+          // Existing analytics report by createdAt. Never backdate cash to an
+          // older request or pending digital attempt, even across midnight.
+          createdAt: verifiedAt,
+        },
+      });
+      const history = await tx.requestHistory.create({
+        data: {
+          requestId,
+          actorId,
+          action: "STATUS_UPDATED",
+          oldStatus: request.status,
+          newStatus: "PAYMENT_VERIFIED",
+          remarks: `Payment verified as CASH by authorized staff. Amount: ${request.fee}. Resolved pending payment attempts: ${resolved.count}. Prior digital proof superseded by cash verification.`,
+        },
+      });
+      await AuditLogService.logOrThrow(actorId, "Document Request Cash Payment Verified", tx, false, {
+        role: actorRole,
+        parishId: request.parishId,
+        affectedTable: "document_requests",
+        affectedRecordId: requestId,
+        previousValues: { status: request.status, paymentStatus: request.paymentStatus },
+        newValues: { status: "PAYMENT_VERIFIED", paymentStatus: "CONFIRMED" },
+        metadata: {
+          trackingNumber: request.trackingNumber,
+          paymentTransactionId: payment.id,
+          amount: String(request.fee),
+          method: "CASH",
+          resolvedPendingPayments: resolved.count,
+        },
+      });
+      await RequestNotificationService.notifyStatusChange(
+        request.userId, request.parishId, requestId, request.trackingNumber,
+        request.status, "PAYMENT_VERIFIED", tx, false, history.id, null,
+        { throwOnError: true }
+      );
+      return tx.documentRequest.findUnique({ where: { id: requestId }, include: listInclude });
+    });
+  }
+
+  /**
    * Updates the status of a document request.
    */
   async updateStatus(

@@ -119,6 +119,7 @@ export interface NotificationProvider {
 }
 
 export interface DocumentProvider {
+  verifyCashPayment(id: string): Promise<DocumentRequest>;
   getDocumentRequests(filters: DocumentRequestFilters): Promise<PaginatedResponse<DocumentRequest>>;
   updateDocumentStatus(
     id: string,

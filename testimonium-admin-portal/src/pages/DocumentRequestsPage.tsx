@@ -10,7 +10,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { DocumentRequestTable } from '@/components/document-requests/DocumentRequestTable';
 import { SecureBlobViewer } from '@/components/document-requests/SecureBlobViewer';
-import { getDocumentRequests, updateDocumentStatus, uploadCorrectedDocument } from '@/services/documentRequestService';
+import { getDocumentRequests, updateDocumentStatus, verifyCashPayment, uploadCorrectedDocument } from '@/services/documentRequestService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
@@ -81,6 +81,7 @@ export const CANONICAL_CORRECTION_REASONS = [
 interface DetailsModalProps {
   request: DocumentRequest;
   onClose: () => void;
+  onVerifyCash: () => Promise<void>;
   onStatusChange: (
     status: DocumentStatus,
     remarks?: string,
@@ -92,7 +93,7 @@ interface DetailsModalProps {
   canManage?: boolean;
 }
 
-function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchRequest, canManage = true }: DetailsModalProps) {
+function DocumentDetailsModal({ request, onClose, onStatusChange, onVerifyCash, onRefetchRequest, canManage = true }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
@@ -205,7 +206,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
   }, [canManage, request.status, loadRequirements]);
 
   const handleAction = async (
-    status: DocumentStatus,
+    status: DocumentStatus | 'Verify Cash',
     remarks?: string,
     correctionRequirementIds?: string[],
     correctionReasonCode?: string,
@@ -216,7 +217,11 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      await onStatusChange(status, remarks, correctionRequirementIds, correctionReasonCode, correctionNote);
+      if (status === 'Verify Cash') {
+        await onVerifyCash();
+      } else {
+        await onStatusChange(status, remarks, correctionRequirementIds, correctionReasonCode, correctionNote);
+      }
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -366,7 +371,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onRefetchReque
         return (
           <>
             <button
-              onClick={() => void handleAction('Payment Verified')}
+              onClick={() => void handleAction('Verify Cash')}
               disabled={isUpdating}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
             >
@@ -1461,36 +1466,23 @@ export function DocumentRequestsPage() {
     }
   }, [location.state, requests]);
 
-  const handleStatusUpdate = async (
-    newStatus: DocumentStatus,
-    remarks?: string,
-    correctionRequirementIds?: string[],
-    correctionReasonCode?: string,
-    correctionNote?: string
-  ) => {
+  const handleRequestUpdate = async (update: () => Promise<DocumentRequest>) => {
     if (!canManage || !selectedRequest) return;
     setIsMutating(true);
 
     try {
-      const updated = await updateDocumentStatus(
-        selectedRequest.id,
-        newStatus,
-        remarks,
-        correctionRequirementIds,
-        correctionReasonCode,
-        correctionNote
-      );
+      const updated = await update();
 
       // Hydrate state directly from authoritative response DTO
       setSelectedRequest(updated);
       setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
-      setToastMessage(`Request status updated to ${newStatus}.`);
+      setToastMessage(`Request status updated to ${updated.status}.`);
 
       try {
         await fetchRequests(true);
       } catch (refreshErr) {
         console.error('Refresh after update failed:', refreshErr);
-        setToastMessage(`Updated to ${newStatus}, but list refresh failed.`);
+        setToastMessage(`Updated to ${updated.status}, but list refresh failed.`);
       }
     } catch (err: any) {
       console.error('Failed to update status:', err);
@@ -1498,6 +1490,19 @@ export function DocumentRequestsPage() {
     } finally {
       setIsMutating(false);
     }
+  };
+
+  const handleStatusUpdate = async (
+    newStatus: DocumentStatus,
+    remarks?: string,
+    correctionRequirementIds?: string[],
+    correctionReasonCode?: string,
+    correctionNote?: string
+  ) => {
+    if (!selectedRequest) return;
+    await handleRequestUpdate(() => updateDocumentStatus(
+      selectedRequest.id, newStatus, remarks, correctionRequirementIds, correctionReasonCode, correctionNote
+    ));
   };
 
   // Reset page on filter change
@@ -1585,6 +1590,7 @@ export function DocumentRequestsPage() {
           request={selectedRequest}
           onClose={() => setSelectedRequest(null)}
           onStatusChange={handleStatusUpdate}
+          onVerifyCash={() => handleRequestUpdate(() => verifyCashPayment(selectedRequest.id))}
           onRefetchRequest={async () => {
             const result = await fetchRequests(true);
             if (result?.error) throw result.error;

@@ -333,7 +333,7 @@ export class NotificationDispatcher {
    * @param {object|null} tx               - Prisma transaction client
    */
   static async notifyDocumentStatusChange(
-    { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins = false, historyId = null, correctionContext = null },
+    { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins = false, historyId = null, correctionContext = null, throwOnError = false },
     tx = null
   ) {
     const client = tx || prisma;
@@ -386,8 +386,7 @@ export class NotificationDispatcher {
       }
     }
 
-    const throwOnError = newStatus === "NEEDS_CORRECTION";
-    await NotificationDispatcher._persist(payloads, client, { throwOnError });
+    await NotificationDispatcher._persist(payloads, client, { throwOnError: throwOnError || newStatus === "NEEDS_CORRECTION" });
     await EmailOutboxService.enqueueDocumentTransition({
       requestId,
       oldStatus,

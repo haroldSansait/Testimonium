@@ -290,7 +290,7 @@ export const NotificationToastLayer: React.FC = () => {
               dispatch({ type: 'RESUME_TOAST', id: toast.notification.id, isFocused: false });
             }
           }}
-          className="pointer-events-auto bg-white border border-border/80 border-l-4 border-l-crimson rounded-card shadow-card hover:shadow-lg transition-all duration-200 cursor-pointer p-3.5 flex items-start gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson"
+          className="pointer-events-auto bg-white border border-border/80 rounded-card shadow-card hover:shadow-lg transition-all duration-200 cursor-pointer p-3.5 flex items-start gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson"
           aria-label={`Notification: ${toast.notification.title}. Click to view details.`}
         >
           <div className="p-2 bg-app-page rounded-button border border-border/40 flex-shrink-0 mt-0.5">
@@ -342,7 +342,7 @@ export const NotificationToastLayer: React.FC = () => {
               handleOverflowClick();
             }
           }}
-          className="pointer-events-auto bg-white border border-border/80 border-l-4 border-l-crimson rounded-card shadow-card hover:shadow-lg transition-all duration-200 cursor-pointer p-3.5 flex items-center justify-between gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson"
+          className="pointer-events-auto bg-white border border-border/80 rounded-card shadow-card hover:shadow-lg transition-all duration-200 cursor-pointer p-3.5 flex items-center justify-between gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson"
           aria-label={`${state.overflowCount} more ${state.loginOverflow ? 'unread' : 'new'} notifications. Click to open notification center.`}
         >
           <div className="flex items-center gap-3 min-w-0">

@@ -93,10 +93,11 @@ export class RequestNotificationService {
     tx = null,
     notifyAdmins = false,
     historyId = null,
-    correctionContext = null
+    correctionContext = null,
+    { throwOnError = false } = {}
   ) {
     await NotificationDispatcher.notifyDocumentStatusChange(
-      { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins, historyId, correctionContext },
+      { parishionerId, parishId, requestId, trackingNumber, oldStatus, newStatus, notifyAdmins, historyId, correctionContext, throwOnError },
       tx
     );
   }

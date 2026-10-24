@@ -16,6 +16,10 @@ export async function getDocumentRequests(
   return providerFactory.getDocumentProvider().getDocumentRequests(filters);
 }
 
+export async function verifyCashPayment(id: string): Promise<DocumentRequest> {
+  return providerFactory.getDocumentProvider().verifyCashPayment(id);
+}
+
 export async function updateDocumentStatus(
   id: string,
   status: DocumentStatus,

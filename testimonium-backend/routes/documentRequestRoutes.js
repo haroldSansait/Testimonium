@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   list,
   updateStatus,
+  verifyCash,
   downloadAttachment,
   getRegistrantIdEvidence,
   streamRegistrantIdEvidence,
@@ -26,6 +27,7 @@ router.use(checkRole(staffRoles));
 
 router.get("/", list);
 router.patch("/:id/status", checkRole(managingStaffRoles), validateBody(updateRequestStatusSchema), updateStatus);
+router.post("/:id/verify-cash", checkRole(managingStaffRoles), verifyCash);
 router.get("/:id/attachments/:attachmentId/download", downloadAttachment);
 router.get("/:id/receipts/:receiptId/download", streamReceipt);
 router.get("/:id/registrant-id", getRegistrantIdEvidence);
