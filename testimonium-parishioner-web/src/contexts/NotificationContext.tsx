@@ -4,6 +4,7 @@ import services from '../providers/factory';
 import { useAuth } from './AuthContext';
 import { useQuery } from '../hooks/useService';
 import { getQueryScope, getSessionSignal, queryClient, privateQueryKey } from '../services/queryClient';
+import { NotificationToastLayer } from '../components/notifications/NotificationToastLayer';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -99,6 +100,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         refresh
       }}
     >
+      <NotificationToastLayer />
       {children}
     </NotificationContext.Provider>
   );

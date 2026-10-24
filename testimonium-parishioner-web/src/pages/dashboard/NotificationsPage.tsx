@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Bell, 
   Check, 
@@ -26,6 +26,11 @@ import type { AppNotification } from '../../types';
 
 export const NotificationsPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetNotificationId = searchParams.get('notificationId');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const scrolledTargetRef = useRef<string | null>(null);
+
   const { 
     notifications, 
     unreadCount, 
@@ -38,6 +43,40 @@ export const NotificationsPage: React.FC = () => {
   } = useNotifications();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread'>('all');
+
+  // Handle deep-linked notificationId by ensuring visibility, scrolling into view, and highlighting
+  useEffect(() => {
+    if (!targetNotificationId || loading || notifications.length === 0) return;
+    if (scrolledTargetRef.current === targetNotificationId) return;
+
+    const target = notifications.find(n => n.id === targetNotificationId);
+    if (!target) return; // Gracefully fall back if referenced notification is not present
+
+    // Ensure the targeted item is visible even if user is currently on unread tab and item is read
+    if (target.read && activeFilter === 'unread') {
+      setActiveFilter('all');
+    }
+
+    scrolledTargetRef.current = targetNotificationId;
+    setHighlightedId(targetNotificationId);
+
+    const timer = setTimeout(() => {
+      const element = document.getElementById(`notification-${targetNotificationId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.focus();
+      }
+    }, 150);
+
+    const clearHighlightTimer = setTimeout(() => {
+      setHighlightedId(null);
+    }, 4000);
+
+    return () => {
+      clearTimeout(timer);
+      if (clearHighlightTimer) clearTimeout(clearHighlightTimer);
+    };
+  }, [targetNotificationId, loading, notifications, activeFilter]);
 
   const tabs: TabItem[] = [
     { id: 'all', label: 'All Notifications' },
@@ -205,9 +244,18 @@ export const NotificationsPage: React.FC = () => {
                         return (
                           <div 
                             key={notif.id}
+                            id={`notification-${notif.id}`}
+                            tabIndex={0}
+                            role="button"
                             onClick={() => handleNotificationClick(notif)}
-                            className={`py-4 flex items-start justify-between group transition-colors rounded-button px-2 -mx-2 cursor-pointer ${
-                              isNew 
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleNotificationClick(notif);
+                              }
+                            }}
+                            className={`py-4 flex items-start justify-between group transition-colors rounded-button px-2 -mx-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson ${
+                              isNew || highlightedId === notif.id
                                 ? 'animate-highlight' 
                                 : !notif.read 
                                   ? 'bg-red-50/5' 

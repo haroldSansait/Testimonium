@@ -304,7 +304,7 @@ export const SignupPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-[34px] text-text-muted hover:text-text-primary transition-colors focus-ring rounded-md p-1"
+                className="absolute right-3 top-[42px] text-text-muted hover:text-text-primary transition-colors focus-ring rounded-md p-1"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -343,7 +343,7 @@ export const SignupPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-[34px] text-text-muted hover:text-text-primary transition-colors focus-ring rounded-md p-1"
+                className="absolute right-3 top-[42px] text-text-muted hover:text-text-primary transition-colors focus-ring rounded-md p-1"
                 aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}

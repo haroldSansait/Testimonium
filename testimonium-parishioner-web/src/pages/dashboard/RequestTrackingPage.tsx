@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download, AlertTriangle, FileEdit } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
@@ -219,9 +219,32 @@ export const RequestTrackingPage: React.FC = () => {
     return () => mql.removeEventListener('change', handler);
   }, []);
 
+  const [searchParams] = useSearchParams();
+  const deepLinkRequestId = searchParams.get('requestId');
+
   // Stable source of truth for selection is the ID, not a stale copied object
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [searchedRequest, setSearchedRequest] = useState<SacramentalRequest | null>(null);
+
+  useEffect(() => {
+    if (deepLinkRequestId) {
+      setSelectedRequestId(deepLinkRequestId);
+      setActiveMode('documents');
+      if (isMobile) {
+        setMobileView('details');
+      }
+    }
+  }, [deepLinkRequestId, isMobile]);
+
+  useEffect(() => {
+    if (!deepLinkRequestId || requestsQuery.loading) return;
+    const found = requests.some(r => String(r.id) === String(deepLinkRequestId));
+    if (!found && !searchedRequest) {
+      void services.request.getRequestById(deepLinkRequestId).then(res => {
+        if (res) setSearchedRequest(res);
+      }).catch(() => {});
+    }
+  }, [deepLinkRequestId, requests, requestsQuery.loading, searchedRequest]);
   const [draftToDelete, setDraftToDelete] = useState<SacramentalRequest | null>(null);
   const [deletingDraft, setDeletingDraft] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
