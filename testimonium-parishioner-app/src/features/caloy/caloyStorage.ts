@@ -142,7 +142,7 @@ export async function loadCaloyState(uid: string | null | undefined): Promise<Ca
       updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
     };
   } catch (err) {
-    console.warn("[caloyStorage] Failed to load Caloy state from storage:", err);
+    if (__DEV__) console.warn("[caloyStorage] Failed to load Caloy state from storage:", err);
     return null;
   }
 }
@@ -177,7 +177,7 @@ export async function saveCaloyState(
 
     await AsyncStorage.setItem(key, JSON.stringify(payload));
   } catch (err) {
-    console.warn("[caloyStorage] Failed to save Caloy state to storage:", err);
+    if (__DEV__) console.warn("[caloyStorage] Failed to save Caloy state to storage:", err);
   }
 }
 
@@ -193,7 +193,7 @@ export async function clearCaloyStorage(uid: string | null | undefined): Promise
       `${STORAGE_KEY_PREFIX_V1}${safeUid}`,
     ]);
   } catch (err) {
-    console.warn("[caloyStorage] Failed to clear Caloy state for user:", err);
+    if (__DEV__) console.warn("[caloyStorage] Failed to clear Caloy state for user:", err);
   }
 }
 
@@ -210,6 +210,6 @@ export async function clearAllCaloyStorage(): Promise<void> {
       await AsyncStorage.multiRemove(caloyKeys);
     }
   } catch (err) {
-    console.warn("[caloyStorage] Failed to clear all Caloy storage:", err);
+    if (__DEV__) console.warn("[caloyStorage] Failed to clear all Caloy storage:", err);
   }
 }

@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import Constants from "expo-constants";
+import * as Application from "expo-application";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
@@ -33,13 +33,8 @@ export const SettingsScreen: React.FC = () => {
   const emailNotificationsEnabled =
     emailPreferenceOverride ?? profile?.emailNotificationsEnabled ?? true;
 
-  const appVersion =
-    Constants.expoConfig?.version || Constants.nativeAppVersion || "1.0.0";
-  const nativeBuild =
-    Constants.nativeBuildVersion ||
-    (Constants.expoConfig?.android?.versionCode
-      ? String(Constants.expoConfig.android.versionCode)
-      : null);
+  const appVersion = Application.nativeApplicationVersion ?? "Unavailable";
+  const nativeBuild = Application.nativeBuildVersion;
   const versionLabel = nativeBuild ? `${appVersion} (Build ${nativeBuild})` : appVersion;
 
   const handleBack = () => {

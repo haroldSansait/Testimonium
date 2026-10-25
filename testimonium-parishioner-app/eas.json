@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 16.0.0"
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -13,6 +14,25 @@
     "preview": {
       "distribution": "internal"
     },
-    "production": {}
+    "production": {
+      "environment": "production",
+      "distribution": "store",
+      "developmentClient": false,
+      "credentialsSource": "remote",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://testimonium-e9s5.onrender.com/api/v1",
+        "EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED": "false"
+      }
+    },
+    "release-apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    }
   }
 }

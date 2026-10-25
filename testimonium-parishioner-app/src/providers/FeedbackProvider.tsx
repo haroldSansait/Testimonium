@@ -228,7 +228,7 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         await currentConfirm();
       } catch (err) {
-        console.error("Feedback confirm error:", err);
+        if (__DEV__) console.error("Feedback confirm error:", err);
       }
     }
   }, [modalState.onConfirm, hideFeedback]);

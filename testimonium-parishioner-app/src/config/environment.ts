@@ -16,6 +16,16 @@ const requiredApiBaseUrl = (): string => {
 
 export const getApiBaseUrl = (): string => {
   const normalized = requiredApiBaseUrl().replace(/\/+$/, "");
+  if (
+    process.env.EXPO_PUBLIC_ENV === "production" &&
+    normalized !== "https://testimonium-e9s5.onrender.com/api/v1"
+  ) {
+    throw new AppError({
+      kind: "CONFIGURATION",
+      code: "INVALID_PRODUCTION_API_BASE_URL",
+      message: "The production API URL is invalid. Install a correctly configured release.",
+    });
+  }
   let parsed: URL;
 
   try {

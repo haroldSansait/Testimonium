@@ -1,8 +1,11 @@
 import { getApiBaseUrl } from "@/config/environment";
 
 const originalApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+const originalEnvironment = process.env.EXPO_PUBLIC_ENV;
 
 afterEach(() => {
+  if (originalEnvironment === undefined) delete process.env.EXPO_PUBLIC_ENV;
+  else process.env.EXPO_PUBLIC_ENV = originalEnvironment;
   if (originalApiBaseUrl === undefined) {
     delete process.env.EXPO_PUBLIC_API_BASE_URL;
   } else {
@@ -40,5 +43,19 @@ describe("mobile API environment", () => {
     process.env.EXPO_PUBLIC_API_BASE_URL = "https://dev-api.example.test/";
 
     expect(getApiBaseUrl()).toBe("https://dev-api.example.test/api/v1");
+  });
+
+  it("keeps the production /api/v1 prefix exactly once", () => {
+    process.env.EXPO_PUBLIC_ENV = "production";
+    process.env.EXPO_PUBLIC_API_BASE_URL = "https://testimonium-e9s5.onrender.com/api/v1";
+    expect(getApiBaseUrl()).toBe("https://testimonium-e9s5.onrender.com/api/v1");
+  });
+
+  it("rejects a development tunnel in a production bundle", () => {
+    process.env.EXPO_PUBLIC_ENV = "production";
+    process.env.EXPO_PUBLIC_API_BASE_URL = "https://temporary.trycloudflare.com/api/v1";
+    expect(() => getApiBaseUrl()).toThrow(expect.objectContaining({
+      code: "INVALID_PRODUCTION_API_BASE_URL",
+    }));
   });
 });

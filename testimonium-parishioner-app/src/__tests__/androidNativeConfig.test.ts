@@ -15,6 +15,7 @@ describe("Android native scanner compatibility config", () => {
       {
         android: {
           minSdkVersion: 26,
+          usesCleartextTraffic: false,
         },
       },
     ]);
