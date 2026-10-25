@@ -318,12 +318,6 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
                 assistantPriests={effectiveParish.assistantPriests}
               />
             </div>
-
-            <ParishCouncilSection
-              parishName={effectiveParish.name}
-              councils={effectiveParish.councils}
-              loading={loadingDetail && !detailParish}
-            />
           </div>
 
           <div className="space-y-4">
@@ -387,6 +381,12 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
             })()}
           </div>
         </div>
+
+        <ParishCouncilSection
+          parishName={effectiveParish.name}
+          councils={effectiveParish.councils}
+          loading={loadingDetail && !detailParish}
+        />
       </div>
 
       <div className="p-3 bg-app-page border-t border-border flex items-center gap-2 flex-shrink-0">

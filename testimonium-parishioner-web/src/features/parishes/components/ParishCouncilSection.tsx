@@ -19,16 +19,30 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-3">
-        <div className="flex items-center gap-2 pb-1.5 border-b border-border/50">
-          <Users size={13} className="text-crimson" />
-          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-            Parish Pastoral Council
-          </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-3">
+          <div className="flex items-center gap-2 pb-1.5 border-b border-border/50">
+            <Users size={13} className="text-crimson" />
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+              Parish Pastoral Council
+            </span>
+          </div>
+          <div className="space-y-2 animate-pulse">
+            <div className="h-4 bg-slate-200/80 rounded-md w-3/4"></div>
+            <div className="h-4 bg-slate-200/80 rounded-md w-1/2"></div>
+          </div>
         </div>
-        <div className="space-y-2 animate-pulse">
-          <div className="h-4 bg-slate-200/80 rounded-md w-3/4"></div>
-          <div className="h-4 bg-slate-200/80 rounded-md w-1/2"></div>
+        <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-3">
+          <div className="flex items-center gap-2 pb-1.5 border-b border-border/50">
+            <Landmark size={13} className="text-crimson" />
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+              Parish Finance Council
+            </span>
+          </div>
+          <div className="space-y-2 animate-pulse">
+            <div className="h-4 bg-slate-200/80 rounded-md w-3/4"></div>
+            <div className="h-4 bg-slate-200/80 rounded-md w-1/2"></div>
+          </div>
         </div>
       </div>
     );
@@ -58,23 +72,25 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
   const hasMembers = pastoralMembers.length > 0 || financeMembers.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className={finance !== null ? "grid grid-cols-1 md:grid-cols-2 gap-4 items-start" : "space-y-4"}>
       {/* Parish Pastoral Council (Always rendered) */}
       <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-2.5">
-        <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
-          <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-            <Users size={12} className="mr-1.5 text-crimson" />
-            Parish Pastoral Council
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-text-muted font-medium">
+        <div className="flex items-center justify-between pb-2 border-b border-border/50 gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Users size={13} className="text-crimson flex-shrink-0" />
+            <span className="text-[10px] sm:text-[11px] font-bold text-text-muted uppercase tracking-wider truncate">
+              Parish Pastoral Council
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-[10px] text-text-muted font-medium whitespace-nowrap">
               {pastoralMembers.length > 0 ? `${pastoralMembers.length} Officers` : 'Directory'}
             </span>
             {hasMembers && (
               <button
                 type="button"
                 onClick={() => setIsTreeModalOpen(true)}
-                className="inline-flex items-center gap-1 text-[10px] font-bold text-crimson hover:text-crimson-dark bg-red-50 hover:bg-red-100/80 px-2 py-0.5 rounded transition-colors focus-ring cursor-pointer"
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-crimson hover:text-crimson-dark bg-red-50 hover:bg-red-100/80 px-2 py-0.5 rounded transition-colors focus-ring cursor-pointer whitespace-nowrap"
                 title="View Organizational Tree"
               >
                 <Layers size={10} />
@@ -95,17 +111,17 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
                 key={`ppc-${index}-${member.positionTitle}-${member.memberName}`}
                 className="py-2 first:pt-0.5 last:pb-0.5 flex items-center justify-between gap-2"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <Avatar
                     src={member.photoUrl}
                     name={member.memberName}
                     size="xs"
                   />
                   <div className="min-w-0">
-                    <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide block truncate">
+                    <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide block truncate leading-tight">
                       {member.positionTitle}
                     </span>
-                    <span className="font-bold text-text-primary text-xs block truncate">
+                    <span className="font-bold text-text-primary text-xs block truncate mt-0.5">
                       {member.memberName}
                     </span>
                   </div>
@@ -119,20 +135,22 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
       {/* Parish Finance Council (Only rendered when finance is enabled/non-null) */}
       {finance !== null && (
         <div className="bg-app-page/80 p-3.5 rounded-xl border border-border/50 space-y-2.5">
-          <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
-            <span className="text-[10px] font-bold text-text-muted uppercase flex items-center tracking-wider">
-              <Landmark size={12} className="mr-1.5 text-crimson" />
-              Parish Finance Council
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-text-muted font-medium">
+          <div className="flex items-center justify-between pb-2 border-b border-border/50 gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Landmark size={13} className="text-crimson flex-shrink-0" />
+              <span className="text-[10px] sm:text-[11px] font-bold text-text-muted uppercase tracking-wider truncate">
+                Parish Finance Council
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-[10px] text-text-muted font-medium whitespace-nowrap">
                 {financeMembers.length > 0 ? `${financeMembers.length} Officers` : 'Directory'}
               </span>
               {hasMembers && (
                 <button
                   type="button"
                   onClick={() => setIsTreeModalOpen(true)}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold text-crimson hover:text-crimson-dark bg-red-50 hover:bg-red-100/80 px-2 py-0.5 rounded transition-colors focus-ring cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-crimson hover:text-crimson-dark bg-red-50 hover:bg-red-100/80 px-2 py-0.5 rounded transition-colors focus-ring cursor-pointer whitespace-nowrap"
                   title="View Organizational Tree"
                 >
                   <Layers size={10} />
@@ -153,17 +171,17 @@ export const ParishCouncilSection: React.FC<ParishCouncilSectionProps> = ({
                   key={`pfc-${index}-${member.positionTitle}-${member.memberName}`}
                   className="py-2 first:pt-0.5 last:pb-0.5 flex items-center justify-between gap-2"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <Avatar
                       src={member.photoUrl}
                       name={member.memberName}
                       size="xs"
                     />
                     <div className="min-w-0">
-                      <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide block truncate">
+                      <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide block truncate leading-tight">
                         {member.positionTitle}
                       </span>
-                      <span className="font-bold text-text-primary text-xs block truncate">
+                      <span className="font-bold text-text-primary text-xs block truncate mt-0.5">
                         {member.memberName}
                       </span>
                     </div>
