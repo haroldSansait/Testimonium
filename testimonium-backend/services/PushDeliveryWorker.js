@@ -24,7 +24,7 @@ export function buildAndroidPush(notification, token) {
     android: {
       priority: "high", ttl: 60 * 60 * 1000,
       notification: {
-        channelId: "testimonium-important", sound: "default",
+        channelId: "testimonium-important",
         tag: `testimonium-${notification.id}`, visibility: "private",
       },
     },

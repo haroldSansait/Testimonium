@@ -67,7 +67,6 @@ export function synchronizeAndroidPush(uid: string, rotatedToken?: string): Prom
     if (!isCurrent()) return;
     await native.setNotificationChannelAsync(PUSH_CHANNEL, {
       name: "Important TESTIMONIUM updates", importance: native.AndroidImportance.HIGH,
-      sound: "default", vibrationPattern: [0, 250, 250, 250],
       lockscreenVisibility: native.AndroidNotificationVisibility.PRIVATE,
     });
     let permission = await native.getPermissionsAsync();

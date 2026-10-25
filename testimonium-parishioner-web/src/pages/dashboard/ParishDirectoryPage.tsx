@@ -243,11 +243,14 @@ export const ParishDirectoryPage: React.FC = () => {
       </div>
 
       {/* Map Container Viewport */}
-      <div className={
-        isFullScreen 
-          ? "fixed inset-0 z-[60] h-screen w-screen bg-white rounded-none border-none shadow-2xl" 
-          : "relative z-0 isolate h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md"
-      }>
+      <div 
+        className={
+          isFullScreen 
+            ? "fixed inset-0 !m-0 z-[60] h-screen w-screen bg-white rounded-none border-none shadow-2xl" 
+            : "relative z-0 isolate h-[65vh] md:h-[72vh] w-full rounded-card overflow-hidden border border-border shadow-md"
+        }
+        style={isFullScreen ? { margin: 0, top: 0 } : undefined}
+      >
         {/* Leaflet map */}
         {displayParishes.length > 0 ? (
           <LeafletMap center={mapCenter} zoom={mapZoom} className="h-full w-full">
