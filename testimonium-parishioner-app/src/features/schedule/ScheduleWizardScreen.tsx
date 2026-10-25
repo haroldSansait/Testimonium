@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
@@ -93,6 +93,7 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
 
 export const ScheduleWizardScreen: React.FC = () => {
   const router = useRouter();
+  const { parishId: routeParishId } = useLocalSearchParams<{ parishId?: string }>();
   const { profile } = useAuth();
   const feedback = useFeedback();
   const reduceMotion = useReducedMotion();
@@ -100,7 +101,20 @@ export const ScheduleWizardScreen: React.FC = () => {
   const today = useMemo(() => getManilaDateParts(), []);
 
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedParishId, setSelectedParishId] = useState<number | null>(null);
+  const [selectedParishId, setSelectedParishId] = useState<number | null>(() => {
+    if (!routeParishId) return null;
+    const parsedId = Number(routeParishId);
+    return Number.isFinite(parsedId) && parsedId > 0 ? parsedId : null;
+  });
+  const [prevRouteParishId, setPrevRouteParishId] = useState(routeParishId);
+  if (routeParishId !== prevRouteParishId) {
+    setPrevRouteParishId(routeParishId);
+    const parsedId = routeParishId ? Number(routeParishId) : null;
+    if (parsedId && Number.isFinite(parsedId) && parsedId > 0) {
+      setSelectedParishId(parsedId);
+    }
+  }
+
   const [selectedEventType, setSelectedEventType] = useState<ScheduleEventType | null>(null);
   const [preferredDate, setPreferredDate] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -115,7 +129,10 @@ export const ScheduleWizardScreen: React.FC = () => {
   const inactiveAtRef = useRef<number | null>(null);
 
   const { data: parishesResponse, isLoading: isLoadingParishes } = useParishes({ limit: 50 });
-  const parishes: ParishDto[] = parishesResponse?.items || [];
+  const parishes: ParishDto[] = useMemo(
+    () => parishesResponse?.items || [],
+    [parishesResponse?.items]
+  );
   const selectedParish = parishes.find((parish) => Number(parish.id) === selectedParishId);
 
   const configurationQuery = useSchedulingConfiguration(selectedParishId);

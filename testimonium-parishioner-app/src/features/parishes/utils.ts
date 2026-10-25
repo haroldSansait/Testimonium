@@ -97,10 +97,212 @@ export const openExternalUrl = async (url: string | null): Promise<boolean> => {
   }
 };
 
+export interface OfficeStatusResult {
+  isOpen: boolean;
+  isUnavailable: boolean;
+  status: "OPEN" | "CLOSED" | "UNAVAILABLE";
+  label: "Open Now" | "Closed" | "Hours Unavailable";
+}
+
+export const parseOfficeTimeString = (
+  timeStr?: string | null
+): { hour: number; minute: number } | null => {
+  if (!timeStr || typeof timeStr !== "string") return null;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  if (!match) return null;
+
+  let hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  const ampm = match[3]?.toUpperCase();
+
+  if (minute < 0 || minute > 59) return null;
+
+  if (ampm) {
+    if (hour < 1 || hour > 12) return null;
+    if (ampm === "PM" && hour < 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+  } else {
+    if (hour < 0 || hour > 23) return null;
+  }
+
+  return { hour, minute };
+};
+
+const DAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+export const getOfficeOpenStatus = (
+  officeHours?: OfficeHoursRecord | string | null,
+  now: Date = new Date()
+): OfficeStatusResult => {
+  let hoursObj: any = officeHours;
+  if (typeof officeHours === "string") {
+    try {
+      hoursObj = JSON.parse(officeHours);
+    } catch {
+      hoursObj = null;
+    }
+  }
+
+  if (!hoursObj || typeof hoursObj !== "object" || Array.isArray(hoursObj)) {
+    return {
+      isOpen: false,
+      isUnavailable: true,
+      status: "UNAVAILABLE",
+      label: "Hours Unavailable",
+    };
+  }
+
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const allDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+  const hasConfiguredDays = allDays.some((d) => {
+    const val = hoursObj[d] ?? hoursObj[capitalize(d)] ?? hoursObj[d.toUpperCase()];
+    return val !== undefined && val !== null;
+  });
+
+  if (!hasConfiguredDays) {
+    return {
+      isOpen: false,
+      isUnavailable: true,
+      status: "UNAVAILABLE",
+      label: "Hours Unavailable",
+    };
+  }
+
+  const currentDayIndex = now.getDay();
+  const currentDayName = DAY_NAMES[currentDayIndex];
+  const todayVal =
+    hoursObj[currentDayName] ??
+    hoursObj[capitalize(currentDayName)] ??
+    hoursObj[currentDayName.toUpperCase()];
+
+  if (!todayVal) {
+    return {
+      isOpen: false,
+      isUnavailable: false,
+      status: "CLOSED",
+      label: "Closed",
+    };
+  }
+
+  if (typeof todayVal === "object" && todayVal !== null) {
+    const isClosed = todayVal.isClosed ?? todayVal.closed;
+    if (isClosed === true) {
+      return {
+        isOpen: false,
+        isUnavailable: false,
+        status: "CLOSED",
+        label: "Closed",
+      };
+    }
+
+    const openTime = parseOfficeTimeString(todayVal.openTime ?? todayVal.open);
+    const closeTime = parseOfficeTimeString(todayVal.closeTime ?? todayVal.close);
+
+    if (!openTime || !closeTime) {
+      return {
+        isOpen: false,
+        isUnavailable: true,
+        status: "UNAVAILABLE",
+        label: "Hours Unavailable",
+      };
+    }
+
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const openMinutes = openTime.hour * 60 + openTime.minute;
+    const closeMinutes = closeTime.hour * 60 + closeTime.minute;
+
+    if (currentMinutes >= openMinutes && currentMinutes <= closeMinutes) {
+      return {
+        isOpen: true,
+        isUnavailable: false,
+        status: "OPEN",
+        label: "Open Now",
+      };
+    }
+
+    return {
+      isOpen: false,
+      isUnavailable: false,
+      status: "CLOSED",
+      label: "Closed",
+    };
+  }
+
+  if (typeof todayVal === "string") {
+    const trimmed = todayVal.trim();
+    if (trimmed.toLowerCase() === "closed") {
+      return {
+        isOpen: false,
+        isUnavailable: false,
+        status: "CLOSED",
+        label: "Closed",
+      };
+    }
+
+    const rangeMatch = trimmed.match(/(.+?)\s*[-–—]\s*(.+)/);
+    if (rangeMatch) {
+      const openTime = parseOfficeTimeString(rangeMatch[1]);
+      const closeTime = parseOfficeTimeString(rangeMatch[2]);
+      if (openTime && closeTime) {
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const openMinutes = openTime.hour * 60 + openTime.minute;
+        const closeMinutes = closeTime.hour * 60 + closeTime.minute;
+
+        if (currentMinutes >= openMinutes && currentMinutes <= closeMinutes) {
+          return {
+            isOpen: true,
+            isUnavailable: false,
+            status: "OPEN",
+            label: "Open Now",
+          };
+        }
+
+        return {
+          isOpen: false,
+          isUnavailable: false,
+          status: "CLOSED",
+          label: "Closed",
+        };
+      }
+    }
+
+    return {
+      isOpen: false,
+      isUnavailable: true,
+      status: "UNAVAILABLE",
+      label: "Hours Unavailable",
+    };
+  }
+
+  return {
+    isOpen: false,
+    isUnavailable: true,
+    status: "UNAVAILABLE",
+    label: "Hours Unavailable",
+  };
+};
+
 export const formatOfficeHours = (
-  officeHours?: OfficeHoursRecord | null
+  officeHours?: OfficeHoursRecord | string | null
 ): { day: string; hours: string }[] => {
-  if (!officeHours || typeof officeHours !== "object" || Array.isArray(officeHours)) {
+  let resolvedHours: any = officeHours;
+  if (typeof officeHours === "string") {
+    try {
+      resolvedHours = JSON.parse(officeHours);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!resolvedHours || typeof resolvedHours !== "object" || Array.isArray(resolvedHours)) {
     return [];
   }
 
@@ -119,9 +321,9 @@ export const formatOfficeHours = (
 
   for (const day of dayOrder) {
     const val =
-      officeHours[day] ??
-      officeHours[capitalize(day)] ??
-      officeHours[day.toUpperCase()];
+      resolvedHours[day] ??
+      resolvedHours[capitalize(day)] ??
+      resolvedHours[day.toUpperCase()];
 
     if (!val) continue;
 

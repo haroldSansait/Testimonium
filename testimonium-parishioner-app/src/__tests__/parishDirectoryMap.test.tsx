@@ -143,7 +143,7 @@ describe("ParishDirectoryScreen (Map-First Redesign)", () => {
     const { findByText, findByLabelText } = await render(<ParishDirectoryScreen />);
 
     expect(await findByText("Parish Directory")).toBeTruthy();
-    expect(await findByText("Diocese of San Carlos")).toBeTruthy();
+    expect(await findByText("Vicariate of Canlaon")).toBeTruthy();
     expect(await findByLabelText("Reset map overview")).toBeTruthy();
     expect(await findByLabelText("Refresh parish directory")).toBeTruthy();
   });
@@ -272,17 +272,12 @@ describe("ParishInfoSheet Component", () => {
     expect(await findByLabelText("Close parish information sheet")).toBeTruthy();
   });
 
-  it("navigates to the full parish route when 'Full Details & Events' is pressed", async () => {
-    const { findByLabelText } = await render(
+  it("does not render the redundant 'View full details & events' link", async () => {
+    const { queryByText } = await render(
       <ParishInfoSheet parish={sampleParish} visible={true} onClose={jest.fn()} />
     );
 
-    const fullDetailsBtn = await findByLabelText(
-      "View complete details and scheduled events for Our Lady of Peace Parish"
-    );
-    fireEvent.press(fullDetailsBtn);
-
-    expect(mockPush).toHaveBeenCalledWith("/parishes/10");
+    expect(queryByText("View full details & events")).toBeNull();
   });
 
   it("navigates to document request when 'Request Document' is pressed", async () => {

@@ -94,11 +94,9 @@ export default function WelcomeScreen() {
         >
           {/* Top & Middle Brand Section */}
           <View style={styles.brandSection}>
-            <View style={styles.dioceseBadge}>
-              <Text style={styles.dioceseText} allowFontScaling>
-                VICARIATE OF CANLAON
-              </Text>
-            </View>
+            <Text style={styles.dioceseText} allowFontScaling>
+              VICARIATE OF CANLAON
+            </Text>
 
             <Text
               style={styles.wordmark}
@@ -107,12 +105,6 @@ export default function WelcomeScreen() {
             >
               TESTIMONIUM
             </Text>
-
-            <View style={styles.subtitleWrapper}>
-              <Text style={styles.tagline} allowFontScaling>
-                Your parish services, made accessible.
-              </Text>
-            </View>
           </View>
 
           {/* Lower Section: Authentication Actions */}
@@ -186,7 +178,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#5C1520",
+    backgroundColor: "#7B1C2A",
   },
   backgroundImage: {
     ...StyleSheet.absoluteFill,
@@ -195,7 +187,7 @@ const styles = StyleSheet.create({
   },
   brandOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(92, 21, 32, 0.84)",
+    backgroundColor: "rgba(123, 28, 42, 0.82)",
   },
   safeArea: {
     flex: 1,
@@ -213,19 +205,13 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
   },
-  dioceseBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    marginBottom: spacing.md,
-  },
   dioceseText: {
     ...fontStyles.captionBold,
     color: "rgba(255, 255, 255, 0.90)",
-    letterSpacing: 1.6,
+    letterSpacing: 2,
     fontSize: 12,
     textAlign: "center",
+    marginBottom: spacing.sm,
   },
   wordmark: {
     ...fontStyles.displaySerif,
@@ -234,19 +220,6 @@ const styles = StyleSheet.create({
     lineHeight: 42,
     letterSpacing: 3,
     textAlign: "center",
-    marginBottom: spacing.sm,
-  },
-  subtitleWrapper: {
-    maxWidth: 320,
-    alignItems: "center",
-  },
-  tagline: {
-    ...fontStyles.body,
-    fontSize: 16,
-    lineHeight: 24,
-    color: "rgba(255, 255, 255, 0.88)",
-    textAlign: "center",
-    fontStyle: "italic",
   },
   actionsSection: {
     width: "100%",

@@ -14,6 +14,26 @@ export interface OfficeHoursDay {
 
 export type OfficeHoursRecord = Record<string, OfficeHoursDay | string | undefined>;
 
+export interface CouncilMember {
+  positionTitle: string;
+  memberName: string;
+  photoUrl?: string | null;
+}
+
+export interface ParishCouncilCategory {
+  members: CouncilMember[];
+}
+
+export interface ParishCouncils {
+  pastoral: ParishCouncilCategory;
+  finance: ParishCouncilCategory | null;
+}
+
+export interface AssistantPriest {
+  id: string | number;
+  name: string;
+}
+
 export interface ParishDto {
   id: string;
   name: string;
@@ -22,6 +42,7 @@ export interface ParishDto {
   vicariate?: string;
   priest?: string;
   priestName?: string;
+  assistantPriests?: AssistantPriest[];
   secretary?: string;
   secretaryName?: string;
   status?: string;
@@ -31,6 +52,7 @@ export interface ParishDto {
   province?: string;
   contactNumber?: string;
   email?: string;
+  facebookPage?: string;
   latitude?: number | null;
   longitude?: number | null;
   feastDay?: string;
@@ -45,6 +67,7 @@ export interface ParishDto {
   gallery?: string[];
   venueCapacity?: number | null;
   availableDocuments?: string[];
+  councils?: ParishCouncils | null;
   eventSettings?: { availableEvents?: string[]; timeSlots?: string[]; capacitySettings?: { dailyLimit?: number; slotCapacity?: number } } | null;
 }
 

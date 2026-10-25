@@ -6,6 +6,8 @@ import {
   Text,
   View,
   type PressableProps,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -15,9 +17,13 @@ export interface ButtonProps extends PressableProps {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
   icon?: keyof typeof Ionicons.glyphMap;
+  iconSize?: number;
+  iconStyle?: StyleProp<TextStyle>;
   leftComponent?: React.ReactNode;
   fullWidth?: boolean;
   loading?: boolean;
+  textStyle?: StyleProp<TextStyle>;
+  numberOfLines?: number;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -25,11 +31,15 @@ export const Button: React.FC<ButtonProps> = ({
   variant = "primary",
   size = "md",
   icon,
+  iconSize,
+  iconStyle,
   leftComponent,
   fullWidth = false,
   loading = false,
   disabled,
   style,
+  textStyle,
+  numberOfLines = 1,
   ...props
 }) => {
   const isDisabled = disabled || loading;
@@ -82,9 +92,9 @@ export const Button: React.FC<ButtonProps> = ({
           ) : icon ? (
             <Ionicons
               name={icon}
-              size={size === "sm" ? 16 : 18}
+              size={iconSize ?? (size === "sm" ? 16 : 18)}
               color={iconColor}
-              style={styles.icon}
+              style={[styles.icon, iconStyle]}
               accessibilityElementsHidden={true}
               importantForAccessibility="no"
             />
@@ -100,7 +110,10 @@ export const Button: React.FC<ButtonProps> = ({
               variant === "ghost" && styles.ghostLabel,
               variant === "danger" && styles.dangerLabel,
               isDisabled && styles.disabledLabel,
+              textStyle,
             ]}
+            numberOfLines={numberOfLines}
+            ellipsizeMode="tail"
             allowFontScaling
           >
             {title}

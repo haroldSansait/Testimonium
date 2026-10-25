@@ -218,29 +218,6 @@ export default function ParishMapDOM({
     [onSelectParish]
   );
 
-  const handleResetClick = useCallback(() => {
-    if (mapRef.current) {
-      const validCoords = parishes
-        .filter(
-          (p) =>
-            typeof p.latitude === "number" &&
-            typeof p.longitude === "number" &&
-            Number.isFinite(p.latitude) &&
-            Number.isFinite(p.longitude)
-        )
-        .map((p) => [p.latitude, p.longitude] as [number, number]);
-
-      if (validCoords.length > 0) {
-        const bounds = L.latLngBounds(validCoords);
-        if (bounds.isValid()) {
-          mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 13, animate: true });
-          return;
-        }
-      }
-      mapRef.current.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: true });
-    }
-  }, [parishes]);
-
   const markers = useMemo(() => {
     return parishes
       .filter(
@@ -371,43 +348,6 @@ export default function ParishMapDOM({
           box-shadow: 0 2px 6px rgba(123, 28, 42, 0.28);
         }
 
-        /* Custom Floating Map Controls */
-        .map-floating-controls {
-          position: absolute;
-          top: 14px;
-          right: 14px;
-          z-index: 1000;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .map-control-btn {
-          width: 40px;
-          height: 40px;
-          background-color: #FFFFFF;
-          border: 1px solid #D7D2D4;
-          border-radius: 8px;
-          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #343136;
-          cursor: pointer;
-          outline: none;
-          transition: background-color 0.15s, transform 0.1s;
-          padding: 0;
-        }
-
-        .map-control-btn:active {
-          background-color: #F8F8F7;
-          transform: scale(0.96);
-        }
-
-        .map-control-btn.active-accent {
-          color: #7B1C2A;
-        }
-
         /* Positioning zoom controls neatly on top-left */
         .leaflet-top.leaflet-left {
           top: 10px;
@@ -450,22 +390,6 @@ export default function ParishMapDOM({
           text-decoration: none !important;
         }
       `}</style>
-
-      {/* Floating Overview Reset Button */}
-      <div className="map-floating-controls">
-        <button
-          type="button"
-          className="map-control-btn active-accent"
-          onClick={handleResetClick}
-          title="Reset View"
-          aria-label="Reset Map Overview"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-          </svg>
-        </button>
-      </div>
 
       <MapContainer
         center={DEFAULT_CENTER}

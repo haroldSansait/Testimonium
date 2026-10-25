@@ -89,14 +89,14 @@ export const ParishDirectoryScreen: React.FC = () => {
     <Screen safeArea={true} edges={["top", "left", "right"]} style={styles.screen}>
       <AppHeader
         title="Parish Directory"
-        subtitle="Diocese of San Carlos"
+        subtitle="Vicariate of Canlaon"
         rightAction={
           <View style={styles.headerActions}>
             <IconButton
               size={44}
               onPress={handleResetOverview}
               accessibilityLabel="Reset map overview"
-              accessibilityHint="Centers map to show all parishes in the Diocese of San Carlos"
+              accessibilityHint="Centers map to show all parishes in the Vicariate of Canlaon"
             >
               <Ionicons
                 name="locate-outline"
@@ -216,13 +216,13 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     position: "relative",
-    overflow: "hidden",
     backgroundColor: colors.surfaceVariant,
   },
   domContainer: {
     flex: 1,
     width: "100%",
     height: "100%",
+    overflow: "hidden",
   },
   centerContainer: {
     flex: 1,
