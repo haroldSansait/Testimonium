@@ -45,7 +45,12 @@ assert(Number.isInteger(config.android.versionCode) && config.android.versionCod
 assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).version, config.version);
 const firebase = JSON.parse(fs.readFileSync(config.android.googleServicesFile, "utf8"));
 assert.equal(firebase.project_info.project_id, "testimonium-b46b0");
-assert(firebase.client.some(client => client.client_info.android_client_info?.package_name === config.android.package));
+const firebaseAndroidClient = firebase.client.find(client => client.client_info.android_client_info?.package_name === config.android.package);
+assert(firebaseAndroidClient, "Firebase Android package registration is missing");
+const webClients = firebaseAndroidClient.oauth_client.filter(client => client.client_type === 3);
+assert.equal(webClients.length, 1, "Expected one Firebase Web OAuth client for the Android app");
+assert.equal(env.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED, "true");
+assert.equal(env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, webClients[0].client_id, "Release must use the Firebase type-3 Web OAuth client ID");
 const splash = config.plugins.find(plugin => Array.isArray(plugin) && plugin[0] === "expo-splash-screen");
 assert(splash, "Missing splash config");
 for (const asset of [config.icon, config.android.adaptiveIcon.foregroundImage, splash[1].image]) {
@@ -54,11 +59,12 @@ for (const asset of [config.icon, config.android.adaptiveIcon.foregroundImage, s
   assert.equal(data.readUInt32BE(16), data.readUInt32BE(20), "Branding must use square PNGs");
 }
 console.log(`Release config OK: ${config.version}; com.testimonium.app; standalone signed APK profile; remote auto-increment.`);
-console.log(`Effective release API: ${PRODUCTION_API_URL}; dotenv disabled; Google Sign-In disabled.`);
-console.log("Signing key, remote version history, Firebase Console and device behavior require owner verification.");
+console.log(`Effective release API: ${PRODUCTION_API_URL}; dotenv disabled; Google Sign-In enabled with matching Firebase Web OAuth client ID.`);
+console.log("Signed-device authentication behavior is not verified by this configuration check.");
 
 if (process.argv.includes("--export")) {
-  const result = spawnSync(process.execPath, [cli, "export", "--platform", "android", "--no-bytecode"], { cwd: root, env, stdio: "inherit" });
+  // Public environment changes must not reuse transforms from a disabled-Google export.
+  const result = spawnSync(process.execPath, [cli, "export", "--platform", "android", "--no-bytecode", "--clear"], { cwd: root, env, stdio: "inherit" });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
   if (result.status === 0) {
@@ -68,6 +74,9 @@ if (process.argv.includes("--export")) {
     assert(bundle.includes(PRODUCTION_API_URL), "Production API missing from exported Android bundle");
     assert(!bundle.includes("process.env.EXPO_PUBLIC_API_BASE_URL"), "API environment value was not inlined");
     assert(!bundle.includes(".trycloudflare.com"), "Development tunnel found in release bundle");
-    console.log("Export verified: production API inlined; no development tunnel in Android JS.");
+    assert(bundle.includes(env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID), "Google Web OAuth client ID missing from exported Android bundle");
+    assert(!bundle.includes("process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"), "Google Web client ID was not inlined");
+    assert(!bundle.includes("process.env.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED"), "Google Sign-In feature flag was not inlined");
+    console.log("Export verified: production API and enabled Google Sign-In configuration inlined; no development tunnel in Android JS.");
   }
 }

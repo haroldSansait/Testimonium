@@ -38,15 +38,15 @@ The profile selects the EAS **production** environment. These public values are 
 | --- | --- |
 | `EXPO_PUBLIC_ENV` | `production` |
 | `EXPO_PUBLIC_API_BASE_URL` | `https://testimonium-e9s5.onrender.com/api/v1` |
-| `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` | `false` |
-| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Unset until release signing/OAuth is verified; intentionally omitted from profile env |
+| `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` | `true` |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | `900241750208-kclu82sicn6amkchcv2hd3h1fh8c7fft.apps.googleusercontent.com` (existing type-3 Web OAuth client) |
 | `EXPO_NO_DOTENV` | `1` |
 
-No EAS dashboard variable creation is required for the pinned values. Keep duplicate production EAS variables aligned; the profile is the public release configuration authority. If production already defines an unverified Google Web client ID, the guard fails: the owner must unset that entry for this disabled-Google release. EAS rejects empty strings in profile env, so do not add a blank client-ID entry there. Never place Firebase Admin credentials, database URLs, R2 secrets, signing passwords or backend credentials in `EXPO_PUBLIC_*` or Expo `extra`.
+No EAS dashboard variable creation is required for the pinned values. Keep duplicate production EAS variables aligned; the profile is the public release configuration authority. The enabled Google gate and Web client ID are inherited by `release-apk`. This OAuth client ID is public client configuration. Never place Firebase Admin credentials, database URLs, R2 secrets, signing passwords or backend credentials in `EXPO_PUBLIC_*` or Expo `extra`.
 
-`scripts/release-policy.cjs` rejects missing/wrong production settings, HTTP, LAN/loopback/tunnel endpoints, duplicate API prefixes and disabled client-variable inlining. It runs in Expo config resolution and the EAS post-install hook. The runtime API helper also rejects a different production endpoint. The API client appends request paths without adding another `/api/v1`.
+`scripts/release-policy.cjs` rejects missing/wrong production settings, HTTP, LAN/loopback/tunnel endpoints, duplicate API prefixes and disabled client-variable inlining. It also requires Google Sign-In enabled and the exact type-3 Web OAuth client ID in the committed Firebase configuration for `com.testimonium.app`; missing, mismatched and Android OAuth IDs are rejected. It runs in Expo config resolution and the EAS post-install hook. The runtime API helper also rejects a different production endpoint. The API client appends request paths without adding another `/api/v1`.
 
-`npm run release:check` resolves profile inheritance, applies its public environment to a child Expo config process and checks app/Firebase identity, versions and assets. `npm run release:export` runs the same preflight and `npx expo export --platform android --no-bytecode` under the release environment. This is a local JS/asset check; EAS builds retain their normal optimized bytecode build. Neither command starts a cloud build or modifies credentials.
+`npm run release:check` resolves profile inheritance, applies its public environment to a child Expo config process and checks app/Firebase identity, versions and assets. `npm run release:export` runs the same preflight and `npx expo export --platform android --no-bytecode --clear` under the release environment. Clearing Metro's transform cache prevents a prior disabled-Google export from supplying stale inlined environment values. The exported Android bundle is checked for the matching Web client ID and inlined Google flag. This is a local JS/asset check; EAS builds retain their normal optimized bytecode build. Neither command starts a cloud build or modifies credentials.
 
 ### Development
 
@@ -67,18 +67,13 @@ Existing RN Firebase/Auth, Google Sign-In, Expo Notifications, pickers, VisionCa
 
 `CAMERA` and `POST_NOTIFICATIONS` remain. Receipt/gallery and Government ID access remain intact. Image-picker microphone permission is disabled because the app uses still images. Release config also removes the development overlay (`SYSTEM_ALERT_WINDOW`) permission while retaining it in development. Cleartext traffic is disabled through `expo-build-properties`. Scanner/API diagnostics and raw callback/storage error logs are development-only. Firebase ID tokens remain obtained through native Auth for authenticated API requests; uploads retain private backend authorization/storage flows.
 
-## Signing, Firebase and Google — owner actions
+## Signing, Firebase and Google
 
-Existing `google-services.json` matches `testimonium-b46b0` and `com.testimonium.app` and contains Android (type 1) and Web (type 3) OAuth entries. It is unchanged. Their presence does **not** verify pairing with the release certificate.
+The owner has confirmed that the existing EAS release keystore's SHA-1 and SHA-256 exactly match Firebase's registered fingerprints for `com.testimonium.app`. The committed `google-services.json` already contains the matching Android (type 1) OAuth client and the type-3 Web OAuth client used above. Production Google Sign-In is enabled. The Firebase file, authentication implementation, keystore and signing identity are unchanged.
 
-1. Inspect EAS Android credentials for the existing project/package. Reuse a suitable durable release keystore. If none exists, the owner must approve creating/importing one. Back up key, alias and passwords privately outside the repository; never rotate the key for each update.
-2. Obtain that key's SHA-1 and SHA-256 certificate fingerprints. EAS credentials may show them; verify the final APK with `apksigner verify --print-certs`. For an exported private keystore, `keytool -list -v -keystore <private-path> -alias <alias>` prompts for a password. Never include passwords in commands or reports.
-3. Firebase Console → Project settings → Your apps → existing Android `com.testimonium.app`: verify/add both release-key fingerprints. Confirm Google provider configuration and the matching Android OAuth package/certificate in the same Google Cloud/Firebase project. Direct APK distribution uses the EAS release certificate, not an assumed Play signing key.
-4. Native `webClientId` must be the Web OAuth client (type 3), not the Android client ID. Keep Google disabled until the signing/OAuth pair is verified and tested in the signed APK. v1.0.0 pins the gate off. Future authorized enablement must update both the profile gate/client ID and release guard after verification.
-5. If Firebase changes require refreshing `google-services.json`, download the legitimate generated file for this existing Android registration, replace it, revalidate and rebuild. Never fabricate OAuth entries.
-6. Confirm Email/Password provider availability and test registration/login, verification/profile gates, persistence after restart and sign-out in the signed APK. The existing implementation is preserved; static checks cannot prove provider state or runtime behavior.
+Continue using that persistent release key for updates. Keep its backup, alias and passwords private, and never rotate it per build. No keystore regeneration, Firebase Console mutation or Firebase-file refresh is needed for this configuration fix. Native `webClientId` uses the Web OAuth client, not the Android client ID.
 
-Remote credentials, fingerprints, Firebase Console and account state were not verified or changed in this task.
+`release:check` validates the enabled gate and exact Web client ID against the Firebase Android registration. `release:export` also checks that the Google client ID and feature flag are inlined in the Android JS. Signing/fingerprint matching is owner-confirmed; these local checks do not independently inspect EAS/Firebase account state or prove signed-device authentication. Verify Google login, existing account/legal/profile gates, persistence and sign-out on the signed APK alongside the unchanged email/password flow.
 
 ## Owner-operated PowerShell commands
 
@@ -140,7 +135,7 @@ Confirm package, versionName `1.0.0`, actual remote versionCode, correct signer 
 Test a physical supported Android device after the native build succeeds:
 
 - Cold launch with Metro stopped; launcher masks, crimson splash, unchanged welcome tour, Settings installed version/build.
-- Email/password registration/login, verification/profile gates, persistence, sign-out/account switching; Google remains hidden until separately configured and verified.
+- Email/password and enabled Google registration/login, verification/legal/profile gates, persistence and sign-out/account switching.
 - Directory DOM map, OSM tiles, custom church markers, native parish sheet, council/certificate/office hours, gestures/navigation.
 - Map Schedule Rite parish preselection, schedule wizard, availability/profile guards, document-request wizard, uploads, receipt camera/gallery.
 - Government ID camera permission, VisionCamera/OpenCV/Nitro processing, front/back capture and private uploads.
@@ -150,7 +145,11 @@ Local `production` differs from `main` and lacks FCM worker/device services and 
 
 For future APKs: retain package/project identity and signing key, update public version/package metadata intentionally, retain remote auto-increment, review release policy, build, verify signer/checksum and test an in-place upgrade. Download/QR publication follows signed-device verification.
 
-## Local validation recorded on 25 October 2026
+## Google Sign-In configuration correction — 25 October 2026
+
+Passed: `npm run typecheck`; four focused suites / 42 tests (release policy, environment, Google authentication and Android native config); `npm run release:check`; `npm run release:export`; changed-file ESLint with zero warnings; `git diff --check`. Export inspection confirms the matching Web OAuth ID and Google feature flag are inlined alongside the preserved production API URL, with no development tunnel. The initial export exposed stale disabled-Google Metro transforms; adding `--clear` corrected the local export and its bundle assertions passed. No EAS build, signing/Console change or physical-device login was performed for this correction.
+
+## Earlier release-preparation validation recorded on 25 October 2026
 
 | Check | Actual result |
 | --- | --- |
