@@ -36,6 +36,10 @@ export interface ParishDto {
   feastDay?: string;
   coverImage?: string;
   logoImage?: string;
+  mapZoom?: number | null;
+  pinColor?: string | null;
+  showLabel?: boolean | null;
+  isMotherParish?: boolean | null;
   directoryDescription?: string;
   officeHours?: OfficeHoursRecord | null;
   gallery?: string[];

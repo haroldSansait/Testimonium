@@ -265,4 +265,38 @@ describe("Parish Feature & Utilities", () => {
       expect(PARISH_TYPE_FILTERS).toHaveLength(4);
     });
   });
+
+  describe("Parish Map Data Filtering & Transformation", () => {
+    it("filters only parishes with valid coordinates", () => {
+      const mixedParishes = [
+        { id: "1", name: "Cathedral", latitude: 10.485, longitude: 123.415 },
+        { id: "2", name: "No Coords", latitude: null, longitude: null },
+        { id: "3", name: "Invalid Lat", latitude: 120, longitude: 123.415 },
+        { id: "4", name: "Valid Quasi", latitude: 10.22, longitude: 123.25 },
+      ];
+
+      const valid = mixedParishes.filter((p) => isValidCoordinate(p.latitude, p.longitude));
+      expect(valid).toHaveLength(2);
+      expect(valid.map((p) => p.id)).toEqual(["1", "4"]);
+    });
+
+    it("preserves optional map metadata (mapZoom, pinColor, showLabel, isMotherParish)", () => {
+      const parishWithMeta = {
+        id: "1",
+        name: "San Carlos Borromeo Cathedral",
+        type: "Parish",
+        latitude: 10.485,
+        longitude: 123.415,
+        mapZoom: 14,
+        pinColor: "#7B1C2A",
+        showLabel: true,
+        isMotherParish: true,
+      };
+
+      expect(parishWithMeta.mapZoom).toBe(14);
+      expect(parishWithMeta.pinColor).toBe("#7B1C2A");
+      expect(parishWithMeta.showLabel).toBe(true);
+      expect(parishWithMeta.isMotherParish).toBe(true);
+    });
+  });
 });

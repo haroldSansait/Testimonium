@@ -1,58 +1,25 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  FlatList,
-  Pressable,
-  RefreshControl,
+  ActivityIndicator,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
-import {
-  AppHeader,
-  Button,
-  EmptyState,
-  FilterSheet,
-  FilterTrigger,
-  IconButton,
-  InlineError,
-  ParishCardSkeleton,
-  SectionHeader,
-  SelectionRow,
-  TextInput,
-} from "@/components/ui";
-import { colors, fontStyles, spacing } from "@/theme/tokens";
+import { AppHeader, IconButton, InlineError } from "@/components/ui";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useInfiniteParishes } from "./api";
-import { ParishCard } from "./ParishCard";
-import {
-  PARISH_TYPE_FILTERS,
-  type ParishDto,
-  type ParishTypeFilter,
-} from "./types";
+import { isValidCoordinate } from "./utils";
+import type { ParishDto } from "./types";
+import ParishMapDOM, { type ParishMapItem } from "./components/ParishMapDOM";
+import { ParishInfoSheet } from "./components/ParishInfoSheet";
 
 export const ParishDirectoryScreen: React.FC = () => {
-  const router = useRouter();
-  const { contentBottomInset } = useAppLayoutMetrics();
+  const [selectedParishId, setSelectedParishId] = useState<string | null>(null);
+  const [resetSignal, setResetSignal] = useState(0);
 
-  const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedType, setSelectedType] = useState<ParishTypeFilter>("all");
-
-  // Sheet filter state
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [draftType, setDraftType] = useState<ParishTypeFilter>("all");
-
-  // Debounce search input
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(searchInput);
-    }, 400);
-    return () => clearTimeout(handler);
-  }, [searchInput]);
-
+  // Fetch parishes through existing useInfiniteParishes hook
   const {
     data,
     isLoading,
@@ -62,128 +29,101 @@ export const ParishDirectoryScreen: React.FC = () => {
     fetchNextPage,
     isError,
     refetch,
-  } = useInfiniteParishes({
-    search: debouncedSearch || undefined,
-    type: selectedType !== "all" ? selectedType : undefined,
-  });
+  } = useInfiniteParishes({}, 30);
 
-  const parishes = useMemo(() => {
+  // Auto-fetch remaining pages if pagination is active to ensure all active parishes appear on the map
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Flatten pages into active parish list
+  const parishes = useMemo<ParishDto[]>(() => {
     if (!data?.pages) return [];
     return data.pages.flatMap((page) => page.items);
   }, [data]);
 
-  const total = data?.pages?.[0]?.total ?? 0;
-  const activeCount = selectedType !== "all" ? 1 : 0;
+  // Filter only parishes with valid coordinates for the map
+  const validParishes = useMemo<ParishDto[]>(() => {
+    return parishes.filter((p) => isValidCoordinate(p.latitude, p.longitude));
+  }, [parishes]);
 
-  const handleOpenFilter = () => {
-    setDraftType(selectedType);
-    setIsFilterOpen(true);
-  };
+  // Serializable items passed to the DOM Leaflet component
+  const parishMapItems = useMemo<ParishMapItem[]>(() => {
+    return validParishes.map((p) => ({
+      id: String(p.id),
+      name: p.name,
+      type: p.type,
+      latitude: p.latitude as number,
+      longitude: p.longitude as number,
+      pinColor: p.pinColor,
+      showLabel: p.showLabel,
+      mapZoom: p.mapZoom,
+    }));
+  }, [validParishes]);
 
-  const handleApplyFilter = () => {
-    setSelectedType(draftType);
-    setIsFilterOpen(false);
-  };
+  // Currently selected parish for bottom sheet
+  const selectedParish = useMemo<ParishDto | null>(() => {
+    if (!selectedParishId) return null;
+    return parishes.find((p) => String(p.id) === String(selectedParishId)) || null;
+  }, [selectedParishId, parishes]);
 
-  const handleResetFilter = () => {
-    setDraftType("all");
-  };
+  const handleSelectParish = useCallback((id: string) => {
+    setSelectedParishId(id);
+  }, []);
 
-  const handleClearAllFilters = () => {
-    setSearchInput("");
-    setDebouncedSearch("");
-    setSelectedType("all");
-  };
+  const handleCloseSheet = useCallback(() => {
+    setSelectedParishId(null);
+  }, []);
 
-  const handleParishPress = (parish: ParishDto) => {
-    router.push(`/parishes/${parish.id}` as any);
-  };
-
-  const handleLoadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      void fetchNextPage();
-    }
-  };
+  const handleResetOverview = useCallback(() => {
+    setResetSignal((prev) => prev + 1);
+  }, []);
 
   const isInitialLoading = isLoading && parishes.length === 0;
   const isInitialError = isError && parishes.length === 0;
   const isBackgroundError = isError && parishes.length > 0;
 
   return (
-    <Screen safeArea={true} style={styles.screen}>
+    <Screen safeArea={true} edges={["top", "left", "right"]} style={styles.screen}>
       <AppHeader
         title="Parish Directory"
         subtitle="Diocese of San Carlos"
+        rightAction={
+          <View style={styles.headerActions}>
+            <IconButton
+              size={44}
+              onPress={handleResetOverview}
+              accessibilityLabel="Reset map overview"
+              accessibilityHint="Centers map to show all parishes in the Diocese of San Carlos"
+            >
+              <Ionicons
+                name="locate-outline"
+                size={21}
+                color={colors.primary}
+              />
+            </IconButton>
+            <IconButton
+              size={44}
+              onPress={() => void refetch()}
+              accessibilityLabel="Refresh parish directory"
+              accessibilityHint="Reloads directory information from the server"
+              disabled={isFetching && !hasNextPage}
+            >
+              <Ionicons
+                name="refresh-outline"
+                size={21}
+                color={colors.primary}
+              />
+            </IconButton>
+          </View>
+        }
       />
 
-      <View style={styles.controlsSection}>
-        {/* Search & Filter Row */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchInputWrapper}>
-            <TextInput
-              placeholder="Search parish or patron saint..."
-              value={searchInput}
-              onChangeText={setSearchInput}
-              leftIcon="search-outline"
-              rightIcon={
-                searchInput.length > 0 ? (
-                  <IconButton
-                    size={44}
-                    onPress={() => setSearchInput("")}
-                    accessibilityLabel="Clear search text"
-                  >
-                    <Ionicons
-                      name="close-circle"
-                      size={18}
-                      color={colors.textSecondary}
-                    />
-                  </IconButton>
-                ) : undefined
-              }
-              containerStyle={styles.searchInput}
-            />
-          </View>
-          <FilterTrigger
-            activeCount={activeCount}
-            onPress={handleOpenFilter}
-            style={styles.filterTrigger}
-          />
-        </View>
-
-        {/* Active Filters Summary */}
-        {activeCount > 0 ? (
-          <View style={styles.activeFiltersRow}>
-            <Text style={styles.filterSummaryText} allowFontScaling>
-              Type filter applied
-            </Text>
-
-            <Pressable
-              onPress={handleClearAllFilters}
-              style={styles.clearAllBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Clear parish filters"
-            >
-              <Text style={styles.clearAllText} allowFontScaling>
-                Clear all
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* Result count */}
-        {!isInitialLoading && !isInitialError && parishes.length > 0 ? (
-          <View style={styles.countRow}>
-            <Text style={styles.countText} allowFontScaling>
-              Showing {parishes.length} of {total}{" "}
-              {total === 1 ? "parish" : "parishes"}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* Background refresh error */}
+      {/* Background refresh error banner */}
       {isBackgroundError ? (
-        <View style={styles.inlineBanner}>
+        <View style={styles.bannerContainer}>
           <InlineError
             message="Could not update directory. Showing cached results."
             onRetry={() => {
@@ -194,180 +134,131 @@ export const ParishDirectoryScreen: React.FC = () => {
         </View>
       ) : null}
 
-      {/* Main Content Area */}
-      {isInitialLoading ? (
-        <View style={styles.listContainer}>
-          <ParishCardSkeleton />
-          <ParishCardSkeleton />
-          <ParishCardSkeleton />
-        </View>
-      ) : isInitialError ? (
-        <View style={styles.errorContainer}>
-          <InlineError
-            message="Unable to load parishes. Please check your connection and try again."
-            onRetry={() => {
-              void refetch();
-            }}
-            retrying={isFetching}
-          />
-        </View>
-      ) : (
-        <FlatList
-          data={parishes}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <ParishCard parish={item} onPress={handleParishPress} />
-          )}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: contentBottomInset("tab") },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <RefreshControl
-              refreshing={isFetching && !isLoading && !isFetchingNextPage}
-              onRefresh={() => {
+      {/* Main Map Viewport */}
+      <View style={styles.mapViewport}>
+        {isInitialLoading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText} allowFontScaling>
+              Loading parish directory map…
+            </Text>
+          </View>
+        ) : isInitialError ? (
+          <View style={styles.centerContainer}>
+            <InlineError
+              message="Unable to load parishes. Please check your network connection and try again."
+              onRetry={() => {
                 void refetch();
               }}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
+              retrying={isFetching}
             />
-          }
-          ListEmptyComponent={
-            debouncedSearch || activeCount > 0 ? (
-              <EmptyState
-                icon="search-outline"
-                title="No parishes found"
-                description={`No results matching your filters. Try adjusting your search query or filter.`}
-                actionLabel="Clear Filters"
-                onAction={handleClearAllFilters}
-              />
-            ) : (
-              <EmptyState
-                icon="business-outline"
-                title="No parishes available"
-                description="Parish information will appear here once published."
-              />
-            )
-          }
-          ListFooterComponent={
-            hasNextPage ? (
-              <View style={styles.paginationRow}>
-                <Button
-                  title={
-                    isFetchingNextPage
-                      ? "Loading more..."
-                      : "Load more parishes"
-                  }
-                  variant="secondary"
-                  size="sm"
-                  onPress={handleLoadMore}
-                  loading={isFetchingNextPage}
-                  disabled={isFetchingNextPage}
-                />
-              </View>
-            ) : null
-          }
-        />
-      )}
+          </View>
+        ) : (
+          <View style={styles.domContainer}>
+            <ParishMapDOM
+              parishes={parishMapItems}
+              selectedParishId={selectedParishId}
+              onSelectParish={handleSelectParish}
+              resetSignal={resetSignal}
+              dom={{
+                scrollEnabled: false,
+                bounces: false,
+              }}
+            />
 
-      {/* Filter Sheet Modal */}
-      <FilterSheet
-        visible={isFilterOpen}
-        onClose={() => setIsFilterOpen(false)}
-        onApply={handleApplyFilter}
-        onReset={handleResetFilter}
-        title="Filter Parishes"
-      >
-        <SectionHeader title="Jurisdiction / Type" />
-        {PARISH_TYPE_FILTERS.map((item) => (
-          <SelectionRow
-            key={item.value}
-            title={item.label}
-            selected={draftType === item.value}
-            onSelect={() => setDraftType(item.value)}
-            mode="radio"
-          />
-        ))}
-      </FilterSheet>
+            {/* Empty coordinates notice */}
+            {validParishes.length === 0 ? (
+              <View style={styles.emptyNotice}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emptyNoticeText} allowFontScaling>
+                  No active parish coordinates available for mapping.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* Native Parish Information Bottom Sheet */}
+        <ParishInfoSheet
+          parish={selectedParish}
+          visible={Boolean(selectedParish)}
+          onClose={handleCloseSheet}
+        />
+      </View>
     </Screen>
   );
 };
+
+export default ParishDirectoryScreen;
 
 const styles = StyleSheet.create({
   screen: {
     padding: 0,
     backgroundColor: colors.background,
   },
-  controlsSection: {
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  bannerContainer: {
     backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderLight,
+    zIndex: 10,
   },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  searchInputWrapper: {
+  mapViewport: {
     flex: 1,
+    width: "100%",
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: colors.surfaceVariant,
   },
-  searchInput: {
-    marginBottom: 0,
-  },
-  filterTrigger: {
-    height: 44,
-  },
-  activeFiltersRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: spacing.xs,
-    paddingTop: spacing.xs,
-  },
-  filterSummaryText: {
-    ...fontStyles.captionMedium,
-    color: colors.primary,
-    fontWeight: "600",
+  domContainer: {
     flex: 1,
+    width: "100%",
+    height: "100%",
   },
-  clearAllBtn: {
-    minHeight: 44,
+  centerContainer: {
+    flex: 1,
     justifyContent: "center",
-    paddingLeft: spacing.sm,
+    alignItems: "center",
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  clearAllText: {
-    ...fontStyles.captionMedium,
-    color: colors.textSecondary,
-    textDecorationLine: "underline",
+  loadingText: {
+    ...fontStyles.bodySmall,
+    color: colors.neutral[650],
   },
-  countRow: {
-    paddingTop: spacing.xs,
+  emptyNotice: {
+    position: "absolute",
+    top: spacing.md,
+    left: spacing.md,
+    right: spacing.md,
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+    zIndex: 5,
   },
-  countText: {
+  emptyNoticeText: {
     ...fontStyles.caption,
     color: colors.textSecondary,
-  },
-  inlineBanner: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-  },
-  listContainer: {
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  listContent: {
-    padding: spacing.md,
-    flexGrow: 1,
-  },
-  errorContainer: {
-    padding: spacing.md,
-  },
-  paginationRow: {
-    paddingVertical: spacing.md,
-    alignItems: "center",
+    flex: 1,
   },
 });
