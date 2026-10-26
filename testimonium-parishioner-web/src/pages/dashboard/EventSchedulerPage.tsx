@@ -827,7 +827,6 @@ export const EventSchedulerPage: React.FC = () => {
                 <div className='flex justify-between items-start'>
                   <div>
                     <span className='text-xs font-bold text-text-primary block'>{requirement.label}</span>
-                    {requirement.description && <p className='text-[10px] text-text-muted mt-0.5'>{requirement.description}</p>}
                   </div>
                   <span className='text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider'>
                     Required
