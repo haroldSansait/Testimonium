@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --test scripts/weekly_banner_events.test.js scripts/phase1_qa_correction.test.js scripts/phase3_parish_council_tree.test.js scripts/post_phase4_ux_adjustments.test.js scripts/phase5_web_scheduler.test.js scripts/lay_minister_fallback.test.js scripts/caloy_cp5.test.js scripts/caloy_cp6_qa.test.js scripts/features_regression.test.js scripts/mother_parish_web.test.js scripts/upload_policy.test.js scripts/legal_policy_web.test.js scripts/private_file_viewing.test.js scripts/document_drafts.test.js scripts/request_history_and_announcements_cleanup.test.js scripts/query_cache.test.js scripts/query_refresh.test.js scripts/query_transport.test.js scripts/session_reauthentication.test.js scripts/notification_toasts.test.js && node --experimental-strip-types --test scripts/notification_integration.test.js",
+    "test": "node --experimental-strip-types --test scripts/weekly_banner_events.test.js scripts/phase1_qa_correction.test.js scripts/phase3_parish_council_tree.test.js scripts/post_phase4_ux_adjustments.test.js scripts/phase5_web_scheduler.test.js scripts/lay_minister_fallback.test.js scripts/caloy_cp5.test.js scripts/caloy_cp6_qa.test.js scripts/features_regression.test.js scripts/mother_parish_web.test.js scripts/upload_policy.test.js scripts/legal_policy_web.test.js scripts/private_file_viewing.test.js scripts/document_drafts.test.js scripts/request_history_and_announcements_cleanup.test.js scripts/query_cache.test.js scripts/query_refresh.test.js scripts/query_transport.test.js scripts/session_reauthentication.test.js scripts/notification_toasts.test.js && node --experimental-strip-types --test scripts/notification_integration.test.js && node --test --test-isolation=none scripts/schedule_requirements.test.js",
     "test:notifications": "node --experimental-strip-types --test scripts/notification_toasts.test.js scripts/notification_integration.test.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:schedule-requirements": "node --test --test-isolation=none scripts/schedule_requirements.test.js"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",

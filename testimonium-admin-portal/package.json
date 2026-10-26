@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --test scripts/pfc_regression.test.js scripts/council_reconciliation.test.js scripts/pfc_state.test.mjs scripts/priest_assignment_availability.test.js scripts/document_cash_verification.test.mjs scripts/phase6_verified_payments.test.mjs scripts/knowledge_base_contract.test.mjs scripts/caloy_admin_portal_contracts.test.mjs scripts/descriptive_visual_polish.test.mjs scripts/features_regression.test.mjs scripts/mother_parish_ui.test.mjs scripts/document_requirement_management_admin.test.mjs scripts/document_type_mapping.test.mjs scripts/legal_policy_admin.test.js scripts/query_cache.test.js scripts/query_refresh.test.js scripts/query_transport.test.js scripts/session_reauthentication.test.js",
-    "preview": "vite preview"
+    "test": "node --experimental-strip-types --test scripts/pfc_regression.test.js scripts/council_reconciliation.test.js scripts/pfc_state.test.mjs scripts/priest_assignment_availability.test.js scripts/document_cash_verification.test.mjs scripts/phase6_verified_payments.test.mjs scripts/knowledge_base_contract.test.mjs scripts/caloy_admin_portal_contracts.test.mjs scripts/descriptive_visual_polish.test.mjs scripts/features_regression.test.mjs scripts/mother_parish_ui.test.mjs scripts/document_requirement_management_admin.test.mjs scripts/document_type_mapping.test.mjs scripts/legal_policy_admin.test.js scripts/query_cache.test.js scripts/query_refresh.test.js scripts/query_transport.test.js scripts/session_reauthentication.test.js scripts/schedule_requirements.test.mjs",
+    "preview": "vite preview",
+    "test:schedule-requirements": "node --experimental-strip-types --test scripts/schedule_requirements.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { getScheduleRequirements, validateScheduleRequirements } from './ScheduleRequirements.js';
+import { ScheduleAttachmentService } from './ScheduleAttachmentService.js';
 import { ScheduleRepository } from "../repositories/ScheduleRepository.js";
 import { prisma } from "../config/db.js";
 import { AuditLogService } from "./AuditLogService.js";
@@ -730,6 +733,7 @@ export class ScheduleService {
         ? config.enabledServices.map((eventType) => ({
             eventType,
             label: resolveEventMetadata(eventType)?.title || eventType,
+            requirements: getScheduleRequirements(parish, eventType),
           }))
         : [],
       timeSlots: schedulingAvailable ? config.timeSlots : [],
@@ -1194,7 +1198,8 @@ export class ScheduleService {
   /**
    * Creates a schedule request with transaction-aware booking validation and Idempotency.
    */
-  async create(payload, idempotencyKey = null) {
+  async create(payload, idempotencyKey = null, webAttachments = null) {
+    const resourceType = webAttachments === null ? "SCHEDULE_CREATE" : "SCHEDULE_WEB_CREATE";
     const { userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks, requestedPriestId } = payload;
     const parsedUserId = parseInt(userId, 10);
     const parsedParishId = parseInt(parishId, 10);
@@ -1230,14 +1235,17 @@ export class ScheduleService {
       remarks,
       requestedPriestId: parsedRequestedPriestId,
     };
-    const payloadHash = computeSchedulePayloadHash(canonicalPayload);
+    const bookingHash = computeSchedulePayloadHash(canonicalPayload);
+    const payloadHash = webAttachments === null ? bookingHash : createHash('sha256')
+      .update(JSON.stringify([bookingHash, webAttachments.map(({ requirementId, contentHash }) => ({ requirementId, contentHash }))]))
+      .digest('hex');
 
     // 1. Check existing idempotency key if provided
     if (idempotencyKey) {
       const existingKey = await IdempotencyService.findRecord(
         parsedUserId,
         idempotencyKey,
-        "SCHEDULE_CREATE"
+        resourceType
       );
 
       if (existingKey) {
@@ -1283,6 +1291,13 @@ export class ScheduleService {
     const startDatetime = parseManilaDateTime(horizon.dateStr, timeSlot);
     const endDatetime = startDatetime ? new Date(startDatetime.getTime() + 60 * 60 * 1000) : null;
 
+    if (webAttachments !== null) {
+      const parish = await prisma.parish.findUnique({ where: { id: parsedParishId } });
+      requireEnabledSchedulingService(parish, canonicalEventType);
+      validateScheduleRequirements(parish, canonicalEventType, webAttachments);
+      await ScheduleAttachmentService.stage(webAttachments, parsedUserId, parsedParishId);
+    }
+
     try {
       const result = await prisma.$transaction(
         async (tx) => {
@@ -1299,6 +1314,7 @@ export class ScheduleService {
             },
           });
           const schedulingConfig = requireEnabledSchedulingService(parish, canonicalEventType);
+          const requirements = webAttachments === null ? [] : validateScheduleRequirements(parish, canonicalEventType, webAttachments);
 
           validateParishAndOffice(parish, horizon.dayName, timeSlot);
           validateParishAvailability(parish.availabilities, horizon.dateStr);
@@ -1354,6 +1370,12 @@ export class ScheduleService {
               conflictFlag: false,
               remarks: fullRemarks,
               requestedPriestId: parsedRequestedPriestId,
+              ...(webAttachments?.length ? { attachments: { create: webAttachments.map((attachment) => ({
+                requirementId: attachment.requirementId,
+                requirementLabel: requirements.find((r) => r.id === attachment.requirementId).label,
+                fileName: attachment.fileName, fileType: attachment.fileType, fileSize: attachment.fileSize,
+                r2ObjectKey: attachment.r2ObjectKey,
+              })) } } : {}),
             },
             include: {
               user: { select: { id: true, fullName: true, email: true, contactNumber: true, emailNotificationsEnabled: true } },
@@ -1362,13 +1384,23 @@ export class ScheduleService {
             },
           });
 
+          if (webAttachments?.length) {
+            const recoveryJobs = await tx.privateObjectCleanupJob.updateMany({
+              where: { objectKey: { in: webAttachments.map((a) => a.r2ObjectKey) }, status: 'PENDING' },
+              data: { status: 'CANCELLED', completedAt: new Date() },
+            });
+            if (recoveryJobs.count !== webAttachments.length) {
+              throw Object.assign(new Error('Upload expired. Please retry your booking.'), { statusCode: 409, code: 'SCHEDULE_UPLOAD_EXPIRED' });
+            }
+          }
+
           // Atomically persist idempotency key
           if (idempotencyKey) {
             await tx.idempotencyKey.create({
               data: {
                 key: idempotencyKey,
                 userId: parsedUserId,
-                resourceType: "SCHEDULE_CREATE",
+                resourceType,
                 resourceId: created.id,
                 payloadHash,
               },
@@ -1428,7 +1460,7 @@ export class ScheduleService {
           raceWinner = await IdempotencyService.findRecord(
             parsedUserId,
             idempotencyKey,
-            "SCHEDULE_CREATE"
+            resourceType
           );
           if (raceWinner) break;
           if (attempt + 1 < lookupAttempts) {

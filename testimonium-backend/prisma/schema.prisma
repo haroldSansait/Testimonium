@@ -682,6 +682,7 @@ model Schedule {
   processedBy           User?                         @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
   assignedPriest        User?                         @relation("SchedulePriestAssignment", fields: [assignedPriestId], references: [id], onDelete: SetNull)
   requestedPriest       User?                         @relation("ScheduleRequestedPriest", fields: [requestedPriestId], references: [id], onDelete: SetNull)
+  attachments           ScheduleAttachment[]
   history               ScheduleHistory[]
   alternativeProposals  ScheduleAlternativeProposal[]
 
@@ -1323,4 +1324,21 @@ model LegalPolicy {
   updatedBy User? @relation("LegalPolicyUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("legal_policies")
+}
+
+// Ownership and parish are inherited from the immutable parent Schedule.
+model ScheduleAttachment {
+  id               Int      @id @default(autoincrement()) @map("attachment_id")
+  scheduleId       Int      @map("schedule_id")
+  requirementId    String   @map("requirement_id") @db.VarChar(50)
+  requirementLabel String   @map("requirement_label") @db.VarChar(150)
+  fileName         String   @map("file_name") @db.VarChar(255)
+  r2ObjectKey      String   @unique @map("r2_object_key") @db.VarChar(255)
+  fileType         String   @map("file_type") @db.VarChar(100)
+  fileSize         Int      @map("file_size")
+  uploadedAt       DateTime @default(now()) @map("uploaded_at")
+  schedule         Schedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleId, requirementId])
+  @@map("schedule_attachments")
 }

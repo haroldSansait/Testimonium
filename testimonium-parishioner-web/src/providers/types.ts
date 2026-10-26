@@ -119,6 +119,7 @@ export interface ISchedulerProvider {
     location?: string;
     remarks?: string;
     requestedPriestId?: number | null;
+    requirementFiles?: Record<string, File>;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<Appointment>;
   proposeAlternativeDate(id: string, proposedDate: string, timeSlot: string, note?: string): Promise<Appointment['alternativeProposal']>;
@@ -131,7 +132,7 @@ export interface SchedulingConfiguration {
   parishId: number;
   schedulingAvailable: boolean;
   configurationUnavailable: boolean;
-  services: Array<{ eventType: string; label: string }>;
+  services: Array<{ eventType: string; label: string; requirements?: Array<{ id: string; label: string }> }>;
   timeSlots: string[];
   capacity: { dailyLimit: number; slotCapacity: number } | null;
   venueCapacity: number | null;

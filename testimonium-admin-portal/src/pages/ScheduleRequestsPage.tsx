@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
+import { ScheduleAttachments } from '@/components/schedule-requests/ScheduleAttachments';
 import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, assignLayMinister, getAvailableSlots, getPriestAvailability, nominateAlternativeProposal, declineAlternativeProposal, revokeAlternativeProposalNomination } from '@/services/scheduleRequestService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { LoadingState } from '@/components/common/LoadingState';
@@ -658,6 +659,7 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-5 text-sm flex-1">
+          <ScheduleAttachments key={request.id} scheduleId={request.id} />
           {/* Main Info */}
           <div className="grid grid-cols-2 gap-4">
             <div>

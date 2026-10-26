@@ -9,6 +9,7 @@ import type {
 import type { Appointment } from "../../types";
 import { client } from "../../api/client";
 import { resolveDisplayTitle } from "../../shared/EventTypeCatalog";
+import { auth } from "../../firebaseConfig";
 
 let currentWebKeyRef = { payloadSignature: "", key: "" };
 
@@ -30,6 +31,7 @@ function getOrGenerateWebIdempotencyKey(payload: {
   timeSlot: string;
   remarks?: string | null;
   requestedPriestId?: number | null;
+  uploadSignature?: string;
 }): string {
   const normParish = Number(payload.parishId);
   const normEvent = String(payload.eventType || "").toUpperCase().trim();
@@ -37,7 +39,7 @@ function getOrGenerateWebIdempotencyKey(payload: {
   const normSlot = String(payload.timeSlot || "").trim().toUpperCase();
   const normRemarks = payload.remarks ? payload.remarks.trim() : "";
   const normPriest = payload.requestedPriestId ? String(payload.requestedPriestId) : "";
-  const sig = `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}|${normPriest}`;
+  const sig = JSON.stringify([auth.currentUser?.uid, normParish, normEvent, normDate, normSlot, normRemarks, normPriest, payload.uploadSignature || '']);
 
   if (currentWebKeyRef.payloadSignature === sig && currentWebKeyRef.key) {
     return currentWebKeyRef.key;
@@ -183,6 +185,7 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     location?: string;
     remarks?: string;
     requestedPriestId?: number | null;
+    requirementFiles?: Record<string, File>;
   }): Promise<Appointment> {
     const rawRemarks = appointment.remarks?.trim() || "";
     const venueInfo = appointment.location ? `Venue: ${appointment.location}.` : "";
@@ -201,9 +204,23 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       payload.requestedPriestId = Number(appointment.requestedPriestId);
     }
 
-    const idempotencyKey = getOrGenerateWebIdempotencyKey(payload);
+    const entries = Object.entries(appointment.requirementFiles || {}).sort(([a], [b]) => a.localeCompare(b));
+    const uploadSignature = JSON.stringify(await Promise.all(entries.map(async ([id, file]) => {
+      const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+      const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+      return [id, hash];
+    })));
+    const idempotencyKey = getOrGenerateWebIdempotencyKey({ ...payload, uploadSignature });
+    const body = new FormData();
+    body.append('booking', JSON.stringify(payload));
+    body.append('requirementIds', JSON.stringify(entries.map(([id]) => id)));
+    entries.forEach(([, file]) => {
+      const mimeByExtension: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+      const uploadFile = file.type ? file : new Blob([file], { type: mimeByExtension[file.name.split('.').pop()?.toLowerCase() || ''] });
+      body.append('files', uploadFile, file.name);
+    });
 
-    const data = await client.post<any>("/schedule-requests", payload, {
+    const data = await client.post<any>("/schedule-requests/web", body, {
       headers: {
         "Idempotency-Key": idempotencyKey,
       },

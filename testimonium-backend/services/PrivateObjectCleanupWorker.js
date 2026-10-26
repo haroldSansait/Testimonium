@@ -69,10 +69,13 @@ export class PrivateObjectCleanupWorker {
   static async process(job) {
     const where = { id: job.cleanup_job_id, status: "PROCESSING", processingToken: job.processing_token };
     try {
-      // Only this server-created reason uses the document bucket. Existing ID
-      // cleanup jobs continue to use the dedicated private registrant-ID bucket.
+      // Draft attachments use the document bucket. Scheduling evidence and
+      // registrant IDs use the existing approved private bucket.
       const isDraftAttachment = job.reason_code === "DRAFT_ATTACHMENT_DELETED";
-      const referenced = isDraftAttachment
+      const isScheduleAttachment = job.reason_code === "SCHEDULE_ATTACHMENT_PENDING";
+      const referenced = isScheduleAttachment
+        ? await prisma.scheduleAttachment.findFirst({ where: { r2ObjectKey: job.object_key }, select: { id: true } })
+        : isDraftAttachment
         ? await prisma.requestAttachment.findFirst({ where: { r2ObjectKey: job.object_key }, select: { id: true } }) ||
           await prisma.receiptUpload.findFirst({ where: { r2ObjectKey: job.object_key }, select: { id: true } }) ||
           await prisma.documentRequest.findFirst({ where: { paymentProofObjectKey: job.object_key }, select: { id: true } }) ||

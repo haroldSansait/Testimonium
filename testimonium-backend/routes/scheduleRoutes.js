@@ -5,6 +5,9 @@ import {
   getByTracking,
   getPriestAvailability,
   create,
+  createWeb,
+  listAttachments,
+  downloadAttachment,
   getConfiguration,
   getAvailabilityDates,
   getAvailableSlots,
@@ -32,6 +35,7 @@ import {
   emergencyRescheduleSchema,
 } from "../validators/scheduleSchemas.js";
 import { scheduleRecommendationsSchema } from "../validators/recommendationSchemas.js";
+import { scheduleWebUpload } from "../middlewares/scheduleUploadMiddleware.js";
 import {
   listAlternativeProposals,
   submitAlternativeProposal,
@@ -61,6 +65,9 @@ router.get("/available-slots", getAvailableSlots);
 router.get("/eligible-priests", getEligiblePriests);
 router.post("/recommendations", validateBody(scheduleRecommendationsSchema), getRecommendations);
 router.post("/", validateBody(createScheduleSchema), create);
+router.post("/web", checkRole(["PARISHIONER"]), scheduleWebUpload, createWeb);
+router.get("/:id/attachments", listAttachments);
+router.get("/:id/attachments/:attachmentId/file", downloadAttachment);
 
 router.get("/tracking/:reference", getByTracking);
 router.get("/:id/priest-availability", checkRole(["SECRETARY", "PRIEST", "DIOCESE_COORDINATOR"]), getPriestAvailability);

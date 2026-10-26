@@ -21,8 +21,9 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { DatePickerCalendar } from '../../features/scheduler/components/DatePickerCalendar';
 import { ApiError } from '../../api/client';
+import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
 
-const steps = ['Select Parish', 'Choose Service', 'Select Date', 'Choose Time Slot', 'Confirmation'];
+const bookingSteps = ['Select Parish', 'Choose Service', 'Select Date', 'Choose Time Slot'];
 const SCHEDULING_AVAILABILITY_CONFLICT_CODES = new Set([
   'SCHEDULING_CONFIGURATION_INCOMPLETE',
   'SERVICE_NOT_OFFERED',
@@ -89,6 +90,8 @@ export const EventSchedulerPage: React.FC = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [requirementFiles, setRequirementFiles] = useState<Record<string, File>>({});
   const [createdBooking, setCreatedBooking] = useState<Appointment | null>(null);
   const [activeProposal, setActiveProposal] = useState<{
     id: string; serviceName: string; proposedDate: string; proposedTime: string; reason: string; version?: number;
@@ -97,8 +100,26 @@ export const EventSchedulerPage: React.FC = () => {
 
   const selectedParish = parishes.find((parish) => parish.id === selectedParishId);
   const selectedService = configuration?.services.find((service) => service.eventType === selectedEventType);
+  const requirements = selectedService?.requirements || [];
+  const requirementsSignature = requirements.map((r) => r.id).join('|');
+  const hasRequirements = requirements.length > 0;
+  const steps = [...bookingSteps, ...(hasRequirements ? ['Upload Requirements'] : []), 'Confirmation'];
+  const confirmationStep = steps.length - 1;
+  const requirementsComplete = requirements.every((r) => requirementFiles[r.id]);
+
+  useEffect(() => { setRequirementFiles({}); }, [selectedParishId, selectedEventType]);
+  useEffect(() => {
+    const ids = requirementsSignature.split('|');
+    setRequirementFiles((files) => Object.fromEntries(Object.entries(files).filter(([id]) => ids.includes(id))));
+  }, [requirementsSignature]);
+  useEffect(() => {
+    if (currentStep === 4 && !createdBooking && (!hasRequirements || !selectedTimeSlot)) setCurrentStep(3);
+  }, [currentStep, createdBooking, hasRequirements, selectedTimeSlot]);
 
   const reqGenRef = useRef(0);
+  const datesGenRef = useRef(0);
+  const slotsGenRef = useRef(0);
+  const revalidationGenRef = useRef(0);
   const recGenRef = useRef(0);
   const priestsGenRef = useRef(0);
   const pendingRecommendationSlotRef = useRef<string | null>(null);
@@ -125,11 +146,11 @@ export const EventSchedulerPage: React.FC = () => {
 
   const revalidateSchedulingState = useCallback(async () => {
     if (!selectedParishId) return;
-    const currentGen = ++reqGenRef.current;
+    const currentGen = ++revalidationGenRef.current;
 
     try {
       const nextConfig = await services.scheduler.getSchedulingConfiguration(selectedParishId);
-      if (currentGen !== reqGenRef.current) return;
+      if (currentGen !== revalidationGenRef.current) return;
       setConfiguration(nextConfig);
 
       // Downstream Check 1: Is currently selected service still offered?
@@ -149,7 +170,7 @@ export const EventSchedulerPage: React.FC = () => {
 
       // Revalidate available dates for current service
       const nextDates = await services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType);
-      if (currentGen !== reqGenRef.current) return;
+      if (currentGen !== revalidationGenRef.current) return;
       setAvailability(nextDates);
 
       // Downstream Check 2: Is currently selected date still available?
@@ -167,7 +188,7 @@ export const EventSchedulerPage: React.FC = () => {
 
       // Revalidate available slots for current date
       const nextSlots = await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType);
-      if (currentGen !== reqGenRef.current) return;
+      if (currentGen !== revalidationGenRef.current) return;
       setAvailableSlots(nextSlots);
 
       // Downstream Check 3: Is currently selected slot still available?
@@ -273,6 +294,7 @@ export const EventSchedulerPage: React.FC = () => {
     setRecommendationsError(null);
     setAvailability(null);
     setAvailableSlots([]);
+    setConfiguration(null);
     if (selectedParishId) {
       void reloadConfiguration();
     }
@@ -285,7 +307,7 @@ export const EventSchedulerPage: React.FC = () => {
   useEffect(() => {
     let lastRefetch = 0;
     const handleFocusOrVisible = () => {
-      if (document.visibilityState === 'visible' && selectedParishId) {
+      if (document.visibilityState === 'visible' && selectedParishId && !submittingRef.current) {
         const now = Date.now();
         if (now - lastRefetch > 500) {
           lastRefetch = now;
@@ -297,33 +319,36 @@ export const EventSchedulerPage: React.FC = () => {
     window.addEventListener('focus', handleFocusOrVisible);
     document.addEventListener('visibilitychange', handleFocusOrVisible);
     return () => {
+      revalidationGenRef.current += 1;
       window.removeEventListener('focus', handleFocusOrVisible);
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
     };
   }, [revalidateSchedulingState, selectedParishId]);
 
   useEffect(() => {
+    const currentGen = ++datesGenRef.current;
     if (!selectedParishId || !selectedEventType) {
       setAvailability(null);
+      setLoadingDates(false);
       return;
     }
-    const currentGen = ++reqGenRef.current;
     setLoadingDates(true);
     setSelectedDate('');
     setSelectedTimeSlot('');
     pendingRecommendationSlotRef.current = null;
     void services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType)
-      .then((result) => { if (currentGen === reqGenRef.current) setAvailability(result); })
-      .catch(() => { if (currentGen === reqGenRef.current) { setAvailability(null); setMessage('Could not load available dates. Please try again.'); } })
-      .finally(() => { if (currentGen === reqGenRef.current) setLoadingDates(false); });
+      .then((result) => { if (currentGen === datesGenRef.current) setAvailability(result); })
+      .catch(() => { if (currentGen === datesGenRef.current) { setAvailability(null); setMessage('Could not load available dates. Please try again.'); } })
+      .finally(() => { if (currentGen === datesGenRef.current) setLoadingDates(false); });
   }, [selectedEventType, selectedParishId]);
 
   useEffect(() => {
+    const currentGen = ++slotsGenRef.current;
     if (!selectedParishId || !selectedEventType || !selectedDate) {
       setAvailableSlots([]);
+      setLoadingSlots(false);
       return;
     }
-    const currentGen = ++reqGenRef.current;
     setLoadingSlots(true);
 
     const pendingSlot = pendingRecommendationSlotRef.current;
@@ -333,7 +358,7 @@ export const EventSchedulerPage: React.FC = () => {
 
     void services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType)
       .then((result) => {
-        if (currentGen === reqGenRef.current) {
+        if (currentGen === slotsGenRef.current) {
           setAvailableSlots(result);
           if (pendingSlot) {
             if (result.includes(pendingSlot)) {
@@ -347,14 +372,14 @@ export const EventSchedulerPage: React.FC = () => {
         }
       })
       .catch(() => {
-        if (currentGen === reqGenRef.current) {
+        if (currentGen === slotsGenRef.current) {
           setAvailableSlots([]);
           setSelectedTimeSlot('');
           pendingRecommendationSlotRef.current = null;
           setMessage('Could not load available time slots. Please try again.');
         }
       })
-      .finally(() => { if (currentGen === reqGenRef.current) setLoadingSlots(false); });
+      .finally(() => { if (currentGen === slotsGenRef.current) setLoadingSlots(false); });
   }, [selectedDate, selectedEventType, selectedParishId]);
 
   const handleNext = () => {
@@ -372,11 +397,18 @@ export const EventSchedulerPage: React.FC = () => {
   };
 
   const handleBook = async () => {
+    if (submittingRef.current) return;
     if (isProfileIncomplete) {
       openProfileModal('schedule appointments');
       return;
     }
     if (!selectedService || !selectedParishId || !selectedDate || !selectedTimeSlot) return;
+    if (!requirementsComplete) {
+      setMessage('Please upload every required document before submitting.');
+      setCurrentStep(4);
+      return;
+    }
+    submittingRef.current = true;
     setSubmitting(true);
     setMessage(null);
     try {
@@ -389,10 +421,16 @@ export const EventSchedulerPage: React.FC = () => {
         location: venueAddress,
         remarks: additionalNotes.trim() || undefined,
         requestedPriestId: requestedPriestId || undefined,
+        requirementFiles: Object.fromEntries(requirements.map((r) => [r.id, requirementFiles[r.id]])),
       });
       setCreatedBooking(appointment);
-      setCurrentStep(4);
+      setCurrentStep(confirmationStep);
     } catch (error: any) {
+      if (error?.code === 'SCHEDULE_REQUIREMENTS_CHANGED') {
+        await reloadConfiguration();
+        setMessage(error.message);
+        return;
+      }
       if (error?.code === 'PROFILE_INCOMPLETE') {
         openProfileModal('schedule appointments');
         return;
@@ -406,22 +444,27 @@ export const EventSchedulerPage: React.FC = () => {
       }
       if (isSchedulingAvailabilityConflict(error)) {
         setSelectedTimeSlot('');
-        await reloadConfiguration();
-        const nextDates = await services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType);
-        setAvailability(nextDates);
-        void fetchRecommendations();
-        if (selectedDate && nextDates.dates.includes(selectedDate)) {
-          setAvailableSlots(await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType));
-        } else {
-          setSelectedDate('');
-          setAvailableSlots([]);
-          setCurrentStep(2);
+        try {
+          await reloadConfiguration();
+          const nextDates = await services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType);
+          setAvailability(nextDates);
+          void fetchRecommendations();
+          if (selectedDate && nextDates.dates.includes(selectedDate)) {
+            setAvailableSlots(await services.scheduler.getAvailableSlots(selectedParishId, selectedDate, selectedEventType));
+          } else {
+            setSelectedDate('');
+            setAvailableSlots([]);
+            setCurrentStep(2);
+          }
+          setMessage('Scheduling availability changed before your request was submitted. Please review the current options.');
+        } catch {
+          setMessage('Could not refresh scheduling availability. Please retry or select your service again.');
         }
-        setMessage('Scheduling availability changed before your request was submitted. Please review the current options.');
       } else {
         setMessage(scheduleSubmissionErrorMessage(error));
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -555,7 +598,8 @@ export const EventSchedulerPage: React.FC = () => {
         <div className='flex gap-3'><Button size='sm' disabled={submittingProposal} onClick={() => void handleRespondProposal(true)}>{submittingProposal ? 'Responding...' : 'Accept Proposed Date'}</Button><Button size='sm' variant='outline' disabled={submittingProposal} onClick={() => void handleRespondProposal(false)}>Decline Proposal</Button></div>
       </Card>}
       <Card><CardContent className='pt-6 space-y-8'>
-        <Stepper steps={steps} currentStep={currentStep} />
+        <Stepper steps={steps} currentStep={createdBooking ? confirmationStep : currentStep} />
+        <fieldset disabled={submitting} className='min-w-0'>
         {currentStep === 0 && <div className='space-y-4 max-w-xl mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Target Parish Office</label>
           <CustomSelect
@@ -576,6 +620,7 @@ export const EventSchedulerPage: React.FC = () => {
         {currentStep === 1 && <div className='space-y-4 max-w-xl mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Select Service</label>
           {loadingConfiguration ? <Skeleton className='h-32 w-full' /> : null}
+          {!loadingConfiguration && !configuration && <Button variant='outline' onClick={() => void reloadConfiguration()}>Retry Configuration</Button>}
           {!loadingConfiguration && !configuration?.schedulingAvailable ? <div className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900'>This parish is not currently accepting online scheduling requests.</div> : null}
           <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>{configuration?.services.map((service) => <button key={service.eventType} type='button' onClick={() => setSelectedEventType(service.eventType)} className={`p-4 border rounded-xl text-left text-xs font-medium flex items-center justify-between ${selectedEventType === service.eventType ? 'border-crimson bg-red-50 text-crimson font-bold' : 'border-border text-text-primary hover:bg-app-page'}`}><span>{service.label}</span>{selectedEventType === service.eventType && <Check className='w-4 h-4' />}</button>)}</div>
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(0)}>Back</Button><Button onClick={handleNext} disabled={!selectedEventType}>Next Step</Button></div>
@@ -769,13 +814,38 @@ export const EventSchedulerPage: React.FC = () => {
             </p>
           </div>
 
-          <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(2)}>Back</Button><Button onClick={handleBook} loading={submitting} disabled={!selectedTimeSlot}>Confirm Booking</Button></div>
+          <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(2)}>Back</Button><Button onClick={hasRequirements ? () => setCurrentStep(4) : handleBook} loading={submitting} disabled={!selectedTimeSlot || loadingConfiguration || !selectedService}>{hasRequirements ? 'Next Step' : 'Confirm Booking'}</Button></div>
         </div>}
-        {currentStep === 4 && createdBooking && <div className='text-center max-w-md mx-auto space-y-6 py-6'>
+        {currentStep === 4 && !createdBooking && hasRequirements && <div className='space-y-5 max-w-xl mx-auto'>
+          <h3 className='text-xl font-serif font-bold text-text-primary'>Upload Requirements</h3>
+          <p className='text-sm text-text-muted'>Please provide the documents required by {selectedParish?.name} for {selectedService?.label}.</p>
+          <p className='text-xs text-text-muted'>{UPLOAD_POLICIES.SUPPORTING_DOCUMENT.label}. Files are submitted securely with your booking.</p>
+          {requirements.map((requirement) => <div key={`${selectedParishId}-${selectedEventType}-${requirement.id}`} className='p-4 border border-border rounded-xl space-y-3'>
+            <label className='block text-sm font-semibold text-text-primary' htmlFor={`schedule-file-${requirement.id}`}>{requirement.label} <span className='text-crimson'>(required)</span></label>
+            <input id={`schedule-file-${requirement.id}`} type='file' accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute} className='block w-full text-sm focus-ring rounded' onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (!file) return;
+              const result = validateUploadFile(file, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+              if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
+              setMessage(null);
+              setRequirementFiles((files) => ({ ...files, [requirement.id]: file }));
+            }} />
+            {requirementFiles[requirement.id] && <div className='flex flex-wrap items-center justify-between gap-2 text-xs'>
+              <span className='break-all text-text-primary'>{requirementFiles[requirement.id].name}</span>
+              <button type='button' className='text-crimson underline focus-ring rounded' onClick={() => setRequirementFiles((files) => {
+                const next = { ...files }; delete next[requirement.id]; return next;
+              })}>Remove</button>
+            </div>}
+          </div>)}
+          <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(3)}>Back</Button><Button onClick={handleBook} loading={submitting} disabled={!requirementsComplete || !selectedTimeSlot || loadingConfiguration || !selectedService}>Confirm Booking</Button></div>
+        </div>}
+        {createdBooking && <div className='text-center max-w-md mx-auto space-y-6 py-6'>
           <div className='flex justify-center text-green-600'><CheckCircle size={64} /></div><h3 className='text-xl font-serif font-bold text-text-primary'>Schedule Request Submitted</h3><p className='text-sm text-text-muted'>The parish will review your request.</p>
           <div className='p-5 bg-app-page border border-border rounded-card text-left space-y-3'><p><strong>Parish:</strong> {selectedParish?.name}</p><p><strong>Service:</strong> {createdBooking.serviceName}</p><p><strong>Date and time:</strong> {createdBooking.date} at {createdBooking.timeSlot}</p><p><strong>Reference:</strong> {createdBooking.confirmationNumber}</p></div>
           <Button className='w-full' onClick={() => navigate('/dashboard/home')}>Return to Dashboard</Button>
         </div>}
+        </fieldset>
       </CardContent></Card>
 
 

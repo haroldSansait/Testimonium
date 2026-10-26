@@ -1,4 +1,7 @@
 import { ScheduleService } from "../services/ScheduleService.js";
+import { ScheduleAttachmentService } from "../services/ScheduleAttachmentService.js";
+import { IdempotencyService } from "../services/IdempotencyService.js";
+import { pipeline } from "node:stream/promises";
 import { resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatalog.js";
 import { CANONICAL_SCHEDULE_EVENT_TYPES } from "../services/BookingValidator.js";
 import { prisma } from "../config/db.js";
@@ -103,11 +106,14 @@ export const getByTracking = async (req, res, next) => {
   }
 };
 
-export const create = async (req, res, next) => {
+const createHandler = (web = false) => async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { parishId, eventType, date, timeSlot, remarks, requestedPriestId } = req.body;
     const idempotencyKey = req.headers["idempotency-key"] || null;
+    if (web && !IdempotencyService.isValidKey(idempotencyKey)) {
+      return res.status(400).json({ success: false, message: "A valid Idempotency-Key is required." });
+    }
 
     // Profile completion requirement for parishioners
     if (req.user.role === "PARISHIONER") {
@@ -154,7 +160,7 @@ export const create = async (req, res, next) => {
       timeSlot,
       remarks,
       requestedPriestId,
-    }, idempotencyKey);
+    }, idempotencyKey, web ? ScheduleAttachmentService.prepare(req.files, req.scheduleRequirementIds) : null);
 
     return res.status(201).json({
       success: true,
@@ -163,6 +169,32 @@ export const create = async (req, res, next) => {
     });
   } catch (err) {
     return next(err);
+  }
+};
+
+export const create = createHandler();
+export const createWeb = createHandler(true);
+
+export const listAttachments = async (req, res, next) => {
+  try {
+    const data = await ScheduleAttachmentService.list(req.params.id, req.user);
+    return res.json({ success: true, data });
+  } catch (error) { return next(error); }
+};
+
+export const downloadAttachment = async (req, res, next) => {
+  try {
+    const { metadata, stream } = await ScheduleAttachmentService.download(req.params.id, req.params.attachmentId, req.user);
+    const safeName = metadata.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', metadata.fileType);
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (stream.ContentLength) res.setHeader('Content-Length', stream.ContentLength);
+    await pipeline(stream.Body, res);
+  } catch (error) {
+    if (res.headersSent) return res.destroy(error);
+    return next(error);
   }
 };
 

@@ -10,6 +10,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
+import { ScheduleAttachments } from '../../features/scheduler/components/ScheduleAttachments';
 import { DatePickerCalendar } from '../../features/scheduler/components/DatePickerCalendar';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -322,6 +323,7 @@ export const ScheduleDetailPage: React.FC = () => {
           {appointment.rescheduleHistory && appointment.rescheduleHistory.length > 0 && (
             <ScheduleRescheduleHistory history={appointment.rescheduleHistory} />
           )}
+          <ScheduleAttachments key={appointment.id} scheduleId={appointment.id} />
 
           {appointment.layMinisterAssigned && (
             <div className="border border-amber-200 rounded-2xl p-5 bg-amber-50/80 space-y-4">

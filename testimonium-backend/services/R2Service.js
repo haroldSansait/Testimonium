@@ -13,7 +13,7 @@ export const isMissingR2ObjectError = (error) => {
 };
 
 export class R2Service {
-  async upload({ key, body, contentType, bucketName = env.r2.bucketName }) {
+  async upload({ key, body, contentType, bucketName = env.r2.bucketName, abortSignal }) {
     await r2Client.send(
       new PutObjectCommand({
         Bucket: bucketName,
@@ -21,6 +21,7 @@ export class R2Service {
         Body: body,
         ContentType: contentType,
       }),
+      abortSignal ? { abortSignal } : undefined,
     );
 
     return bucketName === env.r2.bucketName ? `${env.r2.publicUrl}/${key}` : null;
