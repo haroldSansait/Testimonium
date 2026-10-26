@@ -7,6 +7,7 @@ import { shouldRequireEmailVerification } from "../utils/emailVerificationPolicy
 import { defaultGovernmentIdVerificationService } from "../services/GovernmentIdVerificationService.js";
 import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
 
+
 const userRepository = new UserRepository();
 const authService = new AuthService();
 
@@ -80,7 +81,7 @@ export const login = async (req, res, next) => {
 
 export const resendVerification = async (req, res, next) => {
   try {
-    const email = req.body?.email || req.firebaseUser?.email;
+    const email = req.firebaseUser?.email;
 
     if (!email) {
       return res.status(400).json({
@@ -90,13 +91,13 @@ export const resendVerification = async (req, res, next) => {
       });
     }
 
-    const user = await userRepository.findByEmail(email);
+    const user = await userRepository.findByFirebaseUid(req.firebaseUser.uid);
 
     // Prevent Email Enumeration: Always return success message for non-existent users
     if (!user) {
       return res.status(200).json({
         success: true,
-        message: "If an eligible account exists, a verification email has been sent.",
+        message: "Verification request accepted.",
       });
     }
 
@@ -147,7 +148,7 @@ export const resendVerification = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Verification email sent.",
+      message: "Verification request accepted.",
     });
   } catch (err) {
     return next(err);

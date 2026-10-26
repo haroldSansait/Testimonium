@@ -98,7 +98,7 @@ export class EmailService {
     return smtp.connectionTimeoutMs + smtp.greetingTimeoutMs + smtp.socketTimeoutMs;
   }
 
-  async send({ to, subject, html, text }) {
+  async send({ to, subject, html, text, attachments }) {
     if (!this.isConfigured()) {
       const error = new Error("Email delivery transport is not configured.");
       error.permanent = false;
@@ -110,6 +110,7 @@ export class EmailService {
       subject,
       html,
       text,
+      ...(attachments ? { attachments } : {}),
     };
     if (this.transport === "gmail_api") {
       try {

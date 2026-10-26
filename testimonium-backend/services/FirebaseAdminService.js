@@ -77,4 +77,59 @@ export class FirebaseAdminService {
   async listUsers(maxResults = 1000, nextPageToken) {
     return getFirebaseAuth().listUsers(maxResults, nextPageToken);
   }
+
+  /**
+   * Fetches a Firebase user by UID.
+   * @param {string} uid
+   * @returns {Promise<object>} Firebase UserRecord
+   */
+  async getUser(uid) {
+    return getFirebaseAuth().getUser(uid);
+  }
+
+  /**
+   * Fetches a Firebase user by Email.
+   * Returns null if user is not found.
+   * @param {string} email
+   * @returns {Promise<object|null>} Firebase UserRecord or null
+   */
+  async getUserByEmail(email) {
+    try {
+      return await getFirebaseAuth().getUserByEmail(email);
+    } catch (error) {
+      if (error?.code === "auth/user-not-found") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Marks a user's email as verified in Firebase Auth.
+   * @param {string} uid
+   * @param {boolean} [emailVerified=true]
+   * @returns {Promise<object>} Updated UserRecord
+   */
+  async setEmailVerified(uid, emailVerified = true, email) {
+    return getFirebaseAuth().updateUser(uid, { emailVerified, ...(email ? { email } : {}) });
+  }
+
+  /**
+   * Updates a user's password in Firebase Auth.
+   * @param {string} uid
+   * @param {string} newPassword
+   * @returns {Promise<object>} Updated UserRecord
+   */
+  async updatePassword(uid, newPassword) {
+    return getFirebaseAuth().updateUser(uid, { password: newPassword });
+  }
+
+  /**
+   * Revokes all refresh tokens and active sessions for a user.
+   * @param {string} uid
+   * @returns {Promise<void>}
+   */
+  async revokeRefreshTokens(uid) {
+    return getFirebaseAuth().revokeRefreshTokens(uid);
+  }
 }

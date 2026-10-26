@@ -1,198 +1,147 @@
+import { useOtpCooldown } from '../../hooks/useOtpCooldown';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, CheckCircle, RefreshCw, Edit3, ShieldAlert, ArrowRight } from 'lucide-react';
-import { sendEmailVerification, updateEmail } from 'firebase/auth';
+import { updateEmail, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
+import { OtpInput } from '../../components/ui/OtpInput';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
-type VerificationFsmState = 'IDLE' | 'VERIFYING' | 'FETCHING_PROFILE' | 'ROUTING' | 'COMPLETE';
+type VerificationFsmState = 'IDLE' | 'VERIFYING' | 'SUCCESS' | 'ROUTING';
 
 export const VerifyEmailPage: React.FC = () => {
-  const { user, logout, refreshProfile } = useAuth();
+  const { user, appProfile, loading: authLoading, refreshProfile, logout, requestEmailVerificationOtp, confirmEmailVerificationOtp } = useAuth();
   const navigate = useNavigate();
 
+  const mountedRef = useRef(true);
+  const busyRef = useRef(false);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [fsmState, setFsmState] = useState<VerificationFsmState>('IDLE');
-  const fsmStateRef = useRef<VerificationFsmState>('IDLE');
-
-  const updateFsmState = (nextState: VerificationFsmState) => {
-    console.debug(`[VerifyEmailPage FSM] State transition: ${fsmStateRef.current} -> ${nextState}`);
-    fsmStateRef.current = nextState;
-    setFsmState(nextState);
-  };
-
   const [loading, setLoading] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useOtpCooldown();
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  
+
   // Change Email Modal state
   const [isChangeEmailOpen, setIsChangeEmailOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [changeEmailLoading, setChangeEmailLoading] = useState(false);
 
-  // 60-second cooldown timer tick
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setInterval(() => {
-      setCooldown((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [cooldown]);
+  // Submit OTP Verification
+  const handleVerifyCode = useCallback(async (codeToVerify?: string) => {
+    const code = (codeToVerify || otp).trim();
+    if (!/^\d{6}$/.test(code) || fsmState !== 'IDLE' || busyRef.current) return;
+    busyRef.current = true;
 
-  // FSM-based verification runner
-  const handleCheckVerification = useCallback(async (isAutoCheck = false) => {
-    if (!auth.currentUser) return;
-    
-    // Prevent duplicate triggers if FSM is currently processing or complete
-    if (fsmStateRef.current !== 'IDLE') return;
-
-    updateFsmState('VERIFYING');
-
-    if (!isAutoCheck) {
-      setError('');
-      setMessage('');
-    }
+    setFsmState('VERIFYING');
+    setError('');
+    setMessage('');
 
     try {
-      await auth.currentUser.reload();
-      const currentUser = auth.currentUser;
+      await confirmEmailVerificationOtp(code);
+      if (!mountedRef.current) return;
+      setFsmState('SUCCESS');
+      setMessage('Email verified successfully! Preparing your dashboard...');
 
-      if (currentUser?.emailVerified) {
-        setMessage('Email verified successfully! Synchronizing profile...');
-        updateFsmState('FETCHING_PROFILE');
-
-        // Force fresh ID Token & refresh context profile
-        await currentUser.getIdToken(true);
-        await refreshProfile();
-
-        updateFsmState('ROUTING');
-        setMessage('Redirecting to your portal...');
-
-        setTimeout(() => {
-          updateFsmState('COMPLETE');
-          console.debug('[VerifyEmailPage FSM] Navigating to /dashboard/home');
-          navigate('/dashboard/home', { replace: true });
-        }, 800);
-      } else {
-        updateFsmState('IDLE');
-        if (!isAutoCheck) {
-          setError('Your email address has not been verified yet. Please check your inbox and click the verification link.');
-        }
-      }
+      navigate('/dashboard/home', { replace: true });
     } catch (err: any) {
-      updateFsmState('IDLE');
-      if (!isAutoCheck) {
-        setError(err?.message || 'Failed to check verification status. Please try again.');
-      }
+      if (!mountedRef.current) return;
+      busyRef.current = false;
+      setFsmState('IDLE');
+      const msg = err?.message || 'Verification failed. Please check the code and try again.';
+      setError(msg);
     }
-  }, [navigate, refreshProfile]);
+  }, [otp, fsmState, confirmEmailVerificationOtp, navigate]);
 
-  // Dual event listeners: visibilitychange & window.focus
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        handleCheckVerification(true);
-      }
-    };
-
-    const onWindowFocus = () => {
-      handleCheckVerification(true);
-    };
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('focus', onWindowFocus);
-
-    // Periodic polling as fallback
-    const interval = setInterval(() => {
-      handleCheckVerification(true);
-    }, 5000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('focus', onWindowFocus);
-      clearInterval(interval);
-    };
-  }, [handleCheckVerification]);
-
-  // Handle Resend Verification Email
-  const handleResendEmail = async () => {
-    if (cooldown > 0 || !auth.currentUser) return;
+  // Handle Resend Verification Code
+  const handleResendCode = async () => {
+    if (cooldown > 0 || !auth.currentUser || fsmState !== 'IDLE' || busyRef.current) return;
+    busyRef.current = true;
 
     setLoading(true);
     setError('');
     setMessage('');
 
     try {
-      // 1. Call Backend to check rate limit & 60s cooldown
-      const idToken = await auth.currentUser.getIdToken();
-      const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-
-      const resendRes = await fetch(`${API_URL}/auth/resend-verification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ email: auth.currentUser.email }),
-      });
-
-      const resendData = await resendRes.json();
-
-      if (!resendRes.ok) {
-        if (resendData?.retryAfter) {
-          setCooldown(resendData.retryAfter);
-        } else {
-          setCooldown(60);
-        }
-        throw new Error(resendData?.message || 'Failed to resend verification email.');
-      }
-
-      // 2. Trigger Firebase Auth sendEmailVerification
-      await sendEmailVerification(auth.currentUser);
-
-      setMessage(`A fresh verification link has been sent to ${auth.currentUser.email}.`);
-      setCooldown(60);
+      const response = await requestEmailVerificationOtp();
+      if (!mountedRef.current) return;
+      if (response.alreadyVerified) { await auth.currentUser?.reload(); await auth.currentUser?.getIdToken(true); await refreshProfile(); return; }
+      const retrySec = response?.retryAfter || 60;
+      setCooldown(retrySec);
+      setMessage(`A fresh 6-digit code has been sent to ${auth.currentUser?.email}.`);
+      setOtp('');
     } catch (err: any) {
-      setError(err?.message || 'Failed to send verification email.');
+      if (!mountedRef.current) return;
+      if (err?.retryAfter) {
+        setCooldown(err.retryAfter);
+      }
+      setError(err?.message || 'Failed to send verification code. Please try again.');
     } finally {
-      setLoading(false);
+      busyRef.current = false;
+      if (mountedRef.current) setLoading(false);
     }
   };
 
   // Handle Changing Mistyped Email
   const handleChangeEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail || !auth.currentUser) return;
+    const cleanNewEmail = newEmail.trim().toLowerCase();
+    if (!cleanNewEmail || !auth.currentUser || busyRef.current) return;
+    busyRef.current = true;
+    const expectedUser = auth.currentUser;
 
     setChangeEmailLoading(true);
     setError('');
     setMessage('');
 
     try {
-      await updateEmail(auth.currentUser, newEmail);
-      await sendEmailVerification(auth.currentUser);
+      // 1. Update authoritative email on Firebase
+      if (!expectedUser.email || !currentPassword) throw new Error('Enter your current password to change email.');
+      await reauthenticateWithCredential(expectedUser, EmailAuthProvider.credential(expectedUser.email, currentPassword));
+      if (!mountedRef.current || auth.currentUser?.uid !== expectedUser.uid) return;
+      await updateEmail(expectedUser, cleanNewEmail);
+      await expectedUser.reload();
+      await expectedUser.getIdToken(true);
+      await refreshProfile();
 
-      setMessage(`Email updated to ${newEmail}. Verification email sent!`);
+      // 2. Request new OTP for the updated email address
+      await requestEmailVerificationOtp();
+      if (!mountedRef.current || auth.currentUser?.uid !== expectedUser.uid) return;
+      setCurrentPassword('');
+      setMessage(`Email updated to ${cleanNewEmail}. A new verification code has been sent!`);
       setIsChangeEmailOpen(false);
       setNewEmail('');
+      setOtp('');
       setCooldown(60);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError(err?.message || 'Failed to update email. You may need to log in again.');
     } finally {
-      setChangeEmailLoading(false);
+      busyRef.current = false;
+      if (mountedRef.current) setChangeEmailLoading(false);
     }
   };
 
-  const currentEmail = user?.email || auth.currentUser?.email || 'your email';
-  const isProcessing = fsmState !== 'IDLE';
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { navigate('/login', { replace: true }); return; }
+    if (appProfile?.emailVerified) { navigate('/dashboard/home', { replace: true }); return; }
+    void handleResendCode();
+  }, [authLoading, user?.uid, user?.email, appProfile?.emailVerified]);
+
+  const currentEmail = user?.email || auth.currentUser?.email || 'your registered email';
+  const isVerifying = fsmState === 'VERIFYING';
+  const isSuccess = fsmState === 'SUCCESS' || fsmState === 'ROUTING';
 
   return (
     <div className="min-h-[calc(100vh-64px)] grid grid-cols-1 md:grid-cols-12 bg-app-base">
-      {/* Left side - Visual Branding */}
+      {/* Left side - Visual Institutional Branding */}
       <div 
         className="hidden md:flex md:col-span-5 text-white flex-col justify-center items-center text-center p-12 relative overflow-hidden"
         style={{
@@ -209,12 +158,12 @@ export const VerifyEmailPage: React.FC = () => {
             Verify Your Email Address
           </h3>
           <p className="text-sm text-white/80 leading-relaxed">
-            Security and account integrity are paramount. Please verify ownership of your email address to access your parishioner services.
+            Security and account integrity are paramount. Please verify ownership of your email address with the six-digit code sent to your inbox.
           </p>
         </div>
       </div>
 
-      {/* Right side - Verification Actions */}
+      {/* Right side - OTP Verification Actions */}
       <div className="col-span-1 md:col-span-7 flex items-center justify-center p-8 sm:p-12 lg:p-16">
         <div className="w-full max-w-md space-y-8">
           
@@ -223,10 +172,10 @@ export const VerifyEmailPage: React.FC = () => {
               <Mail size={32} />
             </div>
             <h1 className="text-3xl font-serif font-bold text-text-primary">
-              Check Your Inbox
+              Enter Verification Code
             </h1>
             <p className="text-sm text-text-muted leading-relaxed">
-              We have sent a verification link to:
+              Request a six-digit code for:
             </p>
             <div className="p-3.5 bg-slate-100 rounded-xl border border-slate-300 text-gray-900 font-mono text-sm font-semibold text-center sm:text-left break-all shadow-sm">
               {currentEmail}
@@ -250,35 +199,59 @@ export const VerifyEmailPage: React.FC = () => {
             )}
           </div>
 
+          {/* Six-digit OTP Input */}
+          <div className="space-y-3 py-2">
+            <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider text-center sm:text-left">
+              Six-Digit Code
+            </label>
+            <OtpInput
+              value={otp}
+              onChange={(val) => {
+                setOtp(val);
+                if (error) setError('');
+              }}
+              onComplete={(code) => {
+                void handleVerifyCode(code);
+              }}
+              disabled={loading || changeEmailLoading || isVerifying || isSuccess}
+              hasError={Boolean(error)}
+              autoFocus
+              idPrefix="email-verify-otp"
+            />
+            <p className="text-[11px] text-text-muted text-center sm:text-left">
+              Code expires in 10 minutes. Works once.
+            </p>
+          </div>
+
           {/* Action Buttons */}
           <div className="space-y-3 pt-2">
             <Button
-              onClick={() => handleCheckVerification(false)}
-              loading={isProcessing}
-              disabled={isProcessing}
+              onClick={() => handleVerifyCode()}
+              loading={isVerifying}
+              disabled={loading || changeEmailLoading || otp.length !== 6 || isVerifying || isSuccess}
               className="w-full py-3 text-sm flex items-center justify-center space-x-2 font-semibold"
             >
-              <span>{isProcessing ? `Status: ${fsmState}...` : "I've Verified"}</span>
+              <span>{isSuccess ? 'Verified!' : 'Verify Code'}</span>
               <ArrowRight size={18} />
             </Button>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
               <Button
                 variant="outline"
-                onClick={handleResendEmail}
-                disabled={loading || cooldown > 0 || isProcessing}
+                onClick={handleResendCode}
+                disabled={loading || cooldown > 0 || isVerifying || isSuccess}
                 className="w-full text-xs flex items-center justify-center space-x-1.5 py-2.5"
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                 <span>
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Email'}
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}
                 </span>
               </Button>
 
               <Button
                 variant="outline"
                 onClick={() => setIsChangeEmailOpen(true)}
-                disabled={isProcessing}
+                disabled={isVerifying || isSuccess}
                 className="w-full text-xs flex items-center justify-center space-x-1.5 py-2.5 text-text-muted hover:text-text-primary"
               >
                 <Edit3 size={14} />
@@ -292,7 +265,7 @@ export const VerifyEmailPage: React.FC = () => {
             <span>Wrong account?</span>
             <button
               onClick={() => logout('manual')}
-              disabled={isProcessing}
+              disabled={isVerifying || isSuccess}
               className="font-medium text-crimson hover:underline focus-ring"
             >
               Sign out and return to login
@@ -309,8 +282,8 @@ export const VerifyEmailPage: React.FC = () => {
         title="Update Email Address"
       >
         <form onSubmit={handleChangeEmail} className="space-y-4">
-          <p className="text-xs text-text-muted">
-            Enter your correct email address. A new verification link will be sent to this email immediately.
+          <p className="text-xs text-text-muted leading-relaxed">
+            Enter your correct email address. A fresh six-digit verification code will be sent to the updated address immediately.
           </p>
 
           <Input
@@ -323,16 +296,19 @@ export const VerifyEmailPage: React.FC = () => {
             disabled={changeEmailLoading}
           />
 
+          <Input label="Current Password" type="password" autoComplete="current-password" value={currentPassword}
+            onChange={e => setCurrentPassword(e.target.value)} required disabled={changeEmailLoading} />
           <div className="flex justify-end space-x-3 pt-3">
             <Button
               type="button"
               variant="outline"
               onClick={() => setIsChangeEmailOpen(false)}
+              disabled={changeEmailLoading}
             >
               Cancel
             </Button>
             <Button type="submit" loading={changeEmailLoading}>
-              Update & Resend
+              Update & Send Code
             </Button>
           </div>
         </form>
@@ -343,4 +319,3 @@ export const VerifyEmailPage: React.FC = () => {
 };
 
 export default VerifyEmailPage;
-

@@ -4,7 +4,6 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   reload,
-  sendEmailVerification,
   signInWithCredential,
   signInWithEmailAndPassword,
   signOut,
@@ -56,6 +55,7 @@ interface AuthContextValue {
   ) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   checkEmailVerification: (isAutoCheck?: boolean) => Promise<boolean>;
+  confirmEmailVerificationOtp: (code: string) => Promise<boolean>;
   resendVerification: () => Promise<ResendVerificationResponse>;
   acceptLegal: (legal: LegalAcceptancePayload) => Promise<void>;
   cancelGoogleJitLegal: () => Promise<void>;
@@ -380,9 +380,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsRegistrationSession(true);
         commitProfile(registeredProfile, firebaseUser, generationRef.current);
 
-        // Attempt initial verification email send using modular function
+        // Attempt initial verification email send using backend OTP
         try {
-          if (!existingPendingUser) await sendEmailVerification(firebaseUser);
+          if (!existingPendingUser) await authApi.requestVerificationOtp();
         } catch {
           // Initial verification send failure does not invalidate registration; user can resend from verify screen
         }
@@ -514,7 +514,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (freshUser.emailVerified) {
             await getIdToken(freshUser, true);
             const nextProfile = await authApi.profile();
-            return commitProfile(nextProfile, freshUser, generation);
+            return commitProfile(nextProfile, freshUser, generation) && nextProfile.emailVerified;
           }
           return false;
         } catch (cause) {
@@ -543,6 +543,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     [commitProfile]
   );
 
+  const confirmEmailVerificationOtp = useCallback(
+    async (code: string): Promise<boolean> => {
+      const firebaseUser = firebaseAuth.currentUser;
+      if (!firebaseUser) {
+        throw new AppError({
+          kind: "AUTH",
+          message: "No authenticated session found to verify.",
+        });
+      }
+
+      let generation = generationRef.current;
+      const expectedEmail = firebaseUser.email;
+      await authApi.confirmVerificationOtp(code);
+      if (!isCurrent(generation, firebaseUser.uid, generationRef.current, uidRef.current) || firebaseAuth.currentUser?.email !== expectedEmail) return false;
+
+      generation = ++generationRef.current;
+      refreshPromiseRef.current = null;
+      // Force Firebase user reload to observe emailVerified: true
+      await reload(firebaseUser);
+      await getIdToken(firebaseUser, true);
+
+      try {
+        const updatedProfile = await authApi.profile();
+        return commitProfile(updatedProfile, firebaseUser, generation) && firebaseUser.emailVerified && updatedProfile.emailVerified;
+      } catch {
+        return await checkEmailVerification(false);
+      }
+    },
+    [checkEmailVerification, commitProfile]
+  );
+
   const resendVerification = useCallback(async (): Promise<ResendVerificationResponse> => {
     const firebaseUser = firebaseAuth.currentUser;
     if (!firebaseUser?.email) {
@@ -552,14 +583,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       });
     }
 
-    const response = await authApi.resendVerification(firebaseUser.email);
-    try {
-      await sendEmailVerification(firebaseUser);
-    } catch (cause) {
-      throw firebaseErrorToAppError(cause);
+    const generation = generationRef.current;
+    const response = await authApi.requestVerificationOtp();
+    if (response.alreadyVerified && isCurrent(generation, firebaseUser.uid, generationRef.current, uidRef.current)) {
+      await reload(firebaseUser);
+      await getIdToken(firebaseUser, true);
+      const refreshedProfile = await authApi.profile();
+      commitProfile(refreshedProfile, firebaseUser, generation);
     }
-    return response;
-  }, []);
+    return {
+      message: response.message,
+      retryAfter: response.cooldownSeconds || 60,
+      success: response.success,
+      cooldownRemainingSeconds: response.cooldownSeconds || 60,
+    };
+  }, [commitProfile]);
 
   const acceptLegal = useCallback(
     async (legal: LegalAcceptancePayload) => {
@@ -692,6 +730,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       signUpWithEmail,
       signInWithGoogle,
       checkEmailVerification,
+      confirmEmailVerificationOtp,
       resendVerification,
       acceptLegal,
       cancelGoogleJitLegal,
@@ -717,6 +756,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       signUpWithEmail,
       signInWithGoogle,
       checkEmailVerification,
+      confirmEmailVerificationOtp,
       resendVerification,
       acceptLegal,
       cancelGoogleJitLegal,

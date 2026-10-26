@@ -202,6 +202,21 @@ enum GovernmentIdRejectionReason {
   UNSUPPORTED_OR_INVALID_DOCUMENT
 }
 
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum OtpStatus {
+  SENDING
+  PENDING
+  VERIFIED
+  CONSUMED
+  EXPIRED
+  FAILED
+  INVALIDATED
+}
+
 model Role {
   id          Int      @id @default(autoincrement()) @map("role_id")
   roleName    RoleName @unique @map("role_name")
@@ -1341,4 +1356,37 @@ model ScheduleAttachment {
 
   @@unique([scheduleId, requirementId])
   @@map("schedule_attachments")
+}
+
+model OtpChallenge {
+  id                   Int        @id @default(autoincrement()) @map("challenge_id")
+  email                String     @db.VarChar(150)
+  firebaseUid          String?    @map("firebase_uid") @db.VarChar(128)
+  purpose              OtpPurpose
+  codeHash             String     @map("code_hash") @db.VarChar(255)
+  binding              String     @db.VarChar(180)
+  operationHash        String?    @map("operation_hash") @db.VarChar(64)
+  operationStage       String?    @map("operation_stage") @db.VarChar(24)
+  operationStartedAt   DateTime?  @map("operation_started_at")
+  status               OtpStatus  @default(PENDING)
+  attempts             Int        @default(0)
+  maxAttempts          Int        @default(5) @map("max_attempts")
+  expiresAt            DateTime   @map("expires_at")
+  consumedAt           DateTime?  @map("consumed_at")
+  invalidatedAt        DateTime?  @map("invalidated_at")
+  lastSentAt           DateTime   @default(now()) @map("last_sent_at")
+  resetTokenHash       String?    @map("reset_token_hash") @db.VarChar(255)
+  resetTokenExpiresAt  DateTime?  @map("reset_token_expires_at")
+  resetTokenConsumedAt DateTime?  @map("reset_token_consumed_at")
+  ipAddress            String?    @map("ip_address") @db.VarChar(64)
+  userAgent            String?    @map("user_agent") @db.Text
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+
+  @@index([email, purpose])
+  @@index([firebaseUid, purpose])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("otp_challenges")
 }

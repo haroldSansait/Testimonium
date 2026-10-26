@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import crypto from "node:crypto";
 
 dotenv.config();
 
@@ -100,6 +101,14 @@ export const env = {
   trustProxy: parseTrustProxy(),
   databaseUrl: getDatabaseUrl(),
   corsOrigins: parseCorsOrigins(),
+  otp: {
+    hmacSecret: process.env.OTP_HMAC_SECRET?.trim(),
+    codeExpiryMinutes: 10,
+    resetTokenExpiryMinutes: 10,
+    maxAttempts: 5,
+    resendCooldownSeconds: 60,
+    maxDailySends: 5,
+  },
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
@@ -275,6 +284,10 @@ export const getMissingRequiredConfig = () => {
     }
   }
 
+  if (env.nodeEnv === "production" && (!env.otp.hmacSecret || Buffer.byteLength(env.otp.hmacSecret) < 32)) {
+    missing.push("OTP_HMAC_SECRET");
+  }
+
   return missing;
 };
 
@@ -286,4 +299,17 @@ export const getMissingFirebaseConfig = () => {
   ];
 
   return firebaseKeys.filter((key) => !process.env[key]);
+};
+
+const developmentOtpSecret = crypto.randomBytes(32).toString("hex");
+export const getOtpHmacSecret = () => {
+  const secret = env.otp.hmacSecret;
+  if (!secret) {
+    if (env.nodeEnv === "production") {
+      throw new Error("OTP_HMAC_SECRET is required in production and cannot be empty.");
+    }
+    return developmentOtpSecret;
+  }
+  if (Buffer.byteLength(secret) < 32) throw new Error("OTP_HMAC_SECRET must contain at least 32 bytes.");
+  return secret;
 };

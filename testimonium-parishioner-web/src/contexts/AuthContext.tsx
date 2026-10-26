@@ -3,7 +3,6 @@ import type { User } from 'firebase/auth';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  sendEmailVerification,
   signInWithPopup, 
   GoogleAuthProvider, 
   onAuthStateChanged,
@@ -90,6 +89,8 @@ interface AuthContextType {
   recordLegalAcceptance: (legal: LegalPayload) => Promise<BackendUserProfile | null>;
   logout: (reason?: string) => Promise<void>;
   refreshProfile: () => Promise<BackendUserProfile | null>;
+  requestEmailVerificationOtp: () => Promise<{ success: boolean; retryAfter?: number; message?: string; alreadyVerified?: boolean }>;
+  confirmEmailVerificationOtp: (code: string) => Promise<BackendUserProfile>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -335,9 +336,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const generation = authGenerationRef.current;
       const displayName = [registrationProfile.firstName, registrationProfile.lastName].filter(Boolean).join(' ');
       await updateProfile(firebaseUser, { displayName });
-      
-      // Trigger email verification
-      if (!existingPendingUser) await sendEmailVerification(firebaseUser);
 
       // Register with backend passing legal compliance and structured registrationProfile
       const idToken = await firebaseUser.getIdToken(true);
@@ -370,6 +368,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Malformed registration response: user profile missing.');
       }
       if (authGenerationRef.current === generation && auth.currentUser?.uid === firebaseUser.uid) publishProfile(resData.data as BackendUserProfile);
+
+      // Request email verification OTP from backend (replacing Firebase verification link email)
+      try {
+        await fetch(`${API_URL}/auth/otp/verification/request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+        });
+      } catch (otpErr) {
+        console.warn('[AuthContext] Failed to send initial OTP during registration:', otpErr);
+      }
 
       localStorage.setItem(SESSION_CONFIG.SESSION_START_KEY, String(Date.now()));
       // Registration journey authoritative establish: new email/password account created
@@ -433,7 +444,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setProfileError(null);
         const profile = await fetchCurrentBackendProfile(expectedUser);
-        if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) publishProfile(profile);
+        if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) { publishProfile(profile); setUser(expectedUser); }
         console.debug('[AuthContext] refreshProfile completed cleanly');
         return profile;
       } catch (error) {
@@ -448,6 +459,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshPromiseRef.current = { uid: expectedUser.uid, promise };
 
     return promise;
+  };
+
+  const requestEmailVerificationOtp = async () => {
+    if (!auth.currentUser) throw new Error('Authentication required.');
+    const idToken = await auth.currentUser.getIdToken();
+    const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+    const response = await fetch(`${API_URL}/auth/otp/verification/request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const err = new Error(data?.message || 'Failed to send verification code.');
+      if (data?.code) (err as any).code = data.code;
+      if (data?.retryAfter) (err as any).retryAfter = data.retryAfter;
+      throw err;
+    }
+    return data;
+  };
+
+  const confirmEmailVerificationOtp = async (code: string): Promise<BackendUserProfile> => {
+    if (!auth.currentUser) throw new Error('Authentication required.');
+    const currentUser = auth.currentUser;
+    let generation = authGenerationRef.current;
+    const idToken = await currentUser.getIdToken();
+    const API_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+    const response = await fetch(`${API_URL}/auth/otp/verification/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const err = new Error(data?.message || 'Failed to verify code.');
+      if (data?.code) (err as any).code = data.code;
+      if (data?.remainingAttempts !== undefined) (err as any).remainingAttempts = data.remainingAttempts;
+      throw err;
+    }
+
+    if (authGenerationRef.current !== generation || auth.currentUser?.uid !== currentUser.uid) throw new Error('Your session changed. Please try again.');
+
+    generation = ++authGenerationRef.current;
+    refreshPromiseRef.current = null;
+    // Reload Firebase state and force a fresh ID token
+    await currentUser.reload();
+    await currentUser.getIdToken(true);
+
+    // Refresh the TESTIMONIUM backend profile so isVerified / emailVerified becomes consistent
+    const profile = await fetchCurrentBackendProfile(currentUser);
+    if (authGenerationRef.current === generation && auth.currentUser?.uid === currentUser.uid) {
+      publishProfile(profile);
+    }
+    return profile;
   };
 
   return (
@@ -467,6 +541,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         recordLegalAcceptance,
         logout,
         refreshProfile,
+        requestEmailVerificationOtp,
+        confirmEmailVerificationOtp,
       }}
     >
       {children}

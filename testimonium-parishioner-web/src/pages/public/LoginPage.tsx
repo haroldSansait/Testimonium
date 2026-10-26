@@ -5,7 +5,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { mapAuthError } from '../../utils/authErrorMapper';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Modal } from '../../components/ui/Modal';
 import { LegalAcceptanceModal } from '../../components/modals/LegalAcceptanceModal';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
@@ -23,7 +22,6 @@ export const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [unverifiedEmailError, setUnverifiedEmailError] = useState(false);
 
-  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,6 +47,7 @@ export const LoginPage: React.FC = () => {
       navigate('/dashboard/home');
     } catch (err: any) {
       if (err?.code === 'EMAIL_NOT_VERIFIED' || err?.message?.includes('verify your email')) {
+        navigate('/verify-email', { replace: true });
         setUnverifiedEmailError(true);
         setError('Please verify your email address before signing in.');
       } else {
@@ -155,7 +154,7 @@ export const LoginPage: React.FC = () => {
                 <span>Email Verification Required</span>
               </div>
               <p className="text-xs text-amber-900 leading-relaxed font-medium">
-                Your email address has not been verified yet. Please check your email inbox or resend the verification link.
+                Your email address has not been verified yet. Please check your email inbox or request a verification code.
               </p>
               <div className="pt-1">
                 <Button
@@ -219,13 +218,12 @@ export const LoginPage: React.FC = () => {
                   />
                   <span className="text-text-primary font-medium">Keep me signed in on this device</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setIsForgotModalOpen(true)}
+                <Link
+                  to="/forgot-password"
                   className="font-semibold text-crimson hover:underline focus-ring rounded px-1 py-0.5"
                 >
                   Forgot Password?
-                </button>
+                </Link>
               </div>
               <p className="text-[11px] text-text-muted pl-6">
                 Use this only on a private device.
@@ -271,27 +269,6 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
       </div>
-
-      {/* Forgot Password Modal */}
-      <Modal
-        isOpen={isForgotModalOpen}
-        onClose={() => setIsForgotModalOpen(false)}
-        title="Forgot Password"
-      >
-        <div className="space-y-4 text-sm text-text-primary text-left">
-          <p className="text-xs text-text-muted leading-relaxed">
-            For security reasons and to safeguard parishioner registries, password reset services are controlled via official coordination.
-          </p>
-          <div className="p-3.5 bg-red-50 text-crimson rounded-card border border-crimson/10 font-semibold text-xs leading-relaxed">
-            Please contact your Diocese Coordinator or your local Parish Secretary for assistance in resetting your password.
-          </div>
-          <div className="flex justify-end pt-2">
-            <Button size="sm" onClick={() => setIsForgotModalOpen(false)}>
-              Understood
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Pre-Google Sign-In Legal Modal (Shown only for new users registering via Google from login page) */}
       <LegalAcceptanceModal

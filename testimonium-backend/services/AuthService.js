@@ -7,6 +7,7 @@ import { LegalPolicyService } from "./LegalPolicyService.js";
 import { normalizeAndConstructFullName } from "../utils/nameUtils.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
+import { FirebaseAdminService } from "./FirebaseAdminService.js";
 
 export class AuthService {
   constructor(
@@ -28,7 +29,7 @@ export class AuthService {
    */
   async getOrCreateApplicationUser(decodedToken, legalAcceptance = null, registrationProfile = null) {
     const firebaseUid = decodedToken.uid;
-    const email = decodedToken.email;
+    const email = decodedToken.email?.trim().toLowerCase();
     const provider = decodedToken.firebase?.sign_in_provider || "password";
 
     if (!firebaseUid || !email) {
@@ -41,6 +42,19 @@ export class AuthService {
     let existingUser = await this.userRepository.findByFirebaseUid(firebaseUid);
 
     if (existingUser) {
+      if (existingUser.email?.trim().toLowerCase() !== email) {
+        // Changed emails must belong to this UID's current Firebase record,
+        // rather than an old but otherwise valid ID token.
+        const current = await new FirebaseAdminService().getUser(firebaseUid);
+        if (current.email?.trim().toLowerCase() !== email) {
+          const error = new Error("Your email has changed. Please refresh your session.");
+          error.statusCode = 401;
+          error.code = "STALE_IDENTITY";
+          throw error;
+        }
+        decodedToken.email_verified = Boolean(current.emailVerified);
+        existingUser = await this.userRepository.update(existingUser.id, { email, isVerified: Boolean(current.emailVerified) });
+      }
       // Update isVerified if Firebase reports verified email
       if (decodedToken.email_verified && !existingUser.isVerified) {
         existingUser = await this.userRepository.update(existingUser.id, { isVerified: true });
@@ -96,7 +110,7 @@ export class AuthService {
       } catch (error) {
         if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
           logger.warn({ firebaseUid, email }, "[AuthService] JIT email-linking race condition detected. Requerying user...");
-          const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) || 
+          const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) ||
                        (await this.userRepository.findByEmail(email));
           if (user) {
             await AuditLogService.log(user.id, "JIT User Reused", null, false);
@@ -167,7 +181,7 @@ export class AuthService {
     } catch (error) {
       if (error.code === "P2002" || error.message?.includes("Unique constraint")) {
         logger.warn({ firebaseUid, email }, "[AuthService] JIT creation race condition detected across DB instances. Requerying user...");
-        const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) || 
+        const user = (await this.userRepository.findByFirebaseUid(firebaseUid)) ||
                      (await this.userRepository.findByEmail(email));
         if (user) {
           await AuditLogService.log(user.id, "JIT User Reused", null, false);

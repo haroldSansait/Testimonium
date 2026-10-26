@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { logger } from "../config/logger.js";
 import { AuditLogService } from "../services/AuditLogService.js";
 import { env } from "../config/env.js";
@@ -167,7 +167,7 @@ export const passwordResetRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: createRateLimitStore("l2:pwreset:"),
-  keyGenerator: (req) => getRateLimitKey(req, "l2:pwreset:", true),
+  keyGenerator: (req) => `l2:pwreset:${ipKeyGenerator(getClientIp(req))}`,
   handler: (req, res) =>
     handleRateLimitExceeded(
       req,
@@ -201,7 +201,7 @@ export const resendVerificationRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: createRateLimitStore("l2:resendverif:"),
-  keyGenerator: (req) => getRateLimitKey(req, "l2:resendverif:", true),
+  keyGenerator: (req) => `l2:resendverif:${ipKeyGenerator(getClientIp(req))}`,
   handler: (req, res) =>
     handleRateLimitExceeded(
       req,
@@ -210,6 +210,24 @@ export const resendVerificationRateLimiter = rateLimit({
       "Too many verification email resend requests. Maximum 3 requests per hour allowed."
     ),
 });
+
+// 2.3.2 OTP Confirmation Limiter — Strictly IP-based (15/15m/IP to prevent online guessing)
+export const otpConfirmRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createRateLimitStore("l2:otpconfirm:"),
+  keyGenerator: (req) => `l2:otpconfirm:${ipKeyGenerator(getClientIp(req))}`,
+  handler: (req, res) =>
+    handleRateLimitExceeded(
+      req,
+      res,
+      "otpConfirmRateLimiter",
+      "Too many code verification attempts. Please wait 15 minutes before trying again."
+    ),
+});
+
 
 // 2.4 OCR Processing Limiter
 export const ocrRateLimiter = rateLimit({

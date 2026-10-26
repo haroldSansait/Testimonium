@@ -108,6 +108,8 @@ export interface UpdateProfilePayload {
 export interface ResendVerificationResponse {
   message: string;
   retryAfter?: number;
+  success?: boolean;
+  cooldownRemainingSeconds?: number;
 }
 
 export const evaluateBootstrapState = (

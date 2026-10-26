@@ -90,5 +90,8 @@ export type { StatusLabelProps } from "./StatusLabel";
 export { TextInput } from "./TextInput";
 export type { TextInputProps } from "./TextInput";
 
+export { OtpInput } from "./OtpInput";
+export type { OtpInputProps } from "./OtpInput";
+
 export { FeedbackModal } from "./FeedbackModal";
 export type { FeedbackModalProps, FeedbackType } from "./FeedbackModal";
