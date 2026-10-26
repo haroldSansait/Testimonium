@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+
 /**
  * Canonical Sacramental Document Types Configuration
  * Single source of truth for supported document types across TESTIMONIUM.
@@ -175,12 +177,18 @@ export const CANONICAL_DOCUMENT_TYPES_SET = new Set(CANONICAL_DOCUMENT_TYPES);
 
 /**
  * Validates and normalizes documentSettings payload for persistence.
- * Enforces canonical document types, object structure, canonical requirement IDs, and strict boolean values.
+ * Enforces canonical assignments and strict booleans, retaining unchanged historical entries.
  * Throws a controlled 400 Error on any invalid input.
  * @param {any} settingsInput
+ * @param {any} persistedSettingsInput Trusted settings read from the target parish, never the request.
  * @returns {object}
  */
-export function validateDocumentSettingsForSave(settingsInput) {
+export function validateDocumentSettingsForSave(settingsInput, persistedSettingsInput = {}) {
+  let persisted = persistedSettingsInput;
+  if (typeof persisted === 'string') {
+    try { persisted = JSON.parse(persisted); } catch { persisted = {}; }
+  }
+  if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) persisted = {};
   let settings = settingsInput;
   if (typeof settings === "string") {
     try {
@@ -208,6 +216,11 @@ export function validateDocumentSettingsForSave(settingsInput) {
     }
 
     if (!CANONICAL_DOCUMENT_TYPES_SET.has(docKey)) {
+      // Historical types may only pass through unchanged for this parish.
+      if (Object.hasOwn(persisted, docKey) && isDeepStrictEqual(docVal, persisted[docKey])) {
+        validated[docKey] = docVal;
+        continue;
+      }
       const err = new Error(
         `Invalid document type "${docKey}" in documentSettings. Supported types: ${CANONICAL_DOCUMENT_TYPES.join(", ")}`
       );
@@ -237,6 +250,11 @@ export function validateDocumentSettingsForSave(settingsInput) {
       const validatedReqs = {};
       for (const [reqId, reqVal] of Object.entries(docVal.requirements)) {
         if (!CANONICAL_REQUIREMENT_IDS_SET.has(reqId)) {
+          const existingReqs = persisted[docKey]?.requirements;
+          if (existingReqs && Object.hasOwn(existingReqs, reqId) && isDeepStrictEqual(reqVal, existingReqs[reqId])) {
+            validatedReqs[reqId] = reqVal;
+            continue;
+          }
           const err = new Error(
             `Invalid requirement ID "${reqId}" for document type "${docKey}". Supported requirements: ${CANONICAL_REQUIREMENT_IDS.join(", ")}`
           );
@@ -260,5 +278,18 @@ export function validateDocumentSettingsForSave(settingsInput) {
     validated[docKey] = docConfig;
   }
 
+  // Omission must not silently remove historical data that the canonical editor cannot edit.
+  for (const [docKey, docVal] of Object.entries(persisted)) {
+    if (docKey === 'paymentMethods') continue;
+    if (!CANONICAL_DOCUMENT_TYPES_SET.has(docKey)) {
+      validated[docKey] = docVal;
+      continue;
+    }
+    for (const [reqId, reqVal] of Object.entries(docVal?.requirements || {})) {
+      if (CANONICAL_REQUIREMENT_IDS_SET.has(reqId)) continue;
+      if (!Object.hasOwn(validated, docKey)) validated[docKey] = { ...docVal, requirements: { ...docVal.requirements } };
+      validated[docKey].requirements = { ...validated[docKey].requirements, [reqId]: reqVal };
+    }
+  }
   return validated;
 }

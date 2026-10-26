@@ -761,7 +761,7 @@ test("Endorsement Letter settings require strict booleans for all certificates",
 
 test("Secretary saves, reloads and restores Endorsement Letter through existing settings persistence", async (t) => {
   const row = { id: 1, parishName: "Fixture Parish", users: [], documentSettings: "{}" };
-  const tx = { parish: {
+  const tx = { $queryRaw: async () => [{ parish_id: row.id }], parish: {
     findUnique: async () => structuredClone(row),
     update: async ({ data }) => { Object.assign(row, data); return structuredClone(row); },
   } };

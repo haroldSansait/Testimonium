@@ -820,24 +820,91 @@ export const EventSchedulerPage: React.FC = () => {
           <h3 className='text-xl font-serif font-bold text-text-primary'>Upload Requirements</h3>
           <p className='text-sm text-text-muted'>Please provide the documents required by {selectedParish?.name} for {selectedService?.label}.</p>
           <p className='text-xs text-text-muted'>{UPLOAD_POLICIES.SUPPORTING_DOCUMENT.label}. Files are submitted securely with your booking.</p>
-          {requirements.map((requirement) => <div key={`${selectedParishId}-${selectedEventType}-${requirement.id}`} className='p-4 border border-border rounded-xl space-y-3'>
-            <label className='block text-sm font-semibold text-text-primary' htmlFor={`schedule-file-${requirement.id}`}>{requirement.label} <span className='text-crimson'>(required)</span></label>
-            <input id={`schedule-file-${requirement.id}`} type='file' accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute} className='block w-full text-sm focus-ring rounded' onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              if (!file) return;
-              const result = validateUploadFile(file, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
-              if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
-              setMessage(null);
-              setRequirementFiles((files) => ({ ...files, [requirement.id]: file }));
-            }} />
-            {requirementFiles[requirement.id] && <div className='flex flex-wrap items-center justify-between gap-2 text-xs'>
-              <span className='break-all text-text-primary'>{requirementFiles[requirement.id].name}</span>
-              <button type='button' className='text-crimson underline focus-ring rounded' onClick={() => setRequirementFiles((files) => {
-                const next = { ...files }; delete next[requirement.id]; return next;
-              })}>Remove</button>
-            </div>}
-          </div>)}
+          {requirements.map((requirement) => {
+            const file = requirementFiles[requirement.id];
+            return (
+              <div key={`${selectedParishId}-${selectedEventType}-${requirement.id}`} className='p-4 border border-gray-150 rounded-button bg-gray-50/50 space-y-2'>
+                <div className='flex justify-between items-start'>
+                  <div>
+                    <span className='text-xs font-bold text-text-primary block'>{requirement.label}</span>
+                    {requirement.description && <p className='text-[10px] text-text-muted mt-0.5'>{requirement.description}</p>}
+                  </div>
+                  <span className='text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider'>
+                    Required
+                  </span>
+                </div>
+
+                {file ? (
+                  <div className='flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs'>
+                    <span className='truncate max-w-[280px] font-mono font-semibold text-gray-700'>
+                      {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                    </span>
+                    <button
+                      type='button'
+                      onClick={() => setRequirementFiles((files) => {
+                        const next = { ...files }; delete next[requirement.id]; return next;
+                      })}
+                      className='text-crimson hover:underline font-bold text-xs cursor-pointer'
+                    >
+                      Remove
+                    </button>
+                    <input
+                      id={`schedule-file-${requirement.id}`}
+                      type='file'
+                      accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute}
+                      className='hidden'
+                      onChange={(event) => {
+                        const nextFile = event.target.files?.[0];
+                        event.target.value = '';
+                        if (!nextFile) return;
+                        const result = validateUploadFile(nextFile, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+                        if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
+                        setMessage(null);
+                        setRequirementFiles((files) => ({ ...files, [requirement.id]: nextFile }));
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const dropped = e.dataTransfer.files?.[0];
+                      if (!dropped) return;
+                      const result = validateUploadFile(dropped, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+                      if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
+                      setMessage(null);
+                      setRequirementFiles((files) => ({ ...files, [requirement.id]: dropped }));
+                    }}
+                    className='relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white cursor-pointer'
+                  >
+                    <input
+                      id={`schedule-file-${requirement.id}`}
+                      type='file'
+                      accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute}
+                      className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
+                      onChange={(event) => {
+                        const nextFile = event.target.files?.[0];
+                        event.target.value = '';
+                        if (!nextFile) return;
+                        const result = validateUploadFile(nextFile, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+                        if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
+                        setMessage(null);
+                        setRequirementFiles((files) => ({ ...files, [requirement.id]: nextFile }));
+                      }}
+                    />
+                    <span className='text-xs text-text-muted block'>
+                      Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB.
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(3)}>Back</Button><Button onClick={handleBook} loading={submitting} disabled={!requirementsComplete || !selectedTimeSlot || loadingConfiguration || !selectedService}>Confirm Booking</Button></div>
         </div>}
         {createdBooking && <div className='text-center max-w-md mx-auto space-y-6 py-6'>

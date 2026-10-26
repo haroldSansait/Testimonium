@@ -49,6 +49,7 @@ import {
 import { cn } from '@/utils/cn';
 import { CANONICAL_SCHEDULING_SERVICES } from '@/utils/schedulingAvailabilityHelpers';
 import type { Parish } from '@/types';
+import { getParishSettingsChanges, type ParishConfigSnapshot } from '@/utils/parishSettingsChanges';
 
 export type EventCategory = 'Sacrament' | 'Mass' | 'Other';
 
@@ -160,16 +161,6 @@ function parseTimeToMinutes(timeStr?: string): number | null {
 interface ToastState {
   message: string;
   type: 'success' | 'error';
-}
-
-interface ParishConfigSnapshot {
-  documentSettings: any;
-  eventSettings: any;
-  officeHours: any;
-  availableDocuments: string[];
-  paymentQrEnabled: boolean;
-  paymentQrImage: string | null;
-  venueCapacity: number | null;
 }
 
 export function SettingsPage() {
@@ -353,7 +344,7 @@ export function SettingsPage() {
 
   // Discard changes
   const handleDiscardChanges = () => {
-    if (!originalSnapshot) return;
+    if (!originalSnapshot || saving) return;
     setDocumentSettings(JSON.parse(JSON.stringify(originalSnapshot.documentSettings)));
     setEventSettings(JSON.parse(JSON.stringify(originalSnapshot.eventSettings)));
     setOfficeHours(JSON.parse(JSON.stringify(originalSnapshot.officeHours)));
@@ -368,7 +359,7 @@ export function SettingsPage() {
 
   // Parish selector switch with guard
   const handleParishSelectChange = (newParishId: string) => {
-    if (newParishId === selectedParishId) return;
+    if (saving || newParishId === selectedParishId) return;
     if (isDirty) {
       setPendingParishId(newParishId);
       setShowSwitchConfirmModal(true);
@@ -662,8 +653,11 @@ export function SettingsPage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!selectedParishId) return;
-    if (canEditScheduling && !schedulingEditorRef.current) {
+    if (!selectedParishId || !originalSnapshot || saving) return;
+    const submitted = { documentSettings, eventSettings, officeHours, availableDocuments, paymentQrEnabled, paymentQrImage, venueCapacity };
+    const { parishSettings, schedulingChanged } = getParishSettingsChanges(originalSnapshot, submitted);
+    const saveScheduling = canEditScheduling && (schedulingChanged || schedulingRulesDirty);
+    if (saveScheduling && !schedulingEditorRef.current) {
       setToast({ message: 'Scheduling availability is still loading. Wait for it to finish before saving.', type: 'error' });
       return;
     }
@@ -678,66 +672,37 @@ export function SettingsPage() {
     }
 
     // Validate Office Hours
-    const hoursError = validateOfficeHours();
+    const hoursError = saveScheduling ? validateOfficeHours() : null;
     if (hoursError) {
       setToast({ message: hoursError, type: 'error' });
       return;
     }
 
     setSaving(true);
+    let parishSettingsSaved = false;
+    const recordSaved = (settings: Partial<ParishConfigSnapshot>) => {
+      setParishes(prev => prev.map(p => p.id === selectedParishId ? { ...p, ...settings } : p));
+      // Advance only persisted sections. Edits made while awaiting the request stay dirty.
+      setOriginalSnapshot(prev => prev ? { ...prev, ...settings } : prev);
+    };
     try {
-      const updatedParish = await ParishManagementService.editParishSettings(selectedParishId, {
-        documentSettings,
-        availableDocuments,
-        paymentQrEnabled,
-        paymentQrImage,
-        venueCapacity,
-      });
-      if (canEditScheduling) {
-        await schedulingEditorRef.current!.save(eventSettings, officeHours);
+      if (Object.keys(parishSettings).length > 0) {
+        await ParishManagementService.editParishSettings(selectedParishId, parishSettings);
+        recordSaved(parishSettings);
+        parishSettingsSaved = true;
       }
-
-      const updatedDocs = updatedParish?.availableDocuments && Array.isArray(updatedParish.availableDocuments)
-        ? updatedParish.availableDocuments
-        : availableDocuments;
-
-      // Update local cache
-      setParishes(prev => prev.map(p => p.id === selectedParishId ? { 
-        ...p, 
-        documentSettings, 
-        eventSettings, 
-        officeHours, 
-        availableDocuments: updatedDocs, 
-        paymentQrEnabled,
-        paymentQrImage,
-        venueCapacity,
-      } : p));
-      
-      // Update snapshot to establish clean baseline
-      setOriginalSnapshot({
-        documentSettings,
-        eventSettings,
-        officeHours,
-        availableDocuments: updatedDocs,
-        paymentQrEnabled,
-        paymentQrImage,
-        venueCapacity,
-      });
-      (window as any).hasUnsavedSettingsChanges = false;
+      if (saveScheduling) {
+        await schedulingEditorRef.current!.save(eventSettings, officeHours);
+        recordSaved({ eventSettings, officeHours });
+      }
 
       setToast({ message: 'Parish configuration saved successfully.', type: 'success' });
     } catch (err: any) {
       console.error('Failed to save settings:', err);
-      if (err?.status === 409 && err?.code === 'SCHEDULING_CONFIG_STALE') {
-        try {
-          const latestParishes = await ParishManagementService.getParishes();
-          loadedParishIdRef.current = null;
-          setParishes(latestParishes);
-        } catch {
-          // Keep the original conflict as the actionable error.
-        }
-      }
       setToast({ message: err?.response?.data?.message || err?.message || 'Failed to update parish configurations.', type: 'error' });
+      if (parishSettingsSaved) {
+        setToast({ message: `General parish settings saved, but scheduling changes were not saved. ${err?.response?.data?.message || err?.message || 'Please try again.'}`, type: 'error' });
+      }
     } finally {
       setSaving(false);
     }
@@ -1885,7 +1850,7 @@ export function SettingsPage() {
               ref={schedulingEditorRef}
               parishId={selectedParishId}
               services={CANONICAL_SCHEDULING_SERVICES}
-              readOnly={!canEditScheduling}
+              readOnly={!canEditScheduling || saving}
               onDirtyChange={handleSchedulingDirtyChange}
               onMessage={handleSchedulingToastMessage}
             />

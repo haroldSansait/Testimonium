@@ -519,38 +519,34 @@ export const SchedulingAvailabilityEditor = forwardRef<SchedulingAvailabilityEdi
             throw new Error('Authoritative scheduling configuration has not finished loading.');
           }
 
-          try {
-            const next = await scheduleAvailabilityApi.replaceWeekdayRules(parishId, {
-              expectedVersion: serverBaseline.schedulingConfigVersion,
-              parishRules: draftParishRules,
-              serviceRules: draftServiceRules,
-              eventSettings,
-              officeHours,
-            });
+          // On failure (including 409), retain drafts and their expected version.
+          const next = await scheduleAvailabilityApi.replaceWeekdayRules(parishId, {
+            expectedVersion: serverBaseline.schedulingConfigVersion,
+            parishRules: draftParishRules,
+            serviceRules: draftServiceRules,
+            eventSettings,
+            officeHours,
+          });
 
-            // Establish new authoritative baseline from server response
-            const completeRules: ParishWeekdayRule[] = WEEKDAYS.map((day) => {
-              const found = next.weekdayRules?.find((r) => r.weekday === day.value);
-              return found ? { ...found } : { weekday: day.value, isAvailable: true };
-            });
+          // Establish new authoritative baseline only after successful persistence.
+          const completeRules: ParishWeekdayRule[] = WEEKDAYS.map((day) => {
+            const found = next.weekdayRules?.find((r) => r.weekday === day.value);
+            return found ? { ...found } : { weekday: day.value, isAvailable: true };
+          });
 
-            const updatedConfig: ScheduleAvailabilityConfiguration = {
-              ...next,
-              weekdayRules: completeRules,
-              serviceWeekdayRules: next.serviceWeekdayRules || [],
-              scheduleDateRules: (next.scheduleDateRules || []).sort((a, b) =>
-                a.exceptionDate.localeCompare(b.exceptionDate)
-              ),
-            };
+          const updatedConfig: ScheduleAvailabilityConfiguration = {
+            ...next,
+            weekdayRules: completeRules,
+            serviceWeekdayRules: next.serviceWeekdayRules || [],
+            scheduleDateRules: (next.scheduleDateRules || []).sort((a, b) =>
+              a.exceptionDate.localeCompare(b.exceptionDate)
+            ),
+          };
 
-            setServerBaseline(updatedConfig);
-            setDraftParishRules(updatedConfig.weekdayRules.map((r) => ({ ...r })));
-            setDraftServiceRules(updatedConfig.serviceWeekdayRules.map((r) => ({ ...r })));
-            return updatedConfig;
-          } catch (error) {
-            await handleConflict(error);
-            throw error;
-          }
+          setServerBaseline(updatedConfig);
+          setDraftParishRules(updatedConfig.weekdayRules.map((r) => ({ ...r })));
+          setDraftServiceRules(updatedConfig.serviceWeekdayRules.map((r) => ({ ...r })));
+          return updatedConfig;
         },
 
         reset() {

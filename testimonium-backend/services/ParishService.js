@@ -560,10 +560,6 @@ export class ParishService {
     if (data.status !== undefined) {
       updatePayload.isActive = data.status === "Active";
     }
-    if (data.documentSettings !== undefined) {
-      const validatedDocSettings = validateDocumentSettingsForSave(data.documentSettings);
-      updatePayload.documentSettings = JSON.stringify(validatedDocSettings);
-    }
     if (data.eventSettings !== undefined) {
       const normalizedSettings = validateSchedulingSettingsForSave(data.eventSettings);
       updatePayload.eventSettings = JSON.stringify(normalizedSettings);
@@ -617,7 +613,7 @@ export class ParishService {
     try {
       parish = await prisma.$transaction(async (tx) => {
       // 1. CANONICAL LOCK ORDER: Parish scheduling configuration row(s), ascending ID
-      if (isAuthoritySensitive) {
+      if (isAuthoritySensitive || data.documentSettings !== undefined) {
         for (const pId of parishesToLock) {
           await lockParishSchedulingConfiguration(tx, pId);
         }
@@ -665,6 +661,10 @@ export class ParishService {
         const err = new Error("Parish not found.");
         err.statusCode = 404;
         throw err;
+      }
+      if (data.documentSettings !== undefined) {
+        const validatedDocSettings = validateDocumentSettingsForSave(data.documentSettings, currentParish.documentSettings);
+        updatePayload.documentSettings = JSON.stringify(validatedDocSettings);
       }
       if (data.isMotherParish === true) {
         await assertMotherParishAvailable(tx, { id: { not: numericId } });
