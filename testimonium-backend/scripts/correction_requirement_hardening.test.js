@@ -305,6 +305,45 @@ test("valid_id document-correction hardening", async (t) => {
       AuditLogService.log = async () => {};
       assert.deepEqual(await new ParishionerRequestService().submitDraft(63, 12), submitted);
     });
+
+    await t.test("Endorsement Letter follows ordinary correction validation and resubmission without retroactive defaults", async () => {
+      const originalParishFindUnique = prisma.parish.findUnique;
+      try {
+        // Use authoritative defaults rather than the legacy requirement fixture above.
+        DocumentRequirementService.getRequirements = originalGetRequirements;
+        prisma.parish.findUnique = async () => ({ documentSettings: "{}" });
+        const statusTx = makeStatusTx();
+        let correctionPayload;
+        statusTx.documentRequest.updateMany = async ({ data }) => {
+          correctionPayload = data;
+          statusTx.counts.updates++;
+          return { count: 1 };
+        };
+        prisma.$transaction = async (callback) => callback(statusTx);
+        RequestNotificationService.notifyStatusChange = async () => {};
+        AuditLogService.log = async () => {};
+        await new DocumentRequestService().updateStatus(...correctionArgs(["endorsement_letter"]));
+        assert.deepEqual(correctionPayload.correctionRequirementIds, ["endorsement_letter"]);
+        assert.match(correctionPayload.correctionNote, /Endorsement Letter/);
+
+        RequestNotificationService.send = async () => {};
+        const correctionTx = makeLegacyTx({ correctionIds: ["endorsement_letter"] });
+        prisma.$transaction = async (callback) => callback(correctionTx);
+        await assert.rejects(new ParishionerRequestService().resubmitCorrections(52, 12), /Replacement file for requirement "endorsement_letter" is missing/);
+        assert.equal(correctionTx.counts.updates, 0);
+        correctionTx.requestAttachment.findMany = async () => [{ category: "endorsement_letter" }];
+        const resubmitted = await new ParishionerRequestService().resubmitCorrections(52, 12);
+        assert.equal(resubmitted.status, "UNDER_REVIEW");
+        assert.deepEqual(resubmitted.correctionRequirementIds, []);
+
+        // Already submitted requests correcting another item do not acquire a new prerequisite.
+        const historicalTx = makeLegacyTx({ correctionIds: ["baptismal_cert"], attachments: ["baptismal_cert"] });
+        prisma.$transaction = async (callback) => callback(historicalTx);
+        assert.equal((await new ParishionerRequestService().resubmitCorrections(52, 12)).status, "UNDER_REVIEW");
+      } finally {
+        prisma.parish.findUnique = originalParishFindUnique;
+      }
+    });
   } finally {
     prisma.$transaction = originalTransaction;
     DocumentRequirementService.getRequirements = originalGetRequirements;

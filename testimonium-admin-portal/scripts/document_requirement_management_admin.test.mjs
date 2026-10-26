@@ -33,7 +33,7 @@ test('Admin Portal — Document Requirement Assignment Management Suite', async 
       BAPTISMAL_CERTIFICATE: { price: 100, requirements: {} },
     };
     const assignedDefault = getAssignedCanonicalRequirements('BAPTISMAL_CERTIFICATE', defaultSettings);
-    assert.equal(assignedDefault.length, 1);
+    assert.equal(assignedDefault.length, 2);
     assert.equal(assignedDefault[0].id, 'valid_id');
 
     // B. Explicit saved settings with additional requirement
@@ -44,7 +44,7 @@ test('Admin Portal — Document Requirement Assignment Management Suite', async 
       },
     };
     const assignedCustom = getAssignedCanonicalRequirements('BAPTISMAL_CERTIFICATE', customSettings);
-    assert.equal(assignedCustom.length, 2);
+    assert.equal(assignedCustom.length, 3);
     const ids = assignedCustom.map((r) => r.id);
     assert.ok(ids.includes('valid_id'));
     assert.ok(ids.includes('baptismal_cert'));
@@ -54,6 +54,7 @@ test('Admin Portal — Document Requirement Assignment Management Suite', async 
     // Only canonical IDs are present in CANONICAL_REQUIREMENTS
     const expectedCanonicalIds = [
       'valid_id',
+      'endorsement_letter',
       'baptismal_cert',
       'confirmation_cert',
       'marriage_license',
@@ -62,7 +63,7 @@ test('Admin Portal — Document Requirement Assignment Management Suite', async 
       'banns_clearance',
       'canonical_interview',
     ];
-    assert.equal(CANONICAL_REQUIREMENTS.length, 8);
+    assert.equal(CANONICAL_REQUIREMENTS.length, 9);
     for (const req of CANONICAL_REQUIREMENTS) {
       assert.ok(expectedCanonicalIds.includes(req.id), `ID ${req.id} must be canonical`);
       assert.ok(req.label && req.label.trim().length > 0);
@@ -89,7 +90,7 @@ test('Admin Portal — Document Requirement Assignment Management Suite', async 
 
     assert.ok(!availableIds.includes('valid_id'), 'valid_id must be excluded');
     assert.ok(!availableIds.includes('cenomar'), 'cenomar must be excluded');
-    assert.equal(available.length, 6); // 8 - 2 assigned
+    assert.equal(available.length, 6); // 9 - 3 assigned (including default Endorsement Letter)
   });
 
   await t.test('23. Selecting requirement sets it to true', () => {
@@ -186,5 +187,34 @@ test('Admin Portal — Document Requirement Assignment Management Suite', async 
       pageContent.indexOf('if (loading) {')
     );
     assert.ok(!saveMethodSection.includes('setDocumentSettings(originalSnapshot.documentSettings)'));
+  });
+
+  await t.test('Endorsement Letter defaults, remove/save/reload and re-add work for all seven certificates', () => {
+    assert.equal(CANONICAL_DOCUMENT_TYPES.length, 7);
+    for (const doc of CANONICAL_DOCUMENT_TYPES) {
+      const initial = { [doc.id]: { price: doc.defaultPrice, requirements: { valid_id: true } } };
+      const assignedIds = (settings) => getAssignedCanonicalRequirements(doc.id, settings).map((r) => r.id);
+      assert.ok(assignedIds(initial).includes('endorsement_letter'), `${doc.id}: old settings inherit the default`);
+      assert.ok(!getAvailableCanonicalRequirements(doc.id, initial).some((r) => r.id === 'endorsement_letter'));
+
+      const removed = simulateRemoveRequirement(doc.id, 'endorsement_letter', initial);
+      const reloaded = JSON.parse(JSON.stringify(removed));
+      assert.equal(reloaded[doc.id].requirements.endorsement_letter, false);
+      assert.ok(!assignedIds(reloaded).includes('endorsement_letter'));
+      assert.ok(getAvailableCanonicalRequirements(doc.id, reloaded).some((r) => r.id === 'endorsement_letter' && r.label === 'Endorsement Letter'));
+
+      const restored = JSON.parse(JSON.stringify(simulateAddRequirement(doc.id, 'endorsement_letter', reloaded)));
+      assert.equal(restored[doc.id].requirements.endorsement_letter, true);
+      assert.deepEqual(assignedIds(restored), assignedIds(initial));
+      assert.equal(restored[doc.id].price, doc.defaultPrice);
+      assert.deepEqual(initial[doc.id].requirements, { valid_id: true });
+      for (const otherDoc of CANONICAL_DOCUMENT_TYPES.filter((candidate) => candidate.id !== doc.id)) {
+        assert.ok(getAssignedCanonicalRequirements(otherDoc.id, removed).some((r) => r.id === 'endorsement_letter'));
+      }
+    }
+    // Both controls still use the same confirmation, assignment and save paths.
+    assert.match(pageContent, /setRequirementToRemove\(\{/);
+    assert.match(pageContent, /handleDocRequirementRemove\(requirementToRemove.docId, requirementToRemove.reqId\)/);
+    assert.match(pageContent, /Save Configurations/);
   });
 });

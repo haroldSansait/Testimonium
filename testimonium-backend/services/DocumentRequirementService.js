@@ -4,6 +4,14 @@ import { CANONICAL_REQUIREMENT_IDS } from "../config/documents.js";
 
 export { CANONICAL_REQUIREMENT_IDS };
 
+const ENDORSEMENT_LETTER = {
+  id: "endorsement_letter",
+  label: "Endorsement Letter",
+  category: "supporting",
+  required: true,
+  description: "Endorsement letter submitted as supporting documentation for a certificate request.",
+};
+
 /**
  * Configurable Sacramental Document Requirements Matrix
  * Single source of truth for document requirements across the platform.
@@ -20,6 +28,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
+      { ...ENDORSEMENT_LETTER },
     ],
   },
 
@@ -34,6 +43,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government ID", category: "primary", required: true, description: "Clear photo or scan of valid ID." },
+      { ...ENDORSEMENT_LETTER },
     ],
   },
 
@@ -48,6 +58,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government ID of Requester", category: "primary", required: true, description: "Clear photo of valid ID." },
+      { ...ENDORSEMENT_LETTER },
     ],
   },
 
@@ -62,6 +73,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid ID of Parent / Guardian", category: "primary", required: true, description: "Clear photo of valid ID." },
+      { ...ENDORSEMENT_LETTER },
     ],
   },
 
@@ -76,6 +88,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid IDs of Both Parties", category: "primary", required: true, description: "Government issued IDs of bride and groom." },
+      { ...ENDORSEMENT_LETTER },
       { id: "baptismal_cert", label: "Baptismal Certificate (for Marriage Purpose)", category: "supporting", required: true, description: "Issued within the last 6 months." },
       { id: "confirmation_cert", label: "Confirmation Certificate", category: "supporting", required: true, description: "Annotated for marriage purpose." },
       { id: "marriage_license", label: "Civil Marriage License / Marriage Contract", category: "supporting", required: true, description: "From LCR or PSA." },
@@ -96,6 +109,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government ID", category: "primary", required: true, description: "Valid photo ID." },
+      { ...ENDORSEMENT_LETTER },
       { id: "baptismal_cert", label: "Baptismal Certificate", category: "supporting", required: true, description: "Annotated for marriage." },
       { id: "confirmation_cert", label: "Confirmation Certificate", category: "supporting", required: true, description: "Annotated for marriage." },
       { id: "marriage_license", label: "Civil Marriage License", category: "supporting", required: true, description: "Copy of civil license." },
@@ -117,6 +131,7 @@ export const DOCUMENT_REQUIREMENTS_MATRIX = {
     ],
     requiredDocuments: [
       { id: "valid_id", label: "Valid Government ID", category: "primary", required: true, description: "Valid photo ID." },
+      { ...ENDORSEMENT_LETTER },
       { id: "baptismal_cert", label: "Baptismal Certificate", category: "supporting", required: true, description: "Recent baptismal record." },
       { id: "cenomar", label: "PSA CENOMAR", category: "supporting", required: true, description: "PSA Certificate of No Marriage Record." },
       { id: "canonical_interview", label: "Canonical Interview Document", category: "supporting", required: true, description: "Interview conducted by parish priest." },

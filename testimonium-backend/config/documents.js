@@ -160,6 +160,7 @@ export function normalizeAvailableDocumentsForSave(docsInput) {
 
 export const CANONICAL_REQUIREMENT_IDS = [
   "valid_id",
+  "endorsement_letter",
   "baptismal_cert",
   "confirmation_cert",
   "marriage_license",

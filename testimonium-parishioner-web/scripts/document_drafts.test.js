@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
 import { buildApplicantName } from '../../testimonium-backend/utils/nameUtils.js';
+import { CANONICAL_DOCUMENT_TYPES, DEFAULT_OFFERED_DOCUMENTS } from '../src/config/documents.ts';
 
 // Execute the actual TSX handlers and effects with a small controlled hook runtime.
 // No browser, Firebase, database, file storage or network calls are made.
@@ -17,7 +18,7 @@ function harness({ page = 'SacramentalRequestPage', draft, requests = [], search
   let Component;
   const calls = [];
   let currentRequests = requests;
-  const parishes = [{ id: '3', name: 'Fixture Parish', availableDocuments: ['BAPTISMAL_CERTIFICATE'] }];
+  const parishes = [{ id: '3', name: 'Fixture Parish', availableDocuments: DEFAULT_OFFERED_DOCUMENTS }];
   const location = { search };
   const params = () => new URLSearchParams(location.search);
   const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
@@ -65,7 +66,7 @@ function harness({ page = 'SacramentalRequestPage', draft, requests = [], search
     '../../hooks/useProfileRequirement': { useProfileRequirement: () => ({ isProfileIncomplete: false, openProfileModal() {}, requireCompleteProfile: fn => fn() }) },
     '../../contexts/AuthContext': { useAuth: () => ({ appProfile: { id: '12', fullName: 'Juan Dela Cruz', isGovernmentIdVerified: true } }) },
     '../../api/client': { client: {} },
-    '../../config/documents': { CANONICAL_DOCUMENT_TYPES: [{ type: 'BAPTISMAL_CERTIFICATE', title: 'Baptismal Certificate' }], DEFAULT_OFFERED_DOCUMENTS: ['BAPTISMAL_CERTIFICATE'] },
+    '../../config/documents': { CANONICAL_DOCUMENT_TYPES, DEFAULT_OFFERED_DOCUMENTS },
     '../../types': { DOCUMENT_RETURN_REASONS: [] },
     '../../utils/uploadPolicy': { UPLOAD_POLICIES: new Proxy({}, { get: () => ({ acceptAttribute: '.pdf,.png' }) }), validateUploadFile: () => ({ valid: true }) },
   };
@@ -121,6 +122,73 @@ function sampleDraft(overrides = {}) {
     ...overrides,
   };
 }
+
+test('dynamic Endorsement Letter checklist blocks missing uploads, submits its category and honors disabled metadata for all seven types', async () => {
+  const endorsement = { id: 'endorsement_letter', label: 'Endorsement Letter', category: 'supporting', required: true };
+  for (const doc of CANONICAL_DOCUMENT_TYPES) {
+    for (const enabled of [true, false]) {
+      const h = harness({
+        draft: sampleDraft({ rawDocumentType: doc.id, attachments: [] }),
+        api: { getDocumentRequirements: async () => ({ requiredDocuments: [{ id: 'valid_id', label: 'Valid Government ID', required: true }, ...(enabled ? [endorsement] : [])] }) },
+      });
+      await h.flush();
+      h.button('Next Step').props.onClick(); await h.flush();
+      assert.equal(h.text().includes('Endorsement Letter'), enabled);
+      assert.equal(h.button('Submit Request').props.disabled, enabled);
+      if (enabled) {
+        const picker = h.nodes((n) => n.type === 'input' && n.props.type === 'file')[0];
+        assert.ok(picker, 'dynamic supporting requirement must use the existing file input');
+        picker.props.onChange({ target: { files: [{ name: 'endorsement.pdf', size: 1234 }], value: 'local' } });
+        await h.flush();
+        assert.equal(h.button('Submit Request').props.disabled, false);
+      }
+      await h.button('Submit Request').props.onClick(); await h.flush();
+      assert.match(h.text(), /Request Submitted Successfully/);
+      assert.deepEqual(h.calls.filter((c) => c[0] === 'upload').map((c) => c[3]), enabled ? ['endorsement_letter'] : []);
+      assert.equal(h.calls.filter((c) => c[0] === 'submit').length, 1);
+      h.unmount();
+    }
+  }
+});
+
+test('saved Endorsement Letter satisfies a resumed draft and can be replaced without duplicate attachments', async () => {
+  const h = harness({
+    draft: sampleDraft({ attachments: [{ id: 1, category: 'endorsement_letter', fileName: 'existing-endorsement.pdf' }] }),
+    api: { getDocumentRequirements: async () => ({ requiredDocuments: [{ id: 'endorsement_letter', label: 'Endorsement Letter', category: 'supporting', required: true }] }) },
+  });
+  await h.flush();
+  h.button('Next Step').props.onClick(); await h.flush();
+  assert.equal(h.button('Submit Request').props.disabled, false);
+  assert.match(h.text(), /Already uploaded: existing-endorsement.pdf/);
+  h.nodes((n) => n.type === 'input' && n.props.type === 'file')[0].props.onChange({ target: { files: [{ name: 'replacement.pdf', size: 100 }], value: 'local' } });
+  await h.flush();
+  await h.button('Submit Request').props.onClick(); await h.flush();
+  const saved = await h.request.getRequestById('446');
+  assert.equal(saved.attachments.length, 1);
+  assert.equal(saved.attachments[0].category, 'endorsement_letter');
+  assert.equal(saved.attachments[0].fileName, 'replacement.pdf');
+});
+
+test('tracking displays Endorsement Letter corrections and submits a replacement through the existing endpoint', async () => {
+  const request = sampleDraft({ isDraft: false, status: 'needs-correction', correctionRequirementIds: ['endorsement_letter'], attachments: [{ id: 1, category: 'endorsement_letter', fileName: 'original.pdf' }] });
+  const h = harness({
+    page: 'RequestTrackingPage', requests: [request], draft: request, search: '?requestId=446',
+    api: {
+      getDocumentRequirements: async () => ({ requiredDocuments: [{ id: 'endorsement_letter', label: 'Endorsement Letter', category: 'supporting', required: true }] }),
+      resubmitCorrections: async (id) => { h.calls.push(['resubmit', id]); return { ...request, status: 'under-review' }; },
+    },
+  });
+  await h.flush();
+  assert.match(h.text(), /Endorsement Letter/);
+  assert.match(h.text(), /Current: original.pdf/);
+  assert.equal(h.button('Submit Corrections').props.disabled, true);
+  h.nodes((n) => n.type === 'input' && n.props.type === 'file')[0].props.onChange({ target: { files: [{ name: 'corrected-endorsement.pdf', size: 100 }], value: 'local' } });
+  await h.flush();
+  assert.equal(h.button('Submit Corrections').props.disabled, false);
+  await h.button('Submit Corrections').props.onClick(); await h.flush();
+  assert.deepEqual(h.calls.filter((c) => c[0] === 'upload').map((c) => c[3]), ['endorsement_letter']);
+  assert.deepEqual(h.calls.filter((c) => c[0] === 'resubmit').map((c) => c[1]), ['446']);
+});
 
 test('opening and refreshing restore the canonical saved draft into first, middle, and last name inputs without banners or validation errors', async () => {
   for (let refresh = 0; refresh < 2; refresh++) {

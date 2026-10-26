@@ -19,6 +19,9 @@ import { RequestNotificationService } from "../services/RequestNotificationServi
 import { FileUploadService } from "../services/FileUploadService.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { prisma } from "../config/db.js";
+import { LiveToolRegistry } from "../services/ai/liveTools/LiveToolRegistry.js";
+import { ParishService } from "../services/ParishService.js";
+import { R2Service } from "../services/R2Service.js";
 
 // Helper to create mock prisma client for DocumentRequirementService
 function createMockPrismaForParish(documentSettingsStr) {
@@ -31,6 +34,13 @@ function createMockPrismaForParish(documentSettingsStr) {
   };
 }
 
+// Prisma delegates expose methods through a proxy, so restore direct overrides explicitly.
+function stubPrisma(t, target, method, implementation) {
+  const original = target[method];
+  target[method] = implementation;
+  t.after(() => { target[method] = original; });
+}
+
 // ---------------------------------------------------------------------------
 // BACKEND TESTS 1 - 15
 // ---------------------------------------------------------------------------
@@ -41,7 +51,7 @@ test("1. Existing defaults still resolve correctly", async () => {
   assert.equal(defaults.documentType, "BAPTISMAL_CERTIFICATE");
   assert.equal(defaults.baseFee, 100);
   assert.ok(Array.isArray(defaults.requiredDocuments));
-  assert.equal(defaults.requiredDocuments.length, 1);
+  assert.equal(defaults.requiredDocuments.length, 2);
   assert.equal(defaults.requiredDocuments[0].id, "valid_id");
   assert.equal(defaults.requiredDocuments[0].required, true);
   assert.equal(defaults.requiredDocuments[0].category, "primary");
@@ -66,7 +76,7 @@ test("2. Existing false override removes a default requirement", async () => {
   assert.ok(Array.isArray(res.requiredDocuments));
   const validIdReq = res.requiredDocuments.find((d) => d.id === "valid_id");
   assert.equal(validIdReq, undefined, "valid_id should be removed when override is false");
-  assert.equal(res.requiredDocuments.length, 0);
+  assert.deepEqual(res.requiredDocuments.map((d) => d.id), ["endorsement_letter"]);
 });
 
 test("3. Existing canonical requirement can be added to a different document", async () => {
@@ -86,7 +96,7 @@ test("3. Existing canonical requirement can be added to a different document", a
     1,
     mockPrisma
   );
-  assert.equal(res.requiredDocuments.length, 2);
+  assert.equal(res.requiredDocuments.length, 3);
   const ids = res.requiredDocuments.map((d) => d.id);
   assert.ok(ids.includes("valid_id"));
   assert.ok(ids.includes("baptismal_cert"));
@@ -260,7 +270,7 @@ test("8. Unknown stored IDs are ignored during reads", async () => {
     1,
     mockPrisma
   );
-  assert.equal(res.requiredDocuments.length, 1);
+  assert.equal(res.requiredDocuments.length, 2);
   assert.equal(res.requiredDocuments[0].id, "valid_id");
 });
 
@@ -469,10 +479,11 @@ test("15. Returned requirement ordering is deterministic", async () => {
   const orderB = reqsB.requiredDocuments.map((d) => d.id);
 
   assert.deepEqual(orderA, orderB, "Order must be deterministic across different key orderings");
-  // Matrix defaults come first (valid_id), followed by canonical additions in canonical ID order
+  // Matrix defaults come first, followed by canonical additions in canonical ID order
   assert.equal(orderA[0], "valid_id");
-  assert.equal(orderA[1], "baptismal_cert");
-  assert.equal(orderA[2], "canonical_interview");
+  assert.equal(orderA[1], "endorsement_letter");
+  assert.equal(orderA[2], "baptismal_cert");
+  assert.equal(orderA[3], "canonical_interview");
 });
 
 // ---------------------------------------------------------------------------
@@ -585,6 +596,7 @@ test("17. Newly assigned required item is enforced at submission", async () => {
       requestAttachment: {
         findMany: async () => [
           { category: "valid_id" }, // missing cenomar
+          { category: "endorsement_letter" },
         ],
       },
     };
@@ -656,7 +668,7 @@ test("18. Removed requirement is no longer enforced at submission", async () => 
     prisma.parish.findUnique = async () => ({
       documentSettings: JSON.stringify({
         BAPTISMAL_CERTIFICATE: {
-          requirements: { valid_id: false },
+          requirements: { valid_id: false, endorsement_letter: false },
         },
       }),
     });
@@ -683,4 +695,206 @@ test("19. Existing document request behavior remains intact", async () => {
   assert.ok(ids.includes("precana_proof"));
   assert.ok(ids.includes("cenomar"));
   assert.ok(ids.includes("banns_clearance"));
+});
+
+test("Endorsement Letter defaults preserve every certificate's existing prerequisites, fees and processing periods", async () => {
+  const existing = {
+    BAPTISMAL_CERTIFICATE: [100, 3, ["valid_id"]],
+    CONFIRMATION_CERTIFICATE: [100, 3, ["valid_id"]],
+    MARRIAGE_CERTIFICATE: [150, 5, ["valid_id"]],
+    FIRST_COMMUNION_CERTIFICATE: [75, 3, ["valid_id"]],
+    MARRIAGE_BANNS: [200, 14, ["valid_id", "baptismal_cert", "confirmation_cert", "marriage_license", "precana_proof", "cenomar", "banns_clearance"]],
+    PERMIT_TO_MARRY: [150, 7, ["valid_id", "baptismal_cert", "confirmation_cert", "marriage_license", "precana_proof", "cenomar", "canonical_interview", "banns_clearance"]],
+    STATUS_OF_LIBERTY: [150, 5, ["valid_id", "baptismal_cert", "cenomar", "canonical_interview"]],
+  };
+  assert.equal(CANONICAL_REQUIREMENT_IDS.length, 9);
+  assert.ok(CANONICAL_REQUIREMENT_IDS_SET.has("endorsement_letter"));
+  assert.deepEqual(Object.keys(existing), CANONICAL_DOCUMENT_TYPES);
+  for (const [type, [fee, days, ids]] of Object.entries(existing)) {
+    const config = await DocumentRequirementService.getRequirements(type);
+    assert.equal(config.baseFee, fee);
+    assert.equal(config.estimatedProcessingDays, days);
+    assert.deepEqual(config.requiredDocuments.filter((d) => d.id !== "endorsement_letter").map((d) => d.id), ids);
+    assert.deepEqual(config.requiredDocuments.filter((d) => d.id === "endorsement_letter"), [{
+      id: "endorsement_letter", label: "Endorsement Letter", category: "supporting", required: true,
+      description: "Endorsement letter submitted as supporting documentation for a certificate request.",
+    }]);
+  }
+});
+
+test("old parish settings inherit Endorsement Letter and explicit overrides stay isolated by parish and certificate", async () => {
+  for (const type of CANONICAL_DOCUMENT_TYPES) {
+    const legacy = { [type]: { price: 321, requirements: { valid_id: false } } };
+    for (const stored of [null, "{}", JSON.stringify(legacy)]) {
+      const config = await DocumentRequirementService.getRequirements(type, 1, createMockPrismaForParish(stored));
+      assert.ok(config.requiredDocuments.some((d) => d.id === "endorsement_letter"));
+    }
+    for (const enabled of [false, true]) {
+      const settings = structuredClone(legacy);
+      settings[type].requirements.endorsement_letter = enabled;
+      const matrix = await DocumentRequirementService.getRequirements(null, 1, createMockPrismaForParish(JSON.stringify(settings)));
+      assert.equal(matrix[type].requiredDocuments.some((d) => d.id === "endorsement_letter"), enabled);
+      assert.equal(matrix[type].baseFee, 321);
+      assert.ok(!matrix[type].requiredDocuments.some((d) => d.id === "valid_id"));
+      for (const other of CANONICAL_DOCUMENT_TYPES.filter((id) => id !== type)) {
+        assert.deepEqual(matrix[other], DOCUMENT_REQUIREMENTS_MATRIX[other]);
+      }
+      const otherParish = await DocumentRequirementService.getRequirements(type, 2, createMockPrismaForParish("{}"));
+      assert.deepEqual(otherParish, DOCUMENT_REQUIREMENTS_MATRIX[type]);
+    }
+  }
+});
+
+test("Endorsement Letter settings require strict booleans for all certificates", () => {
+  for (const type of CANONICAL_DOCUMENT_TYPES) {
+    for (const value of ["true", "false", 1, 0, null, undefined, {}, []]) {
+      assert.throws(() => validateDocumentSettingsForSave({ [type]: { requirements: { endorsement_letter: value } } }),
+        (error) => error.statusCode === 400 && /strictly boolean/.test(error.message));
+    }
+    for (const value of [true, false]) {
+      const input = { [type]: { price: 150, requirements: { endorsement_letter: value, valid_id: false } } };
+      assert.deepEqual(validateDocumentSettingsForSave(input), input);
+      assert.deepEqual(validateDocumentSettingsForSave(JSON.stringify(input)), input);
+    }
+  }
+});
+
+test("Secretary saves, reloads and restores Endorsement Letter through existing settings persistence", async (t) => {
+  const row = { id: 1, parishName: "Fixture Parish", users: [], documentSettings: "{}" };
+  const tx = { parish: {
+    findUnique: async () => structuredClone(row),
+    update: async ({ data }) => { Object.assign(row, data); return structuredClone(row); },
+  } };
+  stubPrisma(t, prisma, "$transaction", async (callback) => callback(tx));
+  stubPrisma(t, prisma.parish, "findUnique", async () => structuredClone(row));
+  t.mock.method(ParishService.prototype, "getCanonicalParishDto", async () => ({ ...row, documentSettings: JSON.parse(row.documentSettings) }));
+  t.mock.method(AuditLogService, "log", async () => {});
+
+  for (const type of CANONICAL_DOCUMENT_TYPES) {
+    for (const enabled of [false, true]) {
+      const settings = JSON.parse(row.documentSettings);
+      settings[type] = { price: 217, requirements: { valid_id: true, endorsement_letter: enabled } };
+      let response;
+      await updateSettings({ params: { id: "1" }, user: { id: 10, role: "SECRETARY", parish: { id: 1 } }, body: { documentSettings: settings } },
+        { status(code) { assert.equal(code, 200); return this; }, json(body) { response = body; } },
+        (error) => { throw error; });
+      assert.equal(response.data.documentSettings[type].requirements.endorsement_letter, enabled);
+      assert.equal(JSON.parse(row.documentSettings)[type].requirements.endorsement_letter, enabled);
+      const config = await DocumentRequirementService.getRequirements(type, 1);
+      assert.equal(config.requiredDocuments.some((d) => d.id === "endorsement_letter"), enabled);
+      assert.ok(config.requiredDocuments.some((d) => d.id === "valid_id"));
+      assert.equal(config.baseFee, 217);
+    }
+  }
+});
+
+test("new requests enforce effective Endorsement Letter configuration for all seven certificates", async (t) => {
+  let request;
+  let attachments;
+  let settings;
+  let writes = 0;
+  const tx = {
+    user: { findUnique: async () => ({ id: 10, role: { roleName: "PARISHIONER" }, fullName: "Test Parishioner", contactNumber: "09170000000", governmentIdVerification: { status: "VERIFIED" } }) },
+    documentRequest: {
+      findFirst: async () => request,
+      update: async ({ data }) => { writes++; return { ...request, ...data }; },
+    },
+    requestAttachment: {
+      findMany: async () => attachments,
+      findFirst: async ({ where }) => attachments.find((a) => a.category === where.category) || null,
+    },
+    registrantIdEvidence: { findUnique: async () => null },
+    requestHistory: { create: async () => ({ id: 1 }) },
+  };
+  stubPrisma(t, prisma, "$transaction", async (callback) => callback(tx));
+  stubPrisma(t, prisma.parish, "findUnique", async () => ({ documentSettings: JSON.stringify(settings) }));
+  t.mock.method(AuditLogService, "log", async () => {});
+  t.mock.method(RequestNotificationService, "notifyStatusChange", async () => {});
+  const service = new ParishionerRequestService();
+
+  for (const type of CANONICAL_DOCUMENT_TYPES) {
+    request = { id: 500, userId: 10, parishId: 1, documentType: type, isDraft: true, status: "PENDING", purpose: "School", relationship: "Self", applicantName: "Test Parishioner" };
+    for (const override of [undefined, true]) {
+      settings = { [type]: { requirements: override === undefined ? { valid_id: true } : { endorsement_letter: override } } };
+      attachments = DOCUMENT_REQUIREMENTS_MATRIX[type].requiredDocuments.filter((d) => !["valid_id", "endorsement_letter"].includes(d.id)).map((d) => ({ category: d.id }));
+      const before = writes;
+      await assert.rejects(service.submitDraft(500, 10), (error) => error.statusCode === 400 && /Endorsement Letter/.test(error.message));
+      assert.equal(writes, before, "rejected submissions must stay drafts");
+      attachments.push({ category: "endorsement_letter" });
+      assert.equal((await service.submitDraft(500, 10)).isDraft, false);
+    }
+    settings[type].requirements.endorsement_letter = false;
+    attachments = attachments.filter((a) => a.category !== "endorsement_letter");
+    assert.equal((await service.submitDraft(500, 10)).isDraft, false);
+  }
+
+  // The new supporting letter never substitutes for separate non-Self evidence.
+  request.relationship = "Parent";
+  attachments.push({ category: "endorsement_letter" });
+  await assert.rejects(service.submitDraft(500, 10), { code: "AUTHORIZATION_LETTER_REQUIRED" });
+  attachments.push({ category: "authorization_letter" });
+  await assert.rejects(service.submitDraft(500, 10), { code: "REGISTRANT_ID_REQUIRED" });
+});
+
+test("Endorsement Letter uses the current upload endpoint for drafts and corrections", async (t) => {
+  stubPrisma(t, prisma.user, "findUnique", async () => ({ id: 10, role: { roleName: "PARISHIONER" } }));
+  let request = { id: 500, userId: 10, parishId: 1, documentType: "BAPTISMAL_CERTIFICATE", relationship: "Self", isDraft: true, status: "PENDING" };
+  let enabled = true;
+  stubPrisma(t, prisma.documentRequest, "findFirst", async () => request);
+  stubPrisma(t, prisma.parish, "findUnique", async () => ({ documentSettings: JSON.stringify({ BAPTISMAL_CERTIFICATE: { requirements: { endorsement_letter: enabled } } }) }));
+  const uploaded = [];
+  t.mock.method(FileUploadService, "uploadAttachment", async (requestId, file, category) => {
+    uploaded.push(category); return { id: 1, requestId, category, fileName: file.originalname };
+  });
+  t.mock.method(FileUploadService, "uploadAuthorizationLetter", () => assert.fail("Endorsement Letter must use supporting storage"));
+  for (const isDraft of [true, false]) {
+    request = { ...request, isDraft, status: isDraft ? "PENDING" : "NEEDS_CORRECTION", correctionRequirementIds: ["endorsement_letter"] };
+    let status;
+    let body;
+    await uploadFiles({ user: { id: 10 }, params: { id: "500" }, body: { category: "endorsement_letter" }, files: [{ originalname: "endorsement.pdf" }] },
+      { status(code) { status = code; return this; }, json(value) { body = value; } }, (error) => { throw error; });
+    assert.equal(status, 201);
+    assert.equal(body.data[0].category, "endorsement_letter");
+  }
+  enabled = false;
+  let status;
+  await uploadFiles({ user: { id: 10 }, params: { id: "500" }, body: { category: "endorsement_letter" }, files: [{}] },
+    { status(code) { status = code; return this; }, json() {} }, (error) => { throw error; });
+  assert.equal(status, 400);
+  assert.deepEqual(uploaded, ["endorsement_letter", "endorsement_letter"]);
+});
+
+test("Endorsement Letter validates and replaces files through existing supporting storage", async (t) => {
+  const events = [];
+  t.mock.method(R2Service.prototype, "upload", async () => { events.push("upload"); return "https://storage.example/fixture"; });
+  t.mock.method(R2Service.prototype, "delete", async () => { events.push("delete-object"); });
+  const db = { requestAttachment: {
+    findFirst: async ({ where }) => { assert.equal(where.category, "endorsement_letter"); return { id: 1, r2ObjectKey: "fixture-old-object" }; },
+    create: async ({ data }) => { events.push("create"); assert.equal(data.category, "endorsement_letter"); return { id: 2, ...data }; },
+    delete: async () => { events.push("delete-record"); },
+  } };
+  const file = { originalname: "endorsement.pdf", mimetype: "application/pdf", buffer: Buffer.from("%PDF-1.7\nfixture"), size: 16 };
+  const result = await FileUploadService.uploadAttachment(500, file, "endorsement_letter", db);
+  assert.equal(result.category, "endorsement_letter");
+  assert.deepEqual(events, ["upload", "create", "delete-record", "delete-object"]);
+  events.length = 0;
+  await assert.rejects(FileUploadService.uploadAttachment(500, { ...file, buffer: Buffer.from("invalid") }, "endorsement_letter", db));
+  assert.deepEqual(events, [], "invalid files must be rejected before storage writes");
+});
+
+test("Caloy reads Endorsement Letter from effective live requirements and parish overrides", async () => {
+  let enabled;
+  const registry = new LiveToolRegistry({ prismaClient: { parish: { findUnique: async ({ where }) => ({
+    id: where.id, isActive: true, parishName: "Fixture Parish", availableDocuments: CANONICAL_DOCUMENT_TYPES,
+    documentSettings: JSON.stringify(Object.fromEntries(CANONICAL_DOCUMENT_TYPES.map((type) => [type, { requirements: enabled === undefined ? {} : { endorsement_letter: enabled } }]))),
+  }) } } });
+  for (const override of [undefined, false, true]) {
+    enabled = override;
+    for (const documentType of CANONICAL_DOCUMENT_TYPES) {
+      const result = await registry.getDocumentRequirements({ documentType, parishId: 1 });
+      assert.equal(result.structuredFacts.supportingRequirements.includes("Endorsement Letter"), enabled !== false);
+      assert.equal(result.answer.includes("Endorsement Letter"), enabled !== false);
+      assert.equal(result.liveData.parishId, 1);
+    }
+  }
 });
