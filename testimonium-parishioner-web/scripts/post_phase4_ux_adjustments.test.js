@@ -242,7 +242,7 @@ test("Post-Phase 4 Suite — Source Contracts for UI Pages & Components", async 
     assert.ok(detailPageSource.includes("Scheduled Date"), "Existing Scheduled Date must remain");
     assert.ok(detailPageSource.includes("Time Slot"), "Existing Time Slot must remain");
     assert.ok(detailPageSource.includes("Assigned Priest"), "Existing Assigned Priest must remain");
-    assert.ok(detailPageSource.includes("Back to Home"), "Back navigation must remain");
+    assert.ok(!detailPageSource.includes("Back to Home"), "Redundant Back to Home button must be removed");
   });
 
   await t.test("8. ISchedulerProvider and ApiSchedulerProvider implement getAppointmentByTracking", () => {

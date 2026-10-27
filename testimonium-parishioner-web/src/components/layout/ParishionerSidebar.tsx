@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Home,
   Map,
@@ -7,12 +7,9 @@ import {
   Search,
   Calendar,
   Bell,
-  User as UserIcon,
-  HelpCircle,
-  Info,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -32,15 +29,11 @@ interface NavCategory {
 }
 
 interface ParishionerSidebarProps {
-  onOpenHelp?: () => void;
-  onOpenAbout?: () => void;
   isMobileDrawer?: boolean;
   onCloseMobileDrawer?: () => void;
 }
 
 export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
-  onOpenHelp,
-  onOpenAbout,
   isMobileDrawer = false,
   onCloseMobileDrawer,
 }) => {
@@ -50,8 +43,9 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
   const { unreadCount } = useNotifications();
   const { isProfileIncomplete, requireCompleteProfile } = useProfileRequirement();
 
-  // Hover & Expansion State
+  // Hover, Focus & Expansion State
   const [isHovered, setIsHovered] = useState(false);
+  const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const [isPinned, setIsPinned] = useState(() => {
     try {
       return localStorage.getItem('testimonium_pw_sidebar_pinned') === 'true';
@@ -61,11 +55,35 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
   });
 
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const navRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const isPointerInteractingRef = useRef(false);
+
+  // Distinguish mouse/pointer interaction from keyboard focus
+  useEffect(() => {
+    const handlePointerDown = () => {
+      isPointerInteractingRef.current = true;
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab' || e.key.startsWith('Arrow')) {
+        isPointerInteractingRef.current = false;
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, { capture: true });
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, { capture: true });
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, []);
 
   const handleMouseEnter = () => {
     if (isMobileDrawer) return;
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovered(true);
     }, 80);
@@ -73,19 +91,56 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
 
   const handleMouseLeave = () => {
     if (isMobileDrawer) return;
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovered(false);
+      setIsKeyboardFocused(false);
+      if (asideRef.current?.contains(document.activeElement) && isPointerInteractingRef.current) {
+        (document.activeElement as HTMLElement)?.blur();
+      }
     }, 120);
   };
 
+  // On route change, collapse sidebar if pointer is not actively hovering
+  useEffect(() => {
+    if (!isPinned && !isMobileDrawer) {
+      if (asideRef.current && !asideRef.current.matches(':hover')) {
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+          hoverTimeoutRef.current = null;
+        }
+        setIsHovered(false);
+        setIsKeyboardFocused(false);
+      }
+    }
+  }, [location.pathname, isPinned, isMobileDrawer]);
+
   useEffect(() => {
     return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
     };
   }, []);
 
-  const isExpanded = isMobileDrawer || isPinned || isHovered;
+  const handleAsideFocus = (e: React.FocusEvent) => {
+    const target = e.target as HTMLElement;
+    const isFocusVisible = target.matches ? target.matches(':focus-visible') : !isPointerInteractingRef.current;
+    if (!isPointerInteractingRef.current && isFocusVisible) {
+      setIsKeyboardFocused(true);
+    }
+  };
+
+  const handleAsideBlur = (e: React.FocusEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsKeyboardFocused(false);
+    }
+  };
+
+  const isExpanded = isMobileDrawer || isPinned || isHovered || isKeyboardFocused;
 
   const togglePin = () => {
     const next = !isPinned;
@@ -100,21 +155,28 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      const focusable = navRef.current?.querySelectorAll<HTMLElement>('a, button');
+      const focusable = asideRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]):not([tabindex="-1"])'
+      );
       if (!focusable || focusable.length === 0) return;
+      const visibleFocusable = Array.from(focusable).filter(
+        el => !el.classList.contains('pointer-events-none') && el.offsetParent !== null
+      );
       const active = document.activeElement;
-      const index = Array.from(focusable).indexOf(active as HTMLElement);
+      const index = visibleFocusable.indexOf(active as HTMLElement);
 
       let nextIndex = index;
       if (e.key === 'ArrowDown') {
-        nextIndex = (index + 1) % focusable.length;
+        nextIndex = (index + 1) % visibleFocusable.length;
       } else {
-        nextIndex = (index - 1 + focusable.length) % focusable.length;
+        nextIndex = (index - 1 + visibleFocusable.length) % visibleFocusable.length;
       }
-      focusable[nextIndex]?.focus();
+      visibleFocusable[nextIndex]?.focus();
     } else if (e.key === 'Escape') {
       if (!isPinned && !isMobileDrawer) {
         setIsHovered(false);
+        setIsKeyboardFocused(false);
+        (document.activeElement as HTMLElement)?.blur();
       }
     }
   };
@@ -178,25 +240,37 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
           icon: <Bell className="w-4 h-4" />,
           badge: unreadCount > 0 ? unreadCount : undefined,
         },
-        {
-          to: '/dashboard/profile',
-          label: 'My Profile',
-          icon: <UserIcon className="w-4 h-4" />,
-        },
       ],
     },
   ];
 
   const sidebarContent = (
     <div
-      className={`flex flex-col h-full bg-white text-text-primary select-none w-full`}
+      className="flex flex-col h-full bg-white text-text-primary select-none w-full"
       onKeyDown={handleKeyDown}
-      ref={navRef}
     >
-      {/* Brand Header (Clean without artificial TX square) */}
-      <div className="h-16 px-4 flex items-center flex-shrink-0 border-b border-border/40">
-        {isExpanded ? (
-          <div className="flex flex-col justify-center min-w-0 transition-opacity duration-200">
+      {/* Brand Header */}
+      <div className="h-16 px-3 flex items-center flex-shrink-0 border-b border-border/40 relative overflow-hidden">
+        {/* Collapsed 'T' Logo - Smooth crossfade, centered in collapsed rail */}
+        <div
+          className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ease-in-out pointer-events-none ${
+            isExpanded ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
+          }`}
+          aria-hidden={isExpanded}
+        >
+          <span className="font-serif font-black text-crimson text-xl tracking-widest select-none">
+            T
+          </span>
+        </div>
+
+        {/* Expanded Header Content (Title, Subtitle & Pin Button) */}
+        <div
+          className={`flex items-center justify-between w-full min-w-0 transition-all duration-300 ease-in-out ${
+            isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-3 pointer-events-none'
+          }`}
+          aria-hidden={!isExpanded}
+        >
+          <div className="flex flex-col justify-center min-w-0 pl-1">
             <span className="font-serif font-black text-crimson text-lg tracking-wider leading-tight truncate">
               TESTIMONIUM
             </span>
@@ -204,30 +278,65 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
               Parishioner Portal
             </span>
           </div>
-        ) : (
-          <div className="w-full flex items-center justify-center">
-            <span className="font-serif font-black text-crimson text-base tracking-widest">
-              T
-            </span>
-          </div>
+
+          {/* Desktop Pin / Unpin Button (Hidden in Mobile Drawer) */}
+          {!isMobileDrawer && (
+            <button
+              type="button"
+              onClick={togglePin}
+              className={`p-1.5 rounded-lg transition-colors focus-ring shrink-0 ${
+                isPinned
+                  ? 'text-crimson bg-red-50/80 hover:bg-red-100/80'
+                  : 'text-text-muted hover:text-crimson hover:bg-app-page'
+              }`}
+              title={isPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
+              aria-label={isPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
+              aria-pressed={isPinned}
+            >
+              {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+            </button>
+          )}
+        </div>
+
+        {/* Keyboard Accessible Pin Button when collapsed (Desktop Only) */}
+        {!isMobileDrawer && !isExpanded && (
+          <button
+            type="button"
+            onClick={togglePin}
+            className="sr-only focus:not-sr-only focus:absolute focus:top-3.5 focus:right-2 p-1.5 rounded-lg bg-white border border-border text-crimson shadow-sm transition-colors focus-ring z-50"
+            title={isPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
+            aria-label={isPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
+            aria-pressed={isPinned}
+          >
+            {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+          </button>
         )}
       </div>
 
       {/* Navigation Grouped by Categories */}
-      <nav className="flex-1 px-2.5 py-3 space-y-4 overflow-y-auto overflow-x-hidden" aria-label="Main Navigation">
+      <nav className="flex-1 px-2.5 py-3 space-y-2 overflow-y-auto overflow-x-hidden" aria-label="Main Navigation">
         {categories.map((cat) => (
           <div key={cat.title} className="space-y-1">
-            {isExpanded ? (
-              <p className="text-[10px] font-bold text-text-muted/70 uppercase tracking-widest px-3 mb-1.5 transition-opacity duration-200">
+            {/* Category Header */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out px-3 flex items-center ${
+                isExpanded ? 'h-5 opacity-100 mb-1' : 'h-1 opacity-0 pointer-events-none'
+              }`}
+              aria-hidden={!isExpanded}
+            >
+              <span className="text-[10px] font-bold text-text-muted/70 uppercase tracking-widest whitespace-nowrap">
                 {cat.title}
-              </p>
-            ) : (
-              <div className="h-1" />
-            )}
+              </span>
+            </div>
+
             {cat.items.map((item) => {
               const isProtected = item.to === '/dashboard/request' || item.to === '/dashboard/scheduler';
 
               const handleItemClick = (e: React.MouseEvent) => {
+                // Remove pointer focus immediately to avoid stuck expansion
+                (e.currentTarget as HTMLElement)?.blur();
+                setIsKeyboardFocused(false);
+
                 if (isProtected && isProfileIncomplete) {
                   e.preventDefault();
                   handleNavClick();
@@ -247,190 +356,123 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
                   id={`nav-${item.to.replace('/dashboard/', '').replace('/', '')}`}
                   onClick={handleItemClick}
                   aria-current={location.pathname === item.to ? 'page' : undefined}
-                className={({ isActive }) => `
-                  flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all duration-150 group relative
-                  ${isActive
-                    ? 'bg-crimson text-white font-semibold shadow-xs'
-                    : 'text-text-primary hover:bg-red-50/70 hover:text-crimson font-medium'
-                  }
-                `}
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className={`flex-shrink-0 transition-colors ${isActive ? 'text-white' : 'text-crimson'}`}>
-                      {item.icon}
-                    </span>
-                    <span
-                      className={`transition-all duration-200 truncate ${
-                        isExpanded
-                          ? 'opacity-100 max-w-[170px] ml-0'
-                          : 'opacity-0 max-w-0 ml-[-8px] pointer-events-none'
-                      }`}
-                    >
-                      {item.label}
-                    </span>
-
-                    {/* Badge for Notifications */}
-                    {item.badge !== undefined && (
+                  className={({ isActive }) => `
+                    relative flex items-center h-10 w-full rounded-lg transition-colors duration-200 group overflow-hidden
+                    ${isActive
+                      ? 'bg-crimson text-white font-semibold shadow-xs'
+                      : 'text-text-primary hover:bg-red-50/70 hover:text-crimson font-medium'
+                    }
+                  `}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {/* Nav Icon: Interpolates smoothly between centered (20px) and expanded (14px) */}
                       <span
-                        className={`ml-auto font-bold text-[10px] px-1.5 py-0.5 rounded-full transition-opacity duration-150 ${
-                          isActive ? 'bg-white text-crimson' : 'bg-crimson text-white'
-                        } ${
-                          isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none hidden'
+                        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-4 h-4 transition-[left,color] duration-300 ease-in-out ${
+                          isActive ? 'text-white' : 'text-crimson'
+                        }`}
+                        style={{ left: isExpanded ? '14px' : '20px' }}
+                      >
+                        {item.icon}
+                      </span>
+
+                      {/* Nav Label: Smooth fade and slide */}
+                      <span
+                        className={`ml-[42px] font-medium text-sm whitespace-nowrap transition-all duration-300 ease-in-out ${
+                          isExpanded
+                            ? 'opacity-100 translate-x-0'
+                            : 'opacity-0 -translate-x-2 pointer-events-none'
                         }`}
                       >
-                        {item.badge}
-                      </span>
-                    )}
-
-                    {/* Collapsed Tooltip (Desktop Only) */}
-                    {!isExpanded && !isMobileDrawer && (
-                      <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap pointer-events-none z-[9999]">
                         {item.label}
-                        {item.badge !== undefined && ` (${item.badge})`}
-                      </div>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
+                      </span>
+
+                      {/* Badge for Notifications */}
+                      {item.badge !== undefined && (
+                        <span
+                          className={`ml-auto mr-3 font-bold text-[10px] px-1.5 py-0.5 rounded-full transition-all duration-300 ease-in-out ${
+                            isActive ? 'bg-white text-crimson' : 'bg-crimson text-white'
+                          } ${
+                            isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+
+                      {/* Collapsed Tooltip (Desktop Only) */}
+                      {!isExpanded && !isMobileDrawer && (
+                        <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap pointer-events-none z-[9999]">
+                          {item.label}
+                          {item.badge !== undefined && ` (${item.badge})`}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         ))}
-
-        {/* Support Section */}
-        <div className="space-y-1 pt-1 border-t border-border/40">
-          {isExpanded ? (
-            <p className="text-[10px] font-bold text-text-muted/70 uppercase tracking-widest px-3 mb-1.5">
-              Support
-            </p>
-          ) : (
-            <div className="h-1" />
-          )}
-
-          {onOpenHelp && (
-            <button
-              onClick={() => {
-                handleNavClick();
-                onOpenHelp();
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-text-muted hover:text-crimson hover:bg-red-50/70 rounded-lg transition-colors text-left group relative"
-              title="Help Center"
-            >
-              <HelpCircle className="w-4 h-4 flex-shrink-0 text-crimson" />
-              <span
-                className={`transition-all duration-200 truncate ${
-                  isExpanded ? 'opacity-100 max-w-[170px]' : 'opacity-0 max-w-0 pointer-events-none'
-                }`}
-              >
-                Help Center
-              </span>
-              {!isExpanded && !isMobileDrawer && (
-                <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-[9999]">
-                  Help Center
-                </div>
-              )}
-            </button>
-          )}
-
-          {onOpenAbout && (
-            <button
-              onClick={() => {
-                handleNavClick();
-                onOpenAbout();
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-text-muted hover:text-crimson hover:bg-red-50/70 rounded-lg transition-colors text-left group relative"
-              title="About TESTIMONIUM"
-            >
-              <Info className="w-4 h-4 flex-shrink-0 text-crimson" />
-              <span
-                className={`transition-all duration-200 truncate ${
-                  isExpanded ? 'opacity-100 max-w-[170px]' : 'opacity-0 max-w-0 pointer-events-none'
-                }`}
-              >
-                About
-              </span>
-              {!isExpanded && !isMobileDrawer && (
-                <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-[9999]">
-                  About TESTIMONIUM
-                </div>
-              )}
-            </button>
-          )}
-        </div>
       </nav>
 
-      {/* Bottom Section: User Profile & Pin/Collapse Control */}
-      <div className="mt-auto flex-shrink-0 border-t border-border/50 pt-2">
-        {/* User Card */}
-        <div className="px-2.5 mb-2">
-          {isExpanded ? (
-            <div className="flex items-center justify-between p-2 bg-app-page/70 rounded-xl border border-border/70 shadow-xs transition-all duration-200">
-              <Link
-                to="/dashboard/profile"
-                onClick={handleNavClick}
-                className="flex items-center gap-2.5 min-w-0 hover:bg-white p-1 rounded-lg transition-colors flex-1 focus-ring"
-                title="View Profile"
-              >
-                <Avatar
-                  name={user?.displayName || user?.email || 'Parishioner'}
-                  size="sm"
-                />
-                <div className="min-w-0 text-left">
-                  <p className="text-xs font-bold text-text-primary truncate leading-tight">
-                    {user?.displayName || 'Parishioner'}
-                  </p>
-                  <p className="text-[10px] text-text-muted truncate font-sans">
-                    {user?.email || 'Authenticated'}
-                  </p>
-                </div>
-              </Link>
-
-              <button
-                onClick={handleLogout}
-                className="p-1.5 text-text-muted hover:text-crimson hover:bg-red-50 rounded-lg transition-colors focus-ring"
-                title="Sign Out"
-                aria-label="Sign Out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <Link
-              to="/dashboard/profile"
-              className="flex justify-center py-2 relative group focus-ring rounded-lg hover:bg-app-page transition-colors"
-              title="View Profile"
-              aria-label="View Profile"
+      {/* Bottom Section: User Profile */}
+      <div className="mt-auto flex-shrink-0 border-t border-border/50 pt-2 pb-2">
+        <div className="px-2.5">
+          <div
+            className={`relative flex items-center h-12 rounded-xl transition-all duration-300 ease-in-out overflow-hidden ${
+              isExpanded
+                ? 'bg-app-page/70 border border-border/70 shadow-xs'
+                : 'bg-transparent border border-transparent'
+            }`}
+          >
+            {/* Avatar Container: smoothly transitions left position */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 transition-[left] duration-300 ease-in-out flex items-center justify-center"
+              style={{ left: isExpanded ? '10px' : '12px' }}
+              title={!isExpanded ? (user?.displayName || user?.email || 'Parishioner') : undefined}
             >
               <Avatar
                 name={user?.displayName || user?.email || 'Parishioner'}
                 size="sm"
               />
-              <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-[9999]">
-                Profile
-              </div>
-            </Link>
-          )}
-        </div>
+            </div>
 
-        {/* Pin/Collapse Button (Desktop Only) */}
-        {!isMobileDrawer && (
-          <div className="px-2.5 pb-2.5">
-            <button
-              onClick={togglePin}
-              className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-app-page text-text-muted hover:text-text-primary transition-colors focus-ring"
-              title={isPinned ? 'Collapse Sidebar' : 'Pin Sidebar'}
-              aria-label={isPinned ? 'Collapse Sidebar' : 'Pin Sidebar'}
+            {/* User Info */}
+            <div
+              className={`ml-[48px] min-w-0 pr-9 text-left transition-all duration-300 ease-in-out ${
+                isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2 pointer-events-none'
+              }`}
             >
-              {isPinned ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              {isExpanded && (
-                <span className="text-xs font-medium ml-2">
-                  {isPinned ? 'Collapse Sidebar' : 'Pin Sidebar'}
-                </span>
-              )}
+              <p className="text-xs font-bold text-text-primary truncate leading-tight">
+                {user?.displayName || 'Parishioner'}
+              </p>
+              <p className="text-[10px] text-text-muted truncate font-sans">
+                {user?.email || 'Authenticated'}
+              </p>
+            </div>
+
+            {/* Sign Out Button */}
+            <button
+              onClick={handleLogout}
+              className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-text-muted hover:text-crimson hover:bg-red-50 rounded-lg transition-all duration-300 ease-in-out focus-ring ${
+                isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'
+              }`}
+              title="Sign Out"
+              aria-label="Sign Out"
+              tabIndex={isExpanded ? 0 : -1}
+            >
+              <LogOut className="w-4 h-4" />
             </button>
+
+            {/* Tooltip for Avatar when collapsed */}
+            {!isExpanded && !isMobileDrawer && (
+              <div className="absolute left-16 bg-gray-900 text-white text-xs px-2.5 py-1.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap pointer-events-none z-[9999]">
+                {user?.displayName || user?.email || 'Parishioner'}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -440,23 +482,18 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
     return sidebarContent;
   }
 
-  // Desktop Persistent Sidebar Rail with Smooth Shadow and Expansion
+  // Desktop Persistent Sidebar Rail with Automatic Main Content Reflow
   return (
     <aside
-      className={`hidden lg:block relative flex-shrink-0 select-none transition-[width] duration-300 ease-in-out ${
-        !isPinned && isHovered ? 'z-40' : 'z-30'
-      }`}
-      style={{ width: isPinned ? '280px' : '76px' }}
+      ref={asideRef}
+      className="hidden lg:block relative flex-shrink-0 select-none transition-[width] duration-300 ease-in-out border-r border-border bg-white z-30 h-screen sticky top-0"
+      style={{ width: isExpanded ? '280px' : '76px' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onFocus={handleAsideFocus}
+      onBlur={handleAsideBlur}
     >
-      <div
-        className={`h-screen sticky top-0 bg-white border-r border-border flex flex-col z-30 transition-[width,box-shadow] duration-300 ease-in-out ${
-          !isPinned && isHovered
-            ? 'absolute top-0 left-0 w-[280px] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] z-40'
-            : (isPinned ? 'w-[280px]' : 'w-[76px]')
-        }`}
-      >
+      <div className="h-full w-full flex flex-col overflow-hidden">
         {sidebarContent}
       </div>
     </aside>

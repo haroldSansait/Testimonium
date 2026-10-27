@@ -600,7 +600,7 @@ export const EventSchedulerPage: React.FC = () => {
       <Card><CardContent className='pt-6 space-y-8'>
         <Stepper steps={steps} currentStep={createdBooking ? confirmationStep : currentStep} />
         <fieldset disabled={submitting} className='min-w-0'>
-        {currentStep === 0 && <div className='space-y-4 max-w-xl mx-auto'>
+        {currentStep === 0 && <div className='space-y-6 w-full max-w-[1000px] mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Target Parish Office</label>
           <CustomSelect
             value={selectedParishId}
@@ -617,15 +617,15 @@ export const EventSchedulerPage: React.FC = () => {
           {configuration?.venueCapacity ? <div className='flex items-center gap-2.5 p-3.5 bg-red-50/60 border border-crimson/15 rounded-xl text-xs text-text-primary'><Users className='w-4 h-4 text-crimson' /><span>Parish venue capacity: <strong>{configuration.venueCapacity} people</strong> (informational only)</span></div> : null}
           <div className='flex justify-end pt-4'><Button onClick={handleNext}>Next Step</Button></div>
         </div>}
-        {currentStep === 1 && <div className='space-y-4 max-w-xl mx-auto'>
+        {currentStep === 1 && <div className='space-y-6 w-full max-w-[1000px] mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Select Service</label>
           {loadingConfiguration ? <Skeleton className='h-32 w-full' /> : null}
           {!loadingConfiguration && !configuration && <Button variant='outline' onClick={() => void reloadConfiguration()}>Retry Configuration</Button>}
           {!loadingConfiguration && !configuration?.schedulingAvailable ? <div className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900'>This parish is not currently accepting online scheduling requests.</div> : null}
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>{configuration?.services.map((service) => <button key={service.eventType} type='button' onClick={() => setSelectedEventType(service.eventType)} className={`p-4 border rounded-xl text-left text-xs font-medium flex items-center justify-between ${selectedEventType === service.eventType ? 'border-crimson bg-red-50 text-crimson font-bold' : 'border-border text-text-primary hover:bg-app-page'}`}><span>{service.label}</span>{selectedEventType === service.eventType && <Check className='w-4 h-4' />}</button>)}</div>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>{configuration?.services.map((service) => <button key={service.eventType} type='button' onClick={() => setSelectedEventType(service.eventType)} className={`p-4 sm:p-5 border rounded-xl text-left text-xs font-medium flex items-center justify-between transition-all focus-ring ${selectedEventType === service.eventType ? 'border-crimson bg-red-50 text-crimson font-bold shadow-xs' : 'border-border text-text-primary hover:bg-app-page'}`}><span className="text-xs sm:text-sm font-semibold">{service.label}</span>{selectedEventType === service.eventType && <Check className='w-4 h-4 shrink-0 text-crimson' />}</button>)}</div>
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(0)}>Back</Button><Button onClick={handleNext} disabled={!selectedEventType}>Next Step</Button></div>
         </div>}
-        {currentStep === 2 && <div className='space-y-4 max-w-xl mx-auto'>
+        {currentStep === 2 && <div className='space-y-6 w-full max-w-[1000px] mx-auto'>
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Select Booking Date</label>
           {loadingDates ? (
             <Skeleton className='h-80 w-full' />
@@ -644,7 +644,7 @@ export const EventSchedulerPage: React.FC = () => {
           {availability && !availability.serviceAvailable ? <p className='text-xs text-amber-800'>This service has no online availability right now.</p> : null}
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(1)}>Back</Button><Button onClick={handleNext} disabled={!selectedDate}>Next Step</Button></div>
         </div>}
-        {currentStep === 3 && <div className='space-y-5 max-w-xl mx-auto'>
+        {currentStep === 3 && <div className='space-y-6 w-full max-w-[1000px] mx-auto'>
           <div className='space-y-1.5'>
             <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>
               Preferred Priest (Optional)
@@ -708,7 +708,7 @@ export const EventSchedulerPage: React.FC = () => {
                 </button>
               </div>
             ) : recommendations.length > 0 ? (
-              <div className='grid grid-cols-1 sm:grid-cols-2 gap-2.5'>
+              <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5'>
                 {recommendations.slice(0, 6).map((rec) => {
                   const isSelected = selectedDate === rec.date && selectedTimeSlot === rec.timeSlot;
                   return (
@@ -771,7 +771,7 @@ export const EventSchedulerPage: React.FC = () => {
             {loadingSlots ? <div className='grid grid-cols-2 gap-3'><Skeleton className='h-12 w-full' /><Skeleton className='h-12 w-full' /></div> : null}
             {!loadingSlots && !availableSlots.length ? <p className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800'>No time slots are available for this date. Choose another date.</p> : null}
             {!loadingSlots && availableSlots.length > 0 && (
-              <div className='grid grid-cols-2 sm:grid-cols-3 gap-3'>
+              <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5'>
                 {availableSlots.map((slot) => (
                   <button
                     key={slot}
@@ -816,7 +816,7 @@ export const EventSchedulerPage: React.FC = () => {
 
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(2)}>Back</Button><Button onClick={hasRequirements ? () => setCurrentStep(4) : handleBook} loading={submitting} disabled={!selectedTimeSlot || loadingConfiguration || !selectedService}>{hasRequirements ? 'Next Step' : 'Confirm Booking'}</Button></div>
         </div>}
-        {currentStep === 4 && !createdBooking && hasRequirements && <div className='space-y-5 max-w-xl mx-auto'>
+        {currentStep === 4 && !createdBooking && hasRequirements && <div className='space-y-6 w-full max-w-[1000px] mx-auto'>
           <h3 className='text-xl font-serif font-bold text-text-primary'>Upload Requirements</h3>
           <p className='text-sm text-text-muted'>Please provide the documents required by {selectedParish?.name} for {selectedService?.label}.</p>
           <p className='text-xs text-text-muted'>{UPLOAD_POLICIES.SUPPORTING_DOCUMENT.label}. Files are submitted securely with your booking.</p>
@@ -835,7 +835,7 @@ export const EventSchedulerPage: React.FC = () => {
 
                 {file ? (
                   <div className='flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs'>
-                    <span className='truncate max-w-[280px] font-mono font-semibold text-gray-700'>
+                    <span className='truncate max-w-md sm:max-w-xl font-mono font-semibold text-gray-700'>
                       {file.name} ({(file.size / 1024).toFixed(1)} KB)
                     </span>
                     <button
@@ -906,7 +906,7 @@ export const EventSchedulerPage: React.FC = () => {
           })}
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(3)}>Back</Button><Button onClick={handleBook} loading={submitting} disabled={!requirementsComplete || !selectedTimeSlot || loadingConfiguration || !selectedService}>Confirm Booking</Button></div>
         </div>}
-        {createdBooking && <div className='text-center max-w-md mx-auto space-y-6 py-6'>
+        {createdBooking && <div className='text-center max-w-lg mx-auto space-y-6 py-6'>
           <div className='flex justify-center text-green-600'><CheckCircle size={64} /></div><h3 className='text-xl font-serif font-bold text-text-primary'>Schedule Request Submitted</h3><p className='text-sm text-text-muted'>The parish will review your request.</p>
           <div className='p-5 bg-app-page border border-border rounded-card text-left space-y-3'><p><strong>Parish:</strong> {selectedParish?.name}</p><p><strong>Service:</strong> {createdBooking.serviceName}</p><p><strong>Date and time:</strong> {createdBooking.date} at {createdBooking.timeSlot}</p><p><strong>Reference:</strong> {createdBooking.confirmationNumber}</p></div>
           <Button className='w-full' onClick={() => navigate('/dashboard/home')}>Return to Dashboard</Button>

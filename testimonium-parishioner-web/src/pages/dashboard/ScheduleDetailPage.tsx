@@ -2,7 +2,7 @@ import { useQuery } from '../../hooks/useService';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Calendar, Clock, CheckCircle, XCircle,
+  Calendar, Clock, CheckCircle, XCircle,
   AlertCircle, Building, Loader2, User, AlertTriangle,
 } from 'lucide-react';
 import services from '../../providers/factory';
@@ -190,7 +190,6 @@ export const ScheduleDetailPage: React.FC = () => {
       <div className="space-y-6 text-left">
         <PageHeader
           title="Schedule Details"
-          showBackToHome={false}
           breadcrumbs={['Home', 'Schedule Details']}
         />
         <Card>
@@ -208,7 +207,6 @@ export const ScheduleDetailPage: React.FC = () => {
       <div className="space-y-6 text-left">
         <PageHeader
           title="Schedule Details"
-          showBackToHome={false}
           breadcrumbs={['Home', 'Schedule Details']}
         />
         <Card>
@@ -237,7 +235,6 @@ export const ScheduleDetailPage: React.FC = () => {
       <PageHeader
         title="Schedule Details"
         description={`Confirmation: ${appointment.confirmationNumber}`}
-        showBackToHome={false}
         breadcrumbs={['Home', 'Schedule Details']}
       />
 
@@ -635,16 +632,6 @@ export const ScheduleDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* Navigation */}
-          <div className="pt-2 border-t border-border">
-            <button
-              onClick={() => navigate('/dashboard/home')}
-              className="flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-crimson transition-colors focus-ring rounded px-1 py-1"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Back to Home
-            </button>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -681,12 +681,12 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Step 1: Select Parish */}
           {currentStep === 0 && (
-            <div className="space-y-4 max-w-xl mx-auto">
-              <div className="space-y-1">
+            <div className="space-y-6 w-full max-w-[1000px] mx-auto">
+              <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                   Target Parish Office
                 </label>
-                <p className="text-xs text-text-muted">Select the parish containing the original canonical record registry.</p>
+                <p className="text-xs sm:text-sm text-text-muted">Select the parish containing the original canonical record registry.</p>
               </div>
               {savedDraft ? <p className="text-sm text-text-primary">{selectedParish?.name || savedDraft.parish?.parishName || `Parish #${selectedParishId}`} — Saved parish (read-only)</p> : <CustomSelect
                 value={selectedParishId}
@@ -708,26 +708,26 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Step 2: Document Details */}
           {currentStep === 1 && (
-            <div className="space-y-4 max-w-xl mx-auto">
-              <div className="space-y-1">
+            <div className="space-y-6 w-full max-w-[1000px] mx-auto">
+              <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
                   Document Certificate Type
                 </label>
-                <p className="text-xs text-text-muted">Select from the official sacramental document types.</p>
+                <p className="text-xs sm:text-sm text-text-muted">Select from the official sacramental document types.</p>
               </div>
-              {savedDraft ? <p className="text-sm text-text-primary">{CANONICAL_DOCUMENT_TYPES.find(doc => doc.type === docType)?.title || docType} — Saved document type (read-only)</p> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {savedDraft ? <p className="text-sm text-text-primary">{CANONICAL_DOCUMENT_TYPES.find(doc => doc.type === docType)?.title || docType} — Saved document type (read-only)</p> : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDocTypes.map(doc => (
                   <button
                     key={doc.type}
                     onClick={() => setDocType(doc.type)}
-                    className={`p-4 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
+                    className={`p-4 sm:p-5 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
                       docType === doc.type 
                         ? 'border-crimson bg-red-50/20 text-crimson font-bold shadow-sm' 
                         : 'border-border text-text-primary hover:bg-app-page'
                     }`}
                   >
-                    <div className="font-serif font-bold text-sm leading-snug">{doc.title}</div>
-                    <div className="text-[10px] text-text-muted mt-1 font-sans font-normal truncate">{doc.desc}</div>
+                    <div className="font-serif font-bold text-sm sm:text-base leading-snug">{doc.title}</div>
+                    <div className="text-xs text-text-muted mt-1.5 font-sans font-normal leading-relaxed">{doc.desc}</div>
                   </button>
                 ))}
               </div>}
@@ -740,7 +740,7 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Step 3: Registrant & Applicant Info */}
           {currentStep === 2 && (
-            <div className="space-y-4 max-w-xl mx-auto text-left">
+            <div className="space-y-6 w-full max-w-[1000px] mx-auto text-left">
               {/* Requester vs Registrant Distinction Card */}
               <div className="p-3.5 bg-app-page border border-border rounded-card space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -854,7 +854,7 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Step 4: Upload Requirements */}
           {currentStep === 3 && (
-            <div className="space-y-6 max-w-xl mx-auto">
+            <div className="space-y-6 w-full max-w-[1000px] mx-auto">
               <div className="p-4 bg-app-page border border-border/80 rounded-card space-y-2">
                 <span className="text-[10px] font-bold text-crimson uppercase tracking-wider">Attachments Checklist</span>
                 <h4 className="text-xs font-bold text-text-primary">
@@ -942,7 +942,7 @@ export const SacramentalRequestPage: React.FC = () => {
                           </div>
                         ) : file ? (
                           <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
-                            <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
+                            <span className="truncate max-w-md sm:max-w-xl font-mono font-semibold text-gray-700">
                               {file.name} ({(file.size / 1024).toFixed(1)} KB) — {uploadedInSessionRef.current[req.id] === file ? 'Uploaded' : 'Selected locally'}
                             </span>
                             <button
@@ -1015,7 +1015,7 @@ export const SacramentalRequestPage: React.FC = () => {
 
                   {authLetterFile ? (
                     <div className="flex items-center justify-between p-2.5 bg-white border border-border rounded-button text-xs">
-                      <span className="truncate max-w-[280px] font-mono font-semibold text-gray-700">
+                      <span className="truncate max-w-md sm:max-w-xl font-mono font-semibold text-gray-700">
                         {authLetterFile.name} ({(authLetterFile.size / 1024).toFixed(1)} KB) — {uploadedInSessionRef.current.authorization_letter === authLetterFile ? 'Uploaded' : 'Selected locally'}
                       </span>
                       <button
@@ -1077,7 +1077,7 @@ export const SacramentalRequestPage: React.FC = () => {
                           <div className="space-y-2">
                             <LocalImagePreview file={selected} alt={`Selected registrant ID ${side}`} />
                             <div className="flex items-center justify-between text-xs">
-                              <span className="truncate max-w-[220px] font-mono font-semibold">{selected.name} - {uploadedInSessionRef.current[`registrant_id_${side}`] === selected ? 'Uploaded' : 'Selected locally'}</span>
+                              <span className="truncate max-w-xs sm:max-w-md font-mono font-semibold">{selected.name} - {uploadedInSessionRef.current[`registrant_id_${side}`] === selected ? 'Uploaded' : 'Selected locally'}</span>
                               <button type="button" onClick={() => side === 'front' ? setRegistrantIdFront(null) : setRegistrantIdBack(null)} className="text-crimson font-bold">Remove</button>
                             </div>
                           </div>
@@ -1126,7 +1126,7 @@ export const SacramentalRequestPage: React.FC = () => {
 
           {/* Draft Actions & Status */}
           {currentStep < 4 && (
-            <div className="max-w-xl mx-auto pt-6 border-t border-border/80">
+            <div className="w-full max-w-[1000px] mx-auto pt-6 border-t border-border/80">
               <div className="p-4 rounded-card bg-app-page/70 border border-border/90 space-y-3 text-left">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -1158,7 +1158,7 @@ export const SacramentalRequestPage: React.FC = () => {
             </div>
           )}
           {currentStep === 4 && createdRequest && (
-            <div className="text-center max-w-md mx-auto space-y-6 py-6 animate-in fade-in zoom-in duration-fast">
+            <div className="text-center max-w-lg mx-auto space-y-6 py-6 animate-in fade-in zoom-in duration-fast">
               <div className="flex justify-center text-green-600">
                 <CheckCircle size={64} />
               </div>

@@ -32,16 +32,28 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     setIsDrawerOpen(false);
   }, [location.pathname]);
 
-  // ESC key listener to close drawer
+  // ESC key listener to close drawer & modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsDrawerOpen(false);
+        setModalType('none');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const WIDE_ROUTES = new Set([
+    '/dashboard',
+    '/dashboard/home',
+    '/dashboard/request',
+    '/dashboard/track',
+    '/dashboard/scheduler',
+    '/dashboard/notifications',
+    '/dashboard/profile',
+  ]);
+  const isWidePage = WIDE_ROUTES.has(location.pathname.replace(/\/$/, '')) || WIDE_ROUTES.has(location.pathname);
 
   const userMenuItems: DropdownItem[] = [
     {
@@ -49,12 +61,6 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       value: 'profile',
       icon: <UserIcon size={16} />,
       onClick: () => navigate('/dashboard/profile')
-    },
-    {
-      label: 'Notifications',
-      value: 'notifications',
-      icon: <Bell size={16} />,
-      onClick: () => navigate('/dashboard/notifications')
     },
     {
       label: 'Sign Out',
@@ -78,10 +84,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       </a>
 
       {/* Desktop Persistent Sidebar (≥1024px) */}
-      <ParishionerSidebar
-        onOpenHelp={() => navigate('/dashboard/help')}
-        onOpenAbout={() => setModalType('about')}
-      />
+      <ParishionerSidebar />
 
       {/* Main Content Viewport */}
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
@@ -99,7 +102,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             </button>
           </div>
 
-          <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className="flex items-center space-x-1.5 sm:space-x-3">
             {/* Notifications Button */}
             <Link
               to="/dashboard/notifications"
@@ -114,14 +117,24 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               )}
             </Link>
 
-            {/* Quick Help & About (Desktop) */}
+            {/* Quick Help (All viewports) */}
             <button
               onClick={() => setModalType('help')}
-              className="hidden sm:flex p-2 text-text-muted hover:text-text-primary hover:bg-app-page rounded-full transition-colors focus-ring"
+              className="flex p-2 text-text-muted hover:text-text-primary hover:bg-app-page rounded-full transition-colors focus-ring"
               aria-label="Help Center"
               title="Help Center"
             >
               <HelpCircle size={19} />
+            </button>
+
+            {/* About TESTIMONIUM (All viewports) */}
+            <button
+              onClick={() => setModalType('about')}
+              className="flex p-2 text-text-muted hover:text-text-primary hover:bg-app-page rounded-full transition-colors focus-ring"
+              aria-label="About TESTIMONIUM"
+              title="About TESTIMONIUM"
+            >
+              <Info size={19} />
             </button>
 
             {/* User Profile Avatar Dropdown */}
@@ -147,7 +160,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           tabIndex={-1}
           className="flex-1 overflow-y-auto bg-app-base focus:outline-none"
         >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 w-full">
+          <div className={`${isWidePage ? 'max-w-[1560px]' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 w-full`}>
             {children}
           </div>
         </main>
@@ -190,14 +203,6 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           <ParishionerSidebar
             isMobileDrawer={true}
             onCloseMobileDrawer={() => setIsDrawerOpen(false)}
-            onOpenHelp={() => {
-              setIsDrawerOpen(false);
-              navigate('/dashboard/help');
-            }}
-            onOpenAbout={() => {
-              setIsDrawerOpen(false);
-              setModalType('about');
-            }}
           />
         </aside>
       </div>

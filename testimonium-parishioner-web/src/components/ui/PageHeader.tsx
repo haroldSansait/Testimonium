@@ -1,6 +1,6 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 
 export interface PageHeaderProps {
@@ -8,7 +8,6 @@ export interface PageHeaderProps {
   description?: string;
   action?: React.ReactNode;
   className?: string;
-  showBackToHome?: boolean;
   onRefresh?: () => void;
   isRefreshing?: boolean;
   breadcrumbs?: string[];
@@ -19,13 +18,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   description, 
   action, 
   className = '',
-  showBackToHome = true,
   onRefresh,
   isRefreshing = false,
   breadcrumbs
 }) => {
-  const navigate = useNavigate();
-
   return (
     <div className={`space-y-2 pb-5 border-b border-border ${className}`}>
       {/* Breadcrumb Navigation */}
@@ -71,19 +67,6 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
         {/* Action Panel (Standardized back & refresh controls first) */}
         <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-          {showBackToHome && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => navigate('/dashboard/home')}
-              className="flex items-center space-x-1.5 focus-ring"
-              aria-label="Back to home page"
-            >
-              <ArrowLeft size={14} />
-              <span>Back to Home</span>
-            </Button>
-          )}
-
           {onRefresh && (
             <Button 
               variant="outline" 

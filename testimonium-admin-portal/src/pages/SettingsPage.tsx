@@ -50,6 +50,14 @@ import { cn } from '@/utils/cn';
 import { CANONICAL_SCHEDULING_SERVICES } from '@/utils/schedulingAvailabilityHelpers';
 import type { Parish } from '@/types';
 import { getParishSettingsChanges, type ParishConfigSnapshot } from '@/utils/parishSettingsChanges';
+import {
+  bulkToggleServiceSettings,
+  getEnabledServiceIds,
+  hasExplicitServiceList,
+  prepareSchedulingSettingsForSave,
+  toggleServiceSetting,
+  validateSchedulingDraftForSave,
+} from '@/utils/schedulingServiceSettings';
 
 export type EventCategory = 'Sacrament' | 'Mass' | 'Other';
 
@@ -475,33 +483,11 @@ export function SettingsPage() {
   };
 
   const handleToggleAvailableEvent = (eventId: string) => {
-    setEventSettings((prev: any) => {
-      const currentList: string[] = Array.isArray(prev?.availableEvents) ? prev.availableEvents : EVENT_TYPES.map(e => e.id);
-      const updated = currentList.includes(eventId)
-        ? currentList.filter(id => id !== eventId)
-        : [...currentList, eventId];
-      return {
-        ...prev,
-        availableEvents: updated,
-      };
-    });
+    setEventSettings((prev: any) => toggleServiceSetting(prev, eventId));
   };
 
   const handleBulkToggleEvents = useCallback((targetIds: string[], enable: boolean) => {
-    setEventSettings((prev: any) => {
-      const currentList: string[] = Array.isArray(prev?.availableEvents) ? prev.availableEvents : EVENT_TYPES.map(e => e.id);
-      let updated: string[];
-      if (enable) {
-        const set = new Set([...currentList, ...targetIds]);
-        updated = Array.from(set);
-      } else {
-        updated = currentList.filter(id => !targetIds.includes(id));
-      }
-      return {
-        ...prev,
-        availableEvents: updated,
-      };
-    });
+    setEventSettings((prev: any) => bulkToggleServiceSettings(prev, targetIds, enable));
   }, []);
 
   const handleToggleAllEventReqs = useCallback((evtId: string, enable: boolean) => {
@@ -522,11 +508,12 @@ export function SettingsPage() {
     });
   }, []);
 
-  const availableEventIds: string[] = useMemo(() => {
-    return Array.isArray(eventSettings?.availableEvents)
-      ? eventSettings.availableEvents
-      : EVENT_TYPES.map((e) => e.id);
-  }, [eventSettings?.availableEvents]);
+  // Legacy/unconfigured parishes have no availableEvents: show nothing enabled, never 16/16.
+  const servicesConfigured = hasExplicitServiceList(eventSettings);
+  const availableEventIds: string[] = useMemo(
+    () => getEnabledServiceIds(eventSettings),
+    [eventSettings?.availableEvents]
+  );
 
   const eventCategoryStats = useMemo(() => {
     const sacraments = EVENT_TYPES.filter((e) => e.category === 'Sacrament');
@@ -538,7 +525,7 @@ export function SettingsPage() {
     const activeOthers = others.filter((e) => availableEventIds.includes(e.id)).length;
 
     return {
-      all: { total: EVENT_TYPES.length, active: availableEventIds.length },
+      all: { total: EVENT_TYPES.length, active: EVENT_TYPES.filter((e) => availableEventIds.includes(e.id)).length },
       sacraments: { total: sacraments.length, active: activeSacraments },
       masses: { total: masses.length, active: activeMasses },
       others: { total: others.length, active: activeOthers },
@@ -671,6 +658,13 @@ export function SettingsPage() {
       return;
     }
 
+    // Require an explicit enabled-services list (and capacities) before any scheduling save.
+    const schedulingDraftError = saveScheduling ? validateSchedulingDraftForSave(eventSettings) : null;
+    if (schedulingDraftError) {
+      setToast({ message: schedulingDraftError, type: 'error' });
+      return;
+    }
+
     // Validate Office Hours
     const hoursError = saveScheduling ? validateOfficeHours() : null;
     if (hoursError) {
@@ -692,7 +686,7 @@ export function SettingsPage() {
         parishSettingsSaved = true;
       }
       if (saveScheduling) {
-        await schedulingEditorRef.current!.save(eventSettings, officeHours);
+        await schedulingEditorRef.current!.save(prepareSchedulingSettingsForSave(eventSettings), officeHours);
         recordSaved({ eventSettings, officeHours });
       }
 
@@ -1117,7 +1111,9 @@ export function SettingsPage() {
                           : 'bg-rose-50 text-rose-800 border-rose-200'
                       )}
                     >
-                      {eventCategoryStats.all.active} of {eventCategoryStats.all.total} Offered Online
+                      {servicesConfigured
+                        ? `${eventCategoryStats.all.active} of ${eventCategoryStats.all.total} Offered Online`
+                        : 'Not configured \u2014 0 offered online'}
                     </span>
                   </div>
                 </div>

@@ -125,61 +125,61 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
   }, [viewYear, viewMonth]);
 
   return (
-    <div className="w-full bg-white rounded-2xl border border-border/80 shadow-sm overflow-hidden select-none">
+    <div className="w-full max-w-[850px] mx-auto bg-white rounded-2xl border border-border/80 shadow-sm overflow-hidden select-none">
       {/* Calendar Header */}
-      <div className="flex items-center justify-between p-4 bg-app-page/60 border-b border-border/60">
-        <div className="flex items-center gap-2">
-          <CalendarIcon className="w-4 h-4 text-crimson" />
-          <h3 className="font-serif font-bold text-base text-text-primary">
+      <div className="flex items-center justify-between p-4 sm:p-5 bg-app-page/60 border-b border-border/60">
+        <div className="flex items-center gap-2.5">
+          <CalendarIcon className="w-5 h-5 text-crimson" />
+          <h3 className="font-serif font-bold text-lg sm:text-xl text-text-primary">
             {MONTH_NAMES[viewMonth]} {viewYear}
           </h3>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleJumpToToday}
-            className="px-2.5 py-1 text-xs font-bold text-crimson hover:bg-red-50 rounded-lg transition-colors border border-crimson/20"
+            className="px-3 py-1.5 text-xs sm:text-sm font-bold text-crimson hover:bg-red-50 rounded-lg transition-colors border border-crimson/20"
           >
             Today
           </button>
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="p-1.5 rounded-lg border border-border bg-white text-text-muted hover:text-crimson hover:bg-gray-50 transition-colors shadow-xs"
+            className="p-2 rounded-lg border border-border bg-white text-text-muted hover:text-crimson hover:bg-gray-50 transition-colors shadow-xs"
             aria-label="Previous month"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <button
             type="button"
             onClick={handleNextMonth}
-            className="p-1.5 rounded-lg border border-border bg-white text-text-muted hover:text-crimson hover:bg-gray-50 transition-colors shadow-xs"
+            className="p-2 rounded-lg border border-border bg-white text-text-muted hover:text-crimson hover:bg-gray-50 transition-colors shadow-xs"
             aria-label="Next month"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
 
       {/* Weekday Labels */}
-      <div className="grid grid-cols-7 border-b border-border/40 bg-app-base/40 text-center py-2">
+      <div className="grid grid-cols-7 border-b border-border/40 bg-app-base/40 text-center py-2.5 sm:py-3.5">
         {DAY_NAMES.map((day, idx) => (
-          <div key={day} className={`text-[11px] font-bold uppercase tracking-wider ${idx === 0 ? 'text-amber-700' : 'text-text-muted'}`}>
+          <div key={day} className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${idx === 0 ? 'text-amber-700' : 'text-text-muted'}`}>
             {day}
           </div>
         ))}
       </div>
 
       {/* 42-cell Month Grid */}
-      <div className="grid grid-cols-7 p-2 gap-1.5">
+      <div className="grid grid-cols-7 p-3 sm:p-5 gap-2 sm:gap-3">
         {calendarGrid.map(({ dateStr, dayNum, isCurrentMonth }) => {
           const isSelected = selectedDate === dateStr;
           const isToday = todayStr === dateStr;
           const available = availableDateSet.has(dateStr);
           const disabled = !available;
 
-          let cellClass = 'relative h-10 md:h-12 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer font-medium text-xs';
+          let cellClass = 'relative h-11 sm:h-14 lg:h-16 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center transition-all cursor-pointer font-medium text-xs sm:text-sm';
 
           if (isSelected) {
             cellClass += ' bg-crimson text-white font-bold shadow-sm scale-100 z-10';
@@ -200,9 +200,9 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
               className={cellClass}
               title={available ? `${dateStr} is available` : `${dateStr} is unavailable`}
             >
-              <span className="text-xs">{dayNum}</span>
+              <span className="text-xs sm:text-sm font-semibold">{dayNum}</span>
               {isToday && !isSelected && (
-                <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-crimson" />
+                <span className="absolute bottom-1.5 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-crimson" />
               )}
             </button>
           );
@@ -210,7 +210,7 @@ export const DatePickerCalendar: React.FC<DatePickerCalendarProps> = ({
       </div>
 
       {/* Legend & Helpers */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-app-page/40 border-t border-border/60 text-[11px] text-text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 bg-app-page/40 border-t border-border/60 text-xs text-text-muted">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-crimson inline-block" />

@@ -325,7 +325,6 @@ export const HomePage: React.FC = () => {
         <PageHeader
           title="Home"
           description="TESTIMONIUM parishioner overview portal."
-          showBackToHome={false}
           onRefresh={refetchAll}
           breadcrumbs={['Home']}
         />
@@ -344,7 +343,6 @@ export const HomePage: React.FC = () => {
         <PageHeader
           title="Home"
           description="Overview of your sacramental requests, appointments, and vicariate events."
-          showBackToHome={false}
           onRefresh={refetchAll}
           isRefreshing={true}
           breadcrumbs={['Home']}
@@ -388,7 +386,6 @@ export const HomePage: React.FC = () => {
       <PageHeader
         title="Home"
         description="Overview of your sacramental requests, appointments, and vicariate events."
-        showBackToHome={false}
         onRefresh={refetchAll}
         breadcrumbs={['Home']}
       />

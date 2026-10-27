@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { getParishSettingsChanges } from '../src/utils/parishSettingsChanges.ts';
 import { setCanonicalRequirementAssignment, getAssignedCanonicalRequirements } from '../src/config/documents.ts';
 import { validateDocumentSettingsForSave } from '../../testimonium-backend/config/documents.js';
+import { validateSchedulingDraftForSave, prepareSchedulingSettingsForSave } from '../src/utils/schedulingServiceSettings.ts';
 
 const page = readFileSync(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../src/components/settings/SchedulingAvailabilityEditor.tsx', import.meta.url), 'utf8');
@@ -22,12 +23,14 @@ const compile = (source, context) => runInNewContext(ts.transpileModule(source, 
   compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS },
 }).outputText, context);
 const plain = (value) => JSON.parse(JSON.stringify(value));
+const validScheduling = (extra = {}) => ({ availableEvents: ['BAPTISM', 'FUNERAL'], timeSlots: ['09:00 AM'],
+  capacitySettings: { dailyLimit: 5, slotCapacity: 2 }, ...extra });
 function baseline() {
   return { documentSettings: {
     BAPTISMAL_CERTIFICATE: { price: 120, requirements: { valid_id: false, gkk_endorsement: true, endorsement_letter: false } },
     ENDORSEMENT: { price: 75, requirements: { historical: true } },
     paymentMethods: { gcash: true, maya: false },
-  }, eventSettings: { FUNERAL: { requirements: { death_cert: true } } }, officeHours: {},
+  }, eventSettings: validScheduling({ FUNERAL: { requirements: { death_cert: true } } }), officeHours: {},
   availableDocuments: ['BAPTISMAL_CERTIFICATE'], paymentQrEnabled: true, paymentQrImage: '/qr.png', venueCapacity: 100 };
 }
 function harness(changes = {}, options = {}) {
@@ -35,7 +38,7 @@ function harness(changes = {}, options = {}) {
   const calls = []; const toasts = [];
   const context = { ...structuredClone(original), ...changes, originalSnapshot: structuredClone(original),
     selectedParishId: '2', canEditScheduling: true, saving: false, schedulingRulesDirty: changes.schedulingRulesDirty ?? false,
-    getParishSettingsChanges, console: { error() {} },
+    getParishSettingsChanges, validateSchedulingDraftForSave, prepareSchedulingSettingsForSave, console: { error() {} },
     validateOfficeHours: () => null,
     setSaving(value) { context.saving = value; },
     setToast(value) { toasts.push(value); },
@@ -63,7 +66,7 @@ function harness(changes = {}, options = {}) {
 }
 
 test('Funeral disable and re-enable save only scheduling despite legacy document settings', async () => {
-  const h = harness({ eventSettings: { FUNERAL: { requirements: { death_cert: false } } } });
+  const h = harness({ eventSettings: validScheduling({ FUNERAL: { requirements: { death_cert: false } } }) });
   await h.save();
   assert.deepEqual(h.calls.map((c) => c.kind), ['scheduling']);
   assert.equal(h.calls[0].eventSettings.FUNERAL.requirements.death_cert, false);
@@ -85,7 +88,7 @@ test('each general section saves independently; availability, event settings and
     assert.deepEqual(h.calls, [{ kind: 'parish', id: '2', payload: { [key]: value } }]);
     assert.equal(h.toasts.at(-1).type, 'success');
   }
-  for (const changes of [{ officeHours: { Monday: { isClosed: true } } }, { eventSettings: {} }, { schedulingRulesDirty: true }]) {
+  for (const changes of [{ officeHours: { Monday: { isClosed: true } } }, { eventSettings: validScheduling() }, { schedulingRulesDirty: true }]) {
     const h = harness(changes); await h.save();
     assert.deepEqual(h.calls.map((c) => c.kind), ['scheduling']);
   }
@@ -110,7 +113,7 @@ test('canonical toggles including endorsement_letter preserve legacy entries and
 test('mixed saves preserve every changed section and advance only successful baselines', async () => {
   const changes = { documentSettings: setCanonicalRequirementAssignment(baseline().documentSettings, 'BAPTISMAL_CERTIFICATE', 'endorsement_letter', true),
     availableDocuments: [], paymentQrEnabled: false, paymentQrImage: null, venueCapacity: 300,
-    eventSettings: { FUNERAL: { requirements: { death_cert: false } } }, officeHours: { Monday: { isClosed: true } } };
+    eventSettings: validScheduling({ FUNERAL: { requirements: { death_cert: false } } }), officeHours: { Monday: { isClosed: true } } };
   const h = harness(changes); await h.save();
   assert.deepEqual(h.calls.map((c) => c.kind), ['parish', 'scheduling']);
   assert.deepEqual(plain(h.context.originalSnapshot), { ...h.original, ...changes });
@@ -124,13 +127,13 @@ test('mixed saves preserve every changed section and advance only successful bas
 
 test('failed saves and stale conflicts preserve edits and never announce success', async () => {
   for (const error of [new Error('Unavailable'), Object.assign(new Error('Reload latest configuration'), { status: 409, code: 'SCHEDULING_CONFIG_STALE' })]) {
-    const h = harness({ eventSettings: { FUNERAL: { requirements: { death_cert: false } } } }, { schedulingError: error });
+    const h = harness({ eventSettings: validScheduling({ FUNERAL: { requirements: { death_cert: false } } }) }, { schedulingError: error });
     await h.save();
     assert.equal(h.toasts.some((t) => t.type === 'success'), false);
     assert.deepEqual(plain(h.context.originalSnapshot), h.original);
     assert.equal(h.context.eventSettings.FUNERAL.requirements.death_cert, false);
   }
-  const h = harness({ paymentQrEnabled: false, eventSettings: {} }, { parishError: new Error('Save failed') });
+  const h = harness({ paymentQrEnabled: false, eventSettings: validScheduling() }, { parishError: new Error('Save failed') });
   await h.save();
   assert.equal(h.calls.length, 1); assert.equal(h.toasts.at(-1).type, 'error');
   assert.deepEqual(plain(h.context.originalSnapshot), h.original);
@@ -141,7 +144,7 @@ test('edits made while awaiting a save remain unsaved; loading and date drafts b
   const h = harness({ venueCapacity: 200 }, { onParishSave: (ctx) => { ctx.venueCapacity = 300; } });
   await h.save(); assert.equal(h.context.venueCapacity, 300); assert.equal(h.context.originalSnapshot.venueCapacity, 200);
   for (const mode of ['loading', 'draft']) {
-    const blocked = harness({ eventSettings: {} });
+    const blocked = harness({ eventSettings: validScheduling() });
     if (mode === 'loading') blocked.context.schedulingEditorRef.current = null;
     else blocked.context.schedulingEditorRef.current.hasUnsavedDateException = () => true;
     await blocked.save(); assert.equal(blocked.calls.length, 0); assert.equal(blocked.toasts.at(-1).type, 'error');
