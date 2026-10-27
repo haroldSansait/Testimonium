@@ -107,7 +107,9 @@ export const env = {
     resetTokenExpiryMinutes: 10,
     maxAttempts: 5,
     resendCooldownSeconds: 60,
-    maxDailySends: 5,
+    get maxDailySends() {
+      return getOtpMaxDailySends();
+    },
   },
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
@@ -312,4 +314,10 @@ export const getOtpHmacSecret = () => {
   }
   if (Buffer.byteLength(secret) < 32) throw new Error("OTP_HMAC_SECRET must contain at least 32 bytes.");
   return secret;
+};
+
+export const getOtpMaxDailySends = () => {
+  const isProd = (process.env.NODE_ENV || env.nodeEnv) === "production";
+  const defaultLimit = isProd ? 15 : 30;
+  return parsePositiveInt(process.env.OTP_MAX_DAILY_SENDS, defaultLimit, "OTP_MAX_DAILY_SENDS");
 };

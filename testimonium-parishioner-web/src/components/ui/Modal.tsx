@@ -9,6 +9,7 @@ export interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
   className?: string;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 export const Modal: React.FC<ModalProps> = ({ 
@@ -17,10 +18,18 @@ export const Modal: React.FC<ModalProps> = ({
   title, 
   children, 
   size = 'md',
-  className = ''
+  className = '',
+  initialFocusRef,
 }) => {
   const triggerElementRef = useRef<HTMLElement | null>(null);
   const modalContainerRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  // Keep latest onClose callback in a ref so changes in function identity
+  // never restart the focus lifecycle or trigger focus restoration.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -28,9 +37,14 @@ export const Modal: React.FC<ModalProps> = ({
     // Save the element that had focus before the modal opened
     triggerElementRef.current = document.activeElement as HTMLElement | null;
 
+    // Preserve previous body overflow
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        e.preventDefault();
+        onCloseRef.current();
         return;
       }
 
@@ -38,7 +52,10 @@ export const Modal: React.FC<ModalProps> = ({
         const focusables = modalContainerRef.current.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
         );
-        if (focusables.length === 0) return;
+        if (focusables.length === 0) {
+          e.preventDefault();
+          return;
+        }
 
         const firstElement = focusables[0];
         const lastElement = focusables[focusables.length - 1];
@@ -57,34 +74,70 @@ export const Modal: React.FC<ModalProps> = ({
       }
     };
 
-    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
 
-    // Shift initial focus to the first focusable element inside the modal or the container
+    // Shift initial focus to initialFocusRef, autofocus element, body input, or first focusable
     const timer = setTimeout(() => {
-      if (modalContainerRef.current) {
-        const focusables = modalContainerRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
-        if (focusables.length > 0) {
-          focusables[0].focus();
-        } else {
-          modalContainerRef.current.focus();
-        }
+      if (!modalContainerRef.current) return;
+
+      // If an element inside the modal is already focused, do not steal focus
+      if (modalContainerRef.current.contains(document.activeElement)) {
+        return;
+      }
+
+      if (initialFocusRef?.current) {
+        initialFocusRef.current.focus();
+        return;
+      }
+
+      // Check for autofocus element
+      const autoFocusEl = modalContainerRef.current.querySelector<HTMLElement>(
+        '[autofocus]:not([disabled]), [data-autofocus]:not([disabled])'
+      );
+      if (autoFocusEl) {
+        autoFocusEl.focus();
+        return;
+      }
+
+      // Check for first text/form input in the modal body (prioritize over Close X button)
+      const bodyInput = modalContainerRef.current.querySelector<HTMLElement>(
+        '[data-modal-body] input:not([disabled]):not([type="hidden"]), [data-modal-body] textarea:not([disabled]), [data-modal-body] select:not([disabled])'
+      );
+      if (bodyInput) {
+        bodyInput.focus();
+        return;
+      }
+
+      // Fallback: first focusable in modal body, or any focusable in modal
+      const bodyFocusable = modalContainerRef.current.querySelector<HTMLElement>(
+        '[data-modal-body] button:not([disabled]), [data-modal-body] a[href], [data-modal-body] [tabindex]:not([tabindex="-1"])'
+      );
+      if (bodyFocusable) {
+        bodyFocusable.focus();
+        return;
+      }
+
+      const focusables = modalContainerRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length > 0) {
+        focusables[0].focus();
+      } else {
+        modalContainerRef.current.focus();
       }
     }, 50);
 
     return () => {
       clearTimeout(timer);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
 
-      // Restore focus to the trigger element when the modal closes
+      // Restore focus to the trigger element when the modal closes or unmounts
       if (triggerElementRef.current && document.body.contains(triggerElementRef.current)) {
         triggerElementRef.current.focus();
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -108,7 +161,7 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 transition-opacity backdrop-blur-xs"
-        onClick={onClose}
+        onClick={() => onCloseRef.current()}
         aria-hidden="true"
       />
 
@@ -128,7 +181,7 @@ export const Modal: React.FC<ModalProps> = ({
             <div />
           )}
           <button
-            onClick={onClose}
+            onClick={() => onCloseRef.current()}
             className="p-1.5 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary focus-ring flex-shrink-0"
             aria-label="Close modal"
           >
@@ -137,7 +190,7 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto max-h-[75vh]">
+        <div data-modal-body className="overflow-y-auto max-h-[75vh] px-2 py-1 -mx-2 -my-1">
           {children}
         </div>
       </div>

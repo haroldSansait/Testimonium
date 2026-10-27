@@ -371,13 +371,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Request email verification OTP from backend (replacing Firebase verification link email)
       try {
-        await fetch(`${API_URL}/auth/otp/verification/request`, {
+        const otpRes = await fetch(`${API_URL}/auth/otp/verification/request`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${idToken}`,
           },
         });
+        const otpData = await otpRes.json().catch(() => null);
+        if (otpRes.ok) {
+          const cooldownSecs = otpData?.retryAfter || 60;
+          sessionStorage.setItem('otp_cooldown_deadline', String(Date.now() + cooldownSecs * 1000));
+          sessionStorage.setItem(`otp_initial_sent_${firebaseUser.uid}`, 'true');
+        }
       } catch (otpErr) {
         console.warn('[AuthContext] Failed to send initial OTP during registration:', otpErr);
       }

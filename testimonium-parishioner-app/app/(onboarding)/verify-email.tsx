@@ -97,8 +97,6 @@ function VerifyEmailForm() {
     }
   };
 
-  useEffect(() => { void handleResend(); }, []);
-
   const destinationEmail = user?.email || "your registered email";
 
   return (
@@ -219,7 +217,13 @@ function VerifyEmailForm() {
                   isResending
                     ? "Sending..."
                     : cooldown > 0
-                    ? `Resend Code in ${cooldown}s`
+                    ? `Resend Code in ${
+                        cooldown <= 60
+                          ? `${cooldown}s`
+                          : Math.floor(cooldown / 3600) > 0
+                          ? `${Math.floor(cooldown / 3600)}h ${Math.floor((cooldown % 3600) / 60)}m`
+                          : `${Math.floor(cooldown / 60)}m ${cooldown % 60}s`
+                      }`
                     : "Resend Verification Code"
                 }
                 variant="outline"

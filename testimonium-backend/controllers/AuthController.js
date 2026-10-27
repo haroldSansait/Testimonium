@@ -6,6 +6,7 @@ import { env } from "../config/env.js";
 import { shouldRequireEmailVerification } from "../utils/emailVerificationPolicy.js";
 import { defaultGovernmentIdVerificationService } from "../services/GovernmentIdVerificationService.js";
 import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
+import { formatRemainingTime } from "../services/OtpService.js";
 
 
 const userRepository = new UserRepository();
@@ -119,7 +120,8 @@ export const resendVerification = async (req, res, next) => {
       }
     }
 
-    // Check 5 resends/day account limit
+    // Check resends/day account limit
+    const maxDailySends = env.otp?.maxDailySends || 30;
     let currentCount = user.verificationResentCount || 0;
     if (user.lastVerificationResentAt) {
       const timeSinceLastResend = now - new Date(user.lastVerificationResentAt).getTime();
@@ -128,11 +130,15 @@ export const resendVerification = async (req, res, next) => {
       }
     }
 
-    if (currentCount >= 5) {
+    if (currentCount >= maxDailySends) {
+      const remainingSeconds = user.lastVerificationResentAt
+        ? Math.max(1, Math.ceil((DAY_MS - (now - new Date(user.lastVerificationResentAt).getTime())) / 1000))
+        : 86400;
       return res.status(429).json({
         success: false,
         code: "ACCOUNT_RESEND_LIMIT_EXCEEDED",
-        message: "Maximum verification resend limit reached for today (5/day). Please try again tomorrow.",
+        message: `You've reached the verification email limit (${maxDailySends} requests). You can request another code in ${formatRemainingTime(remainingSeconds)}.`,
+        retryAfter: remainingSeconds,
       });
     }
 

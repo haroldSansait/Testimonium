@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { prisma as defaultPrisma } from "../config/db.js";
-import { getOtpHmacSecret } from "../config/env.js";
+import { env, getOtpHmacSecret, getOtpMaxDailySends } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { EmailService } from "./EmailService.js";
 import { FirebaseAdminService } from "./FirebaseAdminService.js";
@@ -19,6 +19,31 @@ const hmac = value => crypto.createHmac("sha256", getOtpHmacSecret()).update(val
 const sameHash = (left, right) => typeof right === "string" && left.length === right.length
   && crypto.timingSafeEqual(Buffer.from(left), Buffer.from(right));
 
+export const formatRemainingTime = (seconds) => {
+  const totalSeconds = Math.max(1, Math.ceil(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSecs = totalSeconds % 60;
+
+  if (hours > 0) {
+    const hrText = `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    if (minutes > 0) {
+      const minText = `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+      return `${hrText} and ${minText}`;
+    }
+    return hrText;
+  }
+  if (minutes > 0) {
+    const minText = `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+    if (remainingSecs > 0 && minutes < 5) {
+      const secText = `${remainingSecs} ${remainingSecs === 1 ? "second" : "seconds"}`;
+      return `${minText} and ${secText}`;
+    }
+    return minText;
+  }
+  return `${remainingSecs} ${remainingSecs === 1 ? "second" : "seconds"}`;
+};
+
 export const generateOtpCode = () => crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
 export const generateResetToken = () => crypto.randomBytes(32).toString("hex");
 export const hashOtpCode = (code, email, purpose, binding = "") => hmac(JSON.stringify([purpose, normalizeEmail(email), binding, code]));
@@ -28,9 +53,10 @@ export const hashResetToken = (token, email) => hmac(JSON.stringify(["RESET_TOKE
 export const verifyResetToken = (token, email, stored) => typeof token === "string" && sameHash(hashResetToken(token, email), stored);
 
 export class OtpService {
-  constructor(prisma = defaultPrisma, emailService = new EmailService(), firebaseAdmin = new FirebaseAdminService(), auditLog = AuditLogService) {
+  constructor(prisma = defaultPrisma, emailService = new EmailService(), firebaseAdmin = new FirebaseAdminService(), auditLog = AuditLogService, options = {}) {
     Object.assign(this, { prisma, emailService, firebaseAdmin, auditLog });
     this.dispatches = new Set();
+    this.maxDailySends = options?.maxDailySends;
   }
 
   async recordAudit(firebaseUid, action) {
@@ -78,13 +104,25 @@ export class OtpService {
     const code = generateOtpCode();
     const binding = `${firebaseUid}:${crypto.randomBytes(16).toString("hex")}`;
     const challenge = await this.locked(email, purpose, firebaseUid, async tx => {
+      const maxDailySends = this.maxDailySends ?? getOtpMaxDailySends?.() ?? env.otp?.maxDailySends ?? 30;
       const recent = await tx.otpChallenge.findMany({
         where: { purpose, OR: [{ email }, { firebaseUid }], createdAt: { gte: new Date(Date.now() - DAY) } },
         orderBy: { createdAt: "desc" },
       });
       const retryAfter = recent[0] ? Math.ceil((60_000 - (Date.now() - recent[0].lastSentAt.getTime())) / 1000) : 0;
       if (retryAfter > 0) throw failure("RESEND_COOLDOWN_ACTIVE", `Please wait ${retryAfter} seconds before requesting another code.`, 429, { retryAfter });
-      if (recent.length >= 5) throw failure("ACCOUNT_RESEND_LIMIT_EXCEEDED", "Maximum five code requests in 24 hours. Please try again later.", 429);
+      if (recent.length >= maxDailySends) {
+        const limitingChallenge = recent[maxDailySends - 1] || recent[recent.length - 1];
+        const remainingMs = Math.max(0, (limitingChallenge.createdAt.getTime() + DAY) - Date.now());
+        const retryAfterSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+        const timeStr = formatRemainingTime(retryAfterSeconds);
+        throw failure(
+          "ACCOUNT_RESEND_LIMIT_EXCEEDED",
+          `You've reached the verification email limit (${maxDailySends} requests). You can request another code in ${timeStr}.`,
+          429,
+          { retryAfter: retryAfterSeconds, limit: maxDailySends }
+        );
+      }
       // Do not supersede a delivery still in flight, even on a slow transport.
       if (recent.some(c => c.status === "SENDING" && Date.now() - c.createdAt.getTime() < RESET_LEASE)) {
         throw failure("DELIVERY_IN_PROGRESS", "A code is still being sent. Please wait.", 409);

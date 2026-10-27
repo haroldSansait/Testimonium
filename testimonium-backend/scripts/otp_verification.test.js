@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { fixture } from './helpers/otp-fixture.js';
@@ -27,15 +27,39 @@ test('256-bit reset grant hashes bind email and reject malformed comparisons', (
   assert.equal(verifyResetToken(token, 'other@example.invalid', hash), false);
   assert.equal(verifyResetToken(token, 'owner@example.invalid', 'bad'), false);
 });
-test('both purpose-specific emails escape HTML, include selectable code, text and official CID logo', () => {
+test('both purpose-specific emails escape HTML, include selectable code, text, clean branding with NO image tags, attachments, or CID', async () => {
+  const MailComposer = (await import('nodemailer/lib/mail-composer/index.js')).default;
   for (const purpose of ['EMAIL_VERIFICATION', 'PASSWORD_RESET']) {
     const mail = renderEmail(`${purpose}_OTP`, { code: '000042', recipientName: '<script>"Owner"</script>' });
     assert.match(mail.html, /&lt;script&gt;/); assert.doesNotMatch(mail.html, /<script>/);
     assert.match(mail.html, /expires in 10 minutes/); assert.match(mail.text, /000042/);
-    assert.match(mail.html, /cid:testimonium-logo/); assert.equal(mail.attachments[0].cid, 'testimonium-logo');
-    assert.ok(mail.attachments[0].content.length > 0); assert.doesNotMatch(mail.html, /onclick|clipboard|https?:[^" ]*000042/);
+    assert.doesNotMatch(mail.html, /<img\b/i);
+    assert.doesNotMatch(mail.html, /cid:/i);
+    assert.equal(mail.attachments, undefined);
+    assert.match(mail.html, /TESTIMONIUM/);
+    assert.match(mail.html, /Diocese of San Carlos/);
+    assert.match(mail.html, /width="540"/);
+    assert.doesNotMatch(mail.html, /onclick|clipboard|https?:[^" ]*000042/);
+
+    // Verify MailComposer generates pure multipart/alternative MIME with NO attachments, images, or multipart/related
+    const mime = await new MailComposer({
+      from: 'testimonium.system@gmail.com',
+      to: 'parishioner@example.invalid',
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+      ...(mail.attachments ? { attachments: mail.attachments } : {}),
+    }).compile().build();
+    const mimeStr = mime.toString();
+    assert.match(mimeStr, /Content-Type:\s*multipart\/alternative/i);
+    assert.doesNotMatch(mimeStr, /Content-Type:\s*multipart\/related/i);
+    assert.doesNotMatch(mimeStr, /Content-Disposition:\s*attachment/i);
+    assert.doesNotMatch(mimeStr, /Content-ID:/i);
+    assert.doesNotMatch(mimeStr, /cid:/i);
+    assert.doesNotMatch(mimeStr, /<img\b/i);
   }
 });
+
 test('send reserves challenge before transport and stores no raw OTP', async () => {
   const f=make(); let observed;
   f.delivery.send = async mail => { observed = structuredClone(f.rows[0]); f.mails.push(mail); };
@@ -48,9 +72,18 @@ test('simultaneous resends reserve and deliver exactly one code', async () => {
 });
 test('cooldown and rolling 24h cap survive terminal challenges', async () => {
   const f=make(); await f.request(); await assert.rejects(f.request(),{code:'RESEND_COOLDOWN_ACTIVE'});
-  for(let n=1;n<5;n++){ f.age(); await f.request(); }
-  f.age(); await assert.rejects(f.request(),{code:'ACCOUNT_RESEND_LIMIT_EXCEEDED'});
-  f.rows.forEach(r=>{r.createdAt=new Date(Date.now()-86_400_001);}); await f.request(); assert.equal(f.mails.length,6);
+  const { getOtpMaxDailySends } = await import('../config/env.js');
+  const limit = getOtpMaxDailySends();
+  for(let n=1;n<limit;n++){ f.age(); await f.request(); }
+  f.age();
+  await assert.rejects(f.request(), (err) => {
+    assert.equal(err.code, 'ACCOUNT_RESEND_LIMIT_EXCEEDED');
+    assert.equal(err.statusCode, 429);
+    assert.ok(err.retryAfter > 0);
+    assert.match(err.message, new RegExp(`limit \\(${limit} requests\\)`));
+    return true;
+  });
+  f.rows.forEach(r=>{r.createdAt=new Date(Date.now()-86_400_001);}); await f.request(); assert.equal(f.mails.length,limit+1);
 });
 test('changing email cannot evade UID send quota and invalidates old challenges', async () => {
   const f=make(); await f.request(); f.age(); f.users.get('uid-1').email='new@example.invalid';
@@ -266,4 +299,109 @@ test('a failed audit write does not turn a completed reset into failure or permi
   const {resetToken}=await f.grant(); const result=await f.reset(resetToken);
   assert.equal(result.success,true); assert.deepEqual(actions,['Password Reset Requested','Password Reset Completed']);
   await f.reset(resetToken);assert.equal(f.calls.passwords.length,1);
+});
+
+test('production default limit is 15, development default is 30, and OTP_MAX_DAILY_SENDS overrides correctly', async () => {
+  const { env, getOtpMaxDailySends } = await import('../config/env.js');
+  const prevEnv = process.env.NODE_ENV;
+  const prevOverride = process.env.OTP_MAX_DAILY_SENDS;
+
+  try {
+    delete process.env.OTP_MAX_DAILY_SENDS;
+    process.env.NODE_ENV = 'production';
+    assert.equal(getOtpMaxDailySends(), 15);
+    assert.equal(env.otp.maxDailySends, 15);
+
+    process.env.NODE_ENV = 'development';
+    assert.equal(getOtpMaxDailySends(), 30);
+    assert.equal(env.otp.maxDailySends, 30);
+
+    process.env.OTP_MAX_DAILY_SENDS = '25';
+    assert.equal(getOtpMaxDailySends(), 25);
+    assert.equal(env.otp.maxDailySends, 25);
+
+    // Fallback on invalid numbers
+    process.env.OTP_MAX_DAILY_SENDS = 'invalid';
+    assert.equal(getOtpMaxDailySends(), 30);
+    process.env.OTP_MAX_DAILY_SENDS = '-5';
+    assert.equal(getOtpMaxDailySends(), 30);
+    process.env.OTP_MAX_DAILY_SENDS = '0';
+    assert.equal(getOtpMaxDailySends(), 30);
+  } finally {
+    process.env.NODE_ENV = prevEnv;
+    if (prevOverride !== undefined) process.env.OTP_MAX_DAILY_SENDS = prevOverride;
+    else delete process.env.OTP_MAX_DAILY_SENDS;
+  }
+});
+
+test('existing quota history with 5 challenges is unblocked under development limit of 30', async () => {
+  const f = make();
+  // Simulate 5 existing requests already in DB from previous attempts
+  for (let i = 0; i < 5; i++) {
+    f.age();
+    await f.request();
+  }
+  assert.equal(f.rows.length, 5);
+
+  // After 60-second cooldown, request #6 is immediately allowed under the new 30-request limit
+  f.age();
+  const nextSend = await f.request();
+  assert.equal(nextSend.success, true);
+  assert.equal(f.rows.length, 6);
+});
+
+test('formatRemainingTime formats hours, minutes, and seconds accurately', async () => {
+  const { formatRemainingTime } = await import('../services/OtpService.js');
+  // 2 hours and 14 minutes = 2 * 3600 + 14 * 60 = 8040
+  assert.equal(formatRemainingTime(8040), '2 hours and 14 minutes');
+  assert.equal(formatRemainingTime(3660), '1 hour and 1 minute');
+  assert.equal(formatRemainingTime(3600), '1 hour');
+  assert.equal(formatRemainingTime(7200), '2 hours');
+  assert.equal(formatRemainingTime(900), '15 minutes');
+  assert.equal(formatRemainingTime(60), '1 minute');
+  assert.equal(formatRemainingTime(45), '45 seconds');
+  assert.equal(formatRemainingTime(1), '1 second');
+});
+
+test('quota error accurately includes calculated retryAfter from persisted challenges and rolling window', async () => {
+  const f = make();
+  f.service.maxDailySends = 2; // Test with small explicit limit
+
+  // Request 1: 23 hours ago
+  await f.request();
+  f.rows[0].createdAt = new Date(Date.now() - 23 * 3600 * 1000);
+  f.rows[0].lastSentAt = new Date(Date.now() - 23 * 3600 * 1000);
+
+  // Request 2: 2 hours ago
+  f.rows[0].lastSentAt = new Date(Date.now() - 61_000);
+  await f.request();
+  f.rows[1].createdAt = new Date(Date.now() - 2 * 3600 * 1000);
+  f.rows[1].lastSentAt = new Date(Date.now() - 61_000);
+
+  // Request 3: blocked by limit of 2. Oldest expirable challenge is Request 1 (created 23h ago).
+  // Remaining time is ~1 hour (3600s).
+  await assert.rejects(f.request(), (err) => {
+    assert.equal(err.code, 'ACCOUNT_RESEND_LIMIT_EXCEEDED');
+    assert.equal(err.statusCode, 429);
+    // retryAfter should be around 3600 seconds (within a few seconds)
+    assert.ok(err.retryAfter >= 3590 && err.retryAfter <= 3610);
+    assert.match(err.message, /You've reached the verification email limit \(2 requests\)\. You can request another code in 1 hour\./);
+    return true;
+  });
+});
+
+test('purpose isolation: email verification quota does not affect password reset', async () => {
+  const f = make();
+  f.service.maxDailySends = 2;
+
+  // Max out EMAIL_VERIFICATION
+  await f.request();
+  f.age();
+  await f.request();
+  f.age();
+  await assert.rejects(f.request(), { code: 'ACCOUNT_RESEND_LIMIT_EXCEEDED' });
+
+  // PASSWORD_RESET for the same user is not blocked by EMAIL_VERIFICATION challenges
+  const resetRes = await f.requestReset();
+  assert.equal(resetRes.success, true);
 });

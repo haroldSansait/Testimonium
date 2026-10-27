@@ -10,7 +10,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const inputId = id || `input-${Math.random().toString(36).substring(2, 11)}`;
 
     return (
-      <div className="w-full mb-4 flex flex-col justify-end">
+      <div className="w-full mb-4 flex flex-col justify-end px-0.5">
         {label && (
           <label htmlFor={inputId} className="block text-xs font-semibold text-text-primary uppercase tracking-wider mb-1.5 min-h-[28px] flex items-end leading-tight">
             {label}

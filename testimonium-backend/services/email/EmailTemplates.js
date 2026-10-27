@@ -1,7 +1,3 @@
-import { readFileSync } from "node:fs";
-
-const otpLogo = () => ({ filename: "testimonium-logo.png", cid: "testimonium-logo", content: readFileSync(new URL("../../assets/TESTIMONIUM_official_logo.png", import.meta.url)) });
-
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -168,108 +164,151 @@ export function renderOtpLayout({ heading, code, recipientName, isPasswordReset 
     : "Thank you for registering with TESTIMONIUM. Please use the following six-digit code to verify your email address and continue:";
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
   <title>${escapeHtml(title)}</title>
+  <style>
+    html, body {
+      margin: 0 auto !important;
+      padding: 0 !important;
+      height: 100% !important;
+      width: 100% !important;
+    }
+    * {
+      -ms-text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
+    }
+    table, td {
+      mso-table-lspace: 0pt !important;
+      mso-table-rspace: 0pt !important;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+    }
+    @media only screen and (max-width: 600px) {
+      .email-container {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .fluid-cell {
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+      }
+      .otp-code {
+        font-size: 30px !important;
+        letter-spacing: 6px !important;
+      }
+    }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #F8F6F2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1E293B; -webkit-font-smoothing: antialiased;">
-  <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #F8F6F2; padding: 40px 16px;">
-    <tr>
-      <td align="center">
-        <!-- Main Card -->
-        <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width: 520px; background-color: #FFFFFF; border-radius: 12px; border: 1px solid #E8E2D9; box-shadow: 0 4px 16px rgba(123, 28, 42, 0.04); overflow: hidden;">
+<body width="100%" style="margin: 0; padding: 0 !important; mso-line-height-rule: exactly; background-color: #F8F6F2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1E293B; -webkit-font-smoothing: antialiased;">
+  <center style="width: 100%; background-color: #F8F6F2;">
+    <!-- Hidden preheader text -->
+    <div style="display: none; font-size: 1px; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden; mso-hide: all;">
+      ${safeCode} is your TESTIMONIUM verification code. This code expires in 10 minutes.
+    </div>
 
-          <!-- Burgundy Top Accent Bar -->
-          <tr>
-            <td style="background-color: #7B1C2A; height: 6px; font-size: 0; line-height: 0;">&nbsp;</td>
-          </tr>
+    <!-- Outer Table for background and centering -->
+    <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width: 100%; margin: 0 auto; background-color: #F8F6F2; border-collapse: collapse;">
+      <tr>
+        <td align="center" valign="top" style="padding: 32px 16px; background-color: #F8F6F2;">
+          <!-- Main Centered Card (540px width desktop, fluid on mobile) -->
+          <table role="presentation" class="email-container" width="540" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 540px; margin: 0 auto; background-color: #FFFFFF; border-radius: 12px; border: 1px solid #E8E2D9; box-shadow: 0 4px 16px rgba(123, 28, 42, 0.04); overflow: hidden; border-collapse: separate;">
 
-          <!-- Header / Branding -->
-          <tr>
-            <td align="center" style="padding: 32px 32px 16px 32px;">
-              <table role="presentation" border="0" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td align="center">
-                    <img src="cid:testimonium-logo" alt="TESTIMONIUM official logo" width="64" height="64" style="display:block;margin:0 auto 12px;max-width:64px;">
-                    <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 24px; font-weight: 700; letter-spacing: 2.5px; color: #7B1C2A; text-transform: uppercase;">
-                      TESTIMONIUM
-                    </span>
-                    <div style="font-size: 10px; font-weight: 600; letter-spacing: 1.5px; color: #8C7B75; text-transform: uppercase; margin-top: 4px;">
-                      Diocese of San Carlos
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
+            <!-- Burgundy Top Accent Bar -->
+            <tr>
+              <td style="background-color: #7B1C2A; height: 6px; font-size: 0; line-height: 0;">&nbsp;</td>
+            </tr>
 
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 16px 36px 32px 36px; text-align: left;">
-              <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 700; color: #1E293B; margin: 0 0 16px 0; text-align: center;">
-                ${escapeHtml(heading)}
-              </h1>
+            <!-- Header / Branding -->
+            <tr>
+              <td align="center" class="fluid-cell" style="padding: 32px 32px 16px 32px;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                  <tr>
+                    <td align="center">
+                      <div style="font-family: Georgia, 'Times New Roman', serif; font-size: 24px; font-weight: 700; letter-spacing: 2.5px; color: #7B1C2A; text-transform: uppercase; line-height: 1.2;">
+                        TESTIMONIUM
+                      </div>
+                      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: #8C7B75; text-transform: uppercase; margin-top: 4px;">
+                        Diocese of San Carlos
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
 
-              <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0 0 16px 0;">
-                Hello ${safeName},
-              </p>
+            <!-- Main Content -->
+            <tr>
+              <td class="fluid-cell" style="padding: 16px 36px 32px 36px; text-align: left;">
+                <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 700; color: #1E293B; margin: 0 0 16px 0; text-align: center; line-height: 1.3;">
+                  ${escapeHtml(heading)}
+                </h1>
 
-              <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0 0 24px 0;">
-                ${subtext}
-              </p>
-
-              <!-- Prominent OTP Code Card -->
-              <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
-                <tr>
-                  <td align="center" style="background-color: #FDF9F7; border: 1.5px dashed #D4A5AC; border-radius: 10px; padding: 22px 16px;">
-                    <div style="font-size: 11px; font-weight: 700; color: #7B1C2A; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">
-                      Verification Code
-                    </div>
-                    <div style="font-family: 'SF Pro Mono', Menlo, Consolas, Monaco, 'Courier New', monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #1E293B; line-height: 1.1; user-select: all; -webkit-user-select: all;">
-                      ${safeCode}
-                    </div>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Instructions & Expiration -->
-              <p style="font-size: 13px; line-height: 1.5; color: #475569; margin: 16px 0 8px 0; text-align: center;">
-                <strong>This code expires in 10 minutes</strong> and can only be used once.
-              </p>
-
-              <p style="font-size: 12px; line-height: 1.5; color: #64748B; margin: 0 0 20px 0; text-align: center;">
-                Never share this code with anyone. TESTIMONIUM staff will never ask for your code.
-              </p>
-
-              <div style="border-top: 1px solid #F1ECE6; padding-top: 20px; margin-top: 24px; text-align: center;">
-                <p style="font-size: 12px; line-height: 1.5; color: #94A3B8; margin: 0;">
-                  If you did not request this, you may safely ignore this email.
+                <p style="font-size: 15px; line-height: 1.6; color: #334155; margin: 0 0 16px 0;">
+                  Hello ${safeName},
                 </p>
-              </div>
-            </td>
-          </tr>
 
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #FBF9F6; border-top: 1px solid #EAE5DE; padding: 24px 32px; text-align: center;">
-              <p style="font-size: 11px; font-weight: 600; color: #64748B; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-                TESTIMONIUM • Sacramental Registry & Canonical Services
-              </p>
-              <p style="font-size: 11px; color: #94A3B8; margin: 0 0 8px 0;">
-                Roman Catholic Diocese of San Carlos, Philippines
-              </p>
-              <p style="font-size: 10px; color: #94A3B8; margin: 0;">
-                For assistance, contact your local Parish Secretary or Diocese Coordinator.
-              </p>
-            </td>
-          </tr>
+                <p style="font-size: 15px; line-height: 1.6; color: #334155; margin: 0 0 24px 0;">
+                  ${subtext}
+                </p>
 
-        </table>
-      </td>
-    </tr>
-  </table>
+                <!-- Prominent OTP Code Card -->
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin: 24px 0; border-collapse: collapse;">
+                  <tr>
+                    <td align="center" style="background-color: #FDF9F7; border: 1.5px dashed #D4A5AC; border-radius: 10px; padding: 22px 16px;">
+                      <div style="font-size: 11px; font-weight: 700; color: #7B1C2A; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">
+                        Verification Code
+                      </div>
+                      <div class="otp-code" style="font-family: 'SF Pro Mono', Menlo, Consolas, Monaco, 'Courier New', monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #1E293B; line-height: 1.1; user-select: all; -webkit-user-select: all;">
+                        ${safeCode}
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Instructions & Expiration -->
+                <p style="font-size: 14px; line-height: 1.5; color: #475569; margin: 16px 0 8px 0; text-align: center;">
+                  <strong>This code expires in 10 minutes</strong> and can only be used once.
+                </p>
+
+                <p style="font-size: 13px; line-height: 1.5; color: #64748B; margin: 0 0 20px 0; text-align: center;">
+                  Never share this code with anyone. TESTIMONIUM staff will never ask for your code.
+                </p>
+
+                <div style="border-top: 1px solid #F1ECE6; padding-top: 20px; margin-top: 24px; text-align: center;">
+                  <p style="font-size: 12px; line-height: 1.5; color: #94A3B8; margin: 0;">
+                    If you did not request this, you may safely ignore this email.
+                  </p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td class="fluid-cell" style="background-color: #FBF9F6; border-top: 1px solid #EAE5DE; padding: 24px 32px; text-align: center;">
+                <p style="font-size: 11px; font-weight: 600; color: #64748B; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                  TESTIMONIUM &bull; Sacramental Registry &amp; Canonical Services
+                </p>
+                <p style="font-size: 11px; color: #94A3B8; margin: 0 0 8px 0;">
+                  Roman Catholic Diocese of San Carlos, Philippines
+                </p>
+                <p style="font-size: 10px; color: #94A3B8; margin: 0;">
+                  For assistance, contact your local Parish Secretary or Diocese Coordinator.
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </center>
 </body>
 </html>`;
 
@@ -291,5 +330,5 @@ TESTIMONIUM • Sacramental Registry & Canonical Services
 Roman Catholic Diocese of San Carlos, Philippines
 For assistance, contact your local Parish Secretary or Diocese Coordinator.`;
 
-  return { html, text, attachments: [otpLogo()] };
+  return { html, text };
 }

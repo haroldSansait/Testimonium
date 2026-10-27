@@ -33,6 +33,18 @@ export const VerifyEmailPage: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [changeEmailLoading, setChangeEmailLoading] = useState(false);
 
+  const handleOpenChangeEmail = useCallback(() => {
+    setError('');
+    setNewEmail('');
+    setCurrentPassword('');
+    setIsChangeEmailOpen(true);
+  }, []);
+
+  const handleCloseChangeEmail = useCallback(() => {
+    setIsChangeEmailOpen(false);
+    setError('');
+  }, []);
+
   // Submit OTP Verification
   const handleVerifyCode = useCallback(async (codeToVerify?: string) => {
     const code = (codeToVerify || otp).trim();
@@ -128,12 +140,26 @@ export const VerifyEmailPage: React.FC = () => {
     }
   };
 
+  const formatCooldownDisplay = (seconds: number) => {
+    if (seconds <= 0) return '';
+    if (seconds <= 60) return `Resend in ${seconds}s`;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `Resend in ${hours}h ${minutes}m`;
+    return `Resend in ${minutes}m ${seconds % 60}s`;
+  };
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) { navigate('/login', { replace: true }); return; }
     if (appProfile?.emailVerified) { navigate('/dashboard/home', { replace: true }); return; }
-    void handleResendCode();
-  }, [authLoading, user?.uid, user?.email, appProfile?.emailVerified]);
+    if (typeof window !== 'undefined' && user?.uid) {
+      const isInitial = sessionStorage.getItem(`otp_initial_sent_${user.uid}`) || sessionStorage.getItem('testimonium_registration_session');
+      if (isInitial) {
+        setMessage(`A verification code has been sent to ${user.email || auth.currentUser?.email || 'your email'}.`);
+      }
+    }
+  }, [authLoading, user?.uid, user?.email, appProfile?.emailVerified, navigate]);
 
   const currentEmail = user?.email || auth.currentUser?.email || 'your registered email';
   const isVerifying = fsmState === 'VERIFYING';
@@ -244,13 +270,13 @@ export const VerifyEmailPage: React.FC = () => {
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                 <span>
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}
+                  {cooldown > 0 ? formatCooldownDisplay(cooldown) : 'Resend Code'}
                 </span>
               </Button>
 
               <Button
                 variant="outline"
-                onClick={() => setIsChangeEmailOpen(true)}
+                onClick={handleOpenChangeEmail}
                 disabled={isVerifying || isSuccess}
                 className="w-full text-xs flex items-center justify-center space-x-1.5 py-2.5 text-text-muted hover:text-text-primary"
               >
@@ -278,31 +304,48 @@ export const VerifyEmailPage: React.FC = () => {
       {/* Change Email Modal */}
       <Modal
         isOpen={isChangeEmailOpen}
-        onClose={() => setIsChangeEmailOpen(false)}
+        onClose={handleCloseChangeEmail}
         title="Update Email Address"
       >
-        <form onSubmit={handleChangeEmail} className="space-y-4">
+        <form onSubmit={handleChangeEmail} className="space-y-4 px-1 py-1">
           <p className="text-xs text-text-muted leading-relaxed">
             Enter your correct email address. A fresh six-digit verification code will be sent to the updated address immediately.
           </p>
 
+          {error && isChangeEmailOpen && (
+            <div className="p-3 bg-red-50 border border-red-300 text-red-900 rounded-lg flex items-start space-x-2 text-xs font-semibold">
+              <ShieldAlert size={15} className="mt-0.5 flex-shrink-0 text-red-600" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <Input
+            id="change-email-input"
             label="New Email Address"
             type="email"
             placeholder="e.g. correct.name@email.com"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
             required
+            autoFocus
             disabled={changeEmailLoading}
           />
 
-          <Input label="Current Password" type="password" autoComplete="current-password" value={currentPassword}
-            onChange={e => setCurrentPassword(e.target.value)} required disabled={changeEmailLoading} />
+          <Input
+            id="change-email-password"
+            label="Current Password"
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={e => setCurrentPassword(e.target.value)}
+            required
+            disabled={changeEmailLoading}
+          />
           <div className="flex justify-end space-x-3 pt-3">
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsChangeEmailOpen(false)}
+              onClick={handleCloseChangeEmail}
               disabled={changeEmailLoading}
             >
               Cancel
