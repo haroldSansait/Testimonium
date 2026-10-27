@@ -47,6 +47,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const WIDE_ROUTES = new Set([
     '/dashboard',
     '/dashboard/home',
+    '/dashboard/parishes',
     '/dashboard/request',
     '/dashboard/track',
     '/dashboard/scheduler',

@@ -33,6 +33,27 @@ const MapViewUpdater: React.FC<{ center: MapPosition; zoom: number }> = ({ cente
   return null;
 };
 
+// Automatically calls invalidateSize on map container resize (e.g. sidebar collapse/expand, wide layout reflow)
+const MapResizeHandler: React.FC = () => {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [map]);
+
+  return null;
+};
+
 export const LeafletMap: React.FC<LeafletMapProps> = ({ 
   center, 
   zoom = 13, 
@@ -51,6 +72,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <MapViewUpdater center={center} zoom={zoom} />
+      <MapResizeHandler />
       {children}
     </MapContainer>
   );

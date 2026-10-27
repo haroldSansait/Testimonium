@@ -1,13 +1,11 @@
-import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { queryClient, privateQueryKey, guardedQuery } from '@/services/queryClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, HelpCircle, Info, Menu } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { NotificationService } from '@/services/NotificationService';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { HelpModal } from '@/components/modals/HelpModal';
 import { AboutModal } from '@/components/modals/AboutModal';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { useNotificationCounts } from '@/hooks/useNotificationCounts';
 
 interface NavbarProps {
   className?: string;
@@ -18,26 +16,13 @@ export function Navbar({ className, onOpenNavigation }: NavbarProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const notifications = useCachedQuery(['notifications'], () => NotificationService.getNotifications(), { enabled: false });
-  const unreadCount = (notifications.data ?? []).filter(n => !n.isRead).length;
+  const { unreadCount, refetch } = useNotificationCounts();
   const [showHelp, setShowHelp] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
-  const fetchUnread = useCallback(() => {
-    void queryClient.fetchQuery({ queryKey: privateQueryKey('notifications'),
-      queryFn: guardedQuery(() => NotificationService.getNotifications()), staleTime: 30_000,
-    }).catch(() => {});
-  }, []);
-  const refreshUnread = notifications.refetch;
   useEffect(() => {
-    fetchUnread();
-  }, [fetchUnread, pathname]);
-  useEffect(() => {
-    const refresh = () => { void refreshUnread(true); };
-    window.addEventListener('notifications-updated', refresh);
-    return () => window.removeEventListener('notifications-updated', refresh);
-  }, [refreshUnread]);
-
+    void refetch(true);
+  }, [pathname, refetch]);
 
   return (
     <header
@@ -56,7 +41,7 @@ export function Navbar({ className, onOpenNavigation }: NavbarProps) {
         <Tooltip content="Notifications & alerts" side="bottom">
           <button
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative"
-            aria-label="Notifications"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount > 99 ? '99+' : unreadCount} unread` : 'Notifications, none unread'}
             id="navbar-notifications"
             onClick={() => {
               const hasUnsaved = (window as any).hasUnsavedMapChanges || (window as any).hasUnsavedSettingsChanges;
@@ -71,7 +56,12 @@ export function Navbar({ className, onOpenNavigation }: NavbarProps) {
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+              <span
+                className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-[#7B1C2A] text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white shadow-xs pointer-events-none"
+                aria-hidden="true"
+              >
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </button>
         </Tooltip>

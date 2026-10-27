@@ -17,8 +17,9 @@ test("Dashboard Width Expansion Suite", async (t) => {
     "utf8"
   );
 
-  await t.test("1. WIDE_ROUTES includes all six targeted dashboard routes", () => {
+  await t.test("1. WIDE_ROUTES includes targeted dashboard routes including /dashboard/parishes", () => {
     assert.ok(layoutSource.includes("'/dashboard/home'"), "Must include /dashboard/home");
+    assert.ok(layoutSource.includes("'/dashboard/parishes'"), "Must include /dashboard/parishes");
     assert.ok(layoutSource.includes("'/dashboard/request'"), "Must include /dashboard/request");
     assert.ok(layoutSource.includes("'/dashboard/track'"), "Must include /dashboard/track");
     assert.ok(layoutSource.includes("'/dashboard/scheduler'"), "Must include /dashboard/scheduler");
@@ -41,6 +42,7 @@ test("Dashboard Width Expansion Suite", async (t) => {
     const WIDE_ROUTES = new Set([
       '/dashboard',
       '/dashboard/home',
+      '/dashboard/parishes',
       '/dashboard/request',
       '/dashboard/track',
       '/dashboard/scheduler',
@@ -53,6 +55,7 @@ test("Dashboard Width Expansion Suite", async (t) => {
     // Targeted wide routes
     assert.equal(checkPath('/dashboard/home'), true);
     assert.equal(checkPath('/dashboard'), true);
+    assert.equal(checkPath('/dashboard/parishes'), true, "Parish directory must use wide layout");
     assert.equal(checkPath('/dashboard/request'), true);
     assert.equal(checkPath('/dashboard/track'), true);
     assert.equal(checkPath('/dashboard/scheduler'), true);
@@ -60,7 +63,6 @@ test("Dashboard Width Expansion Suite", async (t) => {
     assert.equal(checkPath('/dashboard/profile'), true);
 
     // Standard width routes
-    assert.equal(checkPath('/dashboard/parishes'), false);
     assert.equal(checkPath('/dashboard/help'), false);
     assert.equal(checkPath('/dashboard/schedule/123'), false);
   });
