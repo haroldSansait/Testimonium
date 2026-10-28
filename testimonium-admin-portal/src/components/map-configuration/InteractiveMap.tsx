@@ -59,9 +59,9 @@ export function InteractiveMap({
 
     // Read from draft coordinate if exists, otherwise original coordinate, otherwise center fallback
     const draft = drafts[selectedId];
-    const lat = draft?.latitude !== undefined ? draft.latitude : (parish.latitude !== null && parish.latitude !== undefined ? parish.latitude : DIOCESE_CENTER[0]);
-    const lng = draft?.longitude !== undefined ? draft.longitude : (parish.longitude !== null && parish.longitude !== undefined ? parish.longitude : DIOCESE_CENTER[1]);
-    const zoom = draft?.mapZoom !== undefined ? draft.mapZoom : (parish.mapZoom !== null && parish.mapZoom !== undefined ? parish.mapZoom : 13);
+    const lat = draft?.latitude ?? parish.latitude ?? DIOCESE_CENTER[0];
+    const lng = draft?.longitude ?? parish.longitude ?? DIOCESE_CENTER[1];
+    const zoom = draft?.mapZoom ?? parish.mapZoom ?? 13;
 
     return {
       center: [lat, lng] as [number, number],
@@ -88,6 +88,7 @@ export function InteractiveMap({
         {/* Dynamic Map controller to animate transitions */}
         {flyToConfig && (
           <MapController 
+            selectedId={selectedId!}
             center={flyToConfig.center} 
             zoom={flyToConfig.zoom} 
             locateTrigger={locateTrigger}

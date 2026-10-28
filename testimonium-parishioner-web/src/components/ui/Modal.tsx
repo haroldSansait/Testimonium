@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -10,6 +10,7 @@ export interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
   className?: string;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  animated?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({ 
@@ -20,6 +21,7 @@ export const Modal: React.FC<ModalProps> = ({
   size = 'md',
   className = '',
   initialFocusRef,
+  animated = false,
 }) => {
   const triggerElementRef = useRef<HTMLElement | null>(null);
   const modalContainerRef = useRef<HTMLDivElement>(null);
@@ -30,6 +32,47 @@ export const Modal: React.FC<ModalProps> = ({
   useEffect(() => {
     onCloseRef.current = onClose;
   });
+
+  // Animated opening and closing state management
+  const isAnimated = Boolean(animated);
+  const [isRendered, setIsRendered] = useState(isOpen);
+  const [isAnimatingIn, setIsAnimatingIn] = useState(false);
+
+  useEffect(() => {
+    if (!isAnimated) {
+      setIsRendered(isOpen);
+      setIsAnimatingIn(isOpen);
+      return;
+    }
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (isOpen) {
+      setIsRendered(true);
+      if (prefersReducedMotion) {
+        setIsAnimatingIn(true);
+      } else {
+        const frameId = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setIsAnimatingIn(true);
+          });
+        });
+        return () => cancelAnimationFrame(frameId);
+      }
+    } else {
+      setIsAnimatingIn(false);
+      if (prefersReducedMotion) {
+        setIsRendered(false);
+      } else {
+        const timer = setTimeout(() => {
+          setIsRendered(false);
+        }, 220);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isOpen, isAnimated]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -139,7 +182,7 @@ export const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (isAnimated ? !isRendered : !isOpen) return null;
 
   const sizes = {
     sm: 'max-w-sm',
@@ -160,8 +203,15 @@ export const Modal: React.FC<ModalProps> = ({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 transition-opacity backdrop-blur-xs"
-        onClick={() => onCloseRef.current()}
+        className={`fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity ${
+          isAnimated ? 'ease-out' : ''
+        } ${
+          !isAnimated || isAnimatingIn ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={isAnimated ? { transitionDuration: isAnimatingIn ? '250ms' : '200ms' } : undefined}
+        onClick={() => {
+          if (isOpen) onCloseRef.current();
+        }}
         aria-hidden="true"
       />
 
@@ -169,7 +219,23 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={modalContainerRef}
         tabIndex={-1}
-        className={`relative w-full bg-white rounded-card shadow-card p-4 sm:p-6 border border-border z-10 focus:outline-none my-auto ${sizes[size]} ${className}`}
+        className={`relative w-full bg-white rounded-card shadow-card p-4 sm:p-6 border border-border z-10 focus:outline-none my-auto ${sizes[size]} ${
+          isAnimated
+            ? 'transition-[opacity,transform] ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100'
+            : ''
+        } ${className}`}
+        style={
+          isAnimated
+            ? {
+                opacity: isAnimatingIn ? 1 : 0,
+                transform: isAnimatingIn
+                  ? 'translateY(0) scale(1)'
+                  : 'translateY(16px) scale(0.98)',
+                transitionDuration: isAnimatingIn ? '280ms' : '200ms',
+                pointerEvents: isAnimatingIn ? 'auto' : 'none',
+              }
+            : undefined
+        }
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
@@ -181,7 +247,9 @@ export const Modal: React.FC<ModalProps> = ({
             <div />
           )}
           <button
-            onClick={() => onCloseRef.current()}
+            onClick={() => {
+              if (isOpen) onCloseRef.current();
+            }}
             className="p-1.5 rounded-full hover:bg-app-page text-text-muted hover:text-text-primary focus-ring flex-shrink-0"
             aria-label="Close modal"
           >

@@ -102,7 +102,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.iconContainer}>
                 <Ionicons
-                  name={focused ? "sparkles" : "sparkles-outline"}
+                  name={focused ? "chatbox" : "chatbox-outline"}
                   size={22}
                   color={color}
                 />

@@ -119,6 +119,7 @@ export const ParishMarker = React.memo(
             {/* Unsaved Changes orange outer ring glow */}
             {isDirty && (
               <motion.div
+                key="unsaved-ring"
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1.3, opacity: [0.3, 0.6, 0.3] }}
                 exit={{ scale: 0.8, opacity: 0 }}
@@ -130,6 +131,7 @@ export const ParishMarker = React.memo(
             {/* Selected Ring */}
             {isSelected && (
               <motion.div
+                key="selected-ring"
                 layoutId="selected-marker-ring"
                 className="absolute -inset-2 rounded-full border-2 border-white bg-red-500/10 shadow-lg pointer-events-none"
                 style={{ borderColor: pinColor }}
@@ -140,6 +142,7 @@ export const ParishMarker = React.memo(
             {/* Success Save Pulse */}
             {isSaveSuccess && (
               <motion.div
+                key="save-success-pulse"
                 initial={{ scale: 0.8, opacity: 1 }}
                 animate={{ scale: 2.2, opacity: 0 }}
                 exit={{ opacity: 0 }}

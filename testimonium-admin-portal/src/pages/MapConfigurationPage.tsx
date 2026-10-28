@@ -10,6 +10,7 @@ import { ParishManagementService } from '@/services/ParishManagementService';
 import type { Parish } from '@/types';
 import { cn } from '@/utils/cn';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { saveMapConfiguration, reconcileMapDrafts } from '@/utils/mapConfigurationSave';
 
 
 export function MapConfigurationPage() {
@@ -204,108 +205,48 @@ export function MapConfigurationPage() {
     );
   }, []);
 
-  // Perform transaction batch save + parallel directory settings save
+  // Save the captured draft, retaining failed fields and any newer edits.
   const handleSaveAll = useCallback(async () => {
     if (!hasUnsavedChanges || isSaving) return;
-
     setIsSaving(true);
-
-    // 1. Coordinates and map display settings updates (only dirty ones)
-    const mapUpdates = Object.entries(drafts)
-      .filter(([_, draft]) => 
-        draft.latitude !== undefined || 
-        draft.longitude !== undefined || 
-        draft.mapZoom !== undefined || 
-        draft.pinColor !== undefined || 
-        draft.showLabel !== undefined
-      )
-      .map(([id, draft]) => {
-        const original = parishes.find((p) => p.id === id);
-        const lat = (draft.latitude !== undefined && draft.latitude !== null)
-          ? draft.latitude
-          : (original?.latitude !== null && original?.latitude !== undefined ? original.latitude : DIOCESE_CENTER[0]);
-        const lng = (draft.longitude !== undefined && draft.longitude !== null)
-          ? draft.longitude
-          : (original?.longitude !== null && original?.longitude !== undefined ? original.longitude : DIOCESE_CENTER[1]);
-        return {
-          id,
-          latitude: lat,
-          longitude: lng,
-          mapZoom: draft.mapZoom !== undefined ? draft.mapZoom : original!.mapZoom,
-          pinColor: draft.pinColor !== undefined ? draft.pinColor : original!.pinColor,
-          showLabel: draft.showLabel !== undefined ? draft.showLabel : original!.showLabel,
-          locationUpdatedAt: original!.locationUpdatedAt
-        };
-      });
-
-    // 2. Directory settings updates (only dirty ones)
-    const directoryUpdates = Object.entries(drafts)
-      .filter(([_, draft]) => 
-        draft.directoryDescription !== undefined || 
-        draft.contactNumber !== undefined || 
-        draft.email !== undefined
-      )
-      .map(([id, draft]) => {
-        return ParishManagementService.updateDirectorySettings(id, {
-          directoryDescription: draft.directoryDescription,
-          contactNumber: draft.contactNumber,
-          email: draft.email
-        });
-      });
+    setSaveSuccessIds([]);
 
     try {
-      let updatedParishes: Parish[] = [];
-
-      // Save map settings in a single transaction batch
-      if (mapUpdates.length > 0) {
-        const mapResults = await ParishManagementService.batchUpdateMap(mapUpdates);
-        updatedParishes = [...updatedParishes, ...mapResults];
-      }
-
-      // Save directory settings in parallel
-      if (directoryUpdates.length > 0) {
-        const dirResults = await Promise.all(directoryUpdates);
-        updatedParishes = [...updatedParishes, ...dirResults];
-      }
-
-      // Trigger visual save success pulse animation on saved parishes
-      const savedIds = Object.keys(drafts);
+      const { savedChanges, savedIds, failures } = await saveMapConfiguration(
+        parishes, drafts, ParishManagementService, DIOCESE_CENTER,
+      );
+      setParishes((prev) => prev.map((parish) => ({ ...parish, ...savedChanges[parish.id] })));
+      setDrafts((current) => reconcileMapDrafts(current, drafts, parishes, savedChanges));
       setSaveSuccessIds(savedIds);
-      setDrafts({});
+      setTimeout(() => setSaveSuccessIds([]), 3000);
 
-      // Clear save success after 3 seconds
-      setTimeout(() => {
-        setSaveSuccessIds([]);
-      }, 3000);
-
-      // Merge saved parish objects back into state to update only the affected ones
-      setParishes((prev) => {
-        const next = [...prev];
-        updatedParishes.forEach((updated) => {
-          const idx = next.findIndex((p) => p.id === updated.id);
-          if (idx !== -1) {
-            next[idx] = updated;
-          }
-        });
-        return next;
-      });
-
-      showToast('Parish configurations saved successfully.', 'success');
+      if (failures.length) {
+        const hasSavedChanges = Object.keys(savedChanges).length > 0;
+        const details = failures.map(({ scope, id, error }) => {
+          const err = error as any;
+          const name = id ? parishes.find((parish) => parish.id === id)?.name || id : 'Map settings';
+          const message = err.response?.data?.message || err.message || 'Request failed';
+          return `${scope === 'directory' ? `Directory settings for ${name}` : name}: ${message}`;
+        }).join('; ');
+        showToast(`${hasSavedChanges ? 'Partially saved' : 'Save failed'}. Unsaved changes were retained. ${details}`, 'error');
+        if (failures.some(({ error }) => {
+          const err = error as any;
+          return (err.statusCode ?? err.status ?? err.response?.status) === 409;
+        })) {
+          showConfirm(
+            'Version Conflict Detected',
+            'Another coordinator updated map settings. Reload the saved configurations before retrying. Your unsaved changes will be retained.',
+            () => { loadParishes(); },
+            'Reload Configs',
+            'Cancel',
+          );
+        }
+      } else {
+        showToast('Parish configurations saved successfully.', 'success');
+      }
     } catch (err: any) {
       console.error(err);
-      if (err.statusCode === 409) {
-        // Optimistic locking version conflict
-        showConfirm(
-          'Version Conflict Detected',
-          'Another coordinator has updated the settings for one or more parishes you modified. Please reload to sync.',
-          () => { loadParishes(); },
-          'Reload Configs',
-          'Cancel'
-        );
-      } else {
-        const msg = err.response?.data?.message || err.message || 'Failed to save configurations.';
-        showToast(`Save failed: ${msg}`, 'error');
-      }
+      showToast(`Save failed: ${err.message || 'Failed to save configurations.'} Unsaved changes were retained.`, 'error');
     } finally {
       setIsSaving(false);
     }

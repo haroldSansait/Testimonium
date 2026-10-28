@@ -101,7 +101,7 @@ export const ApiParishProvider: ParishProvider = {
     contactNumber?: string | null;
     email?: string | null;
   }): Promise<Parish> {
-    const response = await api.patch<ApiResponseEnvelope<Parish>>(`/parishes/${id}/settings`, data);
+    const response = await api.patch<ApiResponseEnvelope<Parish>>(`/parishes/${id}/directory-settings`, data);
     return response.data.data;
   },
 

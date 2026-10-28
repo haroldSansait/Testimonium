@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent } from '../../components/ui/Card';
+import { useScrollReveal } from '../../hooks/useScrollReveal';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 // Admin Portal URL — update to production URL when deploying.
@@ -20,6 +21,32 @@ const ADMIN_PORTAL_URL = import.meta.env.VITE_ADMIN_PORTAL_URL ?? 'http://localh
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+
+  // Hero section initial entrance animation (runs once on page load)
+  const [heroEntered, setHeroEntered] = useState(false);
+  useEffect(() => {
+    const frameId = requestAnimationFrame(() => {
+      setHeroEntered(true);
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+
+  // Scroll reveal hooks for sections (replay upon scrolling down and scrolling back up)
+  const { ref: bannerRef, isVisible: isBannerVisible } = useScrollReveal<HTMLElement>({
+    threshold: 0.15,
+  });
+
+  const { ref: servicesRef, isVisible: isServicesVisible } = useScrollReveal<HTMLElement>({
+    threshold: 0.1,
+  });
+
+  const { ref: aboutRef, isVisible: isAboutVisible } = useScrollReveal<HTMLElement>({
+    threshold: 0.1,
+  });
+
+  const { ref: staffRef, isVisible: isStaffVisible } = useScrollReveal<HTMLElement>({
+    threshold: 0.15,
+  });
 
   const services = [
     {
@@ -68,19 +95,35 @@ export const LandingPage: React.FC = () => {
         }}
       >
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 space-y-6 relative z-10">
-          <div className="text-xs sm:text-sm font-semibold uppercase tracking-widest text-white/90">
+          <div
+            className={`text-xs sm:text-sm font-semibold uppercase tracking-widest text-white/90 transition-[opacity,transform] duration-700 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+              heroEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+            }`}
+          >
             Roman Catholic Diocese of San Carlos
           </div>
 
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-bold text-white tracking-tight leading-tight sm:leading-tight">
+          <h1
+            className={`text-3xl sm:text-5xl md:text-6xl font-serif font-bold text-white tracking-tight leading-tight sm:leading-tight transition-[opacity,transform] duration-700 ease-out delay-100 motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+              heroEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+            }`}
+          >
             Connect with Your Parish Community
           </h1>
 
-          <p className="text-sm sm:text-base md:text-lg text-white/85 max-w-2xl mx-auto leading-relaxed font-normal">
+          <p
+            className={`text-sm sm:text-base md:text-lg text-white/85 max-w-2xl mx-auto leading-relaxed font-normal transition-[opacity,transform] duration-700 ease-out delay-200 motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+              heroEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+            }`}
+          >
             Welcome to the TESTIMONIUM Parishioner Portal. Request sacramental documents, schedule parish appointments, and track your certificates online with complete transparency and ease.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-4">
+          <div
+            className={`flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-4 transition-[opacity,transform] duration-700 ease-out delay-300 motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+              heroEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+            }`}
+          >
             <button
               onClick={() => navigate('/signup')}
               className="w-full sm:w-auto px-7 py-3.5 bg-white text-crimson hover:bg-white/90 font-bold rounded-button shadow-md transition-all active:scale-[0.98] text-sm sm:text-base focus-ring"
@@ -98,8 +141,12 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Identity & Capabilities Banner */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6">
-        <div className="bg-white border border-border/80 rounded-card p-4 sm:p-6 shadow-sm flex flex-wrap items-center justify-around gap-4 text-center">
+      <section ref={bannerRef} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <div
+          className={`bg-white border border-border/80 rounded-card p-4 sm:p-6 shadow-sm flex flex-wrap items-center justify-around gap-4 text-center transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+            isBannerVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+          }`}
+        >
           <div className="text-xs sm:text-sm font-semibold text-text-primary">
             <span className="text-crimson font-serif font-bold mr-1.5">Diocese of San Carlos</span>
           </div>
@@ -113,8 +160,12 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Services Grid Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
-        <div className="text-center space-y-2.5 max-w-2xl mx-auto">
+      <section ref={servicesRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+        <div
+          className={`text-center space-y-2.5 max-w-2xl mx-auto transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+            isServicesVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+          }`}
+        >
           <span className="text-xs font-bold text-crimson uppercase tracking-widest">
             Sacramental Services
           </span>
@@ -128,41 +179,54 @@ export const LandingPage: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {services.map((service, index) => (
-            <Card
+            <div
               key={index}
-              hoverable
-              className="flex flex-col justify-between p-6 hover:border-crimson/50 hover:shadow-card transition-all group"
+              className={`transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+                isServicesVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+              }`}
+              style={{
+                transitionDelay: isServicesVisible ? `${index * 90}ms` : '0ms'
+              }}
             >
-              <CardContent className="space-y-4 p-0">
-                <div className="p-3 bg-red-50/70 w-fit rounded-button text-crimson group-hover:scale-105 transition-transform">
-                  {service.icon}
-                </div>
-                <h3 className="text-base sm:text-lg font-serif font-bold text-text-primary">
-                  {service.title}
-                </h3>
-                <p className="text-xs sm:text-sm text-text-muted leading-relaxed font-normal">
-                  {service.description}
-                </p>
-              </CardContent>
+              <Card
+                hoverable
+                className="flex flex-col justify-between p-6 hover:border-crimson/50 hover:shadow-card transition-all group h-full"
+              >
+                <CardContent className="space-y-4 p-0">
+                  <div className="p-3 bg-red-50/70 w-fit rounded-button text-crimson group-hover:scale-105 transition-transform">
+                    {service.icon}
+                  </div>
+                  <h3 className="text-base sm:text-lg font-serif font-bold text-text-primary">
+                    {service.title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-text-muted leading-relaxed font-normal">
+                    {service.description}
+                  </p>
+                </CardContent>
 
-              <div className="pt-5 mt-4 border-t border-border/40">
-                <button
-                  onClick={() => navigate('/login')}
-                  className="text-xs font-bold text-crimson flex items-center group-hover:translate-x-1 transition-transform focus-ring rounded"
-                >
-                  <span>{service.actionText}</span>
-                  <ArrowRight size={14} className="ml-1.5" />
-                </button>
-              </div>
-            </Card>
+                <div className="pt-5 mt-4 border-t border-border/40">
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="text-xs font-bold text-crimson flex items-center group-hover:translate-x-1 transition-transform focus-ring rounded"
+                  >
+                    <span>{service.actionText}</span>
+                    <ArrowRight size={14} className="ml-1.5" />
+                  </button>
+                </div>
+              </Card>
+            </div>
           ))}
         </div>
       </section>
 
       {/* About TESTIMONIUM */}
-      <section className="bg-white border-y border-border py-16 sm:py-20">
+      <section ref={aboutRef} className="bg-white border-y border-border py-16 sm:py-20 overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-          <div className="lg:col-span-7 space-y-5 text-left">
+          <div
+            className={`lg:col-span-7 space-y-5 text-left transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+              isAboutVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+            }`}
+          >
             <span className="text-xs font-bold text-crimson uppercase tracking-widest">
               About the Initiative
             </span>
@@ -190,7 +254,14 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="lg:col-span-5 bg-app-page border border-border rounded-card p-6 sm:p-8 flex flex-col justify-center space-y-4 shadow-xs">
+          <div
+            className={`lg:col-span-5 bg-app-page border border-border rounded-card p-6 sm:p-8 flex flex-col justify-center space-y-4 shadow-xs transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+              isAboutVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+            }`}
+            style={{
+              transitionDelay: isAboutVisible ? '120ms' : '0ms'
+            }}
+          >
             <div className="w-10 h-10 rounded-full bg-crimson/10 text-crimson flex items-center justify-center font-serif font-bold text-lg">
               ✝
             </div>
@@ -205,8 +276,12 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Staff & Administrators Gateway (Clearly Secondary) */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6">
-        <div className="border border-border/80 rounded-card bg-app-page p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-xs">
+      <section ref={staffRef} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <div
+          className={`border border-border/80 rounded-card bg-app-page p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-xs transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+            isStaffVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+          }`}
+        >
           <div className="flex items-start gap-4">
             <div className="p-3 bg-white border border-border rounded-button shrink-0 text-text-muted mt-0.5">
               <ShieldCheck className="w-6 h-6" />

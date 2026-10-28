@@ -90,11 +90,18 @@ const getCategoryColor = (category: Event['category']): "ready" | "pending" | "u
 type FeedbackState = 'idle' | 'success' | 'error';
 
 export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
-  event,
+  event: incomingEvent,
   isOpen,
   onClose,
   onViewParish
 }) => {
+  // Preserve last valid event reference during closing unmount animation
+  const lastEventRef = React.useRef<Event | null>(incomingEvent);
+  if (incomingEvent) {
+    lastEventRef.current = incomingEvent;
+  }
+  const event = incomingEvent || lastEventRef.current;
+
   // Per-action inline feedback states (no browser alert())
   const [calendarFeedback, setCalendarFeedback] = useState<FeedbackState>('idle');
 
@@ -146,6 +153,7 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
       onClose={onClose}
       title="Event Details"
       size="3xl"
+      animated
     >
       <div className="space-y-5 pt-1">
         {/* Header Media / Cover Banner Hero */}

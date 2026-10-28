@@ -43,7 +43,7 @@ export function SaveToolbar({
             value={selectedVicariate}
             onChange={onVicariateChange}
             options={[
-              { value: 'ALL', label: 'All Vicariates' },
+              { value: 'all', label: 'All Vicariates' },
               { value: 'Vicariate of Canlaon', label: 'Vicariate of Canlaon' },
               { value: 'Vicariate of San Carlos Borromeo', label: 'Vicariate of San Carlos Borromeo' },
               { value: 'Vicariate of St. Vincent Ferrer', label: 'Vicariate of St. Vincent Ferrer' },

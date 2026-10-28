@@ -91,7 +91,7 @@ router.delete("/:id/payment-qr", checkRole(["DIOCESE_COORDINATOR", "SECRETARY", 
 router.use(checkRole(["DIOCESE_COORDINATOR"]));
 
 // Map Settings and Images (parameter-based)
-router.patch("/:id/settings", validateBody(updateDirectorySettingsSchema), updateDirectorySettings);
+router.patch("/:id/directory-settings", validateBody(updateDirectorySettingsSchema), updateDirectorySettings);
 router.post("/:id/images", parishImageUploadRateLimiter, memoryUpload.single("image"), uploadImage);
 
 // General CRUD Routes

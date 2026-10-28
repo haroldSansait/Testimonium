@@ -9,7 +9,9 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isLoginPage = location.pathname === '/login';
   const isSignupPage = location.pathname === '/signup';
-  const isAuthPage = isLoginPage || isSignupPage;
+  const isForgotPasswordPage = location.pathname === '/forgot-password' || location.pathname.startsWith('/forgot-password/');
+  const isVerifyEmailPage = location.pathname === '/verify-email' || location.pathname.startsWith('/verify-email/');
+  const isAuthPage = isLoginPage || isSignupPage || isForgotPasswordPage || isVerifyEmailPage;
 
   return (
     <div className="min-h-screen flex flex-col bg-app-base">

@@ -290,7 +290,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
                       <Ionicons
                         name={item.icon}
                         size={24}
-                        color={isCurrent ? colors.brand[700] : colors.neutral[950]}
+                        color={colors.brand[700]}
                       />
                     </View>
 

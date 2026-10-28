@@ -42,7 +42,7 @@ export const batchUpdateMap = async (req, res, next) => {
 };
 
 /**
- * PATCH /parishes/:id/settings
+ * PATCH /parishes/:id/directory-settings
  * Update basic directory settings (description, email, contact).
  */
 export const updateSettings = async (req, res, next) => {

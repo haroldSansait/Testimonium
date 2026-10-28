@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   Animated,
   Pressable,
@@ -20,28 +20,8 @@ export const CenterActionButton: React.FC<CenterActionButtonProps> = ({
   onPress,
   isServiceActive: _isServiceActive = false,
 }) => {
-  const [rotateAnim] = useState(() => new Animated.Value(isOpen ? 1 : 0));
   const [scaleAnim] = useState(() => new Animated.Value(1));
-  const isInitialMount = useRef(true);
   const reduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-
-    if (reduceMotion) {
-      rotateAnim.setValue(isOpen ? 1 : 0);
-      return;
-    }
-
-    Animated.timing(rotateAnim, {
-      toValue: isOpen ? 1 : 0,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-  }, [isOpen, reduceMotion, rotateAnim]);
 
   const handlePressIn = () => {
     if (reduceMotion) return;
@@ -64,11 +44,6 @@ export const CenterActionButton: React.FC<CenterActionButtonProps> = ({
     }).start();
   };
 
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "45deg"],
-  });
-
   return (
     <View style={styles.container} pointerEvents="box-none">
       <Pressable
@@ -89,9 +64,7 @@ export const CenterActionButton: React.FC<CenterActionButtonProps> = ({
             },
           ]}
         >
-          <Animated.View style={{ transform: [{ rotate: spin }] }}>
-            <Ionicons name="add" size={28} color="#FFFFFF" />
-          </Animated.View>
+          <Ionicons name="layers-outline" size={28} color="#FFFFFF" />
         </Animated.View>
       </Pressable>
     </View>
