@@ -37,15 +37,18 @@ import {
   useRecommendations,
   useSchedulingConfiguration,
 } from "./api";
+import { SupportingFilePicker } from "@/features/requests/components/SupportingFilePicker";
+import type { LocalSelectedFile } from "@/features/requests/types";
 import {
   formatScheduleDate,
   makeSchedulePayloadSignature,
 } from "./presentation";
+import { makePrerequisiteUploadSignature } from "./prerequisiteUploads";
 import {
   PREFERRED_PRIEST_HELPER_COPY,
   SuggestedTimeCard,
 } from "./components/SuggestedTimeCard";
-import type { ScheduleEventType } from "./types";
+import type { ScheduleEventType, ScheduleServiceRequirement } from "./types";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -91,9 +94,14 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
   return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1 };
 };
 
-export const ScheduleWizardScreen: React.FC = () => {
+export interface ScheduleWizardScreenProps {
+  initialParishId?: string;
+}
+
+export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ initialParishId }) => {
   const router = useRouter();
-  const { parishId: routeParishId } = useLocalSearchParams<{ parishId?: string }>();
+  const searchParams = useLocalSearchParams<{ parishId?: string }>();
+  const routeParishId = initialParishId ?? searchParams.parishId;
   const { profile } = useAuth();
   const feedback = useFeedback();
   const reduceMotion = useReducedMotion();
@@ -124,7 +132,7 @@ export const ScheduleWizardScreen: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState({ year: today.year, month: today.month });
 
-  const currentKeyRef = useRef({ payloadSignature: "", key: "" });
+  const idempotencyKeysRef = useRef(new Map<string, string>());
   const lastRefreshAtRef = useRef(0);
   const inactiveAtRef = useRef<number | null>(null);
 
@@ -167,6 +175,58 @@ export const ScheduleWizardScreen: React.FC = () => {
   const selectedService = configuration?.services.find(
     (service) => service.eventType === selectedEventType
   );
+  const requirements: ScheduleServiceRequirement[] = useMemo(
+    () => selectedService?.requirements || [],
+    [selectedService?.requirements]
+  );
+  const hasRequirements = requirements.length > 0;
+  const totalSteps = hasRequirements ? 6 : 5;
+  const confirmationStep = totalSteps;
+  const uploadRequirementsStep = hasRequirements ? 5 : null;
+
+  const [requirementFiles, setRequirementFiles] = useState<Record<string, LocalSelectedFile>>({});
+  const submittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const requirementsComplete = useMemo(() => {
+    if (!hasRequirements) return true;
+    return requirements.every((r) => Boolean(requirementFiles[r.id]));
+  }, [hasRequirements, requirements, requirementFiles]);
+
+  const activeRequirementIds = useMemo(
+    () => new Set(requirements.map((r) => r.id)),
+    [requirements]
+  );
+
+  const [prevRequirements, setPrevRequirements] = useState(requirements);
+  if (requirements !== prevRequirements) {
+    setPrevRequirements(requirements);
+    setRequirementFiles((prev) => {
+      const next: Record<string, LocalSelectedFile> = {};
+      let changed = false;
+      for (const [id, file] of Object.entries(prev)) {
+        if (activeRequirementIds.has(id)) {
+          next[id] = file;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    if (!hasRequirements && currentStep > 5) {
+      setCurrentStep(5);
+    } else if (hasRequirements && currentStep === 6 && !requirementsComplete) {
+      setCurrentStep(5);
+      setErrorMessage("The parish updated its document requirements. Please upload every required document.");
+    }
+  }
+
+  const formatBytes = (bytes?: number): string => {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
 
   const refreshAuthoritativeAvailability = useCallback((force = false) => {
     if (!selectedParishId) return;
@@ -202,22 +262,28 @@ export const ScheduleWizardScreen: React.FC = () => {
 
   // When parish changes, reset subsequent selections
   const handleSelectParish = (parishId: number) => {
-    setSelectedParishId(parishId);
-    setSelectedEventType(null);
-    setPreferredDate(null);
-    setSelectedDate(null);
-    setSelectedSlot(null);
-    setRequestedPriestId(null);
-    setErrorMessage(null);
+    if (parishId !== selectedParishId) {
+      setSelectedParishId(parishId);
+      setSelectedEventType(null);
+      setPreferredDate(null);
+      setSelectedDate(null);
+      setSelectedSlot(null);
+      setRequestedPriestId(null);
+      setRequirementFiles({});
+      setErrorMessage(null);
+    }
   };
 
-  // When service changes, reset date & slot
+  // When service changes, reset date & slot and files
   const handleSelectService = (eventType: ScheduleEventType) => {
-    setSelectedEventType(eventType);
-    setPreferredDate(null);
-    setSelectedDate(null);
-    setSelectedSlot(null);
-    setErrorMessage(null);
+    if (eventType !== selectedEventType) {
+      setSelectedEventType(eventType);
+      setPreferredDate(null);
+      setSelectedDate(null);
+      setSelectedSlot(null);
+      setRequirementFiles({});
+      setErrorMessage(null);
+    }
   };
 
   const handleSelectDate = (date: string) => {
@@ -228,6 +294,7 @@ export const ScheduleWizardScreen: React.FC = () => {
   };
 
   const handleBack = () => {
+    if (submittingRef.current) return;
     if (currentStep === 1) {
       router.back();
     } else {
@@ -236,7 +303,9 @@ export const ScheduleWizardScreen: React.FC = () => {
     }
   };
 
-  const getIdempotencyKey = () => {
+  const getIdempotencyKey = async () => {
+    const activeFiles = Object.fromEntries(requirements.map((r) => [r.id, requirementFiles[r.id]]));
+    const uploadSignature = await makePrerequisiteUploadSignature(activeFiles);
     const payloadSignature = makeSchedulePayloadSignature({
       parishId: selectedParishId!,
       eventType: selectedEventType!,
@@ -244,16 +313,18 @@ export const ScheduleWizardScreen: React.FC = () => {
       timeSlot: selectedSlot!,
       remarks,
       requestedPriestId: requestedPriestId || null,
+      uploadSignature,
     });
-    if (currentKeyRef.current.payloadSignature === payloadSignature && currentKeyRef.current.key) {
-      return currentKeyRef.current.key;
-    }
+    const existingKey = idempotencyKeysRef.current.get(payloadSignature);
+    if (existingKey) return existingKey;
     const key = `mobile-sched-${generateClientUuid()}`;
-    currentKeyRef.current = { payloadSignature, key };
+    idempotencyKeysRef.current.set(payloadSignature, key);
     return key;
   };
 
   const handleSubmit = async () => {
+    if (submittingRef.current || createMutation.isPending) return;
+
     if (profile?.needsProfileCompletion) {
       feedback.showWarning({
         title: "Profile Details Required",
@@ -285,6 +356,14 @@ export const ScheduleWizardScreen: React.FC = () => {
       return;
     }
 
+    if (hasRequirements && !requirementsComplete) {
+      setErrorMessage("Please upload every required prerequisite document before submitting.");
+      if (uploadRequirementsStep) setCurrentStep(uploadRequirementsStep);
+      return;
+    }
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
     try {
       const created = await createMutation.mutateAsync({
         payload: {
@@ -295,7 +374,9 @@ export const ScheduleWizardScreen: React.FC = () => {
           remarks: remarks.trim() || undefined,
           requestedPriestId: requestedPriestId || undefined,
         },
-        idempotencyKey: getIdempotencyKey(),
+        requirements: hasRequirements ? requirements : undefined,
+        files: hasRequirements ? requirementFiles : undefined,
+        idempotencyKey: await getIdempotencyKey(),
       });
       feedback.showSuccess({
         title: "Schedule Request Submitted",
@@ -309,6 +390,50 @@ export const ScheduleWizardScreen: React.FC = () => {
     } catch (error: unknown) {
       const appError = isAppError(error) ? error : null;
       const code = appError?.code ?? "";
+
+      if (code === "SCHEDULE_REQUIREMENTS_CHANGED") {
+        const msg =
+          appError?.message ||
+          "The parish updated its document requirements. Please review the updated requirements.";
+        setErrorMessage(msg);
+        feedback.showWarning({
+          title: "Requirements Updated",
+          message: msg,
+          confirmText: "Review Requirements",
+        });
+        const refreshed = await refetchConfiguration();
+        const nextService = refreshed.data?.services.find(
+          (s) => s.eventType === selectedEventType
+        );
+        const nextRequirements = nextService?.requirements || [];
+        const nextActiveIds = new Set(nextRequirements.map((r) => r.id));
+        setRequirementFiles((prev) => {
+          const next: Record<string, LocalSelectedFile> = {};
+          for (const [id, file] of Object.entries(prev)) {
+            if (nextActiveIds.has(id)) {
+              next[id] = file;
+            }
+          }
+          return next;
+        });
+        setCurrentStep(nextService ? 5 : 2);
+        return;
+      }
+
+      if (
+        code === "INVALID_SCHEDULE_ATTACHMENTS" ||
+        code === "MISSING_SCHEDULE_ATTACHMENTS" ||
+        (hasRequirements && appError?.kind === "VALIDATION")
+      ) {
+        setErrorMessage(
+          appError?.message ||
+            "Invalid prerequisite documents. Please check your files and try again."
+        );
+        if (hasRequirements && uploadRequirementsStep) {
+          setCurrentStep(uploadRequirementsStep);
+        }
+        return;
+      }
 
       if (code === "PROFILE_INCOMPLETE") {
         feedback.showWarning({
@@ -353,6 +478,9 @@ export const ScheduleWizardScreen: React.FC = () => {
         appError?.message ||
           "Unable to submit your scheduling request. Please verify your connection and try again."
       );
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -503,13 +631,13 @@ export const ScheduleWizardScreen: React.FC = () => {
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
         title="Schedule an Appointment"
-        subtitle={`Step ${currentStep} of 5`}
+        subtitle={`Step ${currentStep} of ${totalSteps}`}
         onBack={handleBack}
       />
 
       {/* Step Progress Bar */}
       <View style={styles.stepIndicator}>
-        {[1, 2, 3, 4, 5].map((step) => (
+        {Array.from({ length: totalSteps }, (_, i) => i + 1).map((step) => (
           <View
             key={step}
             style={[styles.stepDot, step <= currentStep && styles.stepDotActive]}
@@ -562,6 +690,7 @@ export const ScheduleWizardScreen: React.FC = () => {
                     <SelectionRow
                       key={parish.id}
                       title={parish.name}
+                      accessibilityLabel={parish.name}
                       subtitle={parish.municipalityCity || parish.address || parish.type}
                       selected={selectedParishId === Number(parish.id)}
                       onSelect={() => handleSelectParish(Number(parish.id))}
@@ -610,6 +739,7 @@ export const ScheduleWizardScreen: React.FC = () => {
                     <SelectionRow
                       key={service.eventType}
                       title={service.label}
+                      accessibilityLabel={service.label}
                       subtitle="Online appointment"
                       selected={selectedEventType === service.eventType}
                       onSelect={() => handleSelectService(service.eventType)}
@@ -813,6 +943,7 @@ export const ScheduleWizardScreen: React.FC = () => {
                     <SelectionRow
                       key={slot}
                       title={slot}
+                      accessibilityLabel={slot}
                       subtitle="Available time slot"
                       selected={selectedSlot === slot}
                       onSelect={() => {
@@ -827,8 +958,56 @@ export const ScheduleWizardScreen: React.FC = () => {
             </View>
           )}
 
-          {/* STEP 5: CONFIRMATION & REVIEW */}
-          {currentStep === 5 && (
+          {/* STEP 5: UPLOAD REQUIREMENTS (WHEN PREREQUISITES EXIST) */}
+          {currentStep === 5 && hasRequirements && (
+            <View style={styles.section}>
+              <Text style={styles.title} allowFontScaling>
+                Upload Requirements
+              </Text>
+              <Text style={styles.subtitle} allowFontScaling>
+                Please provide the documents required by {selectedParish?.name || "the parish"} for {selectedService?.label || "your service"}.
+              </Text>
+
+              <View style={styles.infoBanner}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+                <Text style={styles.infoBannerText} allowFontScaling>
+                  Accepted file types: PDF, JPG, PNG, or WebP up to 5 MB per document. Documents are securely transmitted to the parish office.
+                </Text>
+              </View>
+
+              <View style={styles.requirementsList}>
+                {requirements.map((req) => (
+                  <SupportingFilePicker
+                    key={`${selectedParishId}-${selectedEventType}-${req.id}`}
+                    requirement={{
+                      id: req.id,
+                      label: req.label,
+                      category: "schedule_prerequisite",
+                      required: true,
+                      description: "Required prerequisite document for this service.",
+                    }}
+                    selectedFile={requirementFiles[req.id] || null}
+                    onFileSelected={(file) => {
+                      setRequirementFiles((prev) => ({ ...prev, [req.id]: file }));
+                      setErrorMessage(null);
+                    }}
+                    onFileRemoved={(requirementId) => {
+                      setRequirementFiles((prev) => {
+                        const next = { ...prev };
+                        delete next[requirementId];
+                        return next;
+                      });
+                      setErrorMessage(null);
+                    }}
+                    disabled={createMutation.isPending || isSubmitting}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* CONFIRMATION & REVIEW (Step 5 without prerequisites, or Step 6 with prerequisites) */}
+          {currentStep === confirmationStep && (
             <View style={styles.section}>
               <Text style={styles.title} allowFontScaling>
                 Confirm Your Appointment Request
@@ -853,12 +1032,26 @@ export const ScheduleWizardScreen: React.FC = () => {
                 ]}
               />
 
+              {hasRequirements && (
+                <RecordSection
+                  title="Uploaded Prerequisite Documents"
+                  fields={requirements.map((req) => {
+                    const file = requirementFiles[req.id];
+                    return {
+                      label: req.label,
+                      value: file ? `${file.name} (${formatBytes(file.size)})` : "Missing",
+                    };
+                  })}
+                />
+              )}
+
               <View style={styles.notesContainer}>
                 <Text style={styles.inputLabel} allowFontScaling>
                   Notes for the parish (optional)
                 </Text>
                 <RNTextInput
                   value={remarks}
+                  editable={!isSubmitting}
                   onChangeText={setRemarks}
                   placeholder="Add relevant details or special assistance needs"
                   placeholderTextColor={colors.textMuted}
@@ -881,6 +1074,7 @@ export const ScheduleWizardScreen: React.FC = () => {
         {currentStep === 1 ? (
           <Button
             title="Continue to Service"
+            accessibilityLabel="Continue to Service"
             variant="primary"
             size="lg"
             icon="arrow-forward"
@@ -891,6 +1085,7 @@ export const ScheduleWizardScreen: React.FC = () => {
         ) : currentStep === 2 ? (
           <Button
             title="Continue to Date"
+            accessibilityLabel="Continue to Date"
             variant="primary"
             size="lg"
             icon="arrow-forward"
@@ -901,6 +1096,7 @@ export const ScheduleWizardScreen: React.FC = () => {
         ) : currentStep === 3 ? (
           <Button
             title="Continue to Time Slot"
+            accessibilityLabel="Continue to Time Slot"
             variant="primary"
             size="lg"
             icon="arrow-forward"
@@ -910,7 +1106,8 @@ export const ScheduleWizardScreen: React.FC = () => {
           />
         ) : currentStep === 4 ? (
           <Button
-            title="Continue to Confirmation"
+            title={hasRequirements ? "Continue to Upload Requirements" : "Continue to Confirmation"}
+            accessibilityLabel={hasRequirements ? "Continue to Upload Requirements" : "Continue to Confirmation"}
             variant="primary"
             size="lg"
             icon="arrow-forward"
@@ -918,13 +1115,33 @@ export const ScheduleWizardScreen: React.FC = () => {
             onPress={() => setCurrentStep(5)}
             style={styles.fullWidthAction}
           />
-        ) : currentStep === 5 ? (
+        ) : currentStep === 5 && hasRequirements ? (
+          <Button
+            title="Continue to Confirmation"
+            accessibilityLabel="Continue to Confirmation"
+            variant="primary"
+            size="lg"
+            icon="arrow-forward"
+            disabled={!requirementsComplete}
+            onPress={() => {
+              if (!requirementsComplete) {
+                setErrorMessage("Please upload every required document before proceeding.");
+                return;
+              }
+              setErrorMessage(null);
+              setCurrentStep(6);
+            }}
+            style={styles.fullWidthAction}
+          />
+        ) : currentStep === confirmationStep ? (
           <Button
             title="Submit Schedule Request"
+            accessibilityLabel="Submit Schedule Request"
             variant="primary"
             size="lg"
             icon="checkmark-circle-outline"
-            loading={createMutation.isPending}
+            loading={createMutation.isPending || isSubmitting}
+            disabled={createMutation.isPending || isSubmitting || (hasRequirements && !requirementsComplete)}
             onPress={() => {
               void handleSubmit();
             }}
@@ -1195,6 +1412,26 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     color: colors.primary,
     fontWeight: "700",
+  },
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  infoBannerText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 18,
+  },
+  requirementsList: {
+    gap: spacing.sm,
   },
   fullWidthAction: {
     width: "100%",

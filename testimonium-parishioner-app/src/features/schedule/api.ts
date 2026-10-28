@@ -6,6 +6,9 @@ import {
 } from "@tanstack/react-query";
 import { useAuth } from "@/providers/AuthProvider";
 import { apiClient } from "@/services/api/client";
+import { AppError } from "@/services/api/errors";
+import { normalizeSupportingFile } from "@/features/requests/supportingUpload";
+import type { LocalSelectedFile } from "@/features/requests/types";
 import { scheduleKeys } from "./queryKeys";
 import type {
   AvailabilityDatesResponse,
@@ -13,6 +16,7 @@ import type {
   EligiblePriest,
   RecommendationRequestPayload,
   ScheduleRecommendationsResponse,
+  ScheduleServiceRequirement,
   SchedulingConfiguration,
   ScheduleItem,
   ScheduleListResponse,
@@ -246,6 +250,8 @@ export const useRecommendations = (
 export interface CreateScheduleInput {
   payload: CreateSchedulePayload;
   idempotencyKey?: string | null;
+  requirements?: ScheduleServiceRequirement[];
+  files?: Record<string, LocalSelectedFile>;
 }
 
 export const createScheduleRequest = async (
@@ -256,11 +262,66 @@ export const createScheduleRequest = async (
     headers["Idempotency-Key"] = input.idempotencyKey;
   }
 
+  const orderedRequirements = [...(input.requirements ?? [])].sort((a, b) => a.id.localeCompare(b.id));
+  const missing = orderedRequirements.filter(
+    (req) => !input.files?.[req.id]
+  );
+  if (missing.length > 0) {
+    throw new AppError({
+      kind: "VALIDATION",
+      code: "MISSING_SCHEDULE_ATTACHMENTS",
+      message: `Missing required prerequisite documents: ${missing.map((r) => r.label).join(", ")}.`,
+    });
+  }
+
+  if (orderedRequirements.length > 3) {
+    throw new AppError({
+      kind: "VALIDATION",
+      code: "TOO_MANY_ATTACHMENTS",
+      message: "A maximum of 3 prerequisite documents can be submitted.",
+    });
+  }
+
+  const requirementIds = orderedRequirements.map((r) => r.id);
+  const normalizedFiles = orderedRequirements.map((r) => {
+    const raw = input.files![r.id];
+    return normalizeSupportingFile(raw);
+  });
+
+  const bookingPayload: Record<string, unknown> = {
+    parishId: input.payload.parishId,
+    eventType: input.payload.eventType,
+    date: input.payload.date,
+    timeSlot: input.payload.timeSlot,
+  };
+  if (input.payload.remarks?.trim()) {
+    bookingPayload.remarks = input.payload.remarks.trim();
+  }
+  if (input.payload.requestedPriestId !== undefined && input.payload.requestedPriestId !== null) {
+    bookingPayload.requestedPriestId = input.payload.requestedPriestId;
+  }
+
+  const createBody = () => {
+    const formData = new FormData();
+    formData.append("booking", JSON.stringify(bookingPayload));
+    formData.append("requirementIds", JSON.stringify(requirementIds));
+    for (const file of normalizedFiles) {
+      formData.append("files", {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType,
+      } as unknown as Blob);
+    }
+    return formData;
+  };
+
   return apiClient.request<ScheduleItem>({
-    path: "/schedule-requests",
+    path: "/schedule-requests/web",
     method: "POST",
-    body: input.payload,
+    createBody,
     headers,
+    isMultipart: true,
+    timeoutMs: 60_000,
     auth: true,
   });
 };

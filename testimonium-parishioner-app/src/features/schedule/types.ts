@@ -160,14 +160,22 @@ export interface AvailabilityDatesResponse {
   dates: string[];
 }
 
+export interface ScheduleServiceRequirement {
+  id: string;
+  label: string;
+}
+
+export interface SchedulingServiceConfig {
+  eventType: ScheduleEventType;
+  label: string;
+  requirements?: ScheduleServiceRequirement[];
+}
+
 export interface SchedulingConfiguration {
   parishId: number;
   schedulingAvailable: boolean;
   configurationUnavailable: boolean;
-  services: {
-    eventType: ScheduleEventType;
-    label: string;
-  }[];
+  services: SchedulingServiceConfig[];
   timeSlots: string[];
   capacity: {
     dailyLimit: number;

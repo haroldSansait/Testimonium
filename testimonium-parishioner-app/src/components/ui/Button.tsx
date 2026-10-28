@@ -56,6 +56,7 @@ export const Button: React.FC<ButtonProps> = ({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={props.accessibilityLabel ?? title}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
       hitSlop={props.hitSlop ?? defaultHitSlop}

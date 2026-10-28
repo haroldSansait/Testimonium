@@ -29,8 +29,8 @@ export const normalizeScheduleRemarks = (remarks?: string | null): string => {
 
 /**
  * Builds the canonical signature for a schedule creation payload.
- * Bound to the EXACT same 5 canonical fields as the backend payload hash:
- * parishId, eventType, requestedDate, timeSlot, and normalized remarks.
+ * Accounts for parishId, eventType, requestedDate, timeSlot, normalized remarks,
+ * requestedPriestId, and prerequisite upload signature.
  */
 export const makeSchedulePayloadSignature = (payload: {
   parishId: number | string;
@@ -39,6 +39,7 @@ export const makeSchedulePayloadSignature = (payload: {
   timeSlot: string;
   remarks?: string | null;
   requestedPriestId?: number | null;
+  uploadSignature?: string;
 }): string => {
   const normParish = Number(payload.parishId);
   const normEvent = String(payload.eventType || "").toUpperCase().trim();
@@ -46,7 +47,10 @@ export const makeSchedulePayloadSignature = (payload: {
   const normSlot = String(payload.timeSlot || "").trim().toUpperCase();
   const normRemarks = normalizeScheduleRemarks(payload.remarks);
   const normPriest = payload.requestedPriestId ? String(payload.requestedPriestId) : "";
-  return `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}|${normPriest}`;
+  const uploadSig = payload.uploadSignature ? payload.uploadSignature.trim() : "";
+  return uploadSig
+    ? `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}|${normPriest}|${uploadSig}`
+    : `${normParish}|${normEvent}|${normDate}|${normSlot}|${normRemarks}|${normPriest}`;
 };
 
 /**
