@@ -16,6 +16,7 @@ import TermsPage from './pages/public/TermsPage';
 import PrivacyPage from './pages/public/PrivacyPage';
 import VerifyEmailPage from './pages/public/VerifyEmailPage';
 import ForgotPasswordPage from './pages/public/ForgotPasswordPage';
+import DownloadPage from './pages/public/DownloadPage';
 
 // Authenticated Pages (Lazy loaded for optimal code-splitting and loading speeds)
 const HomePage = React.lazy(() => import('./pages/dashboard/HomePage'));
@@ -61,6 +62,7 @@ const AppWithSessionModal: React.FC = () => {
         <Route path="/signup" element={<PublicRoute element={<SignupPage />} />} />
         <Route path="/terms" element={<PublicRoute element={<TermsPage />} />} />
         <Route path="/privacy" element={<PublicRoute element={<PrivacyPage />} />} />
+        <Route path="/download" element={<PublicRoute element={<DownloadPage />} />} />
         <Route path="/verify-email" element={<PublicRoute element={<VerifyEmailPage key={`${auth.user?.uid}:${auth.user?.email}`} />} />} />
         <Route path="/forgot-password" element={<PublicRoute element={<ForgotPasswordPage key={auth.user?.uid ?? "signed-out"} />} />} />
 

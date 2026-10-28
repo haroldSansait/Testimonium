@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/Button';
@@ -6,6 +6,10 @@ import { Button } from '../components/ui/Button';
 export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [location.pathname]);
 
   const isLoginPage = location.pathname === '/login';
   const isSignupPage = location.pathname === '/signup';
@@ -107,6 +111,9 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
             </Link>
             <Link to="/signup" className="hover:text-crimson transition-colors focus-ring rounded px-1">
               Register
+            </Link>
+            <Link to="/download" className="hover:text-crimson transition-colors focus-ring rounded px-1">
+              Download App
             </Link>
             <Link to="/terms" className="hover:text-crimson transition-colors focus-ring rounded px-1">
               Terms of Service

@@ -44,6 +44,10 @@ export const LandingPage: React.FC = () => {
     threshold: 0.1,
   });
 
+  const { ref: mobileAppRef, isVisible: isMobileAppVisible } = useScrollReveal<HTMLElement>({
+    threshold: 0.1,
+  });
+
   const { ref: staffRef, isVisible: isStaffVisible } = useScrollReveal<HTMLElement>({
     threshold: 0.15,
   });
@@ -271,6 +275,36 @@ export const LandingPage: React.FC = () => {
             <p className="text-xs text-text-muted font-bold tracking-wider uppercase">
               Matthew 18:20
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Android Mobile App Promotion Section */}
+      <section ref={mobileAppRef} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <div
+          className={`relative overflow-hidden rounded-card bg-gradient-to-br from-[#7B1C2A] via-[#6B0F1A] to-[#4A0A12] text-white p-8 sm:p-10 md:p-12 shadow-card border border-crimson-dark/60 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+            isMobileAppVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'
+          }`}
+        >
+          {/* Subtle background ambient glow */}
+          <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 rounded-full bg-red-400/10 blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 max-w-2xl mx-auto text-center space-y-5">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-tight leading-snug">
+              Get TESTIMONIUM for Android
+            </h2>
+            <p className="text-xs sm:text-sm md:text-base text-white/85 leading-relaxed font-normal">
+              Access diocesan sacramental registries, request baptismal and marriage certificates, schedule parish appointments, and track your records directly from your mobile device.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => navigate('/download')}
+                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 bg-white text-crimson hover:bg-white/95 font-bold rounded-button shadow-md transition-all active:scale-[0.98] text-sm sm:text-base focus-ring"
+                aria-label="Download TESTIMONIUM for Android"
+              >
+                Download for Android
+              </button>
+            </div>
           </div>
         </div>
       </section>
