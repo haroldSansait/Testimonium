@@ -12,9 +12,11 @@ import {
   needsGoogleLegalNameConfirmation,
 } from "../utils/googleLegalNameConfirmation.js";
 import {
+  cleanNullableNameValue,
   hasAnyNameField,
   hasLegalNameChange,
   normalizeAndConstructFullName,
+  resolveParishionerNameUpdate,
   resolveUserNameUpdate,
 } from "../utils/nameUtils.js";
 
@@ -342,6 +344,26 @@ export const updateProfile = async (req, res, next) => {
               throw err;
             }
 
+            const roleName = latestUser.role?.roleName || latestUser.role;
+            const isParishioner = roleName === "PARISHIONER";
+
+            if (isParishioner && latestUser.governmentIdVerification?.status === "VERIFIED") {
+              const nameFields = ["fullName", "firstName", "middleName", "lastName", "suffix"];
+              const hasDirectFieldDiff = nameFields.some(
+                (field) =>
+                  nameInput[field] !== undefined &&
+                  cleanNullableNameValue(nameInput[field]) !== cleanNullableNameValue(latestUser[field])
+              );
+              if (hasDirectFieldDiff) {
+                const err = new Error(
+                  "Your legal name is locked after Government ID verification and cannot be changed."
+                );
+                err.statusCode = 403;
+                err.code = "LEGAL_NAME_LOCKED";
+                throw err;
+              }
+            }
+
             if (legalNameConfirmationAction !== undefined) {
               const f = typeof firstName === "string" ? firstName.trim() : "";
               const l = typeof lastName === "string" ? lastName.trim() : "";
@@ -353,11 +375,29 @@ export const updateProfile = async (req, res, next) => {
               }
             }
 
-            const nameUpdate = resolveUserNameUpdate(nameInput, latestUser);
-            const roleName = latestUser.role?.roleName || latestUser.role;
+            if (isParishioner && needsGoogleLegalNameConfirmation(latestUser) && !legalNameConfirmationAction) {
+              const hasStructuredAttempt = ["firstName", "middleName", "lastName", "suffix"].some(
+                (field) => nameInput[field] !== undefined
+              );
+              const combinedAttempt = cleanNullableNameValue(fullName);
+              const hasChangedCombinedAttempt =
+                fullName !== undefined && combinedAttempt !== cleanNullableNameValue(latestUser.fullName);
+              if (hasStructuredAttempt || hasChangedCombinedAttempt) {
+                const err = new Error(
+                  "Please complete your initial legal-name confirmation on your Profile page before updating your name."
+                );
+                err.statusCode = 403;
+                err.code = "LEGAL_NAME_CONFIRMATION_REQUIRED";
+                throw err;
+              }
+            }
+
+            const nameUpdate = isParishioner
+              ? resolveParishionerNameUpdate(nameInput, latestUser)
+              : resolveUserNameUpdate(nameInput, latestUser);
 
             if (
-              roleName === "PARISHIONER" &&
+              isParishioner &&
               latestUser.governmentIdVerification?.status === "VERIFIED" &&
               hasLegalNameChange(nameInput, nameUpdate, latestUser)
             ) {

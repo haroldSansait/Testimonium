@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { ID_TYPE_LABELS, REJECTION_REASON_MESSAGES } from "./types/governmentId";
-import { GoogleLegalNameConfirmationCard } from "./components/GoogleLegalNameConfirmationCard";
+import { GoogleLegalNameConfirmationCard, StructuredLegalNameEditor } from "./components/GoogleLegalNameConfirmationCard";
 import type { UpdateProfilePayload } from "@/types/auth";
 
 export const ProfileScreen: React.FC = () => {
@@ -31,11 +31,13 @@ export const ProfileScreen: React.FC = () => {
   const { profile, logout, updateProfile, isUpdatingProfile } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const [justConfirmedLegalName, setJustConfirmedLegalName] = useState(false);
+  const [isEditingFullName, setIsEditingFullName] = useState(false);
+  const isLegalNameLocked = profile?.governmentIdVerificationStatus === "VERIFIED";
   const isGovernmentIdExpired =
     !profile?.isGovernmentIdVerified &&
     profile?.governmentIdVerificationStatus === "VERIFIED";
   const needsLegalNameConfirmation = Boolean(
-    profile?.needsLegalNameConfirmation && profile?.governmentIdVerificationStatus !== "VERIFIED"
+    profile?.needsLegalNameConfirmation && !isLegalNameLocked
   );
 
   const handleSaveLegalName = async (payload: UpdateProfilePayload) => {
@@ -44,6 +46,12 @@ export const ProfileScreen: React.FC = () => {
       throw new Error("Your legal name has not been confirmed. Please try again.");
     }
     setJustConfirmedLegalName(true);
+  };
+
+  const handleSaveStructuredFullName = async (payload: UpdateProfilePayload) => {
+    await updateProfile(payload);
+    setIsEditingFullName(false);
+    Alert.alert("Full Name Updated", "Your legal name has been updated successfully.");
   };
 
   const handleLogout = () => {
@@ -173,8 +181,32 @@ export const ProfileScreen: React.FC = () => {
                 showDot={true}
               />
             </View>
+            {!isLegalNameLocked && !needsLegalNameConfirmation && !isEditingFullName && (
+              <Button
+                title="Change Full Name"
+                variant="outline"
+                size="sm"
+                onPress={() => setIsEditingFullName(true)}
+                disabled={isUpdatingProfile}
+                style={{ marginTop: spacing.sm, alignSelf: "flex-start" }}
+              />
+            )}
           </View>
         </View>
+
+        {!isLegalNameLocked && !needsLegalNameConfirmation && isEditingFullName && (
+          <View style={styles.sectionWrap}>
+            <StructuredLegalNameEditor
+              initialFirstName={profile?.firstName}
+              initialMiddleName={profile?.middleName}
+              initialLastName={profile?.lastName}
+              initialSuffix={profile?.suffix}
+              isUpdating={isUpdatingProfile}
+              onSave={handleSaveStructuredFullName}
+              onCancel={() => setIsEditingFullName(false)}
+            />
+          </View>
+        )}
 
         {needsLegalNameConfirmation && (
           <GoogleLegalNameConfirmationCard

@@ -50,6 +50,144 @@ export function doesConfirmedNameMatchDisplayed(
   return Boolean(normalizedDisplayed && normalizedDisplayed === normalizedReconstructed);
 }
 
+interface StructuredLegalNameEditorProps {
+  initialFirstName?: string | null;
+  initialMiddleName?: string | null;
+  initialLastName?: string | null;
+  initialSuffix?: string | null;
+  isUpdating: boolean;
+  onSave: (payload: UpdateProfilePayload) => Promise<void>;
+  onCancel: () => void;
+}
+
+export const StructuredLegalNameEditor: React.FC<
+  StructuredLegalNameEditorProps
+> = ({
+  initialFirstName,
+  initialMiddleName,
+  initialLastName,
+  initialSuffix,
+  isUpdating,
+  onSave,
+  onCancel,
+}) => {
+  const [firstName, setFirstName] = useState(initialFirstName || "");
+  const [middleName, setMiddleName] = useState(initialMiddleName || "");
+  const [lastName, setLastName] = useState(initialLastName || "");
+  const [suffix, setSuffix] = useState(initialSuffix || "");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (isUpdating) return;
+
+    const cleanFirst = firstName.trim().replace(/\s+/g, " ");
+    const cleanMiddle = middleName.trim().replace(/\s+/g, " ");
+    const cleanLast = lastName.trim().replace(/\s+/g, " ");
+    const cleanSuffix = suffix.trim().replace(/\s+/g, " ");
+
+    if (!cleanFirst || !cleanLast) {
+      setErrorMessage("First Name and Last Name are required.");
+      return;
+    }
+
+    setErrorMessage(null);
+    try {
+      await onSave({
+        firstName: cleanFirst,
+        middleName: cleanMiddle || "",
+        lastName: cleanLast,
+        suffix: cleanSuffix || "",
+      });
+    } catch (err: any) {
+      setErrorMessage(
+        err?.message || "Failed to update your legal name. Please try again."
+      );
+    }
+  };
+
+  return (
+    <View style={styles.editorCard}>
+      <Text style={styles.editorTitle} allowFontScaling>
+        Change Full Name
+      </Text>
+      <Text style={styles.inputsHint} allowFontScaling>
+        Enter your legal name components as shown on your Government ID.
+      </Text>
+
+      <TextInput
+        label="First Name *"
+        value={firstName}
+        onChangeText={(text) => {
+          setFirstName(text);
+          setErrorMessage(null);
+        }}
+        placeholder="e.g. Juan"
+        autoCapitalize="words"
+        editable={!isUpdating}
+      />
+      <TextInput
+        label="Middle Name (Optional)"
+        value={middleName}
+        onChangeText={(text) => {
+          setMiddleName(text);
+          setErrorMessage(null);
+        }}
+        placeholder="e.g. Santos"
+        autoCapitalize="words"
+        editable={!isUpdating}
+      />
+      <TextInput
+        label="Last Name *"
+        value={lastName}
+        onChangeText={(text) => {
+          setLastName(text);
+          setErrorMessage(null);
+        }}
+        placeholder="e.g. Dela Cruz"
+        autoCapitalize="words"
+        editable={!isUpdating}
+      />
+      <TextInput
+        label="Suffix (Optional)"
+        value={suffix}
+        onChangeText={(text) => {
+          setSuffix(text);
+          setErrorMessage(null);
+        }}
+        placeholder="e.g. Jr., III"
+        autoCapitalize="words"
+        editable={!isUpdating}
+      />
+
+      {errorMessage && (
+        <Text style={styles.errorText} accessibilityRole="alert" allowFontScaling>
+          {errorMessage}
+        </Text>
+      )}
+
+      <View style={styles.editorActionRow}>
+        <Button
+          title="Cancel"
+          variant="outline"
+          size="sm"
+          disabled={isUpdating}
+          onPress={onCancel}
+          style={styles.editorActionBtn}
+        />
+        <Button
+          title="Save Full Name"
+          variant="primary"
+          size="sm"
+          loading={isUpdating}
+          disabled={isUpdating}
+          onPress={() => void handleSave()}
+          style={styles.editorActionBtn}
+        />
+      </View>
+    </View>
+  );
+};
+
 interface GoogleLegalNameConfirmationCardProps {
   displayedFullName?: string | null;
   isUpdating: boolean;
@@ -300,5 +438,27 @@ const styles = StyleSheet.create({
     borderRadius: radii.xs,
     borderWidth: 1,
     borderColor: colors.danger,
+  },
+  editorCard: {
+    backgroundColor: colors.background,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  editorTitle: {
+    ...fontStyles.subheading,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  editorActionRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  editorActionBtn: {
+    flex: 1,
   },
 });

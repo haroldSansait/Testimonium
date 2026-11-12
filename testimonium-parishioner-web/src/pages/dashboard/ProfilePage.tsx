@@ -44,6 +44,15 @@ export const ProfilePage: React.FC = () => {
   const [confirmingLegalName, setConfirmingLegalName] = useState(false);
   const [justConfirmedLegalName, setJustConfirmedLegalName] = useState(false);
 
+  // Structured Change Full Name state (unverified parishioners after initial confirmation)
+  const [isEditingFullName, setIsEditingFullName] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editMiddleName, setEditMiddleName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editSuffix, setEditSuffix] = useState('');
+  const [editNameError, setEditNameError] = useState<string | null>(null);
+  const [savingFullName, setSavingFullName] = useState(false);
+
   const isGovIdVerified = Boolean(
     appProfile?.isGovernmentIdVerified ?? profile?.isGovernmentIdVerified
   );
@@ -158,28 +167,75 @@ export const ProfilePage: React.FC = () => {
     }
   };
 
+  const handleOpenChangeFullName = () => {
+    if (isLegalNameLocked || needsLegalNameConfirmation) return;
+    setEditFirstName(storedFirstName || '');
+    setEditMiddleName(storedMiddleName || '');
+    setEditLastName(storedLastName || '');
+    setEditSuffix(storedSuffix || '');
+    setEditNameError(null);
+    setIsEditingFullName(true);
+  };
+
+  const handleCancelChangeFullName = () => {
+    setIsEditingFullName(false);
+    setEditFirstName('');
+    setEditMiddleName('');
+    setEditLastName('');
+    setEditSuffix('');
+    setEditNameError(null);
+  };
+
+  const handleSaveStructuredFullName = async () => {
+    if (saving || confirmingLegalName || savingFullName || isLegalNameLocked || needsLegalNameConfirmation) return;
+
+    const cleanFirst = editFirstName.trim().replace(/\s+/g, ' ');
+    const cleanMiddle = editMiddleName.trim().replace(/\s+/g, ' ');
+    const cleanLast = editLastName.trim().replace(/\s+/g, ' ');
+    const cleanSuffix = editSuffix.trim().replace(/\s+/g, ' ');
+
+    if (!cleanFirst || !cleanLast) {
+      setEditNameError('First Name and Last Name are required.');
+      return;
+    }
+
+    setEditNameError(null);
+    setSavingFullName(true);
+    try {
+      await updateProfile({
+        firstName: cleanFirst,
+        middleName: cleanMiddle || '',
+        lastName: cleanLast,
+        suffix: cleanSuffix || '',
+      });
+      const refreshedProfile = await refreshProfile(true);
+      if (!refreshedProfile) {
+        throw new Error('Failed to synchronize updated profile state with the server.');
+      }
+      setDisplayName(refreshedProfile.fullName);
+      setIsEditingFullName(false);
+      toast.success('Full name updated successfully.');
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to update full name. Please try again.';
+      setEditNameError(msg);
+      toast.error(msg);
+    } finally {
+      setSavingFullName(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving || confirmingLegalName) return;
+    if (saving || confirmingLegalName || savingFullName) return;
 
     const wasCompletingProfile = isNewUser || Boolean(appProfile?.needsProfileCompletion);
     setSaving(true);
     try {
-      const payload =
-        isLegalNameLocked || needsLegalNameConfirmation
-          ? {
-              phone,
-              address,
-              notificationsEnabled: emailNotifications,
-            }
-          : {
-              ...(displayName !== profile?.displayName ? { displayName } : {}),
-              phone,
-              address,
-              notificationsEnabled: emailNotifications,
-            };
-
-      await updateProfile(payload);
+      await updateProfile({
+        phone,
+        address,
+        notificationsEnabled: emailNotifications,
+      });
       const refreshedProfile = await refreshProfile(true);
 
       if (!refreshedProfile) {
@@ -484,18 +540,18 @@ export const ProfilePage: React.FC = () => {
           )}
 
           {justConfirmedLegalName && !isGovIdVerified && (
-            <Card className="border-emerald-300 bg-emerald-50/70 shadow-sm">
+            <Card className="border-crimson/30 bg-[#FDF2F4] shadow-sm">
               <CardContent className="pt-5 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <CheckCircle2 size={20} className="text-emerald-700 shrink-0 mt-0.5" />
-                  <p className="text-xs sm:text-sm font-medium text-emerald-950 leading-relaxed">
+                  <CheckCircle2 size={20} className="text-crimson shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm font-medium text-crimson-dark leading-relaxed">
                     Your legal name has been saved successfully. Please verify your Government ID to confirm your identity and access document requests.
                   </p>
                 </div>
                 <Button
                   type="button"
-                  size="sm"
-                  className="shrink-0"
+                  size="md"
+                  className="shrink-0 px-5 py-2.5"
                   onClick={handleOpenGovIdVerification}
                 >
                   Verify Government ID Now
@@ -513,15 +569,30 @@ export const ProfilePage: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-1.5">
-                  <Input
-                    label="Full Name"
-                    value={displayName}
-                    onChange={e => setDisplayName(e.target.value)}
-                    placeholder="Full Name"
-                    disabled={isLegalNameLocked || needsLegalNameConfirmation}
-                    readOnly={isLegalNameLocked || needsLegalNameConfirmation}
-                  />
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                    <div className="flex-1 [&>div]:mb-0">
+                      <Input
+                        label="Full Name"
+                        value={displayName}
+                        placeholder="Full Name"
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                    {!isLegalNameLocked && !needsLegalNameConfirmation && !isEditingFullName && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="md"
+                        onClick={handleOpenChangeFullName}
+                        disabled={saving || savingFullName}
+                        className="shrink-0 h-[42px]"
+                      >
+                        Change Full Name
+                      </Button>
+                    )}
+                  </div>
                   {isLegalNameLocked && (
                     <p className="text-[11px] text-text-muted flex items-center gap-1.5">
                       <Lock size={12} className="text-emerald-700 shrink-0" />
@@ -534,6 +605,102 @@ export const ProfilePage: React.FC = () => {
                     </p>
                   )}
                 </div>
+
+                {!isLegalNameLocked && !needsLegalNameConfirmation && isEditingFullName && (
+                  <div className="p-4 bg-slate-50 border border-border rounded-card space-y-4">
+                    <div className="space-y-1">
+                      <h3 className="text-xs font-bold text-text-primary uppercase tracking-wide">
+                        Change Full Name
+                      </h3>
+                      <p className="text-xs text-text-muted">
+                        Enter your legal name components as shown on your Government ID.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Input
+                        label="First Name *"
+                        type="text"
+                        placeholder="Juan"
+                        value={editFirstName}
+                        onChange={(e) => {
+                          setEditFirstName(e.target.value);
+                          setEditNameError(null);
+                        }}
+                        disabled={savingFullName}
+                      />
+                      <Input
+                        label="Middle Name"
+                        type="text"
+                        placeholder="Santos (Optional)"
+                        value={editMiddleName}
+                        onChange={(e) => {
+                          setEditMiddleName(e.target.value);
+                          setEditNameError(null);
+                        }}
+                        disabled={savingFullName}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <Input
+                          label="Last Name *"
+                          type="text"
+                          placeholder="Dela Cruz"
+                          value={editLastName}
+                          onChange={(e) => {
+                            setEditLastName(e.target.value);
+                            setEditNameError(null);
+                          }}
+                          disabled={savingFullName}
+                        />
+                      </div>
+                      <Input
+                        label="Suffix"
+                        type="text"
+                        placeholder="Jr. (Opt.)"
+                        value={editSuffix}
+                        onChange={(e) => {
+                          setEditSuffix(e.target.value);
+                          setEditNameError(null);
+                        }}
+                        disabled={savingFullName}
+                      />
+                    </div>
+
+                    {editNameError && (
+                      <div
+                        role="alert"
+                        className="p-3 bg-red-50 border border-red-200 rounded-button text-red-700 text-xs flex items-start gap-2"
+                      >
+                        <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                        <span>{editNameError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCancelChangeFullName}
+                        disabled={savingFullName}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        loading={savingFullName}
+                        disabled={saving || savingFullName}
+                        onClick={() => void handleSaveStructuredFullName()}
+                      >
+                        Save Full Name
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {isLegalNameLocked && hasStructuredName && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
@@ -623,7 +790,7 @@ export const ProfilePage: React.FC = () => {
 
             {/* Save Status Bar */}
             <div className="flex items-center justify-end">
-              <Button type="submit" loading={saving} disabled={saving || confirmingLegalName}>Save Settings</Button>
+              <Button type="submit" loading={saving} disabled={saving || confirmingLegalName || savingFullName}>Save Settings</Button>
             </div>
           </form>
         </div>

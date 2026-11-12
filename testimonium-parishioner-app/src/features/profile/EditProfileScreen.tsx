@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,7 +14,10 @@ import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { AppHeader, Button, TextInput } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
-import { GoogleLegalNameConfirmationCard } from "./components/GoogleLegalNameConfirmationCard";
+import {
+  GoogleLegalNameConfirmationCard,
+  StructuredLegalNameEditor,
+} from "./components/GoogleLegalNameConfirmationCard";
 import type { UpdateProfilePayload } from "@/types/auth";
 
 export const EditProfileScreen: React.FC = () => {
@@ -27,18 +30,13 @@ export const EditProfileScreen: React.FC = () => {
     profile?.needsLegalNameConfirmation && !isLegalNameLocked
   );
 
-  const [fullName, setFullName] = useState<string>(profile?.fullName || "");
-  const [nameEdited, setNameEdited] = useState(false);
   const [contactNumber, setContactNumber] = useState<string>(
     profile?.contactNumber || ""
   );
   const [address, setAddress] = useState<string>(profile?.address || "");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [justConfirmedLegalName, setJustConfirmedLegalName] = useState(false);
-
-  useEffect(() => {
-    if (!nameEdited) setFullName(profile?.fullName || "");
-  }, [profile?.fullName, nameEdited]);
+  const [isEditingFullName, setIsEditingFullName] = useState(false);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -53,38 +51,25 @@ export const EditProfileScreen: React.FC = () => {
     if (!updated || updated.needsLegalNameConfirmation) {
       throw new Error("Your legal name has not been confirmed. Please try again.");
     }
-    if (updated?.fullName) {
-      setFullName(updated.fullName);
-    }
     setJustConfirmedLegalName(true);
   };
 
-  const handleSave = async () => {
-    if (!isLegalNameLocked && !needsLegalNameConfirmation) {
-      const trimmedName = fullName.trim();
-      if (!trimmedName || trimmedName.length < 2) {
-        setErrorMessage("Full name is required (at least 2 characters).");
-        return;
-      }
-    }
+  const handleSaveStructuredFullName = async (payload: UpdateProfilePayload) => {
+    await updateProfile(payload);
+    setIsEditingFullName(false);
+    Alert.alert("Full Name Updated", "Your legal name has been updated successfully.");
+  };
 
+  const handleSave = async () => {
     setErrorMessage(null);
 
     try {
-      const payload: UpdateProfilePayload =
-        isLegalNameLocked || needsLegalNameConfirmation
-          ? {
-              contactNumber: contactNumber.trim() || undefined,
-              address: address.trim() || undefined,
-            }
-          : {
-              ...(nameEdited ? { fullName: fullName.trim() } : {}),
-              contactNumber: contactNumber.trim() || undefined,
-              address: address.trim() || undefined,
-            };
+      const payload: UpdateProfilePayload = {
+        contactNumber: contactNumber.trim() || undefined,
+        address: address.trim() || undefined,
+      };
 
       await updateProfile(payload);
-      setNameEdited(false);
 
       Alert.alert(
         "Profile Updated",
@@ -165,44 +150,53 @@ export const EditProfileScreen: React.FC = () => {
               </Text>
             </View>
 
-            {isLegalNameLocked || needsLegalNameConfirmation ? (
-              <View style={styles.readOnlyRow}>
-                <Text style={styles.readOnlyLabel} allowFontScaling>
-                  Full Name
-                </Text>
-                <Text style={styles.readOnlyValue} allowFontScaling>
-                  {profile?.fullName || fullName}
-                </Text>
-                {isLegalNameLocked && profile?.firstName && profile?.lastName && (
-                  <Text style={styles.readOnlyHint} allowFontScaling>
-                    {[
-                      `First: ${profile.firstName}`,
-                      profile.middleName ? `Middle: ${profile.middleName}` : null,
-                      `Last: ${profile.lastName}`,
-                      profile.suffix ? `Suffix: ${profile.suffix}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" • ")}
-                  </Text>
-                )}
+            <View style={styles.readOnlyRow}>
+              <Text style={styles.readOnlyLabel} allowFontScaling>
+                Full Name
+              </Text>
+              <Text style={styles.readOnlyValue} allowFontScaling>
+                {profile?.fullName || ""}
+              </Text>
+              {isLegalNameLocked && profile?.firstName && profile?.lastName && (
                 <Text style={styles.readOnlyHint} allowFontScaling>
-                  {isLegalNameLocked
-                    ? "Your legal name is locked after Government ID verification."
-                    : "Confirm or correct your legal name above."}
+                  {[
+                    `First: ${profile.firstName}`,
+                    profile.middleName ? `Middle: ${profile.middleName}` : null,
+                    `Last: ${profile.lastName}`,
+                    profile.suffix ? `Suffix: ${profile.suffix}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" • ")}
                 </Text>
-              </View>
-            ) : (
-              <TextInput
-                label="Full Name *"
-                value={fullName}
-                onChangeText={(text) => {
-                  setNameEdited(true);
-                  setFullName(text);
-                  setErrorMessage(null);
-                }}
-                placeholder="e.g. Maria Santos Dela Cruz"
-                autoCapitalize="words"
-                maxLength={100}
+              )}
+              <Text style={styles.readOnlyHint} allowFontScaling>
+                {isLegalNameLocked
+                  ? "Your legal name is locked after Government ID verification."
+                  : needsLegalNameConfirmation
+                  ? "Confirm or correct your legal name above."
+                  : "Full Name is read-only. Use Change Full Name to update your legal name."}
+              </Text>
+              {!isLegalNameLocked && !needsLegalNameConfirmation && !isEditingFullName && (
+                <Button
+                  title="Change Full Name"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsEditingFullName(true)}
+                  disabled={isUpdatingProfile}
+                  style={{ marginTop: spacing.xs, alignSelf: "flex-start" }}
+                />
+              )}
+            </View>
+
+            {!isLegalNameLocked && !needsLegalNameConfirmation && isEditingFullName && (
+              <StructuredLegalNameEditor
+                initialFirstName={profile?.firstName}
+                initialMiddleName={profile?.middleName}
+                initialLastName={profile?.lastName}
+                initialSuffix={profile?.suffix}
+                isUpdating={isUpdatingProfile}
+                onSave={handleSaveStructuredFullName}
+                onCancel={() => setIsEditingFullName(false)}
               />
             )}
 

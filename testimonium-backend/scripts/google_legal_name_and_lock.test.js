@@ -521,3 +521,101 @@ test("17. Staff account editing via UserService.editUser remains unaffected", as
   const dto = await userService.editUser(55, { name: "Updated Staff Name" }, 1);
   assert.equal(dto.name, "Updated Staff Name");
 });
+
+test("parishioner structured Change Full Name requires complete structured inputs, blocks confirmation bypass, and preserves components on contact-only saves", async (t) => {
+  const stored = makeUser({
+    fullName: "Google Display Name",
+    activityLogs: [
+      {
+        action: "Google New User",
+        metadata: JSON.stringify({ legalNameConfirmationRequired: true }),
+      },
+    ],
+  });
+
+  t.mock.method(UserRepository.prototype, "findById", async () => ({ ...stored }));
+  t.mock.method(UserRepository.prototype, "update", async (_id, data) => {
+    Object.assign(stored, data);
+    return { ...stored };
+  });
+  t.mock.method(AuthService.prototype, "toCurrentApplicationProfile", async function (user, token) {
+    return this.toApplicationProfile(user, token, false, { termsVersion: "v1", privacyVersion: "v1" });
+  });
+  t.mock.method(verification, "withUserVerificationLease", async (_id, cb) => cb());
+  t.mock.method(AuditLogService, "log", async (_uid, action, _tx, _sys, extra) => {
+    if (action === "Profile Updated" && extra?.metadata?.legalNameConfirmed) {
+      stored.activityLogs = [
+        ...stored.activityLogs,
+        { action, metadata: JSON.stringify(extra.metadata) },
+      ];
+    }
+  });
+
+  // Cannot bypass initial Google confirmation via ordinary structured update
+  await assert.rejects(
+    () =>
+      invokeController(updateProfile, { ...stored }, {
+        firstName: "Maria",
+        lastName: "Reyes",
+      }),
+    { statusCode: 403, code: "LEGAL_NAME_CONFIRMATION_REQUIRED" }
+  );
+
+  // Initial Google confirmation succeeds
+  const confirmed = await invokeController(updateProfile, { ...stored }, {
+    firstName: "Maria",
+    middleName: "Clara",
+    lastName: "Reyes",
+    suffix: "",
+    legalNameConfirmationAction: "correct",
+  });
+  assert.equal(confirmed.payload.data.needsLegalNameConfirmation, false);
+  assert.equal(confirmed.payload.data.fullName, "Maria Clara Reyes");
+
+  // After confirmation, standalone fullName edit is rejected
+  await assert.rejects(
+    () => invokeController(updateProfile, { ...stored }, { fullName: "Someone Else" }),
+    { statusCode: 400, code: "STRUCTURED_NAME_REQUIRED" }
+  );
+  assert.equal(stored.firstName, "Maria");
+
+  // Incomplete structured update is rejected
+  await assert.rejects(
+    () => invokeController(updateProfile, { ...stored }, { firstName: "Ana" }),
+    { statusCode: 400, code: "INVALID_NAME_FIELDS" }
+  );
+
+  // Inconsistent fullName + structured update is rejected
+  await assert.rejects(
+    () =>
+      invokeController(updateProfile, { ...stored }, {
+        firstName: "Ana",
+        lastName: "Santos",
+        fullName: "Different Full Name",
+      }),
+    { statusCode: 400, code: "INCONSISTENT_NAME_PAYLOAD" }
+  );
+
+  // Complete structured Change Full Name updates all 4 components and canonical fullName
+  const changed = await invokeController(updateProfile, { ...stored }, {
+    firstName: "  Ana   Maria ",
+    middleName: "",
+    lastName: " Santos ",
+    suffix: " II ",
+  });
+  assert.equal(changed.statusCode, 200);
+  assert.equal(changed.payload.data.firstName, "Ana Maria");
+  assert.equal(changed.payload.data.middleName, null);
+  assert.equal(changed.payload.data.lastName, "Santos");
+  assert.equal(changed.payload.data.suffix, "II");
+  assert.equal(changed.payload.data.fullName, "Ana Maria Santos II");
+
+  // Contact-only update leaves structured names intact
+  const contactSave = await invokeController(updateProfile, { ...stored }, {
+    contactNumber: "09180001111",
+    address: "Updated Address",
+  });
+  assert.equal(contactSave.payload.data.firstName, "Ana Maria");
+  assert.equal(contactSave.payload.data.lastName, "Santos");
+  assert.equal(contactSave.payload.data.suffix, "II");
+});

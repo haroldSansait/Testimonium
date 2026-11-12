@@ -11,7 +11,13 @@ import {
   normalizePriestId,
 } from "./SchedulingAvailability.js";
 import { defaultGovernmentIdVerificationService } from "./GovernmentIdVerificationService.js";
-import { hasAnyNameField, hasLegalNameChange, resolveUserNameUpdate } from "../utils/nameUtils.js";
+import {
+  cleanNullableNameValue,
+  hasAnyNameField,
+  hasLegalNameChange,
+  resolveParishionerNameUpdate,
+  resolveUserNameUpdate,
+} from "../utils/nameUtils.js";
 
 export class UserService {
   constructor(
@@ -174,7 +180,23 @@ export class UserService {
       const touchesName = hasAnyNameField(nameInput);
 
       const applyParishionerUpdate = async (latestUser) => {
-        const nameUpdate = resolveUserNameUpdate(nameInput, latestUser);
+        if (latestUser.governmentIdVerification?.status === "VERIFIED") {
+          const hasDirectFieldDiff = ["fullName", "firstName", "middleName", "lastName", "suffix"].some(
+            (field) =>
+              nameInput[field] !== undefined &&
+              cleanNullableNameValue(nameInput[field]) !== cleanNullableNameValue(latestUser[field])
+          );
+          if (hasDirectFieldDiff) {
+            const err = new Error(
+              "Your legal name is locked after Government ID verification and cannot be changed."
+            );
+            err.statusCode = 403;
+            err.code = "LEGAL_NAME_LOCKED";
+            throw err;
+          }
+        }
+
+        const nameUpdate = resolveParishionerNameUpdate(nameInput, latestUser);
         if (
           latestUser.governmentIdVerification?.status === "VERIFIED" &&
           hasLegalNameChange(nameInput, nameUpdate, latestUser)

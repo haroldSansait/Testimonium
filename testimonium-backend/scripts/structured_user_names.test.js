@@ -148,7 +148,7 @@ test('profile completion accepts nested registration components and preserves st
   assert.deepEqual(f.invalidations, []);
 });
 
-test('unverified legacy fullName-only updates clear outdated parts', async t => {
+test('unverified parishioner profile preserves unchanged fullName and rejects standalone combined-name changes', async t => {
   const unverified = profileFixture(t, {
     ...legacyUser(),
     ...parts,
@@ -156,8 +156,12 @@ test('unverified legacy fullName-only updates clear outdated parts', async t => 
   });
   await invoke(updateProfile, { ...unverified.stored }, { fullName });
   assert.equal(unverified.stored.firstName, parts.firstName);
-  await invoke(updateProfile, { ...unverified.stored }, { fullName: 'Maria Clara Reyes' });
-  for (const field of Object.keys(parts)) assert.equal(unverified.stored[field], null);
+  await assert.rejects(
+    () => invoke(updateProfile, { ...unverified.stored }, { fullName: 'Maria Clara Reyes' }),
+    { statusCode: 400, code: 'STRUCTURED_NAME_REQUIRED' }
+  );
+  assert.equal(unverified.stored.fullName, fullName);
+  assert.equal(unverified.stored.firstName, parts.firstName);
   assert.deepEqual(unverified.invalidations, []);
 });
 
@@ -192,13 +196,16 @@ test('contact-only updates leave existing components and verification untouched'
   assert.deepEqual(f.invalidations, []);
 });
 
-test('staff-managed unverified parishioner name edits save parts and verified parishioners stay locked', async t => {
+test('staff-managed unverified parishioner name edits save structured parts and reject standalone combined-name changes', async t => {
   const unverified = profileFixture(t, { ...legacyUser(), governmentIdVerification: { status: 'NOT_SUBMITTED' } });
   const service = new UserService();
   await service.editUser(12, parts, 1);
   assert.equal(unverified.stored.lastName, 'Dela Cruz');
-  await service.editUser(12, { name: 'Maria Clara Reyes' }, 1);
-  assert.equal(unverified.stored.firstName, null);
+  await assert.rejects(
+    () => service.editUser(12, { name: 'Maria Clara Reyes' }, 1),
+    { statusCode: 400, code: 'STRUCTURED_NAME_REQUIRED' }
+  );
+  assert.equal(unverified.stored.firstName, 'Juan Miguel');
   assert.deepEqual(unverified.invalidations, []);
 });
 

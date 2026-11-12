@@ -48,6 +48,16 @@ function profileHarness(overrides = {}, saveError = null) {
       if (payload.legalNameConfirmationAction) {
         appProfile = { ...appProfile, ...payload, fullName: payload.legalNameConfirmationAction === 'confirm' ? appProfile.fullName : constructCanonicalFullName(payload), needsLegalNameConfirmation: false };
         profile = mapped(); dirty = true;
+      } else if (payload.firstName && payload.lastName) {
+        appProfile = {
+          ...appProfile,
+          firstName: payload.firstName,
+          middleName: payload.middleName || null,
+          lastName: payload.lastName,
+          suffix: payload.suffix || null,
+          fullName: constructCanonicalFullName(payload),
+        };
+        profile = mapped(); dirty = true;
       }
     } }) },
     '../../utils/nameHelpers': { doesConfirmedNameMatchDisplayed },
@@ -190,6 +200,59 @@ test("Web ProfilePage uses Full Name label, legal-name confirmation prompt, and 
     true
   );
   assert.equal(src.includes("Verify Government ID Now"), true);
+  assert.equal(src.includes("Change Full Name"), true);
+  assert.equal(src.includes("Save Full Name"), true);
+  assert.equal(src.includes("Cancel"), true);
+  assert.equal(src.includes("onChange={e => setDisplayName(e.target.value)}"), false);
   assert.equal(src.includes("isLegalNameLocked || needsLegalNameConfirmation"), true);
+});
+
+test('Web ProfilePage keeps Full Name read-only for unverified users and supports Change Full Name (prepopulate, Save, Cancel)', async () => {
+  const h = profileHarness({
+    needsLegalNameConfirmation: false,
+    fullName: 'Juan Santos Dela Cruz Jr.',
+    firstName: 'Juan',
+    middleName: 'Santos',
+    lastName: 'Dela Cruz',
+    suffix: 'Jr.',
+    governmentIdVerificationStatus: 'NOT_SUBMITTED',
+  });
+
+  // Full Name is always read-only
+  assert.equal(h.input('Full Name').props.readOnly, true);
+  assert.equal(h.input('Full Name').props.disabled, true);
+
+  // Open Change Full Name -> prepopulated from stored columns
+  await h.click('Change Full Name');
+  assert.equal(h.input('First Name *').props.value, 'Juan');
+  assert.equal(h.input('Middle Name').props.value, 'Santos');
+  assert.equal(h.input('Last Name *').props.value, 'Dela Cruz');
+  assert.equal(h.input('Suffix').props.value, 'Jr.');
+
+  // Cancel discards edits without saving
+  await h.change('First Name *', 'Pedro');
+  await h.click('Cancel');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.input('Full Name').props.value, 'Juan Santos Dela Cruz Jr.');
+
+  // Reopen and Save Full Name
+  await h.click('Change Full Name');
+  assert.equal(h.input('First Name *').props.value, 'Juan');
+  await h.change('First Name *', 'Juan Miguel');
+  await h.change('Middle Name', '');
+  await h.click('Save Full Name');
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0][1])), {
+    firstName: 'Juan Miguel',
+    middleName: '',
+    lastName: 'Dela Cruz',
+    suffix: 'Jr.',
+  });
+  assert.equal(h.input('Full Name').props.value, 'Juan Miguel Dela Cruz Jr.');
+
+  // Ordinary Save Settings does not send any name fields
+  await h.saveSettings();
+  assert.equal('displayName' in h.calls[2][1], false);
+  assert.equal('fullName' in h.calls[2][1], false);
+  assert.equal('firstName' in h.calls[2][1], false);
 });
 

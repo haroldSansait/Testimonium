@@ -155,7 +155,7 @@ describe("Android Google Legal-Name Confirmation & Verified Name Lock", () => {
     expect(mockPush).toHaveBeenCalledWith("/(app)/profile/id-verification");
   });
 
-  it.each([true, false])("keeps Full Name read-only for database VERIFIED users (effective: %s) and saves unrelated profile info", async (effective) => {
+  it.each([true, false])("keeps Full Name read-only on EditProfileScreen for database VERIFIED users (effective: %s), hides Change Full Name, and saves unrelated profile info", async (effective) => {
     jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
     mockProfile = {
       id: 30,
@@ -183,6 +183,7 @@ describe("Android Google Legal-Name Confirmation & Verified Name Lock", () => {
       )
     ).toBeTruthy();
     expect(view.queryByLabelText("Full Name *")).toBeNull();
+    expect(view.queryByText("Change Full Name")).toBeNull();
 
     await fireEvent.changeText(
       view.getByLabelText("Contact Number"),
@@ -199,6 +200,55 @@ describe("Android Google Legal-Name Confirmation & Verified Name Lock", () => {
     expect(mockUpdateProfile).toHaveBeenCalledWith({
       contactNumber: "09189990000",
       address: "New Address",
+    });
+  });
+
+  it("supports Change Full Name with prepopulated components, Save Full Name, and Cancel on EditProfileScreen for unverified users", async () => {
+    jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
+    mockProfile = {
+      id: 31,
+      firebaseUid: "uid-31",
+      email: "emailuser@example.com",
+      fullName: "Juan Santos Dela Cruz Jr.",
+      firstName: "Juan",
+      middleName: "Santos",
+      lastName: "Dela Cruz",
+      suffix: "Jr.",
+      contactNumber: "09171112222",
+      address: "San Carlos City",
+      isGovernmentIdVerified: false,
+      governmentIdVerificationStatus: "NOT_SUBMITTED",
+      needsLegalNameConfirmation: false,
+    };
+
+    const view = await render(<EditProfileScreen />, { wrapper });
+
+    expect(view.queryByLabelText("Full Name *")).toBeNull();
+    await fireEvent.press(view.getByText("Change Full Name"));
+
+    expect(view.getByLabelText("First Name *").props.value).toBe("Juan");
+    expect(view.getByLabelText("Middle Name (Optional)").props.value).toBe("Santos");
+    expect(view.getByLabelText("Last Name *").props.value).toBe("Dela Cruz");
+    expect(view.getByLabelText("Suffix (Optional)").props.value).toBe("Jr.");
+
+    await fireEvent.changeText(view.getByLabelText("First Name *"), "Pedro");
+    await fireEvent.press(view.getByText("Cancel"));
+    expect(mockUpdateProfile).not.toHaveBeenCalled();
+    expect(view.queryByLabelText("First Name *")).toBeNull();
+
+    await fireEvent.press(view.getByText("Change Full Name"));
+    expect(view.getByLabelText("First Name *").props.value).toBe("Juan");
+    await fireEvent.changeText(view.getByLabelText("First Name *"), "Juan Miguel");
+    await fireEvent.changeText(view.getByLabelText("Middle Name (Optional)"), "");
+    await fireEvent.press(view.getByText("Save Full Name"));
+
+    await waitFor(() => {
+      expect(mockUpdateProfile).toHaveBeenCalledWith({
+        firstName: "Juan Miguel",
+        middleName: "",
+        lastName: "Dela Cruz",
+        suffix: "Jr.",
+      });
     });
   });
 
@@ -240,7 +290,8 @@ describe("Android Google Legal-Name Confirmation & Verified Name Lock", () => {
     const view = await render(<EditProfileScreen />, { wrapper });
     mockProfile = { ...mockProfile, fullName: "Juan Cruz", firstName: "Juan", lastName: "Cruz" };
     await view.rerender(<EditProfileScreen />);
-    expect(view.getByLabelText("Full Name *").props.value).toBe("Juan Cruz");
+    expect(view.getByText("Juan Cruz")).toBeTruthy();
+    expect(view.queryByLabelText("Full Name *")).toBeNull();
     await fireEvent.changeText(view.getByLabelText("Contact Number"), "09189990000");
     await fireEvent.press(view.getByRole("button", { name: "Save profile changes" }));
     expect(mockUpdateProfile).toHaveBeenCalledWith({ contactNumber: "09189990000", address: "Address" });

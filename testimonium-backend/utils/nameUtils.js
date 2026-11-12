@@ -72,6 +72,71 @@ export const hasLegalNameChange = (nameInput = {}, nameUpdate = {}, current = {}
 };
 
 /**
+ * Resolves legal-name updates on parishioner profiles.
+ * Rejects standalone combined-name changes or incomplete structured inputs so
+ * structured components are never cleared or left out of sync with full_name.
+ */
+export const resolveParishionerNameUpdate = (data = {}, current = {}) => {
+  const fields = ["firstName", "middleName", "lastName", "suffix"];
+  const hasStructuredInput = fields.some((field) => data[field] !== undefined);
+
+  if (hasStructuredInput) {
+    const firstName = cleanNullableNameValue(data.firstName);
+    const lastName = cleanNullableNameValue(data.lastName);
+
+    if (!firstName || !lastName) {
+      const error = new Error("First name and last name are required.");
+      error.statusCode = 400;
+      error.code = "INVALID_NAME_FIELDS";
+      throw error;
+    }
+
+    const parts = {
+      firstName,
+      middleName: cleanNullableNameValue(data.middleName),
+      lastName,
+      suffix: cleanNullableNameValue(data.suffix),
+    };
+    const reconstructed = normalizeAndConstructFullName(parts);
+    const unchanged = fields.every(
+      (field) => cleanNullableNameValue(parts[field]) === cleanNullableNameValue(current[field])
+    );
+
+    if (data.fullName !== undefined || data.name !== undefined) {
+      const explicitCombined = cleanNullableNameValue(data.fullName ?? data.name);
+      const matchesCurrentPreserved =
+        unchanged && explicitCombined === cleanNullableNameValue(current.fullName);
+      if (!matchesCurrentPreserved && explicitCombined !== reconstructed) {
+        const error = new Error("Provided fullName does not match the structured name components.");
+        error.statusCode = 400;
+        error.code = "INCONSISTENT_NAME_PAYLOAD";
+        throw error;
+      }
+    }
+
+    return {
+      fullName: unchanged && current.fullName ? current.fullName : reconstructed,
+      ...parts,
+    };
+  }
+
+  const rawCombined = data.fullName !== undefined ? data.fullName : data.name;
+  if (rawCombined === undefined) return {};
+
+  const combined = cleanNullableNameValue(rawCombined);
+  if (combined !== null && combined === cleanNullableNameValue(current.fullName)) {
+    return { fullName: current.fullName };
+  }
+
+  const error = new Error(
+    "First name and last name are required to update your legal name. Please use the Change Full Name form."
+  );
+  error.statusCode = 400;
+  error.code = "STRUCTURED_NAME_REQUIRED";
+  throw error;
+};
+
+/**
  * Canonical helper for constructing an applicant full name from structured inputs.
  * Middle name is optional. Suffix is explicitly excluded per Phase 1 specification.
  *
