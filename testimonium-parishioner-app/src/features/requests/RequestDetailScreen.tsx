@@ -558,7 +558,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                 ) : null}
 
                 {genericCorrectionIds.map((reqId) => {
-                  const reqDoc = requirements?.requiredDocuments?.find((d) => d.id === reqId) || {
+                  const reqDoc = requiredDocuments.find((d) => d.id === reqId) || {
                     id: reqId,
                     label: reqId.replace(/_/g, " "),
                     category: "supporting",

@@ -769,7 +769,9 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onVerifyCash, 
                         <span className="font-semibold text-xs text-gray-800 truncate" title={file.fileName}>{file.fileName}</span>
                         {file.category === 'authorization_letter' ? (
                           <span className="text-[9px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full flex-shrink-0 uppercase tracking-wider">
-                            Authorization Letter
+                            {['Parent', 'Child', 'Spouse', 'Sibling'].includes(request.relationship || '')
+                              ? 'Proof of Relationship / Authorization Letter'
+                              : 'Authorization Letter'}
                           </span>
                         ) : (
                           <span className="text-[9px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded capitalize flex-shrink-0">{file.category}</span>

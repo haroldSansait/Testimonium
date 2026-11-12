@@ -6,7 +6,7 @@ import { prisma } from "../config/db.js";
 import { R2Service, isMissingR2ObjectError } from "../services/R2Service.js";
 import { RegistrantIdEvidenceService } from "../services/RegistrantIdEvidenceService.js";
 import { RegistrantIdStorageService } from "../services/RegistrantIdStorageService.js";
-import { isSelfRelationship } from "../config/relationshipEvidence.js";
+import { isFamilyProofRelationship, isSelfRelationship } from "../config/relationshipEvidence.js";
 
 const requestService = new ParishionerRequestService();
 
@@ -236,7 +236,9 @@ export const uploadFiles = async (req, res, next) => {
         return res.status(400).json({
           success: false,
           code: "INVALID_ATTACHMENT_CATEGORY",
-          message: "Authorization Letter replacement was not requested for this correction round.",
+          message: isFamilyProofRelationship(request.relationship)
+            ? "Proof of Relationship / Authorization Letter replacement was not requested for this correction round."
+            : "Authorization Letter replacement was not requested for this correction round.",
           errors: [],
         });
       }

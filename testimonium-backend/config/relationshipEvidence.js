@@ -8,6 +8,17 @@ export const SUPPORTED_RELATIONSHIPS = Object.freeze([
   "Authorized Representative",
 ]);
 
+export const FAMILY_PROOF_RELATIONSHIPS = Object.freeze([
+  "Parent",
+  "Child",
+  "Spouse",
+  "Sibling",
+]);
+
+export const FAMILY_RELATIONSHIP_EVIDENCE_LABEL = "Proof of Relationship / Authorization Letter";
+export const FAMILY_RELATIONSHIP_EVIDENCE_DESCRIPTION =
+  "Upload the registrant's birth certificate, an authorization letter, or another supporting document that proves your relationship to the registrant.";
+
 export const RELATIONSHIP_EVIDENCE = Object.freeze([
   Object.freeze({
     id: "authorization_letter",
@@ -59,10 +70,25 @@ export function isSelfRelationship(persistedRelationship) {
   return persistedRelationship === "Self";
 }
 
+export function isFamilyProofRelationship(persistedRelationship) {
+  return FAMILY_PROOF_RELATIONSHIPS.includes(persistedRelationship);
+}
+
 export function resolveRelationshipEvidence(persistedRelationship) {
-  return isSelfRelationship(persistedRelationship)
-    ? []
-    : RELATIONSHIP_EVIDENCE.map((item) => ({ ...item }));
+  if (isSelfRelationship(persistedRelationship)) {
+    return [];
+  }
+  const useFamilyProof = isFamilyProofRelationship(persistedRelationship);
+  return RELATIONSHIP_EVIDENCE.map((item) => {
+    if (item.id === "authorization_letter" && useFamilyProof) {
+      return {
+        ...item,
+        label: FAMILY_RELATIONSHIP_EVIDENCE_LABEL,
+        description: FAMILY_RELATIONSHIP_EVIDENCE_DESCRIPTION,
+      };
+    }
+    return { ...item };
+  });
 }
 
 export const RELATIONSHIP_EVIDENCE_IDS = Object.freeze(

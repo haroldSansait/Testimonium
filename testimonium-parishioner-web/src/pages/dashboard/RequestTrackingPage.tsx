@@ -473,8 +473,10 @@ export const RequestTrackingPage: React.FC = () => {
   };
 
   useEffect(() => {
+    let active = true;
     if (selectedRequest && (selectedRequest.status === 'needs-correction' || selectedRequest.status === 'needs_correction')) {
       setLoadingCorrectionReqs(true);
+      setCorrectionReqsList([]);
       setCorrectionError(null);
       setCorrectionSuccess(false);
       setUploadedFilesByCorrectionReq({});
@@ -482,6 +484,7 @@ export const RequestTrackingPage: React.FC = () => {
       setCorrectionInputErrors({});
       services.request.getDocumentRequirements(selectedRequest.documentType, selectedRequest.parishId, selectedRequest.relationship || 'Self')
         .then(res => {
+          if (!active) return;
           const reqs = [...(res?.requiredDocuments || []), ...(res?.relationshipEvidence || [])];
           const selectedReqIds = (selectedRequest.correctionRequirementIds || []).filter(
             id => id !== 'valid_id'
@@ -490,15 +493,18 @@ export const RequestTrackingPage: React.FC = () => {
           setCorrectionReqsList(filtered);
         })
         .catch(err => {
+          if (!active) return;
           console.error("Failed to load correction requirements:", err);
           setCorrectionError("Failed to load document requirements. Please refresh.");
         })
         .finally(() => {
-          setLoadingCorrectionReqs(false);
+          if (active) setLoadingCorrectionReqs(false);
         });
     } else {
       setCorrectionReqsList([]);
+      setLoadingCorrectionReqs(false);
     }
+    return () => { active = false; };
     // Refreshes of the same authoritative request must not erase successful or pending uploads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [correctionSessionKey]);
@@ -1240,7 +1246,9 @@ export const RequestTrackingPage: React.FC = () => {
                                       </span>
                                       <span className="text-[10px] text-text-muted capitalize block">
                                         {att.category === 'authorization_letter'
-                                          ? 'Signed Authorization Letter'
+                                          ? (['Parent', 'Child', 'Spouse', 'Sibling'].includes(selectedRequest.relationship || '')
+                                              ? 'Proof of Relationship / Authorization Letter'
+                                              : 'Signed Authorization Letter')
                                           : att.category === 'registrant_id_front'
                                           ? 'Registrant ID (Front)'
                                           : att.category === 'registrant_id_back'

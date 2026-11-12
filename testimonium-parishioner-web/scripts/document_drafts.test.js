@@ -190,6 +190,28 @@ test('tracking displays Endorsement Letter corrections and submits a replacement
   assert.deepEqual(h.calls.filter((c) => c[0] === 'resubmit').map((c) => c[1]), ['446']);
 });
 
+test('switching correction requests ignores stale relationship-evidence metadata', async () => {
+  let finishRepresentative;
+  const representative = sampleDraft({ id: '446', trackingNumber: 'REP-446', isDraft: false, status: 'needs-correction', relationship: 'Authorized Representative', correctionRequirementIds: ['authorization_letter'] });
+  const parent = sampleDraft({ id: '447', trackingNumber: 'FAMILY-447', isDraft: false, status: 'needs-correction', relationship: 'Parent', correctionRequirementIds: ['authorization_letter'] });
+  const h = harness({
+    page: 'RequestTrackingPage', requests: [representative, parent], search: '',
+    api: { getDocumentRequirements: async (_type, _parish, relationship) => {
+      if (relationship === 'Authorized Representative') {
+        return new Promise(resolve => { finishRepresentative = () => resolve({ requiredDocuments: [], relationshipEvidence: [{ id: 'authorization_letter', label: 'Authorization Letter', required: true }] }); });
+      }
+      return { requiredDocuments: [], relationshipEvidence: [{ id: 'authorization_letter', label: 'Proof of Relationship / Authorization Letter', required: true }] };
+    } },
+  });
+  await h.flush();
+  h.nodes(n => n.type === 'button' && n.props.className?.includes('text-left'))[1].props.onClick();
+  await h.flush();
+  assert.match(h.text(), /Proof of Relationship \/ Authorization Letter/);
+  finishRepresentative(); await h.flush();
+  assert.match(h.text(), /Proof of Relationship \/ Authorization Letter/);
+  h.unmount();
+});
+
 test('opening and refreshing restore the canonical saved draft into first, middle, and last name inputs without banners or validation errors', async () => {
   for (let refresh = 0; refresh < 2; refresh++) {
     const h = harness({ draft: sampleDraft() });
@@ -199,7 +221,7 @@ test('opening and refreshing restore the canonical saved draft into first, middl
     assert.equal(h.input('First Name *').props.value, 'Juan');
     assert.equal(h.input('Middle Name (Optional)').props.value, 'Santos');
     assert.equal(h.input('Last Name *').props.value, 'Cruz');
-    assert.equal(h.input('Purpose of Request').props.value, 'School (Approximate Registry Year: 1995)');
+    assert.equal(h.input('Purpose of Request *').props.value, 'School (Approximate Registry Year: 1995)');
     assert.equal(h.button('Next Step').props.disabled, false);
 
     // Clearing First Name disables Next Step using original behavior, without error messages
@@ -250,7 +272,7 @@ test('legacy combined names with ambiguous boundaries preserve the stored value 
   assert.equal(h.input('Last Name *').props.value, '');
   assert.equal(h.button('Next Step').props.disabled, true);
   // Editing purpose only preserves original legacy name in database
-  h.input('Purpose of Request').props.onChange({ target: { value: 'Passport' } });
+  h.input('Purpose of Request *').props.onChange({ target: { value: 'Passport' } });
   await h.flush();
   await h.button('Save Draft').props.onClick();
   await h.flush();
@@ -287,7 +309,7 @@ test('purpose-only and relationship-only edits omit all name fields and retain t
   const h = harness({ draft: sampleDraft({ applicantName: originalName }) });
   await h.flush();
   assert.equal(h.text().includes('Saved registrant name'), false);
-  h.input('Purpose of Request').props.onChange({ target: { value: 'Passport' } }); await h.flush();
+  h.input('Purpose of Request *').props.onChange({ target: { value: 'Passport' } }); await h.flush();
   await h.button('Save Draft').props.onClick(); await h.flush();
   h.nodes(n => n.type === 'CustomSelect' && n.props.value === 'Self')[0].props.onChange('Parent'); await h.flush();
   await h.button('Save Draft').props.onClick(); await h.flush();
@@ -304,7 +326,7 @@ test('purpose-only and relationship-only edits omit all name fields and retain t
   const standardDraft = harness({ draft: sampleDraft() });
   await standardDraft.flush();
   assert.equal(standardDraft.input('First Name *').props.value, 'Juan');
-  standardDraft.input('Purpose of Request').props.onChange({ target: { value: 'Personal Copy' } });
+  standardDraft.input('Purpose of Request *').props.onChange({ target: { value: 'Personal Copy' } });
   await standardDraft.flush();
   await standardDraft.button('Save Draft').props.onClick();
   await standardDraft.flush();
@@ -396,6 +418,7 @@ test('new draft rapid saves create once, preserve selected files locally, and wr
   h.button('Next Step').props.onClick(); await h.flush();
   h.input('First Name *').props.onChange({ target: { value: 'Juan' } });
   h.input('Last Name *').props.onChange({ target: { value: 'Dela Cruz' } }); await h.flush();
+  h.input('Purpose of Request *').props.onChange({ target: { value: 'School' } }); await h.flush();
   h.button('Next Step').props.onClick(); await h.flush();
   const file = { name: 'new.pdf', size: 1234 };
   h.nodes(n => n.type === 'input' && n.props.type === 'file')[0].props.onChange({ target: { files: [file], value: 'local' } }); await h.flush();

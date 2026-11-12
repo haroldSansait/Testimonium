@@ -16,6 +16,121 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   STATUS_OF_LIBERTY: "Status of Liberty",
 };
 
+export const FAMILY_PROOF_RELATIONSHIPS = new Set([
+  "Parent",
+  "Child",
+  "Spouse",
+  "Sibling",
+]);
+
+export const FAMILY_PROOF_LABEL = "Proof of Relationship / Authorization Letter";
+export const FAMILY_PROOF_DESCRIPTION =
+  "Upload the registrant's birth certificate, an authorization letter, or another supporting document that proves your relationship to the registrant.";
+
+export const isFamilyProofRelationship = (relationship?: string | null): boolean =>
+  Boolean(relationship && FAMILY_PROOF_RELATIONSHIPS.has(relationship));
+
+const SURNAME_PARTICLES = new Set([
+  "DA", "DE", "DEL", "DELA", "DI", "DOS", "LA", "LAS", "LOS", "SAN", "SANTA", "VAN", "VON",
+]);
+
+const SUFFIXES = new Set([
+  "JR", "JR.", "JUNIOR", "SR", "SR.", "SENIOR", "II", "III", "IV", "V",
+]);
+
+export function parseSavedApplicantName(savedName?: string | null): {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+} {
+  if (!savedName || typeof savedName !== "string") {
+    return { firstName: "", middleName: "", lastName: "" };
+  }
+
+  const trimmed = savedName.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.includes(",")) {
+    return { firstName: "", middleName: "", lastName: "" };
+  }
+
+  const tokens = trimmed.split(" ");
+  if (tokens.length < 2) {
+    return { firstName: "", middleName: "", lastName: "" };
+  }
+
+  const lastTokenUpper = tokens[tokens.length - 1].toUpperCase();
+  if (SUFFIXES.has(lastTokenUpper)) {
+    return { firstName: "", middleName: "", lastName: "" };
+  }
+
+  if (tokens.length === 2) {
+    return {
+      firstName: tokens[0],
+      middleName: "",
+      lastName: tokens[1],
+    };
+  }
+
+  if (tokens.length === 3) {
+    const middleUpper = tokens[1].toUpperCase();
+    if (SURNAME_PARTICLES.has(middleUpper)) {
+      return {
+        firstName: tokens[0],
+        middleName: "",
+        lastName: `${tokens[1]} ${tokens[2]}`,
+      };
+    }
+    return {
+      firstName: tokens[0],
+      middleName: tokens[1],
+      lastName: tokens[2],
+    };
+  }
+
+  if (tokens.length === 4) {
+    const secondUpper = tokens[1].toUpperCase();
+    const thirdUpper = tokens[2].toUpperCase();
+    if (SURNAME_PARTICLES.has(secondUpper) && SURNAME_PARTICLES.has(thirdUpper)) {
+      return {
+        firstName: tokens[0],
+        middleName: "",
+        lastName: `${tokens[1]} ${tokens[2]} ${tokens[3]}`,
+      };
+    }
+    if (SURNAME_PARTICLES.has(thirdUpper)) {
+      return {
+        firstName: tokens[0],
+        middleName: tokens[1],
+        lastName: `${tokens[2]} ${tokens[3]}`,
+      };
+    }
+  }
+
+  return { firstName: "", middleName: "", lastName: "" };
+}
+
+export function resolveSelfProfileName(profile?: {
+  fullName?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+} | null): { firstName: string; middleName: string; lastName: string } | null {
+  if (!profile) return null;
+  const first = typeof profile.firstName === "string" ? profile.firstName.trim() : "";
+  const last = typeof profile.lastName === "string" ? profile.lastName.trim() : "";
+  const middle = typeof profile.middleName === "string" ? profile.middleName.trim() : "";
+  if (first && last) {
+    return { firstName: first, middleName: middle, lastName: last };
+  }
+  if (typeof profile.fullName === "string" && profile.fullName.trim()) {
+    // A combined name does not identify the boundaries of multi-word parts.
+    // Keep those fields available for manual entry rather than guessing.
+    if (profile.fullName.trim().split(/\s+/).length !== 2) return null;
+    const parsed = parseSavedApplicantName(profile.fullName);
+    return parsed.firstName && parsed.lastName ? parsed : null;
+  }
+  return null;
+}
+
 export const formatDocumentType = (type?: string | null): string => {
   if (!type) return "Sacramental Certificate";
   return DOCUMENT_TYPE_LABELS[type] || type.replace(/_/g, " ");

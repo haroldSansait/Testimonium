@@ -39,6 +39,41 @@ const SUFFIXES = new Set([
   'JR', 'JR.', 'JUNIOR', 'SR', 'SR.', 'SENIOR', 'II', 'III', 'IV', 'V'
 ]);
 
+const FAMILY_PROOF_RELATIONSHIPS = new Set([
+  'Parent', 'Child', 'Spouse', 'Sibling'
+]);
+
+const FAMILY_PROOF_LABEL = 'Proof of Relationship / Authorization Letter';
+const FAMILY_PROOF_DESCRIPTION =
+  "Upload the registrant's birth certificate, an authorization letter, or another supporting document that proves your relationship to the registrant.";
+
+export function isFamilyProofRelationship(relationship?: string | null): boolean {
+  return Boolean(relationship && FAMILY_PROOF_RELATIONSHIPS.has(relationship));
+}
+
+export function resolveSelfProfileName(profile?: {
+  fullName?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+} | null): { firstName: string; middleName: string; lastName: string } | null {
+  if (!profile) return null;
+  const first = typeof profile.firstName === 'string' ? profile.firstName.trim() : '';
+  const last = typeof profile.lastName === 'string' ? profile.lastName.trim() : '';
+  const middle = typeof profile.middleName === 'string' ? profile.middleName.trim() : '';
+  if (first && last) {
+    return { firstName: first, middleName: middle, lastName: last };
+  }
+  if (typeof profile.fullName === 'string' && profile.fullName.trim()) {
+    // A combined name does not identify the boundaries of multi-word parts.
+    // Keep those fields available for manual entry rather than guessing.
+    if (profile.fullName.trim().split(/\s+/).length !== 2) return null;
+    const parsed = parseSavedApplicantName(profile.fullName);
+    return parsed.firstName && parsed.lastName ? parsed : null;
+  }
+  return null;
+}
+
 export function parseSavedApplicantName(savedName?: string | null): {
   firstName: string;
   middleName: string;
@@ -121,7 +156,7 @@ export const SacramentalRequestPage: React.FC = () => {
   const { loading, error, refetch } = parishesQuery;
 
   const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
-  const { appProfile } = useAuth();
+  const { appProfile, user } = useAuth();
   const isGovIdVerified = Boolean(appProfile?.isGovernmentIdVerified);
 
   const [submitting, setSubmitting] = useState(false);
@@ -154,9 +189,13 @@ export const SacramentalRequestPage: React.FC = () => {
   const [requirementsError, setRequirementsError] = useState<string | null>(null);
   const operationRef = useRef(false);
   const loadedDraftIdRef = useRef<string | null>(null);
+  const userEditedNameRef = useRef(false);
+  const autoFilledSelfRef = useRef<{ firstName: string; middleName: string; lastName: string } | null>(null);
+  const requirementsRequestSeqRef = useRef(0);
 
   // Dynamic Requirements State
   const [requirementsList, setRequirementsList] = useState<Array<{ id: string; label: string; required: boolean; description?: string }>>([]);
+  const [relationshipEvidenceList, setRelationshipEvidenceList] = useState<Array<{ id: string; label: string; required: boolean; description?: string }>>([]);
   const [loadingReqs, setLoadingReqs] = useState(false);
   const [uploadedFilesByReq, setUploadedFilesByReq] = useState<Record<string, File>>({});
   const [reqErrors, setReqErrors] = useState<Record<string, string>>({});
@@ -211,6 +250,7 @@ export const SacramentalRequestPage: React.FC = () => {
         setRegistrantIdFront(null);
         setRegistrantIdBack(null);
         setRequirementsList(config?.requiredDocuments || []);
+        setRelationshipEvidenceList(config?.relationshipEvidence || []);
         setCurrentStep(2);
       } catch (err: any) {
         if (active) setDraftError(err?.message || 'Unable to open this saved draft. Please return to tracking and try again.');
@@ -254,23 +294,42 @@ export const SacramentalRequestPage: React.FC = () => {
     }
   }, [selectedParishId, filteredDocTypes, docType, draftId, savedDraft]);
 
+  // Preserve restored drafts unless the user explicitly selects Self or edits the name.
+  useEffect(() => {
+    if (loadingDraft || ((draftId || savedDraft) && !nameEdited)) return;
+    if (operationRef.current) return;
+    if (relationship !== 'Self') return;
+    if (userEditedNameRef.current) return;
+    if (user?.uid && appProfile?.firebaseUid && appProfile.firebaseUid !== user.uid) return;
+    const resolved = resolveSelfProfileName(appProfile);
+    if (!resolved || !resolved.firstName || !resolved.lastName) return;
+    autoFilledSelfRef.current = resolved;
+    setApplicantFirstName(prev => (prev === resolved.firstName ? prev : resolved.firstName));
+    setApplicantMiddleName(prev => (prev === resolved.middleName ? prev : resolved.middleName));
+    setApplicantLastName(prev => (prev === resolved.lastName ? prev : resolved.lastName));
+  }, [appProfile, user?.uid, relationship, draftId, savedDraft, loadingDraft, nameEdited]);
+
   // Fetch dynamic requirements when step becomes upload step
   useEffect(() => {
     let active = true;
     if (currentStep === 3) {
+      const requestSeq = ++requirementsRequestSeqRef.current;
       setLoadingReqs(true);
       setRequirementsError(null);
+      setRelationshipEvidenceList([]);
       services.request.getDocumentRequirements(docType, selectedParishId, relationship)
         .then(res => {
-          if (!active) return;
+          if (!active || requestSeq !== requirementsRequestSeqRef.current) return;
           const reqs = res?.requiredDocuments || [];
           setRequirementsList(reqs);
+          setRelationshipEvidenceList(res?.relationshipEvidence || []);
           setLoadingReqs(false);
         })
         .catch(err => {
-          if (!active) return;
+          if (!active || requestSeq !== requirementsRequestSeqRef.current) return;
           console.error("Failed to load document requirements:", err);
           setRequirementsList([]);
+          setRelationshipEvidenceList([]);
           setRequirementsError(err?.message || 'Unable to load requirements. Go Back and try again.');
           setLoadingReqs(false);
         });
@@ -288,7 +347,7 @@ export const SacramentalRequestPage: React.FC = () => {
     if (currentStep === 0 && !selectedParishId) return;
     if (currentStep === 1 && !docType) return;
     if (currentStep === 2) {
-      if (!applicantFirstName.trim() || !applicantLastName.trim()) {
+      if (!applicantFirstName.trim() || !applicantLastName.trim() || !purpose.trim()) {
         return;
       }
       if (isProfileIncomplete) {
@@ -308,7 +367,42 @@ export const SacramentalRequestPage: React.FC = () => {
   };
 
   const handleRelationshipChange = (newRel: string) => {
+    if (newRel === relationship) return;
+    const prevRel = relationship;
     setRelationship(newRel);
+
+    if (newRel === 'Self') {
+      userEditedNameRef.current = false;
+      const profileMatchesUser = !user?.uid || !appProfile?.firebaseUid || appProfile.firebaseUid === user.uid;
+      const resolved = profileMatchesUser ? resolveSelfProfileName(appProfile) : null;
+      if (resolved) {
+        setApplicantFirstName(resolved.firstName);
+        setApplicantMiddleName(resolved.middleName);
+        setApplicantLastName(resolved.lastName);
+        autoFilledSelfRef.current = resolved.firstName && resolved.lastName ? resolved : null;
+      } else {
+        setApplicantFirstName('');
+        setApplicantMiddleName('');
+        setApplicantLastName('');
+        autoFilledSelfRef.current = null;
+      }
+      if (savedDraft) {
+        setNameEdited(true);
+      }
+    } else if (prevRel === 'Self') {
+      const autoFilled = autoFilledSelfRef.current;
+      if (
+        autoFilled &&
+        applicantFirstName === autoFilled.firstName &&
+        applicantMiddleName === autoFilled.middleName &&
+        applicantLastName === autoFilled.lastName
+      ) {
+        setApplicantFirstName('');
+        setApplicantMiddleName('');
+        setApplicantLastName('');
+        autoFilledSelfRef.current = null;
+      }
+    }
   };
 
   const handleRegistrantIdUpload = (side: 'front' | 'back', file: File) => {
@@ -450,7 +544,11 @@ export const SacramentalRequestPage: React.FC = () => {
       // 2b. Upload mandatory relationship evidence for every non-Self request.
       if (relationship !== 'Self') {
         if (!authLetterFile && !draft.attachments?.some(item => item.category === 'authorization_letter')) {
-          setSubmissionError("An authorization letter is required when requesting a document for another person.");
+          setSubmissionError(
+            isFamilyProofRelationship(relationship)
+              ? "Proof of relationship or an authorization letter is required when requesting a document for a family member."
+              : "An authorization letter is required when requesting a document for another person."
+          );
           setSubmitting(false);
           return;
         }
@@ -488,7 +586,11 @@ export const SacramentalRequestPage: React.FC = () => {
       } else if (err?.code === "IDENTITY_NOT_VERIFIED") {
         setSubmissionError("Please verify your Government ID in your profile before submitting requests.");
       } else if (err?.code === "AUTHORIZATION_LETTER_REQUIRED") {
-        setSubmissionError("An authorization letter is required when requesting a document for another person.");
+        setSubmissionError(
+          isFamilyProofRelationship(relationship)
+            ? "Proof of relationship or an authorization letter is required when requesting a document for a family member."
+            : "An authorization letter is required when requesting a document for another person."
+        );
       } else if (err?.code === "REGISTRANT_ID_REQUIRED") {
         setSubmissionError("Front and back images of the registrant's Government ID are required.");
       } else if (err?.code === "SELF_REGISTRANT_NAME_MISMATCH" || err?.code === "SELF_REGISTRANT_NAME_UNAVAILABLE") {
@@ -767,7 +869,7 @@ export const SacramentalRequestPage: React.FC = () => {
                       Third-Party Request: {relationship}
                     </div>
                     <p className="text-[11px] text-amber-900 leading-relaxed font-normal">
-                      You (the requester) are applying on behalf of the <strong>registrant</strong>. Enter the registrant's legal name as it appears in parish canonical records. In the next step, you must upload a signed <strong>Authorization Letter</strong> and the registrant's <strong>Government ID (front & back)</strong>.
+                      You (the requester) are applying on behalf of the <strong>registrant</strong>. Enter the registrant's legal name as it appears in parish canonical records. In the next step, you must upload {isFamilyProofRelationship(relationship) ? <><strong>{FAMILY_PROOF_LABEL}</strong></> : <>a signed <strong>Authorization Letter</strong></>} and the registrant's <strong>Government ID (front & back)</strong>.
                     </p>
                   </div>
                 )}
@@ -805,7 +907,7 @@ export const SacramentalRequestPage: React.FC = () => {
                   label="First Name *"
                   placeholder="e.g. Juan"
                   value={applicantFirstName}
-                  onChange={e => { setApplicantFirstName(e.target.value); setNameEdited(true); }}
+                  onChange={e => { userEditedNameRef.current = true; setApplicantFirstName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                   required
                 />
@@ -813,14 +915,14 @@ export const SacramentalRequestPage: React.FC = () => {
                   label="Middle Name (Optional)"
                   placeholder="e.g. Santos"
                   value={applicantMiddleName}
-                  onChange={e => { setApplicantMiddleName(e.target.value); setNameEdited(true); }}
+                  onChange={e => { userEditedNameRef.current = true; setApplicantMiddleName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                 />
                 <Input
                   label="Last Name *"
                   placeholder="e.g. Dela Cruz"
                   value={applicantLastName}
-                  onChange={e => { setApplicantLastName(e.target.value); setNameEdited(true); }}
+                  onChange={e => { userEditedNameRef.current = true; setApplicantLastName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                   required
                 />
@@ -836,7 +938,7 @@ export const SacramentalRequestPage: React.FC = () => {
                   className="h-[42px]"
                 />}
                 <Input
-                  label="Purpose of Request"
+                  label="Purpose of Request *"
                   placeholder="e.g. Marriage requirement, School, Passport"
                   value={purpose}
                   onChange={e => setPurpose(e.target.value)}
@@ -845,7 +947,14 @@ export const SacramentalRequestPage: React.FC = () => {
 
               <div className="flex justify-between pt-4">
                 <Button variant="outline" onClick={handlePrev}>Back</Button>
-                <Button onClick={handleNext} disabled={!applicantFirstName.trim() || !applicantLastName.trim()}>
+                <Button
+                  onClick={handleNext}
+                  disabled={
+                    !applicantFirstName.trim() ||
+                    !applicantLastName.trim() ||
+                    !purpose.trim()
+                  }
+                >
                   Next Step
                 </Button>
               </div>
@@ -884,7 +993,9 @@ export const SacramentalRequestPage: React.FC = () => {
                     <span className="text-xs font-bold text-amber-950">Representative Evidence Requirements ({relationship})</span>
                   </div>
                   <p className="text-[11px] text-amber-900 leading-relaxed font-normal">
-                    Your Government ID is already verified through your TESTIMONIUM profile. Because this document belongs to another person, provide a signed Authorization Letter and clear front and back images of the registrant's valid Government ID. The registrant is the person named on the requested sacramental record.
+                    {isFamilyProofRelationship(relationship)
+                      ? "Your Government ID is already verified through your TESTIMONIUM profile. Because this document belongs to another person, provide proof of relationship (the registrant's birth certificate, an authorization letter, or another supporting relationship document) and clear front and back images of the registrant's valid Government ID. The registrant is the person named on the requested sacramental record."
+                      : "Your Government ID is already verified through your TESTIMONIUM profile. Because this document belongs to another person, provide a signed Authorization Letter and clear front and back images of the registrant's valid Government ID. The registrant is the person named on the requested sacramental record."}
                   </p>
                   <p className="text-[11px] text-amber-900 leading-relaxed font-normal">
                     If the registrant has no available ID or cannot provide the required evidence, this online request cannot be completed under the current rule. Contact the parish office for guidance.
@@ -988,16 +1099,22 @@ export const SacramentalRequestPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Authorization Letter Upload for every non-Self relationship */}
-              {isAuthLetterRequired && (
+              {/* Relationship Evidence Upload for every non-Self relationship */}
+              {isAuthLetterRequired && (() => {
+                const relEvidenceItem = relationshipEvidenceList.find(item => item.id === 'authorization_letter');
+                const evidenceLabel = relEvidenceItem?.label || (isFamilyProofRelationship(relationship) ? FAMILY_PROOF_LABEL : 'Authorization Letter');
+                const evidenceDescription = relEvidenceItem?.description || (isFamilyProofRelationship(relationship)
+                  ? FAMILY_PROOF_DESCRIPTION
+                  : 'Upload the signed authorization letter required for this non-Self request.');
+                return (
                 <div className="p-4 border border-crimson/30 rounded-button bg-red-50/20 space-y-3">
                   <div className="flex justify-between items-start">
                     <div>
                       <span className="text-xs font-bold text-text-primary block">
-                        Authorization Letter <span className="text-crimson">*</span>
+                        {evidenceLabel} <span className="text-crimson">*</span>
                       </span>
                       <p className="text-[11px] text-text-muted mt-0.5">
-                        Upload the signed authorization letter required for this non-Self request.
+                        {evidenceDescription}
                       </p>
                     </div>
                     <span className="text-[9px] bg-red-55 text-crimson font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
@@ -1059,7 +1176,8 @@ export const SacramentalRequestPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
 
               {relationship !== 'Self' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

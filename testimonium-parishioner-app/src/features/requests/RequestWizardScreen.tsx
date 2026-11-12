@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -43,10 +43,14 @@ import { SupportingFilePicker } from "./components/SupportingFilePicker";
 import { RegistrantIdCapturePicker } from "./components/RegistrantIdCapturePicker";
 import { normalizeAuthorizationLetterFile } from "./supportingUpload";
 import {
+  FAMILY_PROOF_DESCRIPTION,
+  FAMILY_PROOF_LABEL,
   formatDocumentType,
   formatFee,
   getEffectiveOfferedDocuments,
   hasAuthoritativeFee,
+  isFamilyProofRelationship,
+  resolveSelfProfileName,
 } from "./presentation";
 import {
   CanonicalDocumentType,
@@ -108,6 +112,25 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const idempotencyKeyRef = useRef<string | null>(null);
   const inFlightGuard = useRef(false);
   const draftFingerprintRef = useRef<string | null>(null);
+  const userEditedNameRef = useRef(false);
+  const autoFilledSelfRef = useRef<{
+    firstName: string;
+    middleName: string;
+    lastName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (inFlightGuard.current) return;
+    if (relationship !== "Self") return;
+    if (userEditedNameRef.current) return;
+    if (user?.uid && profile?.firebaseUid && profile.firebaseUid !== user.uid) return;
+    const resolved = resolveSelfProfileName(profile);
+    if (!resolved || !resolved.firstName || !resolved.lastName) return;
+    autoFilledSelfRef.current = resolved;
+    setApplicantFirstName((prev) => (prev === resolved.firstName ? prev : resolved.firstName));
+    setApplicantMiddleName((prev) => (prev === resolved.middleName ? prev : resolved.middleName));
+    setApplicantLastName((prev) => (prev === resolved.lastName ? prev : resolved.lastName));
+  }, [profile, user?.uid, relationship]);
 
   // Queries
   const { data: parishesResponse, isLoading: loadingParishes } = useParishes({
@@ -251,12 +274,48 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   };
 
   const handleSelectRelationship = (opt: string) => {
-    if (relationship !== opt) {
-      createdDraftIdRef.current = null;
-      draftFingerprintRef.current = null;
-      idempotencyKeyRef.current = null;
+    if (relationship === opt) {
+      setIsRelationshipModalOpen(false);
+      return;
     }
+
+    const prevRel = relationship;
+    createdDraftIdRef.current = null;
+    draftFingerprintRef.current = null;
+    idempotencyKeyRef.current = null;
     setRelationship(opt);
+
+    if (opt === "Self") {
+      userEditedNameRef.current = false;
+      const profileMatchesUser = !user?.uid || !profile?.firebaseUid || profile.firebaseUid === user.uid;
+      const resolved = profileMatchesUser ? resolveSelfProfileName(profile) : null;
+      if (resolved) {
+        setApplicantFirstName(resolved.firstName);
+        setApplicantMiddleName(resolved.middleName);
+        setApplicantLastName(resolved.lastName);
+        autoFilledSelfRef.current = resolved.firstName && resolved.lastName ? resolved : null;
+      } else {
+        setApplicantFirstName("");
+        setApplicantMiddleName("");
+        setApplicantLastName("");
+        autoFilledSelfRef.current = null;
+      }
+      setFieldErrors((prev) => ({ ...prev, firstName: undefined, lastName: undefined }));
+    } else if (prevRel === "Self") {
+      const autoFilled = autoFilledSelfRef.current;
+      if (
+        autoFilled &&
+        applicantFirstName === autoFilled.firstName &&
+        applicantMiddleName === autoFilled.middleName &&
+        applicantLastName === autoFilled.lastName
+      ) {
+        setApplicantFirstName("");
+        setApplicantMiddleName("");
+        setApplicantLastName("");
+        autoFilledSelfRef.current = null;
+      }
+    }
+
     setIsRelationshipModalOpen(false);
   };
 
@@ -308,6 +367,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   // Step 4 -> Step 5
   const handleValidateFilesAndNext = () => {
+    if (loadingRequirements) return;
     if (!hasValidRequirementsFee) {
       feedback.showError(
         "Fee Configuration Unavailable",
@@ -333,10 +393,17 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
 
     if (relationship !== "Self" && !selectedFiles["authorization_letter"]) {
-      feedback.showWarning(
-        "Authorization Letter Required",
-        "An authorization letter is required when requesting a document for another person."
-      );
+      if (isFamilyProofRelationship(relationship)) {
+        feedback.showWarning(
+          "Proof of Relationship Required",
+          FAMILY_PROOF_DESCRIPTION
+        );
+      } else {
+        feedback.showWarning(
+          "Authorization Letter Required",
+          "An authorization letter is required when requesting a document for another person."
+        );
+      }
       return;
     }
     if (relationship !== "Self" && (!registrantIdFront || !registrantIdBack)) {
@@ -356,14 +423,18 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   };
 
   const handleConfirmAndSubmit = async () => {
-    if (!selectedParish || !selectedDocType || inFlightGuard.current) return;
+    if (!selectedParish || !selectedDocType || loadingRequirements || inFlightGuard.current) return;
     if (!hasValidRequirementsFee) {
       feedback.showError("Fee Configuration Unavailable", "A valid parish fee is required before this request can be submitted.");
       return;
     }
 
     if (relationship !== "Self" && !selectedFiles["authorization_letter"]) {
-      feedback.showWarning("Authorization Letter Required", "An authorization letter is required when requesting a document for another person.");
+      if (isFamilyProofRelationship(relationship)) {
+        feedback.showWarning("Proof of Relationship Required", FAMILY_PROOF_DESCRIPTION);
+      } else {
+        feedback.showWarning("Authorization Letter Required", "An authorization letter is required when requesting a document for another person.");
+      }
       return;
     }
     if (relationship !== "Self" && (!registrantIdFront || !registrantIdBack)) {
@@ -637,7 +708,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 </View>
               </View>
               <Text style={styles.verifiedIdSubtext}>
-                Logged in as: {profile?.firstName} {profile?.lastName}
+                Logged in as: {profile?.fullName || [profile?.firstName, profile?.lastName].filter(Boolean).join(" ")}
               </Text>
               {relationship === "Self" ? (
                 <Text style={[styles.verifiedIdSubtext, { marginTop: 4 }]}>
@@ -645,7 +716,9 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 </Text>
               ) : (
                 <Text style={[styles.verifiedIdSubtext, { marginTop: 4, color: "#92400e" }]}>
-                  {`Third-party request (${relationship}). Enter the registrant's name below. A signed Authorization Letter and the registrant's Government ID will be required in Step 4.`}
+                  {isFamilyProofRelationship(relationship)
+                    ? `Third-party request (${relationship}). Enter the registrant's name below. ${FAMILY_PROOF_LABEL} and the registrant's Government ID will be required in Step 4.`
+                    : `Third-party request (${relationship}). Enter the registrant's name below. A signed Authorization Letter and the registrant's Government ID will be required in Step 4.`}
                 </Text>
               )}
             </View>
@@ -658,6 +731,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="First Name *"
                 value={applicantFirstName}
                 onChangeText={(val) => {
+                  userEditedNameRef.current = true;
                   setApplicantFirstName(val);
                   if (fieldErrors.firstName) {
                     setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
@@ -673,7 +747,10 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               <TextInput
                 label="Middle Name (Optional)"
                 value={applicantMiddleName}
-                onChangeText={setApplicantMiddleName}
+                onChangeText={(val) => {
+                  userEditedNameRef.current = true;
+                  setApplicantMiddleName(val);
+                }}
                 placeholder="e.g. Santos"
                 maxLength={50}
                 autoCapitalize="words"
@@ -684,6 +761,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="Last Name *"
                 value={applicantLastName}
                 onChangeText={(val) => {
+                  userEditedNameRef.current = true;
                   setApplicantLastName(val);
                   if (fieldErrors.lastName) {
                     setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
@@ -810,26 +888,48 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             {relationship !== "Self" ? (
               <View style={styles.infoBanner}>
                 <Text style={styles.infoTitle}>Requesting a document for someone else</Text>
-                <Text style={styles.infoText}>Your Government ID is verified through your profile. Also provide a signed Authorization Letter and clear front and back images of the Government ID belonging to the registrant. The registrant is the person named on the sacramental record.</Text>
+                <Text style={styles.infoText}>
+                  {isFamilyProofRelationship(relationship)
+                    ? `Your Government ID is verified through your profile. Also provide ${FAMILY_PROOF_LABEL} and clear front and back images of the Government ID belonging to the registrant. The registrant is the person named on the sacramental record.`
+                    : "Your Government ID is verified through your profile. Also provide a signed Authorization Letter and clear front and back images of the Government ID belonging to the registrant. The registrant is the person named on the sacramental record."}
+                </Text>
                 <Text style={styles.infoText}>If the registrant has no available ID or cannot provide the required evidence, contact the parish office; this online request cannot proceed under the current rule.</Text>
               </View>
             ) : null}
 
             {/* Conditional relationship evidence for every non-Self request */}
-            {relationship !== "Self" ? (
+            {relationship !== "Self" ? (() => {
+              const relEvidenceItem = requirements?.relationshipEvidence?.find(
+                (item) => item.id === "authorization_letter"
+              );
+              const useFamilyProof = isFamilyProofRelationship(relationship);
+              const evidenceLabel = relEvidenceItem?.label
+                ? `${relEvidenceItem.label} *`
+                : useFamilyProof
+                  ? `${FAMILY_PROOF_LABEL} *`
+                  : "Authorization Letter *";
+              const evidenceDescription = relEvidenceItem?.description
+                ? relEvidenceItem.description
+                : useFamilyProof
+                  ? FAMILY_PROOF_DESCRIPTION
+                  : "Upload the signed Authorization Letter required for this non-Self request. Accepted: PDF, JPEG, PNG (Max 5 MB).";
+              return (
               <SupportingFilePicker
                 key="authorization_letter"
                 requirement={{
                   id: "authorization_letter",
                   category: "authorization_letter",
-                  label: "Authorization Letter *",
-                  description: "Upload the signed Authorization Letter required for this non-Self request. Accepted: PDF, JPEG, PNG (Max 5 MB).",
+                  label: evidenceLabel,
+                  description: evidenceDescription,
                   required: true,
                 }}
                 selectedFile={selectedFiles["authorization_letter"]}
                 onFileSelected={(file) => {
                   try {
-                    const normalized = normalizeAuthorizationLetterFile(file);
+                    const normalized = normalizeAuthorizationLetterFile(
+                      file,
+                      useFamilyProof ? FAMILY_PROOF_LABEL : "Authorization letter"
+                    );
                     setSelectedFiles((prev) => ({ ...prev, authorization_letter: normalized }));
                   } catch (err: any) {
                     feedback.showError("Invalid File", err.message);
@@ -843,7 +943,8 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   });
                 }}
               />
-            ) : null}
+              );
+            })() : null}
 
             {relationship !== "Self" ? (
               <>
@@ -885,7 +986,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             <RecordSection
               title="Applicant Details"
               fields={[
-                { label: "Requester (Account)", value: `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || "You" },
+                { label: "Requester (Account)", value: profile?.fullName || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || "You" },
                 { label: "Record Holder Name", value: applicantName },
                 { label: "Relationship", value: relationship },
                 { label: "Purpose", value: purpose },
@@ -905,7 +1006,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 ...(relationship !== "Self"
                   ? [
                       {
-                        label: "Authorization Letter",
+                        label: isFamilyProofRelationship(relationship) ? FAMILY_PROOF_LABEL : "Authorization Letter",
                         value: selectedFiles["authorization_letter"] ? "Attached (Ready)" : "Missing",
                       },
                       { label: "Registrant ID - Front", value: registrantIdFront ? "Selected (Ready)" : "Missing" },

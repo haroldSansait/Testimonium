@@ -3,7 +3,7 @@ import { logger } from "../config/logger.js";
 import { prisma } from "../config/db.js";
 import { R2Service } from "./R2Service.js";
 import { FileValidator } from "../utils/fileValidator.js";
-import { isSelfRelationship } from "../config/relationshipEvidence.js";
+import { isFamilyProofRelationship, isSelfRelationship } from "../config/relationshipEvidence.js";
 
 const r2Service = new R2Service();
 
@@ -58,7 +58,11 @@ export class FileUploadService {
         const correctionAllowed = request.status === "NEEDS_CORRECTION" &&
           (request.correctionRequirementIds || []).includes("authorization_letter");
         if (!request.isDraft && !correctionAllowed) {
-          const error = new Error("Authorization Letter evidence is immutable in the request's current status.");
+          const error = new Error(
+            isFamilyProofRelationship(request.relationship)
+              ? "Proof of Relationship / Authorization Letter evidence is immutable in the request's current status."
+              : "Authorization Letter evidence is immutable in the request's current status."
+          );
           error.statusCode = 409;
           error.code = "RELATIONSHIP_EVIDENCE_UPLOAD_CONFLICT";
           throw error;

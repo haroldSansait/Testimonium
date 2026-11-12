@@ -4,6 +4,7 @@ export interface BackendUserProfile {
   email: string;
   fullName: string;
   firstName?: string | null;
+  middleName?: string | null;
   lastName?: string | null;
   contactNumber?: string | null;
   address?: string | null;

@@ -18,6 +18,7 @@ import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { resolveRequestApplicantName } from "../utils/nameUtils.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 import {
+  isFamilyProofRelationship,
   isSelfRelationship,
   requireCanonicalRelationship,
 } from "../config/relationshipEvidence.js";
@@ -89,7 +90,9 @@ export class ParishionerRequestService {
       );
       if (!hasAuthLetter) {
         const error = new Error(
-          "An authorization letter is required when requesting a document for another person."
+          isFamilyProofRelationship(relationship)
+            ? "Proof of relationship or an authorization letter is required when requesting a document for a family member."
+            : "An authorization letter is required when requesting a document for another person."
         );
         error.code = "AUTHORIZATION_LETTER_REQUIRED";
         error.statusCode = 400;
@@ -872,7 +875,11 @@ export class ParishionerRequestService {
           .filter((attachment) => attachment.category === "authorization_letter")
           .sort((a, b) => b.id - a.id)[0];
         if (!newestLetter || newestLetter.id === correctionSnapshot.baselineAuthAttachmentId) {
-          const error = new Error("A new Authorization Letter is required for this correction round.");
+          const error = new Error(
+            isFamilyProofRelationship(request.relationship)
+              ? "A new Proof of Relationship / Authorization Letter document is required for this correction round."
+              : "A new Authorization Letter is required for this correction round."
+          );
           error.statusCode = 400;
           error.code = "CORRECTION_REPLACEMENT_REQUIRED";
           throw error;

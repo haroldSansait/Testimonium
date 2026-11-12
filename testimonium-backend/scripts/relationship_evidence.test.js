@@ -133,3 +133,59 @@ test("routes, workers, and DTOs preserve private-evidence boundaries", async () 
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /FROM PUBLIC, anon, authenticated/);
 });
+
+test("family relationships require Proof of Relationship / Authorization Letter while Other Relative and Authorized Representative require Authorization Letter", () => {
+  const expectedFamilyDesc =
+    "Upload the registrant's birth certificate, an authorization letter, or another supporting document that proves your relationship to the registrant.";
+
+  for (const rel of ["Parent", "Child", "Spouse", "Sibling"]) {
+    const reqs = resolveRelationshipEvidence(rel);
+    assert.deepEqual(reqs.map((r) => r.id), [
+      "authorization_letter",
+      "registrant_id_front",
+      "registrant_id_back",
+    ]);
+    assert.equal(reqs[0].label, "Proof of Relationship / Authorization Letter");
+    assert.equal(reqs[0].description, expectedFamilyDesc);
+    assert.equal(reqs[0].required, true);
+
+    assert.equal(
+      ParishionerRequestService.validateAuthorizationLetterRequirement(rel, [
+        { category: "authorization_letter", fileName: "birth_certificate.pdf" },
+      ]),
+      true
+    );
+    assert.throws(
+      () => ParishionerRequestService.validateAuthorizationLetterRequirement(rel, []),
+      (err) =>
+        err.code === "AUTHORIZATION_LETTER_REQUIRED" &&
+        err.statusCode === 400 &&
+        /Proof of relationship or an authorization letter/i.test(err.message)
+    );
+  }
+
+  for (const rel of ["Other Relative", "Authorized Representative"]) {
+    const reqs = resolveRelationshipEvidence(rel);
+    assert.deepEqual(reqs.map((r) => r.id), [
+      "authorization_letter",
+      "registrant_id_front",
+      "registrant_id_back",
+    ]);
+    assert.equal(reqs[0].label, "Authorization Letter");
+    assert.equal(reqs[0].required, true);
+
+    assert.equal(
+      ParishionerRequestService.validateAuthorizationLetterRequirement(rel, [
+        { category: "authorization_letter", fileName: "signed_auth.pdf" },
+      ]),
+      true
+    );
+    assert.throws(
+      () => ParishionerRequestService.validateAuthorizationLetterRequirement(rel, []),
+      (err) =>
+        err.code === "AUTHORIZATION_LETTER_REQUIRED" &&
+        err.statusCode === 400 &&
+        /An authorization letter is required/i.test(err.message)
+    );
+  }
+});
