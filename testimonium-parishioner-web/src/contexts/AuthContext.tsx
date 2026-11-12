@@ -44,6 +44,10 @@ export interface BackendUserProfile {
   firebaseUid: string;
   email: string;
   fullName: string;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  suffix?: string | null;
   contactNumber?: string;
   address?: string;
   isVerified: boolean;

@@ -123,9 +123,17 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     if (inFlightGuard.current) return;
     if (relationship !== "Self") return;
     if (userEditedNameRef.current) return;
-    if (user?.uid && profile?.firebaseUid && profile.firebaseUid !== user.uid) return;
-    const resolved = resolveSelfProfileName(profile);
-    if (!resolved || !resolved.firstName || !resolved.lastName) return;
+    const profileMatchesUser = Boolean(user?.uid && profile?.firebaseUid === user.uid);
+    const resolved = profileMatchesUser ? resolveSelfProfileName(profile) : null;
+    if (!resolved || !resolved.firstName || !resolved.lastName) {
+      if (autoFilledSelfRef.current) {
+        setApplicantFirstName("");
+        setApplicantMiddleName("");
+        setApplicantLastName("");
+        autoFilledSelfRef.current = null;
+      }
+      return;
+    }
     autoFilledSelfRef.current = resolved;
     setApplicantFirstName((prev) => (prev === resolved.firstName ? prev : resolved.firstName));
     setApplicantMiddleName((prev) => (prev === resolved.middleName ? prev : resolved.middleName));
@@ -287,7 +295,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
     if (opt === "Self") {
       userEditedNameRef.current = false;
-      const profileMatchesUser = !user?.uid || !profile?.firebaseUid || profile.firebaseUid === user.uid;
+      const profileMatchesUser = Boolean(user?.uid && profile?.firebaseUid === user.uid);
       const resolved = profileMatchesUser ? resolveSelfProfileName(profile) : null;
       if (resolved) {
         setApplicantFirstName(resolved.firstName);

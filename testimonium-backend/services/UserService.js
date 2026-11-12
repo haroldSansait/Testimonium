@@ -12,6 +12,7 @@ import {
 } from "./SchedulingAvailability.js";
 import { defaultGovernmentIdVerificationService } from "./GovernmentIdVerificationService.js";
 import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
+import { resolveUserNameUpdate } from "../utils/nameUtils.js";
 
 export class UserService {
   constructor(
@@ -166,17 +167,14 @@ export class UserService {
 
     const isParishioner = user.role?.roleName === "PARISHIONER";
 
-    let finalName = data.name || data.fullName;
-    if (data.firstName && data.lastName) {
-      const clean = (val) => (val ? String(val).trim().replace(/\s+/g, " ") : "");
-      finalName = [clean(data.firstName), clean(data.middleName), clean(data.lastName), clean(data.suffix)].filter(Boolean).join(" ");
-    }
+    const nameUpdate = resolveUserNameUpdate({ ...data, fullName: data.name || data.fullName }, user);
+    const finalName = nameUpdate.fullName;
 
     if (isParishioner) {
       // Parishioner security enforcement:
       // Email, role, parish, and Firebase identity are immutable for parishioners
       const updateParishioner = () => this.userRepository.update(numericId, {
-          fullName: finalName || user.fullName,
+          ...nameUpdate,
           contactNumber: data.contactNumber !== undefined ? data.contactNumber : user.contactNumber,
           address: data.address !== undefined ? data.address : user.address,
         });
@@ -292,7 +290,7 @@ export class UserService {
           const dbUpdated = await tx.user.update({
             where: { id: numericId },
             data: {
-              fullName: finalName || data.name,
+              ...nameUpdate,
               email: data.email,
               roleId,
               parishId,
@@ -325,7 +323,7 @@ export class UserService {
     } else {
       // Standard user profile update
       updated = await this.userRepository.update(numericId, {
-        fullName: finalName || data.name,
+        ...nameUpdate,
         email: data.email,
         roleId,
         parishId,

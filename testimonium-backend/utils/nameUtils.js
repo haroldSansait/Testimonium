@@ -21,6 +21,25 @@ export const normalizeAndConstructFullName = ({ firstName, middleName, lastName,
   return [fName, mName, lName, sfx].filter(Boolean).join(" ");
 };
 
+// Only explicitly supplied parts (or previously stored parts) identify boundaries.
+// A legacy full-name edit clears components so Self never uses an outdated name.
+export const resolveUserNameUpdate = (data = {}, current = {}) => {
+  const fields = ["firstName", "middleName", "lastName", "suffix"];
+  if (fields.some(field => data[field] !== undefined)) {
+    const completeInput = data.firstName !== undefined && data.lastName !== undefined;
+    const parts = Object.fromEntries(fields.map(field => {
+      const value = data[field] !== undefined ? data[field] : (completeInput ? null : current[field]);
+      return [field, value ? String(value).trim().replace(/\s+/g, " ") || null : null];
+    }));
+    return { fullName: normalizeAndConstructFullName(parts), ...parts };
+  }
+  if (typeof data.fullName !== "string" || !data.fullName.trim()) return {};
+  const fullName = data.fullName.trim();
+  return fullName === current.fullName
+    ? { fullName }
+    : { fullName, ...Object.fromEntries(fields.map(field => [field, null])) };
+};
+
 /**
  * Canonical helper for constructing an applicant full name from structured inputs.
  * Middle name is optional. Suffix is explicitly excluded per Phase 1 specification.

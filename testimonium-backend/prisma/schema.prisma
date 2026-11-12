@@ -323,6 +323,10 @@ model User {
   id                            Int                           @id @default(autoincrement()) @map("user_id")
   firebaseUid                   String?                       @unique @map("firebase_uid") @db.VarChar(128)
   fullName                      String                        @map("full_name") @db.VarChar(150)
+  firstName                     String?                       @map("first_name") @db.VarChar(150)
+  middleName                    String?                       @map("middle_name") @db.VarChar(150)
+  lastName                      String?                       @map("last_name") @db.VarChar(150)
+  suffix                        String?                       @map("suffix") @db.VarChar(150)
   email                         String                        @unique @db.VarChar(150)
   contactNumber                 String?                       @map("contact_number") @db.VarChar(20)
   address                       String?                       @db.Text

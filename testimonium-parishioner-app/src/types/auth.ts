@@ -6,6 +6,7 @@ export interface BackendUserProfile {
   firstName?: string | null;
   middleName?: string | null;
   lastName?: string | null;
+  suffix?: string | null;
   contactNumber?: string | null;
   address?: string | null;
   isVerified: boolean;

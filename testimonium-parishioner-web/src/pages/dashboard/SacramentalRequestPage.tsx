@@ -300,9 +300,17 @@ export const SacramentalRequestPage: React.FC = () => {
     if (operationRef.current) return;
     if (relationship !== 'Self') return;
     if (userEditedNameRef.current) return;
-    if (user?.uid && appProfile?.firebaseUid && appProfile.firebaseUid !== user.uid) return;
-    const resolved = resolveSelfProfileName(appProfile);
-    if (!resolved || !resolved.firstName || !resolved.lastName) return;
+    const profileMatchesUser = Boolean(user?.uid && appProfile?.firebaseUid === user.uid);
+    const resolved = profileMatchesUser ? resolveSelfProfileName(appProfile) : null;
+    if (!resolved || !resolved.firstName || !resolved.lastName) {
+      if (autoFilledSelfRef.current) {
+        setApplicantFirstName('');
+        setApplicantMiddleName('');
+        setApplicantLastName('');
+        autoFilledSelfRef.current = null;
+      }
+      return;
+    }
     autoFilledSelfRef.current = resolved;
     setApplicantFirstName(prev => (prev === resolved.firstName ? prev : resolved.firstName));
     setApplicantMiddleName(prev => (prev === resolved.middleName ? prev : resolved.middleName));
@@ -373,7 +381,7 @@ export const SacramentalRequestPage: React.FC = () => {
 
     if (newRel === 'Self') {
       userEditedNameRef.current = false;
-      const profileMatchesUser = !user?.uid || !appProfile?.firebaseUid || appProfile.firebaseUid === user.uid;
+      const profileMatchesUser = Boolean(user?.uid && appProfile?.firebaseUid === user.uid);
       const resolved = profileMatchesUser ? resolveSelfProfileName(appProfile) : null;
       if (resolved) {
         setApplicantFirstName(resolved.firstName);

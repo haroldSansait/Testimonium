@@ -117,6 +117,31 @@ describe("Android relationship evidence and Self name auto-fill", () => {
       expect(resolveSelfProfileName({ fullName })).toBeNull();
     }
     expect(resolveSelfProfileName({ fullName: "Juan Cruz" })).toEqual({ firstName: "Juan", middleName: "", lastName: "Cruz" });
+    const withSuffix = { firstName: "Juan Miguel", lastName: "Dela Cruz", suffix: "Jr.", fullName: "Juan Miguel Dela Cruz Jr." };
+    expect(resolveSelfProfileName(withSuffix)).toEqual({ firstName: "Juan Miguel", middleName: "", lastName: "Dela Cruz" });
+  });
+
+  it("ignores old accounts and unowned profiles and clears obsolete Self auto-fill", async () => {
+    const view = await render(<RequestWizardScreen initialParishId="1" />);
+    await fireEvent.press(screen.getByText("Continue to Document Type"));
+    await fireEvent.press(screen.getByLabelText("Document type: Baptismal Certificate"));
+    await fireEvent.press(screen.getByText("Continue to Details"));
+    expect(screen.getByLabelText("First name of the applicant").props.value).toBe("Juan");
+    mockUser = { uid: "uid-2" };
+    mockProfile = { firebaseUid: "uid-1", firstName: "Old", lastName: "Account", isGovernmentIdVerified: true };
+    await view.rerender(<RequestWizardScreen initialParishId="1" />);
+    expect(screen.getByLabelText("First name of the applicant").props.value).toBe("");
+    mockProfile = { firstName: "Unowned", lastName: "Profile", isGovernmentIdVerified: true };
+    await view.rerender(<RequestWizardScreen initialParishId="1" />);
+    expect(screen.getByLabelText("First name of the applicant").props.value).toBe("");
+    mockProfile = { firebaseUid: "uid-2", firstName: "Maria Clara", lastName: "Delos Reyes", suffix: "III", isGovernmentIdVerified: true };
+    await view.rerender(<RequestWizardScreen initialParishId="1" />);
+    expect(screen.getByLabelText("First name of the applicant").props.value).toBe("Maria Clara");
+    expect(screen.getByLabelText("Last name of the applicant").props.value).toBe("Delos Reyes");
+    mockProfile = { firebaseUid: "uid-2", fullName: "Maria Clara Santos Delos Reyes", firstName: null, middleName: null, lastName: null, isGovernmentIdVerified: true };
+    await view.rerender(<RequestWizardScreen initialParishId="1" />);
+    expect(screen.getByLabelText("First name of the applicant").props.value).toBe("");
+    expect(screen.getByLabelText("Last name of the applicant").props.value).toBe("");
   });
 
   it("handles delayed profiles and preserves manual names, non-Self entries and Self no-op selections", async () => {

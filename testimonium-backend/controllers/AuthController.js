@@ -161,7 +161,7 @@ export const resendVerification = async (req, res, next) => {
   }
 };
 
-import { normalizeAndConstructFullName } from "../utils/nameUtils.js";
+import { normalizeAndConstructFullName, resolveUserNameUpdate } from "../utils/nameUtils.js";
 export { normalizeAndConstructFullName };
 
 export const recordLegalAcceptance = async (req, res, next) => {
@@ -214,17 +214,18 @@ export const register = async (req, res, next) => {
       if (existingDbUser) {
         let updated = existingDbUser;
         if (nameParts.firstName && nameParts.lastName) {
-          const fullName = normalizeAndConstructFullName(nameParts);
-          if (fullName !== existingDbUser.fullName) {
+          const nameUpdate = resolveUserNameUpdate(nameParts, existingDbUser);
+          const { fullName } = nameUpdate;
+          if (Object.entries(nameUpdate).some(([field, value]) => value !== existingDbUser[field])) {
             updated = isMaterialGovernmentIdNameChange(existingDbUser.fullName, fullName)
               ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
                   req.user.id,
                   async () => {
                     await defaultGovernmentIdVerificationService.invalidateVerification(req.user.id);
-                    return userRepository.update(req.user.id, { fullName });
+                    return userRepository.update(req.user.id, nameUpdate);
                   },
                 )
-              : await userRepository.update(req.user.id, { fullName });
+              : await userRepository.update(req.user.id, nameUpdate);
             logger.debug({ userId: req.user.id, fullName }, "[AuthController] Updated user registration fullName");
           }
         }
@@ -263,25 +264,14 @@ export const updateProfile = async (req, res, next) => {
       });
     }
 
-    const updatePayload = {};
-    let materialNameChanged = false;
-
-    if (fullName !== undefined || (firstName && lastName)) {
-      let finalFullName = fullName;
-      if (firstName && lastName) {
-        finalFullName = normalizeAndConstructFullName({ firstName, middleName, lastName, suffix });
-      }
-      if (finalFullName !== undefined && finalFullName.trim() !== "") {
-        const trimmedName = finalFullName.trim();
-        updatePayload.fullName = trimmedName;
-
-        // If the identity-relevant name is materially changed, invalidate Government ID verification
-        materialNameChanged = Boolean(
-          req.user?.fullName &&
-          isMaterialGovernmentIdNameChange(req.user.fullName, trimmedName)
-        );
-      }
-    }
+    const updatePayload = resolveUserNameUpdate(
+      { fullName, firstName, middleName, lastName, suffix }, req.user,
+    );
+    // Adding components alone does not change the existing verification policy.
+    const materialNameChanged = Boolean(
+      updatePayload.fullName && req.user?.fullName &&
+      isMaterialGovernmentIdNameChange(req.user.fullName, updatePayload.fullName)
+    );
 
     if (contactNumber !== undefined) {
       updatePayload.contactNumber = contactNumber;

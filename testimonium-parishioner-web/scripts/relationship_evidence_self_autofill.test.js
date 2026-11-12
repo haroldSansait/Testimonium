@@ -314,6 +314,32 @@ test('Self profile resolver preserves structured multi-word names and does not g
     assert.equal(h.resolveSelfProfileName({ fullName }), null, fullName);
   }
   assert.equal(h.resolveSelfProfileName({ fullName: 'Juan Cruz' }).lastName, 'Cruz');
+  const withSuffix = h.resolveSelfProfileName({ firstName: 'Juan Miguel', lastName: 'Dela Cruz', suffix: 'Jr.', fullName: 'Juan Miguel Dela Cruz Jr.' });
+  assert.equal(withSuffix.lastName, 'Dela Cruz');
+  assert.equal(withSuffix.suffix, undefined);
+});
+
+test('Web Self names ignore stale accounts and profiles without an authenticated owner', async () => {
+  const h = harness();
+  await h.flush();
+  h.button('Next Step').props.onClick(); await h.flush();
+  h.button('Next Step').props.onClick(); await h.flush();
+  assert.equal(h.input('First Name *').props.value, 'Juan');
+  h.setProfile({ firebaseUid: 'uid-1', firstName: 'Old', lastName: 'Account', isGovernmentIdVerified: true }, { uid: 'uid-2' });
+  await h.flush();
+  assert.equal(h.input('First Name *').props.value, '');
+  h.setProfile({ firstName: 'Unowned', lastName: 'Profile', isGovernmentIdVerified: true });
+  await h.flush();
+  assert.equal(h.input('First Name *').props.value, '');
+  h.setProfile({ firebaseUid: 'uid-2', firstName: 'Maria Clara', lastName: 'Delos Reyes', suffix: 'III', isGovernmentIdVerified: true });
+  await h.flush();
+  assert.equal(h.input('First Name *').props.value, 'Maria Clara');
+  assert.equal(h.input('Last Name *').props.value, 'Delos Reyes');
+  h.setProfile({ firebaseUid: 'uid-2', fullName: 'Maria Clara Santos Delos Reyes', firstName: null, middleName: null, lastName: null, isGovernmentIdVerified: true });
+  await h.flush();
+  assert.equal(h.input('First Name *').props.value, '');
+  assert.equal(h.input('Last Name *').props.value, '');
+  h.unmount();
 });
 
 test('explicitly switching a resumed draft to Self accepts delayed profile data', async () => {

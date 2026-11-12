@@ -214,6 +214,9 @@ export class UserRepository {
   async update(id, data) {
     const updateData = {};
     if (data.fullName !== undefined) updateData.fullName = data.fullName;
+    for (const field of ["firstName", "middleName", "lastName", "suffix"]) {
+      if (data[field] !== undefined) updateData[field] = data[field];
+    }
     if (data.email !== undefined) updateData.email = data.email;
     if (data.roleId !== undefined) updateData.roleId = data.roleId;
     if (data.parishId !== undefined) updateData.parishId = data.parishId;

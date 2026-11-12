@@ -4,7 +4,7 @@ import { UserRepository, profileInclude } from "../repositories/UserRepository.j
 import { AuditLogService } from "./AuditLogService.js";
 import { LegalPolicyService } from "./LegalPolicyService.js";
 
-import { normalizeAndConstructFullName } from "../utils/nameUtils.js";
+import { resolveUserNameUpdate } from "../utils/nameUtils.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 import { FirebaseAdminService } from "./FirebaseAdminService.js";
@@ -145,8 +145,10 @@ export class AuthService {
     }
 
     let fullName;
+    let structuredName = {};
     if (registrationProfile?.firstName && registrationProfile?.lastName) {
-      fullName = normalizeAndConstructFullName(registrationProfile);
+      structuredName = resolveUserNameUpdate(registrationProfile);
+      fullName = structuredName.fullName;
     } else if (registrationProfile?.fullName) {
       fullName = String(registrationProfile.fullName).trim();
     } else {
@@ -161,6 +163,7 @@ export class AuthService {
           const user = await tx.user.create({
             data: {
               firebaseUid, email, fullName,
+              ...structuredName,
               isVerified: Boolean(decodedToken.email_verified),
               roleId: parishionerRole.id, parishId: null,
               termsAcceptedAt: serverNow, privacyAcceptedAt: serverNow,
@@ -353,6 +356,10 @@ export class AuthService {
       firebaseUid: user.firebaseUid,
       email: user.email,
       fullName: user.fullName,
+      firstName: user.firstName ?? null,
+      middleName: user.middleName ?? null,
+      lastName: user.lastName ?? null,
+      suffix: user.suffix ?? null,
       contactNumber: user.contactNumber,
       address: user.address || null,
       isVerified: emailVerified,
