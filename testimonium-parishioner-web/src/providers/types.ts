@@ -15,9 +15,13 @@ export interface IAuthProvider {
   logout(): Promise<void>;
 }
 
+export interface ProfileUpdatePayload extends Partial<UserProfile> {
+  legalNameConfirmationAction?: 'confirm' | 'correct';
+}
+
 export interface IProfileProvider {
   getProfile(uid: string): Promise<UserProfile | null>;
-  updateProfile(uid: string, profile: Partial<UserProfile>): Promise<void>;
+  updateProfile(uid: string, profile: ProfileUpdatePayload): Promise<void>;
 }
 
 export interface IParishProvider {

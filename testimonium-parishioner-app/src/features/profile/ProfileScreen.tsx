@@ -22,15 +22,29 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { ID_TYPE_LABELS, REJECTION_REASON_MESSAGES } from "./types/governmentId";
+import { GoogleLegalNameConfirmationCard } from "./components/GoogleLegalNameConfirmationCard";
+import type { UpdateProfilePayload } from "@/types/auth";
 
 export const ProfileScreen: React.FC = () => {
   const router = useRouter();
   const { contentBottomInset } = useAppLayoutMetrics();
-  const { profile, logout } = useAuth();
+  const { profile, logout, updateProfile, isUpdatingProfile } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [justConfirmedLegalName, setJustConfirmedLegalName] = useState(false);
   const isGovernmentIdExpired =
     !profile?.isGovernmentIdVerified &&
     profile?.governmentIdVerificationStatus === "VERIFIED";
+  const needsLegalNameConfirmation = Boolean(
+    profile?.needsLegalNameConfirmation && profile?.governmentIdVerificationStatus !== "VERIFIED"
+  );
+
+  const handleSaveLegalName = async (payload: UpdateProfilePayload) => {
+    const updated = await updateProfile(payload);
+    if (!updated || updated.needsLegalNameConfirmation) {
+      throw new Error("Your legal name has not been confirmed. Please try again.");
+    }
+    setJustConfirmedLegalName(true);
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -162,6 +176,32 @@ export const ProfileScreen: React.FC = () => {
           </View>
         </View>
 
+        {needsLegalNameConfirmation && (
+          <GoogleLegalNameConfirmationCard
+            displayedFullName={profile?.fullName}
+            isUpdating={isUpdatingProfile}
+            onSaveLegalName={handleSaveLegalName}
+          />
+        )}
+
+        {justConfirmedLegalName && !profile?.isGovernmentIdVerified && (
+          <View style={styles.postConfirmCard}>
+            <View style={styles.postConfirmRow}>
+              <Ionicons name="checkmark-circle" size={20} color="#059669" />
+              <Text style={styles.postConfirmText} allowFontScaling>
+                Your legal name has been saved successfully. Please verify your Government ID to confirm your identity and access document requests.
+              </Text>
+            </View>
+            <Button
+              title="Verify Government ID Now"
+              variant="primary"
+              size="sm"
+              onPress={() => handleNavigate("/(app)/profile/id-verification")}
+              style={{ alignSelf: "flex-start" }}
+            />
+          </View>
+        )}
+
         {/* Government ID Verification Section */}
         <View style={styles.idVerificationCard}>
           <View style={styles.idCardHeader}>
@@ -266,12 +306,15 @@ export const ProfileScreen: React.FC = () => {
               ) : (
                 <View style={{ marginTop: 4 }}>
                   <Text style={styles.idCardSubtitle}>
-                    Verify your Philippine Government ID card to request documents and schedule parish appointments.
+                    {needsLegalNameConfirmation
+                      ? "Confirm or correct your legal name above before verifying your Government ID."
+                      : "Verify your Philippine Government ID card to request documents and schedule parish appointments."}
                   </Text>
                   <Button
                     title="Verify Government ID"
                     variant="primary"
                     size="sm"
+                    disabled={needsLegalNameConfirmation}
                     onPress={() => handleNavigate("/(app)/profile/id-verification")}
                     style={{ marginTop: 8, alignSelf: "flex-start" }}
                   />
@@ -529,5 +572,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#DC2626",
     lineHeight: 18,
+  },
+  postConfirmCard: {
+    backgroundColor: "#ECFDF5",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  postConfirmRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
+  postConfirmText: {
+    ...fontStyles.bodySmall,
+    flex: 1,
+    color: "#064E3B",
+    lineHeight: 19,
   },
 });

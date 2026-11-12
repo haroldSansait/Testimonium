@@ -22,6 +22,10 @@ import {
 } from "../utils/governmentIdOcrParser.js";
 import { matchProfileNameToIdText } from "../utils/governmentIdNameMatcher.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
+import {
+  GOOGLE_LEGAL_NAME_ACTIVITY_INCLUDE,
+  needsGoogleLegalNameConfirmation,
+} from "../utils/googleLegalNameConfirmation.js";
 import { ImageCompressionService } from "./ImageCompressionService.js";
 import { OcrProviderFactory } from "./ocr/OcrProviderFactory.js";
 import { R2Service } from "./R2Service.js";
@@ -157,13 +161,26 @@ export class GovernmentIdVerificationService {
       // 2. Fetch authenticated user record
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        include: { governmentIdVerification: true },
+        include: {
+          role: true,
+          governmentIdVerification: true,
+          activityLogs: GOOGLE_LEGAL_NAME_ACTIVITY_INCLUDE,
+        },
       });
 
       if (!user) {
         const notFoundErr = new Error("User not found.");
         notFoundErr.statusCode = 404;
         throw notFoundErr;
+      }
+
+      if (needsGoogleLegalNameConfirmation(user)) {
+        const confirmationErr = new Error(
+          "Please confirm your legal name on your Profile page before verifying your Government ID."
+        );
+        confirmationErr.statusCode = 403;
+        confirmationErr.code = "LEGAL_NAME_CONFIRMATION_REQUIRED";
+        throw confirmationErr;
       }
 
       // 3. Double-tap / Already-verified idempotency protection

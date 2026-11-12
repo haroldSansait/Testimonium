@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,18 +14,31 @@ import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { AppHeader, Button, TextInput } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { GoogleLegalNameConfirmationCard } from "./components/GoogleLegalNameConfirmationCard";
+import type { UpdateProfilePayload } from "@/types/auth";
 
 export const EditProfileScreen: React.FC = () => {
   const router = useRouter();
   const { contentBottomInset } = useAppLayoutMetrics();
   const { profile, updateProfile, isUpdatingProfile } = useAuth();
 
+  const isLegalNameLocked = profile?.governmentIdVerificationStatus === "VERIFIED";
+  const needsLegalNameConfirmation = Boolean(
+    profile?.needsLegalNameConfirmation && !isLegalNameLocked
+  );
+
   const [fullName, setFullName] = useState<string>(profile?.fullName || "");
+  const [nameEdited, setNameEdited] = useState(false);
   const [contactNumber, setContactNumber] = useState<string>(
     profile?.contactNumber || ""
   );
   const [address, setAddress] = useState<string>(profile?.address || "");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [justConfirmedLegalName, setJustConfirmedLegalName] = useState(false);
+
+  useEffect(() => {
+    if (!nameEdited) setFullName(profile?.fullName || "");
+  }, [profile?.fullName, nameEdited]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -35,21 +48,43 @@ export const EditProfileScreen: React.FC = () => {
     }
   };
 
+  const handleSaveLegalName = async (payload: UpdateProfilePayload) => {
+    const updated = await updateProfile(payload);
+    if (!updated || updated.needsLegalNameConfirmation) {
+      throw new Error("Your legal name has not been confirmed. Please try again.");
+    }
+    if (updated?.fullName) {
+      setFullName(updated.fullName);
+    }
+    setJustConfirmedLegalName(true);
+  };
+
   const handleSave = async () => {
-    const trimmedName = fullName.trim();
-    if (!trimmedName || trimmedName.length < 2) {
-      setErrorMessage("Full name is required (at least 2 characters).");
-      return;
+    if (!isLegalNameLocked && !needsLegalNameConfirmation) {
+      const trimmedName = fullName.trim();
+      if (!trimmedName || trimmedName.length < 2) {
+        setErrorMessage("Full name is required (at least 2 characters).");
+        return;
+      }
     }
 
     setErrorMessage(null);
 
     try {
-      await updateProfile({
-        fullName: trimmedName,
-        contactNumber: contactNumber.trim() || undefined,
-        address: address.trim() || undefined,
-      });
+      const payload: UpdateProfilePayload =
+        isLegalNameLocked || needsLegalNameConfirmation
+          ? {
+              contactNumber: contactNumber.trim() || undefined,
+              address: address.trim() || undefined,
+            }
+          : {
+              ...(nameEdited ? { fullName: fullName.trim() } : {}),
+              contactNumber: contactNumber.trim() || undefined,
+              address: address.trim() || undefined,
+            };
+
+      await updateProfile(payload);
+      setNameEdited(false);
 
       Alert.alert(
         "Profile Updated",
@@ -91,6 +126,29 @@ export const EditProfileScreen: React.FC = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.formContainer}>
+            {needsLegalNameConfirmation && (
+              <GoogleLegalNameConfirmationCard
+                displayedFullName={profile?.fullName}
+                isUpdating={isUpdatingProfile}
+                onSaveLegalName={handleSaveLegalName}
+              />
+            )}
+
+            {justConfirmedLegalName && !profile?.isGovernmentIdVerified && (
+              <View style={styles.postConfirmCard}>
+                <Text style={styles.postConfirmText} allowFontScaling>
+                  Your legal name has been saved successfully. Please verify your Government ID to confirm your identity and access document requests.
+                </Text>
+                <Button
+                  title="Verify Government ID Now"
+                  variant="primary"
+                  size="sm"
+                  onPress={() => router.push("/(app)/profile/id-verification" as any)}
+                  style={{ alignSelf: "flex-start" }}
+                />
+              </View>
+            )}
+
             <Text style={styles.sectionHeader} allowFontScaling>
               Personal Information
             </Text>
@@ -107,17 +165,46 @@ export const EditProfileScreen: React.FC = () => {
               </Text>
             </View>
 
-            <TextInput
-              label="Full Name *"
-              value={fullName}
-              onChangeText={(text) => {
-                setFullName(text);
-                setErrorMessage(null);
-              }}
-              placeholder="e.g. Maria Santos Dela Cruz"
-              autoCapitalize="words"
-              maxLength={100}
-            />
+            {isLegalNameLocked || needsLegalNameConfirmation ? (
+              <View style={styles.readOnlyRow}>
+                <Text style={styles.readOnlyLabel} allowFontScaling>
+                  Full Name
+                </Text>
+                <Text style={styles.readOnlyValue} allowFontScaling>
+                  {profile?.fullName || fullName}
+                </Text>
+                {isLegalNameLocked && profile?.firstName && profile?.lastName && (
+                  <Text style={styles.readOnlyHint} allowFontScaling>
+                    {[
+                      `First: ${profile.firstName}`,
+                      profile.middleName ? `Middle: ${profile.middleName}` : null,
+                      `Last: ${profile.lastName}`,
+                      profile.suffix ? `Suffix: ${profile.suffix}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </Text>
+                )}
+                <Text style={styles.readOnlyHint} allowFontScaling>
+                  {isLegalNameLocked
+                    ? "Your legal name is locked after Government ID verification."
+                    : "Confirm or correct your legal name above."}
+                </Text>
+              </View>
+            ) : (
+              <TextInput
+                label="Full Name *"
+                value={fullName}
+                onChangeText={(text) => {
+                  setNameEdited(true);
+                  setFullName(text);
+                  setErrorMessage(null);
+                }}
+                placeholder="e.g. Maria Santos Dela Cruz"
+                autoCapitalize="words"
+                maxLength={100}
+              />
+            )}
 
             <TextInput
               label="Contact Number"
@@ -227,5 +314,18 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: spacing.sm,
+  },
+  postConfirmCard: {
+    backgroundColor: "#ECFDF5",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  postConfirmText: {
+    ...fontStyles.bodySmall,
+    color: "#064E3B",
+    lineHeight: 19,
   },
 });

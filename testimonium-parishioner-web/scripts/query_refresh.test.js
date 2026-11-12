@@ -12,7 +12,7 @@ afterEach(async () => { dispose?.(); cache.setQueryScope(null); await flush(); }
 
 // Controlled React effects/timers, real TanStack observers and QueryClient.
 // This tests hook wiring without a browser, Firebase or live API calls.
-function harness() {
+function harness({ profileProvider } = {}) {
   cache.setQueryScope('fixture', 'PARISHIONER', '3');
   const timers = new Map();
   const listeners = new Map();
@@ -36,6 +36,7 @@ function harness() {
     clearInterval: key => timers.delete(key),
     require: name => {
       if (name === 'react') return react;
+      if (name === '../providers/factory' && profileProvider) return { __esModule: true, default: { profile: profileProvider } };
       if (name === '../services/queryClient') return cache;
       if (name === '@tanstack/react-query') return { hashKey, useQuery: options => {
         const observer = new QueryObserver(cache.queryClient, options);
@@ -54,6 +55,27 @@ function harness() {
   return { hook: module.exports, timers, window, document, focused: value => { focused = value; },
     emit: name => listeners.get(name)?.forEach(fn => fn()), cleanupLast: () => cleanups.pop()?.() };
 }
+
+test('a profile save cancels an older profile read and refreshes the saved legal name', async () => {
+  let releaseOld;
+  let hold = true;
+  const saved = { displayName: 'Juan Cruz', firstName: 'Juan', lastName: 'Cruz', needsLegalNameConfirmation: false };
+  const h = harness({ profileProvider: {
+    getProfile: async () => hold ? new Promise(resolve => { releaseOld = resolve; }) : saved,
+    updateProfile: async () => { hold = false; },
+  } });
+  const key = cache.privateQueryKey('profile', 'fixture');
+  const original = { displayName: 'Google Nickname', needsLegalNameConfirmation: true };
+  cache.queryClient.setQueryData(key, original);
+  const profile = h.hook.useProfile('fixture');
+  const oldRead = profile.refetch();
+  await flush();
+  await profile.updateProfile({ firstName: 'Juan', lastName: 'Cruz', legalNameConfirmationAction: 'correct' });
+  releaseOld(original);
+  await oldRead;
+  await flush();
+  assert.deepEqual(cache.queryClient.getQueryData(key), saved);
+});
 
 test('useService returns cached data immediately and shares one 10s poller per explicit key', async () => {
   const h = harness();

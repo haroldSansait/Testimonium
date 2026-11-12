@@ -277,6 +277,13 @@ export interface UserProfile {
   emailVerified: boolean;
   role: UserRole;
   displayName?: string;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  suffix?: string | null;
+  isGovernmentIdVerified?: boolean;
+  governmentIdVerificationStatus?: 'NOT_SUBMITTED' | 'VERIFIED' | 'REJECTED' | null;
+  needsLegalNameConfirmation?: boolean;
   phone?: string;
   address?: string;
   photoURL?: string;

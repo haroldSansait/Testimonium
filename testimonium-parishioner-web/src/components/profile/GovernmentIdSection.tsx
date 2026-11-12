@@ -99,6 +99,9 @@ export const GovernmentIdSection: React.FC = () => {
   const blocksResubmission =
     failurePresentation?.kind === 'RATE_LIMIT' ||
     failurePresentation?.kind === 'IN_PROGRESS';
+  const requiresLegalNameConfirmation = Boolean(
+    appProfile?.needsLegalNameConfirmation && !isVerified
+  );
 
   const disposeFrontSelection = useCallback(() => {
     if (frontPreviewRef.current) {
@@ -225,6 +228,13 @@ export const GovernmentIdSection: React.FC = () => {
   };
 
   const submitCurrentPair = async () => {
+    if (requiresLegalNameConfirmation) {
+      setValidationError(
+        'Please confirm or correct your legal name above before submitting your Government ID.'
+      );
+      return;
+    }
+
     if (!frontFile || !backFile) {
       setValidationError(
         'Both front and back images of your Government ID are required.'
@@ -483,6 +493,18 @@ export const GovernmentIdSection: React.FC = () => {
               </strong>
             </p>
 
+            {requiresLegalNameConfirmation && (
+              <div
+                role="status"
+                className="p-3 bg-amber-50 border border-amber-200 rounded-button text-amber-900 text-xs flex items-start gap-2"
+              >
+                <Info size={16} className="shrink-0 mt-0.5 text-amber-700" />
+                <span>
+                  Confirm or correct your legal name above before verifying your Government ID.
+                </span>
+              </div>
+            )}
+
             {validationError && (
               <div
                 role="alert"
@@ -688,6 +710,7 @@ export const GovernmentIdSection: React.FC = () => {
                   onClick={() => void submitCurrentPair()}
                   disabled={
                     submitting ||
+                    requiresLegalNameConfirmation ||
                     blocksResubmission ||
                     !frontFile ||
                     !backFile

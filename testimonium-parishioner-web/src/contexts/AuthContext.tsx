@@ -55,6 +55,7 @@ export interface BackendUserProfile {
   termsAccepted: boolean;
   privacyAccepted: boolean;
   needsProfileCompletion: boolean;
+  needsLegalNameConfirmation?: boolean;
   status: string;
   role: string;
   emailNotificationsEnabled?: boolean;
@@ -92,7 +93,7 @@ interface AuthContextType {
   ) => Promise<{ needsProfileCompletion: boolean }>;
   recordLegalAcceptance: (legal: LegalPayload) => Promise<BackendUserProfile | null>;
   logout: (reason?: string) => Promise<void>;
-  refreshProfile: () => Promise<BackendUserProfile | null>;
+  refreshProfile: (force?: boolean) => Promise<BackendUserProfile | null>;
   requestEmailVerificationOtp: () => Promise<{ success: boolean; retryAfter?: number; message?: string; alreadyVerified?: boolean }>;
   confirmEmailVerificationOtp: (code: string) => Promise<BackendUserProfile>;
 }
@@ -115,6 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshPromiseRef = useRef<{ uid: string; promise: Promise<BackendUserProfile | null> } | null>(null);
   const authGenerationRef = useRef(0);
+  const profileRefreshRevisionRef = useRef(0);
   const { isBusy } = useSubmissionProtection();
 
   // Listen to FSM state updates
@@ -439,31 +441,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const refreshProfile = async (): Promise<BackendUserProfile | null> => {
+  const refreshProfile = async (force = false): Promise<BackendUserProfile | null> => {
     if (!auth.currentUser) return null;
     const expectedUser = auth.currentUser;
     const generation = authGenerationRef.current;
 
-    if (refreshPromiseRef.current?.uid === expectedUser.uid) {
+    if (!force && refreshPromiseRef.current?.uid === expectedUser.uid) {
       console.debug('[AuthContext] Single-flight refreshProfile reusing existing request promise');
       return refreshPromiseRef.current.promise;
     }
 
+    const revision = ++profileRefreshRevisionRef.current;
     console.debug('[AuthContext] refreshProfile start');
     const promise = (async () => {
       try {
         setProfileError(null);
         const profile = await fetchCurrentBackendProfile(expectedUser);
+        if (revision !== profileRefreshRevisionRef.current) return null;
         if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) { publishProfile(profile); setUser(expectedUser); }
         console.debug('[AuthContext] refreshProfile completed cleanly');
         return profile;
       } catch (error) {
-        if (authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) {
+        if (revision === profileRefreshRevisionRef.current && authGenerationRef.current === generation && auth.currentUser?.uid === expectedUser.uid) {
           setProfileError(error instanceof Error ? error : new Error('Failed to load your profile. Please try again.'));
         }
         throw error;
       } finally {
-        if (authGenerationRef.current === generation && refreshPromiseRef.current?.uid === expectedUser.uid) refreshPromiseRef.current = null;
+        if (revision === profileRefreshRevisionRef.current && authGenerationRef.current === generation && refreshPromiseRef.current?.uid === expectedUser.uid) refreshPromiseRef.current = null;
       }
     })();
     refreshPromiseRef.current = { uid: expectedUser.uid, promise };

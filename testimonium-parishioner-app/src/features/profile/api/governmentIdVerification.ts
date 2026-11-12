@@ -124,6 +124,16 @@ export const getGovernmentIdErrorPresentation = (
     return getGovernmentIdRejectionPresentation(code);
   }
 
+  if (code === "LEGAL_NAME_CONFIRMATION_REQUIRED") {
+    return {
+      kind: "BUSINESS_REJECTION",
+      title: "Legal Name Confirmation Required",
+      message:
+        "Please confirm or correct your legal name on your Profile screen before verifying your Government ID.",
+      action: "dismiss",
+    };
+  }
+
   if (code === "GOVERNMENT_ID_VERIFICATION_IN_PROGRESS") {
     return {
       kind: "IN_PROGRESS",

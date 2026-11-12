@@ -127,13 +127,11 @@ test('existing Google account keeps its identity, role, legal name and verified 
 });
 
 for (const handler of [register, updateProfile]) {
-  test(`${handler.name} saves components without invalidating an unchanged legal name`, async t => {
-    const f = profileFixture(t);
-    const originalVerification = f.stored.governmentIdVerification;
+  test(`${handler.name} saves components for unverified users without disturbing verification`, async t => {
+    const f = profileFixture(t, { ...legacyUser(), governmentIdVerification: { status: 'NOT_SUBMITTED' } });
     const profile = await invoke(handler, { ...f.stored }, { ...legal, ...parts });
     assert.deepEqual(f.writes[0], { fullName, ...parts });
-    assert.equal(f.stored.governmentIdVerification, originalVerification);
-    assert.equal(profile.isGovernmentIdVerified, true);
+    assert.equal(profile.isGovernmentIdVerified, false);
     assert.equal(profile.fullName, fullName);
     assert.equal(profile.lastName, 'Dela Cruz');
     assert.deepEqual(f.invalidations, []);
@@ -142,28 +140,46 @@ for (const handler of [register, updateProfile]) {
   });
 }
 
-test('profile completion accepts nested registration components and preserves verification on retry', async t => {
-  const f = profileFixture(t);
+test('profile completion accepts nested registration components and preserves status on retry', async t => {
+  const f = profileFixture(t, { ...legacyUser(), governmentIdVerification: { status: 'NOT_SUBMITTED' } });
   const profile = await invoke(register, { ...f.stored }, { ...legal, registrationProfile: parts });
   await invoke(register, profile, { ...legal, registrationProfile: parts });
   assert.equal(f.writes.length, 1);
   assert.deepEqual(f.invalidations, []);
 });
 
-test('legacy fullName-only updates clear outdated parts and retain material-name-change verification policy', async t => {
-  const f = profileFixture(t, { ...legacyUser(), ...parts });
-  await invoke(updateProfile, { ...f.stored }, { fullName });
-  assert.equal(f.stored.firstName, parts.firstName);
-  assert.deepEqual(f.invalidations, []);
-  await invoke(updateProfile, { ...f.stored }, { fullName: 'Maria Clara Reyes' });
-  for (const field of Object.keys(parts)) assert.equal(f.stored[field], null);
-  assert.deepEqual(f.invalidations, [12]);
+test('unverified legacy fullName-only updates clear outdated parts', async t => {
+  const unverified = profileFixture(t, {
+    ...legacyUser(),
+    ...parts,
+    governmentIdVerification: { status: 'NOT_SUBMITTED' },
+  });
+  await invoke(updateProfile, { ...unverified.stored }, { fullName });
+  assert.equal(unverified.stored.firstName, parts.firstName);
+  await invoke(updateProfile, { ...unverified.stored }, { fullName: 'Maria Clara Reyes' });
+  for (const field of Object.keys(parts)) assert.equal(unverified.stored[field], null);
+  assert.deepEqual(unverified.invalidations, []);
 });
 
-test('format-only fullName edit clears stale parts without weakening or triggering material-change policy', async t => {
+test('verified accounts reject fullName-only name changes without invalidating verification', async t => {
+  const verified = profileFixture(t, { ...legacyUser(), ...parts });
+  await assert.rejects(
+    () => invoke(updateProfile, { ...verified.stored }, { fullName: 'Maria Clara Reyes' }),
+    { statusCode: 403, code: 'LEGAL_NAME_LOCKED' }
+  );
+  assert.equal(verified.stored.fullName, fullName);
+  assert.equal(verified.stored.firstName, parts.firstName);
+  assert.equal(verified.stored.governmentIdVerification.status, 'VERIFIED');
+  assert.deepEqual(verified.invalidations, []);
+});
+
+test('verified account rejects format-only fullName edit and preserves verification', async t => {
   const f = profileFixture(t, { ...legacyUser(), ...parts });
-  await invoke(updateProfile, { ...f.stored }, { fullName: fullName.toUpperCase() });
-  assert.equal(f.stored.firstName, null);
+  await assert.rejects(
+    () => invoke(updateProfile, { ...f.stored }, { fullName: fullName.toUpperCase() }),
+    { statusCode: 403, code: 'LEGAL_NAME_LOCKED' }
+  );
+  assert.equal(f.stored.firstName, parts.firstName);
   assert.equal(f.stored.governmentIdVerification.status, 'VERIFIED');
   assert.deepEqual(f.invalidations, []);
 });
@@ -176,15 +192,25 @@ test('contact-only updates leave existing components and verification untouched'
   assert.deepEqual(f.invalidations, []);
 });
 
-test('staff-managed parishioner name edits save parts and clear them for later combined-name edits', async t => {
-  const f = profileFixture(t);
+test('staff-managed unverified parishioner name edits save parts and verified parishioners stay locked', async t => {
+  const unverified = profileFixture(t, { ...legacyUser(), governmentIdVerification: { status: 'NOT_SUBMITTED' } });
   const service = new UserService();
   await service.editUser(12, parts, 1);
-  assert.equal(f.stored.lastName, 'Dela Cruz');
-  assert.deepEqual(f.invalidations, []);
+  assert.equal(unverified.stored.lastName, 'Dela Cruz');
   await service.editUser(12, { name: 'Maria Clara Reyes' }, 1);
-  assert.equal(f.stored.firstName, null);
-  assert.deepEqual(f.invalidations, [12]);
+  assert.equal(unverified.stored.firstName, null);
+  assert.deepEqual(unverified.invalidations, []);
+});
+
+test('staff-managed verified parishioner name edits are rejected without invalidating verification', async t => {
+  const verified = profileFixture(t, { ...legacyUser(), ...parts });
+  const service = new UserService();
+  await assert.rejects(
+    () => service.editUser(12, { name: 'Maria Clara Reyes' }, 1),
+    { statusCode: 403, code: 'LEGAL_NAME_LOCKED' }
+  );
+  assert.equal(verified.stored.fullName, fullName);
+  assert.deepEqual(verified.invalidations, []);
 });
 
 test('repository sends canonical name and all nullable parts in one user update', async t => {

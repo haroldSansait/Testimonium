@@ -1,4 +1,4 @@
-import type { IProfileProvider } from "../types";
+import type { IProfileProvider, ProfileUpdatePayload } from "../types";
 import type { UserProfile } from "../../types";
 import { client } from "../../api/client";
 
@@ -10,6 +10,13 @@ const mapProfile = (data: any): UserProfile => {
     emailVerified: data.isVerified || false,
     role: data.role,
     displayName: data.fullName || "",
+    firstName: data.firstName ?? null,
+    middleName: data.middleName ?? null,
+    lastName: data.lastName ?? null,
+    suffix: data.suffix ?? null,
+    isGovernmentIdVerified: Boolean(data.isGovernmentIdVerified),
+    governmentIdVerificationStatus: data.governmentIdVerificationStatus,
+    needsLegalNameConfirmation: Boolean(data.needsLegalNameConfirmation),
     phone: data.contactNumber || "",
     address: data.address || "",
     notificationsEnabled: typeof data.emailNotificationsEnabled === "boolean" ? data.emailNotificationsEnabled : true,
@@ -24,8 +31,23 @@ export class ApiProfileProvider implements IProfileProvider {
     return mapProfile(data);
   }
 
-  async updateProfile(_uid: string, profile: Partial<UserProfile>): Promise<void> {
+  async updateProfile(_uid: string, profile: ProfileUpdatePayload): Promise<void> {
     const payload: Record<string, unknown> = {};
+    if (profile.firstName !== undefined) {
+      payload.firstName = profile.firstName;
+    }
+    if (profile.middleName !== undefined) {
+      payload.middleName = profile.middleName;
+    }
+    if (profile.lastName !== undefined) {
+      payload.lastName = profile.lastName;
+    }
+    if (profile.suffix !== undefined) {
+      payload.suffix = profile.suffix;
+    }
+    if (profile.legalNameConfirmationAction !== undefined) {
+      payload.legalNameConfirmationAction = profile.legalNameConfirmationAction;
+    }
     if (profile.displayName !== undefined) {
       payload.fullName = profile.displayName;
     }

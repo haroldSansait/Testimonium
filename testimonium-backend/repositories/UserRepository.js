@@ -1,9 +1,11 @@
 import { prisma } from "../config/db.js";
+import { GOOGLE_LEGAL_NAME_ACTIVITY_INCLUDE } from "../utils/googleLegalNameConfirmation.js";
 
 export const profileInclude = {
   role: true,
   parish: true,
   governmentIdVerification: true,
+  activityLogs: GOOGLE_LEGAL_NAME_ACTIVITY_INCLUDE,
 };
 
 export class UserRepository {

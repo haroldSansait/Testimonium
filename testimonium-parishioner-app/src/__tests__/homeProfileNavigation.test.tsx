@@ -88,12 +88,13 @@ describe("Home profile completion navigation", () => {
     expect(view.getByText("Edit Profile")).toBeTruthy();
     expect(view.getByText("maria@example.com")).toBeTruthy();
     expect(view.getByLabelText("Full Name *").props.value).toBe("Maria Santos");
+    await fireEvent.changeText(view.getByLabelText("Full Name *"), "Maria Clara Santos");
     await fireEvent.changeText(view.getByLabelText("Contact Number"), "09171234567");
     await fireEvent.changeText(view.getByLabelText("Home / Residential Address"), "San Carlos City");
     await fireEvent.press(view.getByRole("button", { name: "Save profile changes" }));
 
     expect(mockUpdateProfile).toHaveBeenCalledWith({
-      fullName: "Maria Santos",
+      fullName: "Maria Clara Santos",
       contactNumber: "09171234567",
       address: "San Carlos City",
     });

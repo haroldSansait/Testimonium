@@ -23,6 +23,7 @@ function harness() {
   let authCallback;
   let profileFailure = false;
   let profileWait;
+  let profileOverrides = {};
   let signOutWait;
   const fetches = [];
   const states = [], effects = [];
@@ -42,10 +43,11 @@ function harness() {
     : { id: uid, firebaseUid: uid, fullName: uid, role: 'PARISHIONER', parish: { id: uid === 'a' ? 3 : 4 }, emailVerified: true, termsAccepted: true, privacyAccepted: true };
   const getProfile = async () => {
     const uid = auth.currentUser?.uid;
+    const snapshot = { ...profile(uid), ...profileOverrides };
     fetches.push(['profile', uid]);
     if (profileWait) { const waiting = profileWait; profileWait = undefined; await waiting; }
     if (profileFailure) throw new Error('Profile unavailable');
-    return profile(uid);
+    return snapshot;
   };
   const firebase = {
     onAuthStateChanged: (_auth, callback) => { authCallback = callback; return () => { authCallback = undefined; }; },
@@ -122,11 +124,29 @@ function harness() {
   return { session, auth, fetches, render, route: () => route({}),
     observe: async () => { await authCallback(auth.currentUser); await flush(); return render(); },
     failProfile: value => { profileFailure = value; }, waitProfile: promise => { profileWait = promise; },
+    setProfile: value => { profileOverrides = value; },
     pauseLogout: promise => { signOutWait = promise; },
     login: async uid => { const value = render(); await (admin ? value.signIn(`${uid}@fixture.test`, 'fixture') : value.signInWithEmail(`${uid}@fixture.test`, 'fixture')); await flush(); return render(); },
     logout: async () => { await render().logout(); await flush(); return render(); },
   };
 }
+
+test('a post-confirmation refresh supersedes an older profile response without restoring the Google prompt', async () => {
+  const h = harness();
+  await h.login('a');
+  h.setProfile({ fullName: 'Google Nickname', needsLegalNameConfirmation: true });
+  const held = deferred();
+  h.waitProfile(held.promise);
+  const oldRefresh = h.render().refreshProfile();
+  await flush();
+  h.setProfile({ fullName: 'Juan Santos Dela Cruz', firstName: 'Juan', middleName: 'Santos', lastName: 'Dela Cruz', needsLegalNameConfirmation: false });
+  const saved = await h.render().refreshProfile(true);
+  assert.equal(saved.needsLegalNameConfirmation, false);
+  held.resolve();
+  assert.equal(await oldRefresh, null);
+  assert.equal(h.render().appProfile.fullName, 'Juan Santos Dela Cruz');
+  assert.equal(h.render().appProfile.needsLegalNameConfirmation, false);
+});
 
 test('actual auth lifecycle resumes fresh queries after same-UID reauthentication and isolates another account', async () => {
   const h = harness();

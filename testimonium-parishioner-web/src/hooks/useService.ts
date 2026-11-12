@@ -1,7 +1,8 @@
 import { useEffect, useCallback, useSyncExternalStore, useMemo, useRef, type SetStateAction } from 'react';
 import { hashKey, useQuery as useTanstackQuery } from '@tanstack/react-query';
 import services from '../providers/factory';
-import type { UserProfile, Event } from '../types';
+import type { Event } from '../types';
+import type { ProfileUpdatePayload } from '../providers/types';
 import { getManilaCalendarDate } from '../utils/date';
 import { freshness, queryClient, privateQueryKey, guardedQuery, getQueryScope, subscribeQueryScope, getSessionSignal } from '../services/queryClient';
 
@@ -118,9 +119,11 @@ export const useProfile = (uid: string) => {
   }, ['profile', uid], { enabled: Boolean(uid), staleTime: freshness.profile });
   
   const refetchProfile = query.refetch;
-  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback(async (updates: ProfileUpdatePayload) => {
     if (!uid) return;
     await services.profile.updateProfile(uid, updates);
+    // A read started before the save must not be reused as its refresh.
+    await queryClient.cancelQueries({ queryKey: privateQueryKey('profile', uid), exact: true });
     await refetchProfile();
   }, [uid, refetchProfile]);
 

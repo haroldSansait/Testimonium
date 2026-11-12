@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { User, Bell, Shield, LogOut, Info } from 'lucide-react';
+import { User, Bell, Shield, LogOut, Info, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,6 +14,7 @@ import { Avatar } from '../../components/ui/Avatar';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { GovernmentIdSection } from '../../components/profile/GovernmentIdSection';
+import { doesConfirmedNameMatchDisplayed } from '../../utils/nameHelpers';
 
 export const ProfilePage: React.FC = () => {
   const { user, appProfile, logout, refreshProfile } = useAuth();
@@ -32,6 +33,32 @@ export const ProfilePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [resetSending, setResetSending] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  // Google legal-name confirmation state (new Google parishioners only)
+  const [confirmationChoice, setConfirmationChoice] = useState<'confirm' | 'correct' | null>(null);
+  const [confirmFirstName, setConfirmFirstName] = useState('');
+  const [confirmMiddleName, setConfirmMiddleName] = useState('');
+  const [confirmLastName, setConfirmLastName] = useState('');
+  const [confirmSuffix, setConfirmSuffix] = useState('');
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
+  const [confirmingLegalName, setConfirmingLegalName] = useState(false);
+  const [justConfirmedLegalName, setJustConfirmedLegalName] = useState(false);
+
+  const isGovIdVerified = Boolean(
+    appProfile?.isGovernmentIdVerified ?? profile?.isGovernmentIdVerified
+  );
+  const isLegalNameLocked =
+    (appProfile?.governmentIdVerificationStatus ?? profile?.governmentIdVerificationStatus) === 'VERIFIED';
+  const needsLegalNameConfirmation = Boolean(
+    (appProfile?.needsLegalNameConfirmation ?? profile?.needsLegalNameConfirmation) &&
+      !isLegalNameLocked
+  );
+  const displayedGoogleName = (appProfile?.fullName || profile?.displayName || '').trim();
+  const storedFirstName = appProfile?.firstName ?? profile?.firstName ?? '';
+  const storedMiddleName = appProfile?.middleName ?? profile?.middleName ?? '';
+  const storedLastName = appProfile?.lastName ?? profile?.lastName ?? '';
+  const storedSuffix = appProfile?.suffix ?? profile?.suffix ?? '';
+  const hasStructuredName = Boolean(storedFirstName?.trim() && storedLastName?.trim());
 
   const handlePasswordReset = async () => {
     if (!user?.email) {
@@ -62,20 +89,98 @@ export const ProfilePage: React.FC = () => {
     }
   }, [profile]);
 
+  const handleConfirmLegalName = async () => {
+    if (saving || confirmingLegalName || !confirmationChoice) return;
+
+    const cleanFirst = confirmFirstName.trim().replace(/\s+/g, ' ');
+    const cleanMiddle = confirmMiddleName.trim().replace(/\s+/g, ' ');
+    const cleanLast = confirmLastName.trim().replace(/\s+/g, ' ');
+    const cleanSuffix = confirmSuffix.trim().replace(/\s+/g, ' ');
+
+    if (!cleanFirst || !cleanLast) {
+      setConfirmationError('First Name and Last Name are required.');
+      return;
+    }
+
+    if (
+      confirmationChoice === 'confirm' &&
+      !doesConfirmedNameMatchDisplayed(displayedGoogleName, {
+        firstName: cleanFirst,
+        middleName: cleanMiddle,
+        lastName: cleanLast,
+        suffix: cleanSuffix,
+      })
+    ) {
+      setConfirmationError(
+        'The entered name components do not match your displayed full name. Please verify your entries or choose "No, I need to correct my name".'
+      );
+      return;
+    }
+
+    setConfirmationError(null);
+    setConfirmingLegalName(true);
+    try {
+      await updateProfile({
+        firstName: cleanFirst,
+        middleName: cleanMiddle || '',
+        lastName: cleanLast,
+        suffix: cleanSuffix || '',
+        legalNameConfirmationAction: confirmationChoice,
+      });
+      const refreshedProfile = await refreshProfile(true);
+      if (!refreshedProfile) {
+        throw new Error('Failed to synchronize updated profile state with the server.');
+      }
+      if (refreshedProfile.needsLegalNameConfirmation) {
+        throw new Error('Your legal name has not been confirmed. Please try again.');
+      }
+      setDisplayName(refreshedProfile.fullName);
+      setJustConfirmedLegalName(true);
+      setConfirmationChoice(null);
+      setConfirmFirstName('');
+      setConfirmMiddleName('');
+      setConfirmLastName('');
+      setConfirmSuffix('');
+      toast.success('Your legal name has been saved successfully.');
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to save your legal name. Please try again.';
+      setConfirmationError(msg);
+      toast.error(msg);
+    } finally {
+      setConfirmingLegalName(false);
+    }
+  };
+
+  const handleOpenGovIdVerification = () => {
+    const el = document.getElementById('government-id-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return;
+    if (saving || confirmingLegalName) return;
 
     const wasCompletingProfile = isNewUser || Boolean(appProfile?.needsProfileCompletion);
     setSaving(true);
     try {
-      await updateProfile({
-        displayName,
-        phone,
-        address,
-        notificationsEnabled: emailNotifications
-      });
-      const refreshedProfile = await refreshProfile();
+      const payload =
+        isLegalNameLocked || needsLegalNameConfirmation
+          ? {
+              phone,
+              address,
+              notificationsEnabled: emailNotifications,
+            }
+          : {
+              ...(displayName !== profile?.displayName ? { displayName } : {}),
+              phone,
+              address,
+              notificationsEnabled: emailNotifications,
+            };
+
+      await updateProfile(payload);
+      const refreshedProfile = await refreshProfile(true);
 
       if (!refreshedProfile) {
         throw new Error('Failed to synchronize updated profile state with the server.');
@@ -240,6 +345,165 @@ export const ProfilePage: React.FC = () => {
 
         {/* Right Side: Details forms */}
         <div className="lg:col-span-8 space-y-6">
+          {needsLegalNameConfirmation && (
+            <Card className="border-amber-300 bg-amber-50/40 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center space-x-2 text-amber-950">
+                  <Info size={18} className="text-amber-600" />
+                  <span>Confirm Your Legal Name</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs">
+                <div className="p-3 bg-white border border-amber-200 rounded-button space-y-1">
+                  <p className="text-[11px] uppercase tracking-wide font-semibold text-text-muted">
+                    Current Google Profile Name
+                  </p>
+                  <p className="text-sm font-serif font-bold text-text-primary">
+                    {displayedGoogleName || 'No name provided by Google'}
+                  </p>
+                </div>
+
+                <p className="text-sm font-semibold text-text-primary">
+                  Is this your actual full legal name as shown on your Government ID?
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={confirmationChoice === 'confirm' ? 'primary' : 'outline'}
+                    onClick={() => {
+                      setConfirmationChoice('confirm');
+                      setConfirmationError(null);
+                    }}
+                    disabled={saving || confirmingLegalName}
+                  >
+                    Yes, this is my legal name
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={confirmationChoice === 'correct' ? 'primary' : 'outline'}
+                    onClick={() => {
+                      setConfirmationChoice('correct');
+                      setConfirmationError(null);
+                    }}
+                    disabled={saving || confirmingLegalName}
+                  >
+                    No, I need to correct my name
+                  </Button>
+                </div>
+
+                {confirmationChoice && (
+                  <div className="space-y-4 pt-2 border-t border-amber-200/80">
+                    <p className="text-text-muted">
+                      {confirmationChoice === 'confirm'
+                        ? 'Enter your exact First, Middle (if any), Last Name, and Suffix (if any) matching the displayed full legal name above.'
+                        : 'Enter your actual legal name exactly as it appears on your Government ID.'}
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Input
+                        label="First Name *"
+                        type="text"
+                        placeholder="Juan"
+                        value={confirmFirstName}
+                        onChange={(e) => {
+                          setConfirmFirstName(e.target.value);
+                          setConfirmationError(null);
+                        }}
+                        disabled={saving || confirmingLegalName}
+                      />
+                      <Input
+                        label="Middle Name"
+                        type="text"
+                        placeholder="Santos (Optional)"
+                        value={confirmMiddleName}
+                        onChange={(e) => {
+                          setConfirmMiddleName(e.target.value);
+                          setConfirmationError(null);
+                        }}
+                        disabled={saving || confirmingLegalName}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <Input
+                          label="Last Name *"
+                          type="text"
+                          placeholder="Dela Cruz"
+                          value={confirmLastName}
+                          onChange={(e) => {
+                            setConfirmLastName(e.target.value);
+                            setConfirmationError(null);
+                          }}
+                          disabled={saving || confirmingLegalName}
+                        />
+                      </div>
+                      <Input
+                        label="Suffix"
+                        type="text"
+                        placeholder="Jr. (Opt.)"
+                        value={confirmSuffix}
+                        onChange={(e) => {
+                          setConfirmSuffix(e.target.value);
+                          setConfirmationError(null);
+                        }}
+                        disabled={saving || confirmingLegalName}
+                      />
+                    </div>
+
+                    {confirmationError && (
+                      <div
+                        role="alert"
+                        className="p-3 bg-red-50 border border-red-200 rounded-button text-red-700 text-xs flex items-start gap-2"
+                      >
+                        <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                        <span>{confirmationError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        loading={confirmingLegalName}
+                        disabled={saving || confirmingLegalName}
+                        onClick={() => void handleConfirmLegalName()}
+                      >
+                        {confirmationChoice === 'confirm'
+                          ? 'Confirm Legal Name'
+                          : 'Save Corrected Legal Name'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {justConfirmedLegalName && !isGovIdVerified && (
+            <Card className="border-emerald-300 bg-emerald-50/70 shadow-sm">
+              <CardContent className="pt-5 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 size={20} className="text-emerald-700 shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm font-medium text-emerald-950 leading-relaxed">
+                    Your legal name has been saved successfully. Please verify your Government ID to confirm your identity and access document requests.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={handleOpenGovIdVerification}
+                >
+                  Verify Government ID Now
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <form onSubmit={handleSave} id="profile-form" className="space-y-6">
             <Card>
               <CardHeader>
@@ -249,12 +513,58 @@ export const ProfilePage: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Input
-                  label="Display Name"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  placeholder="Full Name"
-                />
+                <div className="space-y-1.5">
+                  <Input
+                    label="Full Name"
+                    value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    placeholder="Full Name"
+                    disabled={isLegalNameLocked || needsLegalNameConfirmation}
+                    readOnly={isLegalNameLocked || needsLegalNameConfirmation}
+                  />
+                  {isLegalNameLocked && (
+                    <p className="text-[11px] text-text-muted flex items-center gap-1.5">
+                      <Lock size={12} className="text-emerald-700 shrink-0" />
+                      <span>Legal name is locked after Government ID verification.</span>
+                    </p>
+                  )}
+                  {!isLegalNameLocked && needsLegalNameConfirmation && (
+                    <p className="text-[11px] text-amber-800">
+                      Confirm or correct your legal name above before verifying your Government ID.
+                    </p>
+                  )}
+                </div>
+
+                {isLegalNameLocked && hasStructuredName && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                    <Input
+                      label="First Name"
+                      value={storedFirstName}
+                      disabled
+                      readOnly
+                    />
+                    <Input
+                      label="Middle Name"
+                      value={storedMiddleName || ''}
+                      placeholder="None"
+                      disabled
+                      readOnly
+                    />
+                    <Input
+                      label="Last Name"
+                      value={storedLastName}
+                      disabled
+                      readOnly
+                    />
+                    <Input
+                      label="Suffix"
+                      value={storedSuffix || ''}
+                      placeholder="None"
+                      disabled
+                      readOnly
+                    />
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     label="Email Address"
@@ -313,7 +623,7 @@ export const ProfilePage: React.FC = () => {
 
             {/* Save Status Bar */}
             <div className="flex items-center justify-end">
-              <Button type="submit" loading={saving} disabled={saving}>Save Settings</Button>
+              <Button type="submit" loading={saving} disabled={saving || confirmingLegalName}>Save Settings</Button>
             </div>
           </form>
         </div>

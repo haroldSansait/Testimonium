@@ -14,6 +14,7 @@ export interface BackendUserProfile {
   termsAccepted: boolean;
   privacyAccepted: boolean;
   needsProfileCompletion: boolean;
+  needsLegalNameConfirmation?: boolean;
   isNewUser?: boolean;
   emailNotificationsEnabled?: boolean;
   status: string;
@@ -102,6 +103,7 @@ export interface UpdateProfilePayload {
   middleName?: string;
   lastName?: string;
   suffix?: string;
+  legalNameConfirmationAction?: "confirm" | "correct";
   contactNumber?: string;
   address?: string;
   emailNotificationsEnabled?: boolean;

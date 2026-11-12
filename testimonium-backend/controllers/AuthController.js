@@ -5,8 +5,18 @@ import { logger } from "../config/logger.js";
 import { env } from "../config/env.js";
 import { shouldRequireEmailVerification } from "../utils/emailVerificationPolicy.js";
 import { defaultGovernmentIdVerificationService } from "../services/GovernmentIdVerificationService.js";
-import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
 import { formatRemainingTime } from "../services/OtpService.js";
+import {
+  doesConfirmedNameMatchDisplayedName,
+  hasConfirmedStructuredName,
+  needsGoogleLegalNameConfirmation,
+} from "../utils/googleLegalNameConfirmation.js";
+import {
+  hasAnyNameField,
+  hasLegalNameChange,
+  normalizeAndConstructFullName,
+  resolveUserNameUpdate,
+} from "../utils/nameUtils.js";
 
 
 const userRepository = new UserRepository();
@@ -161,7 +171,6 @@ export const resendVerification = async (req, res, next) => {
   }
 };
 
-import { normalizeAndConstructFullName, resolveUserNameUpdate } from "../utils/nameUtils.js";
 export { normalizeAndConstructFullName };
 
 export const recordLegalAcceptance = async (req, res, next) => {
@@ -210,25 +219,46 @@ export const register = async (req, res, next) => {
     const nameParts = registrationProfile || { firstName, middleName, lastName, suffix };
 
     if (req.user?.id) {
-      const existingDbUser = await userRepository.findById(req.user.id);
-      if (existingDbUser) {
-        let updated = existingDbUser;
-        if (nameParts.firstName && nameParts.lastName) {
-          const nameUpdate = resolveUserNameUpdate(nameParts, existingDbUser);
-          const { fullName } = nameUpdate;
-          if (Object.entries(nameUpdate).some(([field, value]) => value !== existingDbUser[field])) {
-            updated = isMaterialGovernmentIdNameChange(existingDbUser.fullName, fullName)
-              ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
-                  req.user.id,
-                  async () => {
-                    await defaultGovernmentIdVerificationService.invalidateVerification(req.user.id);
-                    return userRepository.update(req.user.id, nameUpdate);
-                  },
-                )
-              : await userRepository.update(req.user.id, nameUpdate);
-            logger.debug({ userId: req.user.id, fullName }, "[AuthController] Updated user registration fullName");
+      let updated = null;
+      if (nameParts.firstName && nameParts.lastName) {
+        updated = await defaultGovernmentIdVerificationService.withUserVerificationLease(
+          req.user.id,
+          async () => {
+            const latestUser = await userRepository.findById(req.user.id);
+            if (!latestUser) return null;
+
+            const nameUpdate = resolveUserNameUpdate(nameParts, latestUser);
+            const roleName = latestUser.role?.roleName || latestUser.role;
+            if (
+              roleName === "PARISHIONER" &&
+              latestUser.governmentIdVerification?.status === "VERIFIED" &&
+              hasLegalNameChange(nameParts, nameUpdate, latestUser)
+            ) {
+              const err = new Error(
+                "Your legal name is locked after Government ID verification and cannot be changed."
+              );
+              err.statusCode = 403;
+              err.code = "LEGAL_NAME_LOCKED";
+              throw err;
+            }
+
+            if (Object.entries(nameUpdate).some(([field, value]) => value !== latestUser[field])) {
+              const saved = await userRepository.update(req.user.id, nameUpdate);
+              logger.debug(
+                { userId: req.user.id, fullName: nameUpdate.fullName },
+                "[AuthController] Updated user registration fullName"
+              );
+              return saved;
+            }
+
+            return latestUser;
           }
-        }
+        );
+      } else {
+        updated = await userRepository.findById(req.user.id);
+      }
+
+      if (updated) {
         userProfile = await authService.toCurrentApplicationProfile(
           updated,
           req.firebaseUser,
@@ -254,7 +284,17 @@ export const register = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { fullName, firstName, middleName, lastName, suffix, contactNumber, address, emailNotificationsEnabled } = req.body;
+    const {
+      fullName,
+      firstName,
+      middleName,
+      lastName,
+      suffix,
+      legalNameConfirmationAction,
+      contactNumber,
+      address,
+      emailNotificationsEnabled,
+    } = req.body;
 
     if (emailNotificationsEnabled !== undefined && typeof emailNotificationsEnabled !== "boolean") {
       return res.status(400).json({
@@ -264,36 +304,108 @@ export const updateProfile = async (req, res, next) => {
       });
     }
 
-    const updatePayload = resolveUserNameUpdate(
-      { fullName, firstName, middleName, lastName, suffix }, req.user,
-    );
-    // Adding components alone does not change the existing verification policy.
-    const materialNameChanged = Boolean(
-      updatePayload.fullName && req.user?.fullName &&
-      isMaterialGovernmentIdNameChange(req.user.fullName, updatePayload.fullName)
-    );
+    if (
+      legalNameConfirmationAction !== undefined &&
+      legalNameConfirmationAction !== "confirm" &&
+      legalNameConfirmationAction !== "correct"
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_CONFIRMATION_ACTION",
+        message: "legalNameConfirmationAction must be 'confirm' or 'correct'.",
+      });
+    }
 
+    const nonNameUpdates = {};
     if (contactNumber !== undefined) {
-      updatePayload.contactNumber = contactNumber;
+      nonNameUpdates.contactNumber = contactNumber;
     }
-
     if (address !== undefined) {
-      updatePayload.address = address;
+      nonNameUpdates.address = address;
     }
-
     if (emailNotificationsEnabled !== undefined) {
-      updatePayload.emailNotificationsEnabled = emailNotificationsEnabled;
+      nonNameUpdates.emailNotificationsEnabled = emailNotificationsEnabled;
     }
 
-    const updated = materialNameChanged
+    const nameInput = { fullName, firstName, middleName, lastName, suffix };
+    const touchesName = hasAnyNameField(nameInput) || legalNameConfirmationAction !== undefined;
+
+    const updated = touchesName
       ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
           userId,
           async () => {
-            await defaultGovernmentIdVerificationService.invalidateVerification(userId);
-            return userRepository.update(userId, updatePayload);
+            const latestUser = await userRepository.findById(userId);
+            if (!latestUser) {
+              const err = new Error("User not found.");
+              err.statusCode = 404;
+              err.code = "USER_NOT_FOUND";
+              throw err;
+            }
+
+            if (legalNameConfirmationAction !== undefined) {
+              const f = typeof firstName === "string" ? firstName.trim() : "";
+              const l = typeof lastName === "string" ? lastName.trim() : "";
+              if (!f || !l) {
+                const err = new Error("First name and last name are required.");
+                err.statusCode = 400;
+                err.code = "INVALID_NAME_FIELDS";
+                throw err;
+              }
+            }
+
+            const nameUpdate = resolveUserNameUpdate(nameInput, latestUser);
+            const roleName = latestUser.role?.roleName || latestUser.role;
+
+            if (
+              roleName === "PARISHIONER" &&
+              latestUser.governmentIdVerification?.status === "VERIFIED" &&
+              hasLegalNameChange(nameInput, nameUpdate, latestUser)
+            ) {
+              const err = new Error(
+                "Your legal name is locked after Government ID verification and cannot be changed."
+              );
+              err.statusCode = 403;
+              err.code = "LEGAL_NAME_LOCKED";
+              throw err;
+            }
+
+            if (
+              legalNameConfirmationAction === "confirm" &&
+              !doesConfirmedNameMatchDisplayedName(latestUser.fullName, nameUpdate.fullName)
+            ) {
+              const err = new Error(
+                "The entered name components do not match your displayed full name. Please check your entries or choose \"No, I need to correct my name\"."
+              );
+              err.statusCode = 400;
+              err.code = "LEGAL_NAME_CONFIRMATION_MISMATCH";
+              throw err;
+            }
+
+            // Confirming the displayed name only supplies its boundaries.
+            // Keep the saved spelling, accents, punctuation, and capitalization.
+            if (legalNameConfirmationAction === "confirm") {
+              nameUpdate.fullName = latestUser.fullName;
+            }
+
+            const wasConfirming =
+              needsGoogleLegalNameConfirmation(latestUser) &&
+              hasConfirmedStructuredName(nameUpdate);
+
+            const saved = await userRepository.update(userId, {
+              ...nameUpdate,
+              ...nonNameUpdates,
+            });
+
+            if (wasConfirming) {
+              await AuditLogService.log(userId, "Profile Updated", null, false, {
+                metadata: { legalNameConfirmed: true },
+              });
+            }
+
+            return saved;
           }
         )
-      : await userRepository.update(userId, updatePayload);
+      : await userRepository.update(userId, nonNameUpdates);
 
     const profile = await authService.toCurrentApplicationProfile(updated, req.firebaseUser);
 

@@ -7,6 +7,10 @@ import { LegalPolicyService } from "./LegalPolicyService.js";
 import { resolveUserNameUpdate } from "../utils/nameUtils.js";
 import { isProfileIncomplete } from "../utils/profileCompleteness.js";
 import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
+import {
+  hasConfirmedStructuredName,
+  needsGoogleLegalNameConfirmation,
+} from "../utils/googleLegalNameConfirmation.js";
 import { FirebaseAdminService } from "./FirebaseAdminService.js";
 
 export class AuthService {
@@ -155,6 +159,9 @@ export class AuthService {
       fullName = this.resolveFullName(decodedToken);
     }
 
+    const isGoogleWithoutStructuredName =
+      provider === "google.com" && !hasConfirmedStructuredName(structuredName);
+
     try {
       const { user: createdUser, currentVersions } =
         await this.legalPolicyService.withCurrentPoliciesForAcceptance(async (tx, policies) => {
@@ -174,9 +181,26 @@ export class AuthService {
           });
           await this.auditLogService.logOrThrow(user.id, "Terms Accepted", tx, false);
           await this.auditLogService.logOrThrow(user.id, "Privacy Accepted", tx, false);
-          await this.auditLogService.logOrThrow(user.id, provider === "google.com" ? "Google New User" : "JIT User Created", tx, false);
+          await this.auditLogService.logOrThrow(
+            user.id,
+            provider === "google.com" ? "Google New User" : "JIT User Created",
+            tx,
+            false,
+            isGoogleWithoutStructuredName
+              ? { metadata: { legalNameConfirmationRequired: true } }
+              : undefined
+          );
           await this.auditLogService.logOrThrow(user.id, "Registration Completed", tx, false);
           await this.auditLogService.logOrThrow(user.id, decodedToken.email_verified ? "Email Verified" : "Verification Email Sent", tx, false);
+          if (isGoogleWithoutStructuredName) {
+            user.activityLogs = [
+              ...(Array.isArray(user.activityLogs) ? user.activityLogs : []),
+              {
+                action: "Google New User",
+                metadata: JSON.stringify({ legalNameConfirmationRequired: true }),
+              },
+            ];
+          }
           return { user, currentVersions: this.versionsFromPolicies(policies) };
         });
 
@@ -373,6 +397,7 @@ export class AuthService {
       termsAccepted,
       privacyAccepted,
       needsProfileCompletion,
+      needsLegalNameConfirmation: needsGoogleLegalNameConfirmation(user),
       isNewUser: Boolean(isNewUser),
       status: user.status,
       role: user.role?.roleName || user.role,

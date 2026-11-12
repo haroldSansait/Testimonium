@@ -11,8 +11,7 @@ import {
   normalizePriestId,
 } from "./SchedulingAvailability.js";
 import { defaultGovernmentIdVerificationService } from "./GovernmentIdVerificationService.js";
-import { isMaterialGovernmentIdNameChange } from "../utils/governmentIdNameMatcher.js";
-import { resolveUserNameUpdate } from "../utils/nameUtils.js";
+import { hasAnyNameField, hasLegalNameChange, resolveUserNameUpdate } from "../utils/nameUtils.js";
 
 export class UserService {
   constructor(
@@ -167,29 +166,47 @@ export class UserService {
 
     const isParishioner = user.role?.roleName === "PARISHIONER";
 
-    const nameUpdate = resolveUserNameUpdate({ ...data, fullName: data.name || data.fullName }, user);
-    const finalName = nameUpdate.fullName;
-
     if (isParishioner) {
       // Parishioner security enforcement:
-      // Email, role, parish, and Firebase identity are immutable for parishioners
-      const updateParishioner = () => this.userRepository.update(numericId, {
+      // Email, role, parish, and Firebase identity are immutable for parishioners.
+      // Legal names are locked once Government ID verification status is VERIFIED.
+      const nameInput = { ...data, fullName: data.name || data.fullName };
+      const touchesName = hasAnyNameField(nameInput);
+
+      const applyParishionerUpdate = async (latestUser) => {
+        const nameUpdate = resolveUserNameUpdate(nameInput, latestUser);
+        if (
+          latestUser.governmentIdVerification?.status === "VERIFIED" &&
+          hasLegalNameChange(nameInput, nameUpdate, latestUser)
+        ) {
+          const err = new Error(
+            "Your legal name is locked after Government ID verification and cannot be changed."
+          );
+          err.statusCode = 403;
+          err.code = "LEGAL_NAME_LOCKED";
+          throw err;
+        }
+        return this.userRepository.update(numericId, {
           ...nameUpdate,
-          contactNumber: data.contactNumber !== undefined ? data.contactNumber : user.contactNumber,
-          address: data.address !== undefined ? data.address : user.address,
+          contactNumber: data.contactNumber !== undefined ? data.contactNumber : latestUser.contactNumber,
+          address: data.address !== undefined ? data.address : latestUser.address,
         });
-      const materialNameChanged = Boolean(
-        finalName && isMaterialGovernmentIdNameChange(user.fullName, finalName)
-      );
-      const updated = materialNameChanged
+      };
+
+      const updated = touchesName
         ? await defaultGovernmentIdVerificationService.withUserVerificationLease(
             numericId,
             async () => {
-              await defaultGovernmentIdVerificationService.invalidateVerification(numericId);
-              return updateParishioner();
+              const latestUser = await this.userRepository.findById(numericId);
+              if (!latestUser) {
+                const err = new Error("User not found.");
+                err.statusCode = 404;
+                throw err;
+              }
+              return applyParishionerUpdate(latestUser);
             }
           )
-        : await updateParishioner();
+        : await applyParishionerUpdate(user);
 
       await AuditLogService.log(actorId, "User Updated", null, false, {
         affectedTable: "users",
@@ -203,6 +220,9 @@ export class UserService {
 
       return this.mapToDto(updated);
     }
+
+    const nameUpdate = resolveUserNameUpdate({ ...data, fullName: data.name || data.fullName }, user);
+    const finalName = nameUpdate.fullName;
 
     // Staff user editing:
     // Email duplicate check if changing email

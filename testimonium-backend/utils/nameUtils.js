@@ -31,13 +31,44 @@ export const resolveUserNameUpdate = (data = {}, current = {}) => {
       const value = data[field] !== undefined ? data[field] : (completeInput ? null : current[field]);
       return [field, value ? String(value).trim().replace(/\s+/g, " ") || null : null];
     }));
-    return { fullName: normalizeAndConstructFullName(parts), ...parts };
+    const reconstructed = normalizeAndConstructFullName(parts);
+    const unchanged = fields.every(field =>
+      cleanNullableNameValue(parts[field]) === cleanNullableNameValue(current[field])
+    );
+    return { fullName: unchanged && current.fullName ? current.fullName : reconstructed, ...parts };
   }
   if (typeof data.fullName !== "string" || !data.fullName.trim()) return {};
   const fullName = data.fullName.trim();
   return fullName === current.fullName
     ? { fullName }
     : { fullName, ...Object.fromEntries(fields.map(field => [field, null])) };
+};
+
+export const cleanNullableNameValue = (value) => {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  return cleaned || null;
+};
+
+export const hasAnyNameField = (data = {}) =>
+  ["fullName", "name", "firstName", "middleName", "lastName", "suffix"].some(
+    (field) => data?.[field] !== undefined
+  );
+
+export const hasLegalNameChange = (nameInput = {}, nameUpdate = {}, current = {}) => {
+  const fields = ["fullName", "firstName", "middleName", "lastName", "suffix"];
+  for (const field of fields) {
+    if (nameUpdate[field] !== undefined) {
+      if (cleanNullableNameValue(nameUpdate[field]) !== cleanNullableNameValue(current[field])) {
+        return true;
+      }
+    }
+  }
+  const explicitCombined = cleanNullableNameValue(nameInput.fullName ?? nameInput.name);
+  if (explicitCombined !== null && explicitCombined !== cleanNullableNameValue(current.fullName)) {
+    return true;
+  }
+  return false;
 };
 
 /**

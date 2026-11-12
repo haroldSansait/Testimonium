@@ -96,6 +96,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const interactiveUidRef = useRef<string | null>(null);
   const verificationPromiseRef = useRef<Promise<boolean> | null>(null);
   const refreshPromiseRef = useRef<Promise<BackendUserProfile | null> | null>(null);
+  const profileRevisionRef = useRef(0);
   const mountedRef = useRef(true);
 
   const resetLocalState = useCallback(async () => {
@@ -240,10 +241,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const generation = generationRef.current;
     const uid = firebaseUser.uid;
 
+    const revision = profileRevisionRef.current;
     refreshPromiseRef.current = (async () => {
       try {
         const nextProfile = await authApi.profile();
-        if (!isCurrent(generation, uid, generationRef.current, uidRef.current)) {
+        if (revision !== profileRevisionRef.current || !isCurrent(generation, uid, generationRef.current, uidRef.current)) {
           return null;
         }
         return commitProfile(nextProfile, firebaseUser, generation) ? nextProfile : null;
@@ -665,7 +667,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             message: "Please sign in to update your profile.",
           });
         }
+        ++profileRevisionRef.current;
         const updatedProfile = await authApi.updateProfile(payload);
+        ++profileRevisionRef.current;
         commitProfile(updatedProfile, firebaseUser, generation);
         return updatedProfile;
       } catch (cause) {
