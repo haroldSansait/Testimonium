@@ -44,6 +44,37 @@ export const list = async (req, res, next) => {
   }
 };
 
+export const getById = async (req, res, next) => {
+  try {
+    const id = parsePositiveId(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_REQUEST_ID",
+        message: "Invalid document request ID.",
+      });
+    }
+
+    const actorRole = req.user.role;
+    const actorParishId = req.user.parish?.id || req.user.parishId;
+    const data = await documentRequestService.getById(id, actorRole, actorParishId);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        code: err.code,
+        message: err.message,
+      });
+    }
+    return next(err);
+  }
+};
+
 export const verifyCash = async (req, res, next) => {
   try {
     const id = parsePositiveId(req.params.id);

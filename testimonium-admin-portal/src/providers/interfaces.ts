@@ -37,6 +37,9 @@ export interface DocumentRequestFilters {
 
 export interface ScheduleRequestFilters {
   filter?: 'all' | 'pending' | 'upcoming';
+  search?: string;
+  eventType?: string;
+  status?: ScheduleStatus | 'all' | string;
   page?: number;
   pageSize?: number;
 }
@@ -121,6 +124,7 @@ export interface NotificationProvider {
 export interface DocumentProvider {
   verifyCashPayment(id: string): Promise<DocumentRequest>;
   getDocumentRequests(filters: DocumentRequestFilters): Promise<PaginatedResponse<DocumentRequest>>;
+  getDocumentRequest?(id: string): Promise<DocumentRequest>;
   updateDocumentStatus(
     id: string,
     status: DocumentStatus,

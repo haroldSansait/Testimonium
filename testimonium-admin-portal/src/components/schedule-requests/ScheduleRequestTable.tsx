@@ -25,15 +25,38 @@ const eventTypeIcons: Record<EventType, React.ReactNode> = {
 interface ScheduleRequestTableProps {
   requests: ScheduleRequest[];
   onViewDetails?: (req: ScheduleRequest) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }
 
-export function ScheduleRequestTable({ requests, onViewDetails }: ScheduleRequestTableProps) {
+export function ScheduleRequestTable({
+  requests,
+  onViewDetails,
+  hasActiveFilters = false,
+  onClearFilters,
+}: ScheduleRequestTableProps) {
   if (requests.length === 0) {
     return (
-      <EmptyState
-        title="No schedule requests"
-        description="No requests match the current filter."
-      />
+      <div className="flex flex-col items-center justify-center py-14 px-4">
+        <EmptyState
+          className="py-2"
+          title={hasActiveFilters ? 'No matching schedule requests' : 'No schedule requests'}
+          description={
+            hasActiveFilters
+              ? 'No schedule requests match the active search or filter criteria.'
+              : 'Incoming parish scheduling applications will appear here.'
+          }
+        />
+        {hasActiveFilters && onClearFilters && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="mt-3 px-3.5 py-1.5 text-xs font-medium text-crimson-700 bg-crimson-50 hover:bg-crimson-100 rounded-md transition-colors"
+          >
+            Clear all filters
+          </button>
+        )}
+      </div>
     );
   }
 

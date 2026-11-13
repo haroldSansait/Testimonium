@@ -1,8 +1,7 @@
 import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCheck, ChevronDown, Info } from 'lucide-react';
+import { CheckCheck, BellOff, AlertCircle } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { NotificationGroup } from '@/components/notifications/NotificationGroup';
@@ -10,200 +9,196 @@ import { NotificationService } from '@/services/NotificationService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { getNotificationDestination } from '@/utils/notificationNavigation';
 import type { Notification, NotificationGroup as GroupType } from '@/types';
 
-const GROUPS: GroupType[] = ['TODAY', 'YESTERDAY', 'EARLIER'];
-
-interface NoticeModalProps {
-  notification: Notification;
-  onClose: () => void;
-}
-
-function NoticeModal({ notification, onClose }: NoticeModalProps) {
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150">
-        <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-          <Info className="w-6 h-6 text-blue-600" />
-        </div>
-        <h3 className="text-base font-bold text-gray-900 mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
-          {notification.title}
-        </h3>
-        <p className="text-xs text-gray-400 mb-4">{notification.timestamp}</p>
-        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-          {notification.description}
-        </p>
-        <div className="flex justify-center">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-800 text-white text-sm font-semibold rounded-lg hover:bg-gray-900 transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
+const FILTER_OPTIONS = [
+  { label: 'All Notifications', value: 'all' },
+  { label: 'Unread Only', value: 'unread' },
+];
 
 export function NotificationsPage() {
   const navigate = useNavigate();
-  const [selectedNotice, setSelectedNotice] = useState<Notification | null>(null);
+  const notifQuery = useCachedQuery<Notification[]>(
+    ['notifications'],
+    () => NotificationService.getNotifications()
+  );
+  const notifications = notifQuery.data ?? [];
+  const isLoading = notifQuery.loading;
+  const error = notifQuery.error;
+  const fetchNotifs = notifQuery.refetch;
+  const setNotifications = (
+    update: Notification[] | ((prev: Notification[]) => Notification[])
+  ) =>
+    notifQuery.setData((previous) => {
+      const current = previous ?? [];
+      return typeof update === 'function' ? update(current) : update;
+    });
+
   const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const [isReading, setIsReading] = useState(false);
-  const readInFlight = useRef(false);
-  const notificationQuery = useCachedQuery(['notifications'], () => NotificationService.getNotifications(), {
-    enabled: !selectedNotice && !isReading,
-  });
-  const notifs = notificationQuery.data ?? [];
-  const isLoading = notificationQuery.loading;
-  const error = notificationQuery.error;
-  const fetchNotifs = notificationQuery.refetch;
-
-  // Visibility-aware polling every 30 seconds, paused if loading or notice modal is open
+  // Set up auto-refresh polling (every 60 seconds), paused when loading or mutating
   useAutoRefresh(
     () => void fetchNotifs(true),
-    { intervalMs: 30000, enabled: !isLoading && !selectedNotice && !isReading }
+    { intervalMs: 60000, enabled: !isLoading && !isMarkingAll }
   );
 
-  const markAllRead = async () => {
-    if (readInFlight.current) return;
-    readInFlight.current = true;
-    setIsReading(true);
-    const original = [...notifs];
-    notificationQuery.setData(previous => previous?.map(n => ({ ...n, isRead: true })));
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleMarkAllRead = async () => {
+    if (unreadCount === 0 || isMarkingAll) return;
+
+    setIsMarkingAll(true);
+    setActionError(null);
+    const previous = notifications;
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+
     try {
       await NotificationService.markAllRead();
       window.dispatchEvent(new Event('notifications-updated'));
-    } catch {
-      notificationQuery.setData(original);
-    } finally {
       await fetchNotifs(true);
-      readInFlight.current = false;
-      setIsReading(false);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+      setNotifications(previous);
+      setActionError('Unable to mark all notifications as read right now. Please try again.');
+    } finally {
+      setIsMarkingAll(false);
     }
   };
 
-  const handleNotificationAction = async (notif: Notification) => {
-    if (readInFlight.current) return;
-    readInFlight.current = true;
-    setIsReading(true);
-    // 1. Mark as read
+  const handleOpenNotification = async (notif: Notification) => {
+    const destination = getNotificationDestination(notif);
+    if (!destination) {
+      // Static / non-navigable informational notifications must never redirect
+      return;
+    }
+
+    setActionError(null);
+
+    if (!notif.isRead) {
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === notif.id ? { ...item, isRead: true } : item))
+      );
+
+      try {
+        await NotificationService.markRead(notif.id);
+        window.dispatchEvent(new Event('notifications-updated'));
+      } catch (err) {
+        console.error('Failed to mark notification as read:', err);
+        // Proceed with navigation so the administrator can still review the target request
+      }
+    }
+
     try {
-      await NotificationService.markRead(notif.id);
-      window.dispatchEvent(new Event('notifications-updated'));
-      await fetchNotifs(true);
-    } finally {
-      readInFlight.current = false;
-      setIsReading(false);
-    }
-
-    // 2. Perform action based on notification type / reference properties
-    if (notif.referenceType === 'DOCUMENT_REQUEST' && notif.referenceId) {
-      navigate('/document-requests', { state: { requestId: notif.referenceId } });
-    } else if (notif.referenceType === 'SCHEDULE_REQUEST' && notif.referenceId) {
-      navigate('/schedule-requests', { state: { requestId: notif.referenceId } });
-    } else if (notif.type === 'schedule-conflict') {
-      navigate('/schedule-requests', { state: { highlightConflict: true } });
-    } else if (notif.type === 'system-update') {
-      setSelectedNotice(notif);
-    } else {
-      // Fallback
-      setSelectedNotice(notif);
+      navigate(destination.path, { state: destination.state });
+    } catch (err) {
+      console.error('Failed to navigate from notification:', err);
+      setActionError('Unable to open the linked request. Please access it from the sidebar.');
     }
   };
 
-  const filteredNotifs = notifs.filter((n) => {
-    if (filterMode === 'unread') return !n.isRead;
-    return true;
-  });
+  const filteredNotifs =
+    filterMode === 'unread' ? notifications.filter((n) => !n.isRead) : notifications;
 
-  const grouped = (group: GroupType) => filteredNotifs.filter((n) => n.group === group);
+  const groups: GroupType[] = ['TODAY', 'YESTERDAY', 'EARLIER'];
 
   return (
     <div>
-      <PageHeader
-        title="Notifications"
-        subtitle="Stay updated on administrative alerts and requests."
-        actions={
-          <div className="flex items-center gap-2">
-            {/* Notifications Filter Dropdown */}
-            <div className="w-[170px]">
-              <CustomSelect
-                value={filterMode}
-                onChange={(val) => setFilterMode(val as 'all' | 'unread')}
-                options={[
-                  { value: 'all', label: 'All Notifications' },
-                  { value: 'unread', label: 'Unread Only' },
-                ]}
-                id="notifications-filter"
-                aria-label="Filter notifications"
-              />
-            </div>
+      {/* Header row with filter and Mark All Read action */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <PageHeader
+          title="Notifications"
+          subtitle="Stay updated on administrative alerts and requests."
+          className="mb-0"
+        />
 
-            <button
-              id="mark-all-read"
-              onClick={markAllRead}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-crimson-700 hover:text-crimson-800 transition-colors"
-            >
-              <CheckCheck className="w-4 h-4" />
-              Mark All as Read
-            </button>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <div className="w-[175px]">
+            <CustomSelect
+              value={filterMode}
+              onChange={(val) => setFilterMode(val as 'all' | 'unread')}
+              options={FILTER_OPTIONS}
+              id="notifications-filter-mode"
+              aria-label="Filter notifications"
+            />
           </div>
-        }
-      />
 
-      {isLoading ? (
-        <LoadingState message="Loading notifications..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => void fetchNotifs(false)} />
-      ) : filteredNotifs.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center my-6 shadow-card">
-          <p className="text-sm text-gray-500 font-medium">
-            {filterMode === 'unread' ? 'No unread notifications.' : 'No notifications found.'}
-          </p>
+          <button
+            type="button"
+            onClick={() => void handleMarkAllRead()}
+            disabled={unreadCount === 0 || isMarkingAll}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-medium rounded-lg border border-crimson-200 bg-white text-crimson-700 hover:bg-crimson-50 hover:border-crimson-300 disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            <CheckCheck className="w-4 h-4" />
+            <span>{isMarkingAll ? 'Marking...' : 'Mark All as Read'}</span>
+          </button>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {GROUPS.map((group) => {
-            const groupNotifs = grouped(group);
-            if (groupNotifs.length === 0) return null;
-            return (
-              <NotificationGroup
-                key={group}
-                group={group}
-                notifications={groupNotifs}
-                onAction={handleNotificationAction}
-              />
-            );
-          })}
+      </div>
+
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-3 text-xs text-red-800"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-red-700 hover:text-red-900 font-medium underline"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Load Previous (Disabled - not supported by backend) */}
-      <div className="flex justify-center mt-4">
-        <button
-          id="load-previous-notifications"
-          disabled
-          className="flex items-center gap-2 text-sm font-medium text-gray-400 cursor-not-allowed py-2 opacity-60"
-        >
-          <ChevronDown className="w-4 h-4" />
-          No More Notifications
-        </button>
-      </div>
-
-
-      {/* General Notice Modal */}
-      {selectedNotice && (
-        <NoticeModal
-          notification={selectedNotice}
-          onClose={() => setSelectedNotice(null)}
-        />
+      {/* Content */}
+      {isLoading ? (
+        <div className="bg-white border border-gray-200 rounded-xl p-8">
+          <LoadingState message="Loading notifications..." />
+        </div>
+      ) : error ? (
+        <div className="bg-white border border-gray-200 rounded-xl p-8">
+          <ErrorState message={error} onRetry={() => void fetchNotifs(false)} />
+        </div>
+      ) : filteredNotifs.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-xl py-16 px-6 text-center">
+          <div className="w-12 h-12 rounded-full bg-[#F5F0EE] border border-gray-200/80 flex items-center justify-center mx-auto mb-3.5">
+            <BellOff className="w-5 h-5 text-crimson-700" />
+          </div>
+          <h3 className="text-sm font-semibold text-gray-900">
+            {filterMode === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+            {filterMode === 'unread'
+              ? 'You are all caught up. Switch back to All Notifications to view previously read alerts.'
+              : 'Administrative alerts for document and schedule requests will appear here.'}
+          </p>
+          {filterMode === 'unread' && notifications.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterMode('all')}
+              className="mt-4 px-3.5 py-1.5 text-xs font-medium text-crimson-700 bg-crimson-50 hover:bg-crimson-100 rounded-md transition-colors"
+            >
+              Show all notifications
+            </button>
+          )}
+        </div>
+      ) : (
+        <div>
+          {groups.map((group) => (
+            <NotificationGroup
+              key={group}
+              group={group}
+              notifications={filteredNotifs.filter((n) => n.group === group)}
+              onOpen={handleOpenNotification}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

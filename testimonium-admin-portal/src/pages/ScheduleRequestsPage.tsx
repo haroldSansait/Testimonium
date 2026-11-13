@@ -3,30 +3,52 @@ import type { SetStateAction } from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Filter, X, Check, Calendar, Clock, User, FileText, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Check, X, Calendar, Clock, User, FileText, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
-import { CustomSelect } from '@/components/ui/CustomSelect';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { CustomSelect, type CustomSelectOptionGroup } from '@/components/ui/CustomSelect';
 import { ScheduleRequestTable } from '@/components/schedule-requests/ScheduleRequestTable';
 import { ScheduleAttachments } from '@/components/schedule-requests/ScheduleAttachments';
-import { getScheduleRequests, updateScheduleStatus, proposeReschedule, assignPriest, assignLayMinister, getAvailableSlots, getPriestAvailability, nominateAlternativeProposal, declineAlternativeProposal, revokeAlternativeProposalNomination } from '@/services/scheduleRequestService';
+import { getScheduleRequests, getScheduleRequest, updateScheduleStatus, proposeReschedule, assignPriest, assignLayMinister, getAvailableSlots, getPriestAvailability, nominateAlternativeProposal, declineAlternativeProposal, revokeAlternativeProposalNomination } from '@/services/scheduleRequestService';
 import { UserManagementService } from '@/services/UserManagementService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { ScheduleRequest, ScheduleStatus } from '@/types';
 import { cn } from '@/utils/cn';
-import { resolveEventType } from '@/shared/EventTypeCatalog';
-import type { ScheduleFilter } from '@/services/scheduleRequestService';
+import { EventTypeCatalog, resolveEventType } from '@/shared/EventTypeCatalog';
 import { EmergencyRescheduleModal } from '@/components/schedule-requests/EmergencyRescheduleModal';
 import { useAuth } from '@/hooks/useAuth';
 import { canManageScheduleRequests } from '@/permissions/rolePermissions';
 
-const FILTER_TABS: { label: string; value: ScheduleFilter }[] = [
-  { label: 'All Requests', value: 'all' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Upcoming', value: 'upcoming' },
+const SCHEDULE_STATUS_OPTIONS: { value: ScheduleStatus | 'all'; label: string }[] = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Under Review', label: 'Under Review' },
+  { value: 'Tentative', label: 'Tentative' },
+  { value: 'Confirmed', label: 'Confirmed' },
+  { value: 'Cancelled', label: 'Cancelled' },
 ];
+
+function buildScheduleEventTypeGroups(): CustomSelectOptionGroup[] {
+  const catalog = Array.isArray(EventTypeCatalog) ? EventTypeCatalog : [];
+  const sacraments = catalog.filter((e) => e.category === 'Sacrament').map((e) => ({ value: e.enum, label: e.title }));
+  const masses = catalog.filter((e) => e.category === 'Mass').map((e) => ({ value: e.enum, label: e.title }));
+  const otherEvents = catalog.filter((e) => e.category === 'Other').map((e) => ({ value: e.enum, label: e.title }));
+
+  return [
+    { options: [{ value: 'all', label: 'All Event Types' }] },
+    ...(sacraments.length ? [{ groupName: 'Sacraments', options: sacraments }] : []),
+    ...(masses.length ? [{ groupName: 'Masses & Liturgies', options: masses }] : []),
+    {
+      groupName: 'Other & Custom',
+      options: [...otherEvents, { value: 'OTHER', label: 'Other' }],
+    },
+  ];
+}
+
+const SCHEDULE_EVENT_TYPE_GROUPS = buildScheduleEventTypeGroups();
 
 // ─── Details Modal ────────────────────────────────────────────────────────────
 
@@ -1263,25 +1285,28 @@ export function ScheduleRequestsPage() {
   const { role } = useAuth();
   const canManage = canManageScheduleRequests(role);
   const location = useLocation();
-  const [activeFilter, setActiveFilter] = useState<ScheduleFilter>('all');
+  const [search, setSearch] = useState('');
+  const [eventType, setEventType] = useState<string>('all');
+  const [status, setStatus] = useState<ScheduleStatus | 'all'>('all');
   const [page, setPage] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<ScheduleRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+  const handledDeepLinkRef = useRef<string | null>(null);
 
   const PAGE_SIZE = 5;
 
-  const filters = { filter: activeFilter, page, pageSize: PAGE_SIZE };
+  const filters = { search, eventType, status, page, pageSize: PAGE_SIZE };
   const requestQuery = useCachedQuery(['schedules', 'list', filters], () => getScheduleRequests(filters), {
     enabled: !selectedRequest && !isMutating,
   });
-  const requests = requestQuery.data?.data ?? [];
-  const total = requestQuery.data?.total ?? 0;
-  const totalPages = requestQuery.data?.totalPages ?? 1;
-  const isLoading = requestQuery.loading;
-  const error = requestQuery.error;
-  const fetchRequests = requestQuery.refetch;
-  const setRequests = (update: SetStateAction<ScheduleRequest[]>) => requestQuery.setData(previous => previous ? {
+  const requests = requestQuery?.data?.data ?? [];
+  const total = requestQuery?.data?.total ?? 0;
+  const totalPages = requestQuery?.data?.totalPages ?? 1;
+  const isLoading = requestQuery?.loading ?? false;
+  const error = requestQuery?.error ?? null;
+  const fetchRequests = requestQuery?.refetch ?? (async () => undefined as any);
+  const setRequests = (update: SetStateAction<ScheduleRequest[]>) => requestQuery?.setData?.(previous => previous ? {
     ...previous, data: typeof update === 'function' ? update(previous.data) : update,
   } : previous);
 
@@ -1291,19 +1316,74 @@ export function ScheduleRequestsPage() {
     { intervalMs: 60000, enabled: !isLoading && !selectedRequest && !isMutating }
   );
 
-  // Listen to router state (e.g. from Notifications about schedule conflict)
+  // Listen to router state (e.g. direct navigation from Notifications to a specific schedule request)
   useEffect(() => {
+    const targetRequestId = location.state?.requestId;
+    if (targetRequestId) {
+      const linkKey = `${location.key || 'nav'}:${String(targetRequestId)}`;
+      if (handledDeepLinkRef.current === linkKey) return;
+
+      const localMatch = requests.find((r) => String(r.id) === String(targetRequestId));
+      if (localMatch) {
+        handledDeepLinkRef.current = linkKey;
+        setSelectedRequest(localMatch);
+        return;
+      }
+
+      if (isLoading) return;
+
+      handledDeepLinkRef.current = linkKey;
+      let cancelled = false;
+      getScheduleRequest(String(targetRequestId))
+        .then((fetched) => {
+          if (!cancelled && fetched) {
+            setSelectedRequest(fetched);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to open linked schedule request:', err);
+          if (!cancelled) {
+            setToastMessage('Unable to open the linked schedule request. It may no longer be available.');
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (location.state?.highlightConflict && requests.length > 0) {
-      // Auto open the tentative conflict request
+      const linkKey = `${location.key || 'nav'}:conflict`;
+      if (handledDeepLinkRef.current === linkKey) return;
       const conflictReq = requests.find(r => r.status === 'Tentative' || r.id === 'sched-req-3');
       if (conflictReq) {
+        handledDeepLinkRef.current = linkKey;
         setSelectedRequest(conflictReq);
       }
     }
-  }, [location.state, requests]);
+  }, [location.state, location.key, requests, isLoading]);
 
-  const handleFilter = (f: ScheduleFilter) => {
-    setActiveFilter(f);
+  const hasActiveFilters = search.trim() !== '' || eventType !== 'all' || status !== 'all';
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
+
+  const handleEventType = (value: string) => {
+    setEventType(value || 'all');
+    setPage(1);
+  };
+
+  const handleStatus = (value: string) => {
+    setStatus((value || 'all') as ScheduleStatus | 'all');
+    setPage(1);
+  };
+
+  const handleClearFilters = () => {
+    setSearch('');
+    setEventType('all');
+    setStatus('all');
     setPage(1);
   };
 
@@ -1551,33 +1631,10 @@ export function ScheduleRequestsPage() {
 
   return (
     <div>
-      {/* Header with tab filters */}
-      <div className="flex items-start justify-between mb-6">
-        <PageHeader
-          title="Schedule Requests"
-          subtitle="Manage incoming scheduling applications for parish events."
-          className="mb-0"
-        />
-        {/* Tab filters */}
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 flex-shrink-0 ml-4">
-          <Filter className="w-4 h-4 text-gray-400 mx-1" />
-          {FILTER_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              id={`schedule-filter-${tab.value}`}
-              onClick={() => handleFilter(tab.value)}
-              className={cn(
-                'px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-150',
-                activeFilter === tab.value
-                  ? 'bg-crimson-700 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="Schedule Requests"
+        subtitle="Manage incoming scheduling applications for parish events."
+      />
 
       {!canManage && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-xs text-blue-800">
@@ -1585,6 +1642,57 @@ export function ScheduleRequestsPage() {
           <span>You have read-only access to schedule requests.</span>
         </div>
       )}
+
+      {/* Filter and Search Card */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <SearchBar
+            placeholder="Search by Reference No. or Name..."
+            value={search}
+            onChange={handleSearch}
+            className="flex-1 lg:max-w-none"
+          />
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
+            {/* Event Type filter */}
+            <div className="w-full sm:w-[230px]">
+              <CustomSelect
+                value={eventType}
+                onChange={handleEventType}
+                groups={SCHEDULE_EVENT_TYPE_GROUPS}
+                placeholder="All Event Types"
+                searchable
+                searchPlaceholder="Search event types..."
+                id="filter-schedule-event-type"
+                aria-label="Filter by event type"
+              />
+            </div>
+
+            {/* Status filter */}
+            <div className="w-full sm:w-[165px]">
+              <CustomSelect
+                value={status}
+                onChange={handleStatus}
+                options={SCHEDULE_STATUS_OPTIONS}
+                placeholder="All Statuses"
+                id="filter-schedule-status"
+                aria-label="Filter by status"
+              />
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                id="clear-schedule-filters"
+                onClick={handleClearFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-crimson-700 hover:text-crimson-800 hover:bg-crimson-50 rounded-md transition-colors whitespace-nowrap"
+              >
+                <X className="w-3.5 h-3.5" />
+                Clear filters
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Table Card */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -1597,6 +1705,8 @@ export function ScheduleRequestsPage() {
             <ScheduleRequestTable
               requests={requests}
               onViewDetails={setSelectedRequest}
+              hasActiveFilters={hasActiveFilters}
+              onClearFilters={handleClearFilters}
             />
             <Pagination
               currentPage={page}

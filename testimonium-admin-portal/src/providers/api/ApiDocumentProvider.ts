@@ -216,6 +216,11 @@ export const ApiDocumentProvider: DocumentProvider = {
     };
   },
 
+  async getDocumentRequest(id: string): Promise<DocumentRequest> {
+    const response = await api.get<{ data: BackendDocumentRequestDTO }>(`/document-requests/${id}`);
+    return mapToFrontend(response.data.data);
+  },
+
   async updateDocumentStatus(
     id: string,
     status: DocumentStatus,

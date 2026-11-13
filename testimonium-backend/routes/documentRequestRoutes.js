@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   list,
+  getById,
   updateStatus,
   verifyCash,
   downloadAttachment,
@@ -26,6 +27,7 @@ router.use(authenticateFirebaseToken);
 router.use(checkRole(staffRoles));
 
 router.get("/", list);
+router.get("/:id", getById);
 router.patch("/:id/status", checkRole(managingStaffRoles), validateBody(updateRequestStatusSchema), updateStatus);
 router.post("/:id/verify-cash", checkRole(managingStaffRoles), verifyCash);
 router.get("/:id/attachments/:attachmentId/download", downloadAttachment);

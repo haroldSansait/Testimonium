@@ -41,6 +41,37 @@ export class DocumentRequestService {
   }
 
   /**
+   * Returns a single non-draft document request by ID, enforcing staff parish scoping.
+   * @param {number} requestId
+   * @param {string} actorRole
+   * @param {number|undefined} actorParishId
+   */
+  async getById(requestId, actorRole, actorParishId) {
+    const request = await prisma.documentRequest.findUnique({
+      where: { id: requestId },
+      include: listInclude,
+    });
+
+    if (!request || request.isDraft) {
+      const error = new Error("Document request not found.");
+      error.statusCode = 404;
+      error.code = "DOCUMENT_REQUEST_NOT_FOUND";
+      throw error;
+    }
+
+    if (actorRole !== "DIOCESE_COORDINATOR") {
+      if (!actorParishId || Number(request.parishId) !== Number(actorParishId)) {
+        const error = new Error("Unauthorized: Request belongs to a different parish.");
+        error.statusCode = 403;
+        error.code = "FORBIDDEN";
+        throw error;
+      }
+    }
+
+    return request;
+  }
+
+  /**
    * Explicit staff-confirmed cash payment; ordinary receipt transitions stay separate.
    */
   async verifyCash(requestId, actorId, actorRole, actorParishId) {

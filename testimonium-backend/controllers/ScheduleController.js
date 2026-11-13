@@ -17,7 +17,7 @@ const scheduleService = new ScheduleService();
 
 export const list = async (req, res, next) => {
   try {
-    const { page, limit, search, status, scope } = req.query;
+    const { page, limit, search, status, eventType, scope } = req.query;
 
     // Scoping check: parishioners see only their own schedules.
     // Staff see schedules from their parish, and diocese coordinator sees all.
@@ -39,6 +39,7 @@ export const list = async (req, res, next) => {
       limit,
       search,
       status,
+      eventType,
       parishId,
       userId,
       priestId,

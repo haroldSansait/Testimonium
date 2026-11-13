@@ -7,6 +7,9 @@ export type ScheduleFilter = 'all' | 'pending' | 'upcoming';
 
 export interface ScheduleRequestFilters {
   filter?: ScheduleFilter;
+  search?: string;
+  eventType?: string;
+  status?: ScheduleStatus | 'all' | string;
   page?: number;
   pageSize?: number;
 }

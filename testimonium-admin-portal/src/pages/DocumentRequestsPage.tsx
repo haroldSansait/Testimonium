@@ -10,7 +10,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { DocumentRequestTable } from '@/components/document-requests/DocumentRequestTable';
 import { SecureBlobViewer } from '@/components/document-requests/SecureBlobViewer';
-import { getDocumentRequests, updateDocumentStatus, verifyCashPayment, uploadCorrectedDocument } from '@/services/documentRequestService';
+import { getDocumentRequests, getDocumentRequest, updateDocumentStatus, verifyCashPayment, uploadCorrectedDocument } from '@/services/documentRequestService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
@@ -1435,6 +1435,7 @@ export function DocumentRequestsPage() {
   const [selectedRequest, setSelectedRequest] = useState<DocumentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+  const handledDeepLinkRef = useRef<string | null>(null);
 
   const PAGE_SIZE = 5;
 
@@ -1442,13 +1443,13 @@ export function DocumentRequestsPage() {
   const requestQuery = useCachedQuery(['requests', 'list', filters], () => getDocumentRequests(filters), {
     enabled: !selectedRequest && !isMutating,
   });
-  const requests = requestQuery.data?.data ?? [];
-  const total = requestQuery.data?.total ?? 0;
-  const totalPages = requestQuery.data?.totalPages ?? 1;
-  const isLoading = requestQuery.loading;
-  const error = requestQuery.error;
-  const fetchRequests = requestQuery.refetch;
-  const setRequests = (update: SetStateAction<DocumentRequest[]>) => requestQuery.setData(previous => previous ? {
+  const requests = requestQuery?.data?.data ?? [];
+  const total = requestQuery?.data?.total ?? 0;
+  const totalPages = requestQuery?.data?.totalPages ?? 1;
+  const isLoading = requestQuery?.loading ?? false;
+  const error = requestQuery?.error ?? null;
+  const fetchRequests = requestQuery?.refetch ?? (async () => undefined as any);
+  const setRequests = (update: SetStateAction<DocumentRequest[]>) => requestQuery?.setData?.(previous => previous ? {
     ...previous, data: typeof update === 'function' ? update(previous.data) : update,
   } : previous);
 
@@ -1458,15 +1459,42 @@ export function DocumentRequestsPage() {
     { intervalMs: 60000, enabled: !isLoading && !selectedRequest && !isMutating }
   );
 
-  // Listen to router state for auto-opening (e.g. from Notifications)
+  // Listen to router state for auto-opening (e.g. direct navigation from Notifications)
   useEffect(() => {
-    if (location.state?.requestId && requests.length > 0) {
-      const match = requests.find((r) => r.id === location.state.requestId);
-      if (match) {
-        setSelectedRequest(match);
-      }
+    const targetRequestId = location.state?.requestId;
+    if (!targetRequestId) return;
+
+    const linkKey = `${location.key || 'nav'}:${String(targetRequestId)}`;
+    if (handledDeepLinkRef.current === linkKey) return;
+
+    const localMatch = requests.find((r) => String(r.id) === String(targetRequestId));
+    if (localMatch) {
+      handledDeepLinkRef.current = linkKey;
+      setSelectedRequest(localMatch);
+      return;
     }
-  }, [location.state, requests]);
+
+    if (isLoading) return;
+
+    handledDeepLinkRef.current = linkKey;
+    let cancelled = false;
+    getDocumentRequest(String(targetRequestId))
+      .then((fetched) => {
+        if (!cancelled && fetched) {
+          setSelectedRequest(fetched);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to open linked document request:', err);
+        if (!cancelled) {
+          setToastMessage('Unable to open the linked document request. It may no longer be available.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.state, location.key, requests, isLoading]);
 
   const handleRequestUpdate = async (update: () => Promise<DocumentRequest>) => {
     if (!canManage || !selectedRequest) return;

@@ -288,18 +288,48 @@ const mapMassTemplateToFrontend = (t: any): ScheduleRequest => {
 const optimisticScheduleStatuses: Record<string, ScheduleStatus> = {};
 const optimisticSchedulePriests: Record<string, string> = {};
 
+const mapScheduleStatusToBackend = (status?: ScheduleStatus | 'all' | string): string | undefined => {
+  if (!status || status === 'all') return undefined;
+  switch (status) {
+    case 'Pending':
+      return 'PENDING,REQUESTED';
+    case 'Under Review':
+      return 'UNDER_REVIEW';
+    case 'Tentative':
+      return 'PROPOSED_RESCHEDULE,WAITING_PARISHIONER_RESPONSE';
+    case 'Confirmed':
+      return 'CONFIRMED,COMPLETED';
+    case 'Cancelled':
+      return 'CANCELLED,REJECTED';
+    default:
+      return String(status);
+  }
+};
+
 export const ApiScheduleProvider: ScheduleProvider = {
   async getScheduleRequests(
     filters: ScheduleRequestFilters = {}
   ): Promise<PaginatedResponse<ScheduleRequest>> {
-    const { filter = 'all', page = 1, pageSize = 5 } = filters;
+    const { filter = 'all', search, eventType, status, page = 1, pageSize = 5 } = filters;
 
-    const params: any = {
+    const params: Record<string, string | number> = {
       page,
       limit: pageSize,
     };
 
-    if (filter === 'pending') {
+    const trimmedSearch = typeof search === 'string' ? search.trim() : '';
+    if (trimmedSearch) {
+      params.search = trimmedSearch;
+    }
+
+    if (eventType && eventType !== 'all') {
+      params.eventType = eventType;
+    }
+
+    const mappedStatus = mapScheduleStatusToBackend(status);
+    if (mappedStatus) {
+      params.status = mappedStatus;
+    } else if (filter === 'pending') {
       params.status = 'PENDING';
     } else if (filter === 'upcoming') {
       params.status = 'CONFIRMED';

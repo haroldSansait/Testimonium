@@ -19,7 +19,7 @@ import {
   extractScheduleTimeSlot,
   normalizeTimeSlotString,
 } from "./BookingValidator.js";
-import { resolveEventMetadata } from "../shared/EventTypeCatalog.js";
+import { EventTypeCatalog, resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatalog.js";
 import { getParishSchedulingConfiguration, requireEnabledSchedulingService } from "./SchedulingConfiguration.js";
 import {
   evaluateSchedulingRules,
@@ -52,6 +52,19 @@ import {
   resolveScheduleDisplayTitle,
 } from "../shared/LayMinisterPresentation.js";
 import { isAlternativeProposalStale } from "../shared/ScheduleAlternativeProposalPolicy.js";
+
+const VALID_SCHEDULE_STATUSES = new Set([
+  "PENDING",
+  "REQUESTED",
+  "PROPOSED_RESCHEDULE",
+  "WAITING_PARISHIONER_RESPONSE",
+  "CONFIRMED",
+  "COMPLETED",
+  "CANCELLED",
+  "REJECTED",
+]);
+const OTHER_CATEGORY_ENUMS = EventTypeCatalog.filter((e) => e.category === "Other").map((e) => e.enum);
+const CANONICAL_EVENT_TITLES = EventTypeCatalog.map((e) => e.title);
 
 const TERMINAL_STATUSES = TERMINAL_SCHEDULE_STATUSES;
 const OPEN_ALTERNATIVE_PROPOSAL_STATUSES = ["SUBMITTED", "PRIEST_PENDING"];
@@ -404,10 +417,11 @@ export class ScheduleService {
   /**
    * Returns a paginated list of schedule requests with optional filters and scope.
    */
-  async list({ page = 1, limit = 10, search, status, parishId, userId, priestId, scope } = {}) {
+  async list({ page = 1, limit = 10, search, status, eventType, parishId, userId, priestId, scope } = {}) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
     const skip = (parsedPage - 1) * parsedLimit;
+    const trimmedSearch = typeof search === "string" ? search.trim() : "";
 
     // Scoped filtering for parishioner context
     if (userId && (scope === "upcoming" || scope === "history")) {
@@ -423,12 +437,12 @@ export class ScheduleService {
         userId: parsedUserId,
         ...(parishId ? { parishId: parseInt(parishId, 10) } : {}),
         ...(statusFilter ? { status: statusFilter } : {}),
-        ...(search
+        ...(trimmedSearch
           ? {
               OR: [
-                { user: { fullName: { contains: search, mode: "insensitive" } } },
-                { remarks: { contains: search, mode: "insensitive" } },
-                { displayTitle: { contains: search, mode: "insensitive" } },
+                { user: { fullName: { contains: trimmedSearch, mode: "insensitive" } } },
+                { remarks: { contains: trimmedSearch, mode: "insensitive" } },
+                { displayTitle: { contains: trimmedSearch, mode: "insensitive" } },
               ],
             }
           : {}),
@@ -481,20 +495,93 @@ export class ScheduleService {
         ],
       });
     }
-    if (search) {
-      compoundFilters.push({
-        OR: [
-          { user: { fullName: { contains: search, mode: "insensitive" } } },
-          { remarks: { contains: search, mode: "insensitive" } },
-          { displayTitle: { contains: search, mode: "insensitive" } },
-        ],
-      });
+
+    let statusWhere = {};
+    const trimmedStatus = typeof status === "string" ? status.trim() : "";
+    if (trimmedStatus && trimmedStatus.toLowerCase() !== "all") {
+      const requestedStatuses = trimmedStatus
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+      const validStatuses = requestedStatuses.filter((s) => VALID_SCHEDULE_STATUSES.has(s));
+      if (validStatuses.length === 0) {
+        return { data: [], total: 0 };
+      }
+      statusWhere = validStatuses.length === 1 ? { status: validStatuses[0] } : { status: { in: validStatuses } };
+    }
+
+    const trimmedEventType = typeof eventType === "string" ? eventType.trim() : "";
+    if (trimmedEventType && trimmedEventType.toLowerCase() !== "all") {
+      if (trimmedEventType.toUpperCase() === "OTHER") {
+        compoundFilters.push({
+          OR: [
+            { eventType: { in: OTHER_CATEGORY_ENUMS } },
+            {
+              AND: [
+                { displayTitle: { not: null } },
+                { displayTitle: { not: "" } },
+                { displayTitle: { notIn: CANONICAL_EVENT_TITLES } },
+              ],
+            },
+          ],
+        });
+      } else {
+        const resolved = resolveEventType(trimmedEventType);
+        if (resolved) {
+          compoundFilters.push({ eventType: resolved });
+        } else {
+          compoundFilters.push({
+            OR: [
+              { displayTitle: { contains: trimmedEventType, mode: "insensitive" } },
+              { remarks: { contains: trimmedEventType, mode: "insensitive" } },
+            ],
+          });
+        }
+      }
+    }
+
+    if (trimmedSearch) {
+      const searchOr = [
+        { user: { fullName: { contains: trimmedSearch, mode: "insensitive" } } },
+        { remarks: { contains: trimmedSearch, mode: "insensitive" } },
+        { displayTitle: { contains: trimmedSearch, mode: "insensitive" } },
+      ];
+
+      const shouldMatchReferenceNo =
+        /\d/.test(trimmedSearch) ||
+        trimmedSearch.includes("-") ||
+        trimmedSearch.toLowerCase().startsWith("req");
+
+      if (shouldMatchReferenceNo) {
+        const pattern = `%${trimmedSearch}%`;
+        const matchingRefRows = await prisma.$queryRaw`
+          SELECT "schedule_id" AS id
+          FROM "schedules"
+          WHERE (
+            'REQ-' ||
+            EXTRACT(YEAR FROM ("created_at" AT TIME ZONE 'Asia/Manila'))::int::text ||
+            '-' ||
+            CASE
+              WHEN LENGTH("schedule_id"::text) < 4 THEN LPAD("schedule_id"::text, 4, '0')
+              ELSE "schedule_id"::text
+            END
+          ) ILIKE ${pattern}
+        `;
+        const matchingRefIds = Array.isArray(matchingRefRows)
+          ? matchingRefRows.map((row) => Number(row.id)).filter(Number.isInteger)
+          : [];
+        if (matchingRefIds.length > 0) {
+          searchOr.push({ id: { in: matchingRefIds } });
+        }
+      }
+
+      compoundFilters.push({ OR: searchOr });
     }
 
     const where = {
       ...(parishId ? { parishId: parseInt(parishId, 10) } : {}),
       ...(userId ? { userId: parseInt(userId, 10) } : {}),
-      ...(status ? { status } : {}),
+      ...statusWhere,
       ...(compoundFilters.length ? { AND: compoundFilters } : {}),
     };
 

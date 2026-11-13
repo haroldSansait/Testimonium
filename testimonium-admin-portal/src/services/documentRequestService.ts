@@ -16,6 +16,14 @@ export async function getDocumentRequests(
   return providerFactory.getDocumentProvider().getDocumentRequests(filters);
 }
 
+export async function getDocumentRequest(id: string): Promise<DocumentRequest> {
+  const provider = providerFactory.getDocumentProvider();
+  if (!provider.getDocumentRequest) {
+    throw new Error('Document provider does not support fetching single document requests.');
+  }
+  return provider.getDocumentRequest(id);
+}
+
 export async function verifyCashPayment(id: string): Promise<DocumentRequest> {
   return providerFactory.getDocumentProvider().verifyCashPayment(id);
 }
