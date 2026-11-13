@@ -15,6 +15,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
     scheme: "testimonium",
     version: "1.0.0",
+    // Native dependencies, plugins and bundled fonts determine OTA compatibility.
+    runtimeVersion: { policy: "fingerprint" },
+    updates: {
+      url: "https://u.expo.dev/c5ceefeb-6a8a-46b4-a53f-af529ac894b1",
+    },
     icon: "./assets/images/android/icon.png",
     orientation: "portrait",
     userInterfaceStyle: "light",
@@ -47,6 +52,35 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
 
     plugins: [
+      ["expo-font", {
+        android: {
+          fonts: [
+            {
+              fontFamily: "Inter",
+              fontDefinitions: [
+                { path: "./assets/fonts/Inter/Inter_400Regular.ttf", weight: 400 },
+                { path: "./assets/fonts/Inter/Inter_500Medium.ttf", weight: 500 },
+                { path: "./assets/fonts/Inter/Inter_600SemiBold.ttf", weight: 600 },
+                { path: "./assets/fonts/Inter/Inter_700Bold.ttf", weight: 700 },
+                { path: "./assets/fonts/Inter/Inter_800ExtraBold.ttf", weight: 800 },
+                { path: "./assets/fonts/Inter/Inter_400Regular_Italic.ttf", weight: 400, style: "italic" },
+                { path: "./assets/fonts/Inter/Inter_500Medium_Italic.ttf", weight: 500, style: "italic" },
+                { path: "./assets/fonts/Inter/Inter_600SemiBold_Italic.ttf", weight: 600, style: "italic" },
+                { path: "./assets/fonts/Inter/Inter_700Bold_Italic.ttf", weight: 700, style: "italic" },
+                { path: "./assets/fonts/Inter/Inter_800ExtraBold_Italic.ttf", weight: 800, style: "italic" },
+              ],
+            },
+            {
+              fontFamily: "Playfair Display",
+              fontDefinitions: [
+                { path: "./assets/fonts/PlayfairDisplay/PlayfairDisplay_700Bold.ttf", weight: 700 },
+                { path: "./assets/fonts/PlayfairDisplay/PlayfairDisplay_800ExtraBold.ttf", weight: 800 },
+              ],
+            },
+          ],
+        },
+      }],
+      "./plugins/with-font-licenses.cjs",
       ["expo-splash-screen", {
         image: "./assets/images/android/splash-logo.png",
         imageWidth: 200,

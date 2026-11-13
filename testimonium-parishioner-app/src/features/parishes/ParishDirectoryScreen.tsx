@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { AppHeader, IconButton, InlineError } from "@/components/ui";

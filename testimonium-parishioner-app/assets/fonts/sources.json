@@ -1,0 +1,62 @@
+[
+  {
+    "file": "Inter/Inter_400Regular.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/400Regular/Inter_400Regular.ttf",
+    "sha256": "a414b48aa577ef2c62ebb135341ddeef33ee26a4f5dc9f787f93c1aab08ebb50"
+  },
+  {
+    "file": "Inter/Inter_400Regular_Italic.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/400Regular_Italic/Inter_400Regular_Italic.ttf",
+    "sha256": "c8c09e4bd08de7b901b4561f16ce9bb1ab3ffa420cfaef9f2a40286e14300e75"
+  },
+  {
+    "file": "Inter/Inter_500Medium.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/500Medium/Inter_500Medium.ttf",
+    "sha256": "f1738576525e86db1d5cf63a6c1b56e0a7e2a2898b499ac93db95f2e7a9f9cd5"
+  },
+  {
+    "file": "Inter/Inter_500Medium_Italic.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/500Medium_Italic/Inter_500Medium_Italic.ttf",
+    "sha256": "4da3a591da4809ef65d0ffc0085c50a859723c5574aa5608c1b7175d2dce33e1"
+  },
+  {
+    "file": "Inter/Inter_600SemiBold.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/600SemiBold/Inter_600SemiBold.ttf",
+    "sha256": "f30e9d2574c3bec5144347ff965f9841c8f06857f0b7383000f8c9489a161841"
+  },
+  {
+    "file": "Inter/Inter_600SemiBold_Italic.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/600SemiBold_Italic/Inter_600SemiBold_Italic.ttf",
+    "sha256": "70decc884a5641a35126dc6b7926235f888e7633691259e007ab45d01f09632c"
+  },
+  {
+    "file": "Inter/Inter_700Bold.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/700Bold/Inter_700Bold.ttf",
+    "sha256": "fbe825cbfc749317f57a1433d3905aa9d3f388732fd29b8e8a36f34845e3bc3e"
+  },
+  {
+    "file": "Inter/Inter_700Bold_Italic.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/700Bold_Italic/Inter_700Bold_Italic.ttf",
+    "sha256": "bcc655acbd25f44eed4894f3c65f836503476db411c540d8dd5b616ef60c1825"
+  },
+  {
+    "file": "Inter/Inter_800ExtraBold.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/800ExtraBold/Inter_800ExtraBold.ttf",
+    "sha256": "1b9fab96ffc7bca31a9d4cd4d660cce80b94695908ec7613afdece2b8cf803c2"
+  },
+  {
+    "file": "Inter/Inter_800ExtraBold_Italic.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/inter/800ExtraBold_Italic/Inter_800ExtraBold_Italic.ttf",
+    "sha256": "952cccc4badf3d0ea5aed7e1b2434238692c196b91f94510ef8a2271a2547f13"
+  },
+  {
+    "file": "PlayfairDisplay/PlayfairDisplay_700Bold.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/playfair-display/700Bold/PlayfairDisplay_700Bold.ttf",
+    "sha256": "4f3b87b5aa297eed5e5a48dbd9941356ca0313d4725b02c29a298cb042b7b31b"
+  },
+  {
+    "file": "PlayfairDisplay/PlayfairDisplay_800ExtraBold.ttf",
+    "source": "https://raw.githubusercontent.com/expo/google-fonts/master/font-packages/playfair-display/800ExtraBold/PlayfairDisplay_800ExtraBold.ttf",
+    "sha256": "eba64eefaeabbb7f65986c59eae2d6c0ba28fdb4e8ab6e578390af0bf1fcbbbf"
+  }
+]

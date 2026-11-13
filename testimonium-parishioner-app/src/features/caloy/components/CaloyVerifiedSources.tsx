@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import type { CaloySource } from "../types";

@@ -23,6 +23,8 @@ assert.equal(profile.distribution, "internal");
 assert.equal(profile.credentialsSource, "remote");
 assert.equal(profile.autoIncrement, true);
 assert.equal(profile.android.buildType, "apk");
+assert.equal(profile.channel, "release-apk");
+assert.equal(resolveProfile("production").channel, "production");
 assert(!profile.android.gradleCommand, "Custom Gradle command can override APK build type");
 assert(!profile.android.withoutCredentials, "Release must use signing credentials");
 const env = { ...process.env, ...profile.env, EAS_BUILD_PROFILE: "release-apk" };
@@ -41,6 +43,27 @@ assert.equal(config.slug, "testimonium");
 assert.equal(config.scheme, "testimonium");
 assert.equal(config.owner, "agos-testimonium");
 assert.equal(config.extra.eas.projectId, "c5ceefeb-6a8a-46b4-a53f-af529ac894b1");
+assert.equal(config.updates.url, `https://u.expo.dev/${config.extra.eas.projectId}`);
+assert.deepEqual(config.runtimeVersion, { policy: "fingerprint" });
+assert.notEqual(config.updates.enabled, false);
+assert(!config.updates.checkAutomatically || config.updates.checkAutomatically === "ON_LOAD");
+const fontPlugin = config.plugins.find(plugin => Array.isArray(plugin) && plugin[0] === "expo-font");
+assert(fontPlugin, "Missing embedded fonts config");
+assert(config.plugins.includes("./plugins/with-font-licenses.cjs"), "Font redistribution notices must be packaged in the APK");
+const families = fontPlugin[1].android.fonts;
+for (const [name, weights, styles] of [
+  ["Inter", [400, 500, 600, 700, 800], ["normal", "italic"]],
+  ["Playfair Display", [700, 800], ["normal"]],
+]) {
+  const family = families.find(family => family.fontFamily === name);
+  assert(family, `Missing font family: ${name}`);
+  for (const weight of weights) for (const style of styles) {
+    const definition = family.fontDefinitions.find(font => font.weight === weight && (font.style ?? "normal") === style);
+    assert(definition, `Missing bundled font: ${name} ${weight} ${style}`);
+    assert.equal(fs.readFileSync(definition.path).readUInt32BE(0), 0x00010000, "Expected a TrueType font");
+    assert(fs.readFileSync(path.join(path.dirname(definition.path), "OFL.txt"), "utf8").includes("SIL OPEN FONT LICENSE"), "Missing font license");
+  }
+}
 assert(Number.isInteger(config.android.versionCode) && config.android.versionCode > 0);
 assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).version, config.version);
 const firebase = JSON.parse(fs.readFileSync(config.android.googleServicesFile, "utf8"));
@@ -60,6 +83,7 @@ for (const asset of [config.icon, config.android.adaptiveIcon.foregroundImage, s
 }
 console.log(`Release config OK: ${config.version}; com.testimonium.app; standalone signed APK profile; remote auto-increment.`);
 console.log(`Effective release API: ${PRODUCTION_API_URL}; dotenv disabled; Google Sign-In enabled with matching Firebase Web OAuth client ID.`);
+console.log("EAS Update: release-apk / production channels; fingerprint runtime; automatic checks. Embedded Inter and Playfair Display weights and licenses verified.");
 console.log("Signed-device authentication behavior is not verified by this configuration check.");
 
 if (process.argv.includes("--export")) {

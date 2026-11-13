@@ -1,5 +1,6 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";

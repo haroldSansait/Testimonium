@@ -5,11 +5,10 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   ViewStyle,
 } from "react-native";
+import { Text, TextInput } from "@/components/Typography";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export interface OtpInputProps {

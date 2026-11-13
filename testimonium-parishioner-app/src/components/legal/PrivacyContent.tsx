@@ -1,5 +1,6 @@
 import React from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { useLegalPolicies } from "@/hooks/useLegalPolicies";
 import { colors, radii, spacing, fontStyles } from "@/theme/tokens";

@@ -4,10 +4,10 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusLabel } from "@/components/ui/StatusLabel";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";

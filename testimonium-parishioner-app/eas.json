@@ -16,6 +16,7 @@
     },
     "production": {
       "environment": "production",
+      "channel": "production",
       "distribution": "store",
       "developmentClient": false,
       "credentialsSource": "remote",
@@ -30,6 +31,7 @@
     },
     "release-apk": {
       "extends": "production",
+      "channel": "release-apk",
       "distribution": "internal",
       "android": {
         "buildType": "apk"

@@ -9,7 +9,7 @@ import {
   QuickActionSheet,
 } from "@/components/navigation";
 import { useUnreadNotificationCount } from "@/features/notifications/api";
-import { colors, fontStyles, shadows } from "@/theme/tokens";
+import { colors, fontStyles, sansFamily, shadows } from "@/theme/tokens";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -149,6 +149,7 @@ export default function TabsLayout() {
                   : unreadCount
                 : undefined,
             tabBarBadgeStyle: {
+              fontFamily: sansFamily,
               backgroundColor: colors.danger,
               color: "#FFFFFF",
               fontSize: 10,

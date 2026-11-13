@@ -4,9 +4,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { Button } from "./Button";

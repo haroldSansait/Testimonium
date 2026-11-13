@@ -4,10 +4,10 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { fontStyles, spacing } from "@/theme/tokens";

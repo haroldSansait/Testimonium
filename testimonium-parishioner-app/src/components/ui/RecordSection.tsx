@@ -2,10 +2,10 @@ import React from "react";
 import {
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { colors, fontStyles, spacing } from "@/theme/tokens";
 import { Divider } from "./Divider";
 

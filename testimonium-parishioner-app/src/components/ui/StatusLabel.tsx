@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from "react-native";
+import { StyleProp, StyleSheet, TextStyle, View, ViewStyle } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { getStatusConfig, type StatusIntent } from "@/theme/status";
 import { fontStyles, spacing } from "@/theme/tokens";

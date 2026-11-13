@@ -2,10 +2,10 @@ import React from "react";
 import {
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { Button } from "./Button";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";

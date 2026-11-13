@@ -1,11 +1,11 @@
 import {
   StyleProp,
   StyleSheet,
-  Text,
   TextStyle,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, spacing } from "@/theme/tokens";
 import { IconButton } from "./IconButton";

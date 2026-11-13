@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthScaffold } from "@/components/auth/AuthScaffold";
 import { Button } from "@/components/ui/Button";

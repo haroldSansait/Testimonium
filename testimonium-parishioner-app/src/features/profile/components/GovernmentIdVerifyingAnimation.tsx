@@ -4,10 +4,10 @@ import {
   Easing,
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, spacing } from "@/theme/tokens";
 import { useReducedMotion } from "@/hooks/useReducedMotion";

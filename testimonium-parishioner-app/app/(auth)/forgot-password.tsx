@@ -1,6 +1,7 @@
 import { useOtpCooldown } from '@/hooks/useOtpCooldown';
 import React, { useEffect, useState, useRef } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthScaffold } from "@/components/auth/AuthScaffold";

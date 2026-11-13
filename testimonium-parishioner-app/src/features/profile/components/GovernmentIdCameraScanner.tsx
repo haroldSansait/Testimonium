@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Image,
   StyleSheet,
-  Text,
   TouchableOpacity,
   useWindowDimensions,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { File } from "expo-file-system";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {

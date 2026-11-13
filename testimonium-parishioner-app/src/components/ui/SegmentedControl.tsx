@@ -3,10 +3,10 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 
 export interface SegmentOption<T extends string = string> {

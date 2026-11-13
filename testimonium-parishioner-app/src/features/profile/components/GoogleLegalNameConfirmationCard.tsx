@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { Button, TextInput } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";

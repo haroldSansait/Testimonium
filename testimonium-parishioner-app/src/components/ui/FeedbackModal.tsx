@@ -4,9 +4,9 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, radii, shadows, spacing } from "@/theme/tokens";
 import { Button } from "./Button";

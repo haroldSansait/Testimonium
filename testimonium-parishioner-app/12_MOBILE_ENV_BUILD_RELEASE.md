@@ -3,6 +3,58 @@
 Reconciled: 25 October 2026. Target: `testimonium-parishioner-app/`.
 Distribution: signed standalone APK through `https://testimonium.site`. A public APK URL and website download/QR hosting follow verification of the real signed artifact.
 
+## November 2026: Expo Updates and bundled Android fonts
+
+`expo-updates` is installed using Expo's SDK-aware installer. The existing EAS project now supplies updates from `https://u.expo.dev/c5ceefeb-6a8a-46b4-a53f-af529ac894b1`. The `release-apk` build profile uses channel `release-apk`; `production` uses channel `production`. Development and preview profiles retain their existing behavior. Automatic launch checks use Expo's defaults: a downloaded update is normally applied on a subsequent cold start, without prompts or forced restarts. The embedded bundle remains available offline.
+
+Runtime compatibility uses the `fingerprint` policy, independent of remote Android versionCode auto-increment. Compatible UI/JavaScript changes can use OTA. Changes to native dependencies, native config/plugins, or embedded font files require a new APK/runtime. Keep the same production environment and dependency lockfile when building and publishing; do not override the calculated runtime to force compatibility. The fingerprint is conservative and can require a rebuild for other native-affecting inputs.
+
+Android embeds Inter 400/500/600/700/800 in normal and italic styles, and Playfair Display 700/800 for existing serif headings through `expo-font` XML families. Sources, checksums and SIL OFL notices are in `assets/fonts/`. Shared text/input primitives supply the body family, preserve nested text inheritance and forward input refs and accessibility props. Typography tokens and navigation labels/badges use the bundled families. Existing sizes, weights, spacing, line heights, colors and layout styles are retained. Caloy's explicit monospace code spans remain unchanged. Font glyph metrics differ from device system fonts, so unchanged sizes/layout styles do not guarantee identical wrapping; signed-device visual verification is still needed.
+
+### One-time owner setup
+
+Before publishing, in the **existing project's production EAS environment**, create or update the following as **Plain text** (these values are public client configuration). Build-profile `env` in `eas.json` does not populate the EAS environment used by Update. Do not use Secret visibility because those variables are unavailable to local update bundling.
+
+| Variable | Production value |
+| --- | --- |
+| `EXPO_NO_DOTENV` | `1` |
+| `EXPO_PUBLIC_ENV` | `production` |
+| `EXPO_PUBLIC_API_BASE_URL` | `https://testimonium-e9s5.onrender.com/api/v1` |
+| `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` | `true` |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | `900241750208-kclu82sicn6amkchcv2hd3h1fh8c7fft.apps.googleusercontent.com` |
+
+Use the Expo project dashboard's Environment variables page with environment **production**, or `eas env:create --environment production --visibility plaintext --name NAME --value VALUE` for a missing variable. If a variable already exists, edit it instead of creating duplicates. Do not add `EXPO_NO_CLIENT_ENV_VARS=1`. Confirm access to the existing `agos-testimonium/testimonium` project and EAS Update entitlement if the CLI requests it. No account settings or remote environment variables were changed during this implementation.
+
+### Build once, then publish compatible updates
+
+From PowerShell:
+
+```powershell
+Set-Location C:\Users\me\Documents\testimonium\testimonium-parishioner-app
+npm run release:check
+eas build --platform android --profile release-apk
+```
+
+Install the resulting signed APK; previous APKs lack the native updates/font configuration. Preserve existing signing credentials and remote versionCode history.
+
+For later UI/JavaScript-only updates, from that same directory:
+
+```powershell
+npm run update:release-apk
+```
+
+The script expands to:
+
+```powershell
+eas env:exec production "node scripts/release-policy.cjs --update && eas update --channel release-apk --platform android --environment production --clear-cache"
+```
+
+The first step loads production variables from EAS. `--update` explicitly requires all release-policy checks even though updates have no `EAS_BUILD_PROFILE`; missing or incorrect API/Google flags abort publishing. `eas update --environment production` uses the same remote production environment for bundling. Cache clearing prevents stale inlined environment values. The CLI prompts for an update message. Do not use `release:check` alone to validate remote OTA variables: that check intentionally uses local `eas.json` build-profile values.
+
+No OTA publication, cloud build, remote variable mutation, native APK compilation, or physical-device OTA/font test was performed as part of local configuration. After the owner-authorized build/install, verify Google Sign-In, scanner, text wrapping/font scaling, offline launch, and a small authorized OTA change on a real device before broad distribution.
+
+References: [Expo environment variables for Update](https://docs.expo.dev/eas/environment-variables/usage/), [runtime compatibility](https://docs.expo.dev/eas-update/runtime-versions/), [embedded fonts](https://docs.expo.dev/develop/user-interface/fonts/).
+
 ## Identity and versioning
 
 | Setting | Release value |

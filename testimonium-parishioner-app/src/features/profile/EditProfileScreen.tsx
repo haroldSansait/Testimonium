@@ -5,9 +5,9 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";

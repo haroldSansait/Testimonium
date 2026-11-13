@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleSheet, Text, View, type TextStyle } from "react-native";
+import { StyleSheet, View, type TextStyle } from "react-native";
+import { Text } from "@/components/Typography";
 import { colors } from "@/theme/tokens";
 
 interface CaloyMarkdownProps {

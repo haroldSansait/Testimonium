@@ -3,12 +3,11 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
-  TextInput as NativeTextInput,
   type TextInputProps as NativeTextInputProps,
   View,
   ViewStyle,
 } from "react-native";
+import { Text, TextInput as NativeTextInput } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 

@@ -6,10 +6,10 @@ import {
   Modal,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { useRouter } from "expo-router";
 import { File } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";

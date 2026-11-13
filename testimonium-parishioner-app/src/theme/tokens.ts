@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export const brandColors = {
   800: "#5C1520", // Pressed primary, deep overlay, high-emphasis
   700: "#7B1C2A", // Primary brand, primary actions, active navigation
@@ -134,8 +136,9 @@ export const typography = {
   captionSmall: 12,
 } as const;
 
-// Android native serif for restrained editorial headings.
-export const serifFamily = "serif";
+// These Android XML families are embedded by the expo-font config plugin.
+export const sansFamily = Platform.select({ android: "Inter", default: undefined });
+export const serifFamily = Platform.select({ android: "Playfair Display", default: "serif" });
 
 export const fontStyles = {
   displaySerif: {
@@ -144,25 +147,25 @@ export const fontStyles = {
     lineHeight: 36,
     fontWeight: "700" as const,
   },
-  display: { fontSize: 28, lineHeight: 34, fontWeight: "700" as const },
+  display: { fontFamily: sansFamily, fontSize: 28, lineHeight: 34, fontWeight: "700" as const },
   titleSerif: {
     fontFamily: serifFamily,
     fontSize: 24,
     lineHeight: 30,
     fontWeight: "700" as const,
   },
-  title: { fontSize: 22, lineHeight: 28, fontWeight: "700" as const },
-  titleMedium: { fontSize: 19, lineHeight: 25, fontWeight: "600" as const },
-  heading: { fontSize: 17, lineHeight: 23, fontWeight: "600" as const },
-  subheading: { fontSize: 15, lineHeight: 21, fontWeight: "600" as const },
-  body: { fontSize: 15, lineHeight: 22, fontWeight: "400" as const },
-  bodyMedium: { fontSize: 15, lineHeight: 22, fontWeight: "500" as const },
-  bodySmall: { fontSize: 13, lineHeight: 18, fontWeight: "400" as const },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: "400" as const },
-  captionMedium: { fontSize: 12, lineHeight: 16, fontWeight: "500" as const },
-  captionBold: { fontSize: 12, lineHeight: 16, fontWeight: "700" as const },
-  button: { fontSize: 15, lineHeight: 20, fontWeight: "600" as const },
-  meta: { fontSize: 12, lineHeight: 16, fontWeight: "500" as const },
+  title: { fontFamily: sansFamily, fontSize: 22, lineHeight: 28, fontWeight: "700" as const },
+  titleMedium: { fontFamily: sansFamily, fontSize: 19, lineHeight: 25, fontWeight: "600" as const },
+  heading: { fontFamily: sansFamily, fontSize: 17, lineHeight: 23, fontWeight: "600" as const },
+  subheading: { fontFamily: sansFamily, fontSize: 15, lineHeight: 21, fontWeight: "600" as const },
+  body: { fontFamily: sansFamily, fontSize: 15, lineHeight: 22, fontWeight: "400" as const },
+  bodyMedium: { fontFamily: sansFamily, fontSize: 15, lineHeight: 22, fontWeight: "500" as const },
+  bodySmall: { fontFamily: sansFamily, fontSize: 13, lineHeight: 18, fontWeight: "400" as const },
+  caption: { fontFamily: sansFamily, fontSize: 12, lineHeight: 16, fontWeight: "400" as const },
+  captionMedium: { fontFamily: sansFamily, fontSize: 12, lineHeight: 16, fontWeight: "500" as const },
+  captionBold: { fontFamily: sansFamily, fontSize: 12, lineHeight: 16, fontWeight: "700" as const },
+  button: { fontFamily: sansFamily, fontSize: 15, lineHeight: 20, fontWeight: "600" as const },
+  meta: { fontFamily: sansFamily, fontSize: 12, lineHeight: 16, fontWeight: "500" as const },
 } as const;
 
 export const shadows = {

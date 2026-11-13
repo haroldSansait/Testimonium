@@ -5,11 +5,11 @@ import {
   ScrollView,
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
   type ViewProps,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 

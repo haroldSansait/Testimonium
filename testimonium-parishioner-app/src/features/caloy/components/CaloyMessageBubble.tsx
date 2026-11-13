@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";

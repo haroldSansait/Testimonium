@@ -55,4 +55,12 @@ describe("release environment guard", () => {
       EXPO_PUBLIC_API_BASE_URL: "https://temporary.trycloudflare.com/api/v1",
     })).not.toThrow();
   });
+  it("requires complete production variables for an update without a build profile", () => {
+    const { EAS_BUILD_PROFILE: _profile, ...updateEnv } = release;
+    expect(() => assertReleaseEnvironment(updateEnv, { required: true })).not.toThrow();
+    expect(() => assertReleaseEnvironment({}, { required: true })).toThrow();
+    expect(() => assertReleaseEnvironment({ ...updateEnv, EXPO_PUBLIC_ENV: undefined }, { required: true })).toThrow();
+    expect(() => assertReleaseEnvironment({ ...updateEnv, EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED: "false" }, { required: true })).toThrow();
+    expect(() => assertReleaseEnvironment({ ...updateEnv, EXPO_PUBLIC_API_BASE_URL: "https://temporary.trycloudflare.com/api/v1" }, { required: true })).toThrow();
+  });
 });

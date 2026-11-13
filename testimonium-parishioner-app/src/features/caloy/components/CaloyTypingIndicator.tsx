@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, StyleSheet, View } from "react-native";
+import { Text } from "@/components/Typography";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { CaloyAvatar } from "./CaloyAvatar";

@@ -5,9 +5,9 @@ import {
   FlatList,
   RefreshControl,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
+import { TextInput } from "@/components/Typography";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";

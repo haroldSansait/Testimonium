@@ -5,9 +5,9 @@ import {
   Image,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AuthButton, AuthScaffold } from "@/components/auth";
 import { GoogleLogo } from "@/components/ui/GoogleLogo";

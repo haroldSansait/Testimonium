@@ -9,10 +9,10 @@ import {
   NativeSyntheticEvent,
   Pressable,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from "react-native";
+import { Text } from "@/components/Typography";
 import * as ExpoRouter from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Skeleton } from "@/components/ui/Skeleton";

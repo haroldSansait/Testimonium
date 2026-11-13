@@ -4,11 +4,10 @@ import {
   type AppStateStatus,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput as RNTextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Text, TextInput as RNTextInput } from "@/components/Typography";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn } from "react-native-reanimated";
