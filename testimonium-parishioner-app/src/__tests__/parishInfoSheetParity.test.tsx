@@ -58,6 +58,10 @@ jest.mock("@/features/parishes/api", () => ({
   useInfiniteParishes: () => mockUseInfiniteParishes(),
   useParishDetail: (id?: string) => mockUseParishDetail(id),
   useParishes: () => mockUseParishes(),
+  useAllActiveParishes: () => ({
+    data: mockUseParishes()?.data?.items ?? [],
+    isLoading: mockUseParishes()?.isLoading ?? false,
+  }),
 }));
 
 // Mock useRequireCompleteProfile

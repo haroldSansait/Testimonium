@@ -16,6 +16,68 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   STATUS_OF_LIBERTY: "Status of Liberty",
 };
 
+export const DOCUMENT_TYPE_DESCRIPTIONS: Record<string, string> = {
+  BAPTISMAL_CERTIFICATE: "Official copy of the Sacrament of Baptism registry entry.",
+  CONFIRMATION_CERTIFICATE: "Official record of the Sacrament of Confirmation.",
+  MARRIAGE_CERTIFICATE: "Official sacramental record of Holy Matrimony.",
+  FIRST_COMMUNION_CERTIFICATE: "Official record of First Holy Communion.",
+  MARRIAGE_BANNS: "Public notification of prospective marriage posted across parishes.",
+  PERMIT_TO_MARRY: "Canonical clearance granted to marry in another parish or jurisdiction.",
+  STATUS_OF_LIBERTY: "Attestation of canonical freedom to marry (Status Liber).",
+};
+
+export const DOCUMENT_SPECIALIZED_GUIDANCE: Record<string, string> = {
+  MARRIAGE_BANNS:
+    "For Marriage Banns, state the solemnizing parish, target wedding date, and both parties' names in your purpose if applicable. Endorsement letters from partner parishes may be required.",
+  PERMIT_TO_MARRY:
+    "For Permit to Marry, specify the canonical parish where the marriage will take place and your intended ceremony date. Parish endorsement documents may be required.",
+  STATUS_OF_LIBERTY:
+    "Status of Liberty (Status Liber) certifies canonical freedom to marry based on parish baptismal/registry records. Specify the intended marriage parish or purpose.",
+};
+
+export const RELATIONSHIP_OPTIONS = [
+  "Self",
+  "Parent",
+  "Child",
+  "Spouse",
+  "Sibling",
+  "Other Relative",
+  "Authorized Representative",
+] as const;
+
+const REGISTRY_YEAR_SUFFIX_REGEX = /\s*\(Approximate Registry Year:\s*(\d{4})\)\s*$/i;
+
+export const parsePurposeAndRegistryYear = (
+  savedPurpose?: string | null
+): { purpose: string; approximateYear: string } => {
+  const raw = typeof savedPurpose === "string" ? savedPurpose.trim() : "";
+  if (!raw) return { purpose: "", approximateYear: "" };
+  const match = raw.match(REGISTRY_YEAR_SUFFIX_REGEX);
+  if (!match) return { purpose: raw, approximateYear: "" };
+  return {
+    purpose: raw.replace(REGISTRY_YEAR_SUFFIX_REGEX, "").trim(),
+    approximateYear: match[1],
+  };
+};
+
+export const formatPurposeWithRegistryYear = (
+  purpose: string,
+  approximateYear?: string | null
+): string => {
+  const basePurpose = purpose.replace(REGISTRY_YEAR_SUFFIX_REGEX, "").trim();
+  const cleanYear = typeof approximateYear === "string" ? approximateYear.trim() : "";
+  if (!cleanYear) return basePurpose;
+  return `${basePurpose} (Approximate Registry Year: ${cleanYear})`;
+};
+
+export const getDocumentTypeDescription = (type?: string | null): string => {
+  if (!type) return "Official authenticated sacramental certificate.";
+  return (
+    DOCUMENT_TYPE_DESCRIPTIONS[type] ||
+    "Official authenticated sacramental certificate."
+  );
+};
+
 export const FAMILY_PROOF_RELATIONSHIPS = new Set([
   "Parent",
   "Child",
@@ -189,9 +251,9 @@ export const STATUS_PRESENTATION: Record<
     icon: "card-outline",
   },
   PAYMENT_UNDER_REVIEW: {
-    label: "Payment Under Review",
+    label: "Awaiting Payment Review",
     variant: "info",
-    description: "Receipt submitted. Payment proof is being reviewed by parish staff.",
+    description: "Receipt submitted. Awaiting parish staff review of your payment proof.",
     icon: "receipt-outline",
   },
   PAYMENT_NEEDS_CORRECTION: {
@@ -209,23 +271,23 @@ export const STATUS_PRESENTATION: Record<
   PROCESSING: {
     label: "In Preparation",
     variant: "info",
-    description: "Your certificate is being generated and prepared by parish records.",
+    description: "Your certificate is being prepared by parish records.",
     icon: "cog-outline",
   },
   READY_FOR_SIGNING: {
-    label: "In Preparation",
+    label: "Ready for Signing",
     variant: "info",
-    description: "Your certificate is being generated and prepared by parish records.",
-    icon: "cog-outline",
+    description: "Your certificate has been prepared and is awaiting clergy signature.",
+    icon: "create-outline",
   },
   READY_FOR_PICKUP: {
     label: "Ready for Pickup",
     variant: "success",
-    description: "Your document is ready! Please visit the parish office during operating hours.",
+    description: "Your document is ready for pickup at the parish office during operating hours (not yet released).",
     icon: "file-tray-full-outline",
   },
   COMPLETED: {
-    label: "Completed",
+    label: "Released",
     variant: "success",
     description: "Document has been released and completed.",
     icon: "checkmark-circle-outline",
@@ -348,18 +410,19 @@ export const formatActionLabel = (
     case "RECEIPT_QUALITY_PASSED":
       return "Receipt Quality Passed";
     case "PAYMENT_PROOF_LOW_CONFIDENCE":
-      return "Payment Receipt Under Review";
+      return "Awaiting Payment Review";
     case "PAYMENT_PROOF_ANALYSIS_UNAVAILABLE":
       return "Receipt Quality Verified";
     case "PAYMENT_VERIFIED":
       return "Payment Confirmed";
     case "PROCESSING":
+      return "In Preparation";
     case "READY_FOR_SIGNING":
-      return "Preparation Underway";
+      return "Ready for Signing";
     case "READY_FOR_PICKUP":
       return "Marked Ready for Pickup";
     case "COMPLETED":
-      return "Completed & Released";
+      return "Released";
     case "DOCUMENT_RETURNED":
       return "Document Returned for Correction";
     case "CORRECTED_DOCUMENT_UPLOADED":
@@ -375,8 +438,8 @@ export const formatActionLabel = (
 
 const RECOGNIZED_STATUS_TOKENS: { token: string; label: string }[] = [
   { token: "PAYMENT_NEEDS_CORRECTION", label: "Payment Correction" },
-  { token: "PAYMENT_UNDER_REVIEW", label: "Payment Under Review" },
-  { token: "READY_FOR_SIGNING", label: "In Preparation" },
+  { token: "PAYMENT_UNDER_REVIEW", label: "Awaiting Payment Review" },
+  { token: "READY_FOR_SIGNING", label: "Ready for Signing" },
   { token: "NEEDS_CORRECTION", label: "Needs Correction" },
   { token: "READY_FOR_PICKUP", label: "Ready for Pickup" },
   { token: "PAYMENT_VERIFIED", label: "Payment Verified" },
@@ -387,9 +450,163 @@ const RECOGNIZED_STATUS_TOKENS: { token: string; label: string }[] = [
   { token: "RETURNED", label: "Returned for Correction" },
   { token: "REJECTED", label: "Declined" },
   { token: "PENDING", label: "Pending Review" },
-  { token: "COMPLETED", label: "Completed" },
+  { token: "COMPLETED", label: "Released" },
   { token: "DRAFT", label: "Draft" },
 ];
+
+export interface DocumentWorkflowStage {
+  key: string;
+  label: string;
+  description: string;
+  state: "done" | "current" | "upcoming";
+}
+
+export const getDocumentWorkflowStages = (
+  request?: Pick<DocumentRequestDetail, "status" | "isDraft"> | null
+): DocumentWorkflowStage[] => {
+  if (!request) return [];
+  const status = request.status;
+  if (request.isDraft) {
+    return [
+      {
+        key: "draft",
+        label: "Draft Saved",
+        description: "Review details and upload required attachments to submit.",
+        state: "current",
+      },
+      {
+        key: "review",
+        label: "Parish Staff Review",
+        description: "Remaining workflow begins once submitted.",
+        state: "upcoming",
+      },
+      {
+        key: "payment",
+        label: "Payment & Verification",
+        description: "Settle fee once application is approved for payment.",
+        state: "upcoming",
+      },
+      {
+        key: "prepare",
+        label: "Preparation & Clergy Signing",
+        description: "Parish records prepares and signs the certificate.",
+        state: "upcoming",
+      },
+      {
+        key: "pickup",
+        label: "Ready for Pickup",
+        description: "Available for claiming at the parish office.",
+        state: "upcoming",
+      },
+      {
+        key: "released",
+        label: "Released",
+        description: "Document released to requester.",
+        state: "upcoming",
+      },
+    ];
+  }
+
+  if (status === "CANCELLED" || status === "REJECTED") {
+    return [
+      {
+        key: "closed",
+        label: status === "CANCELLED" ? "Request Cancelled" : "Request Declined",
+        description:
+          status === "CANCELLED"
+            ? "This request was cancelled before release."
+            : "Parish staff declined this request.",
+        state: "current",
+      },
+    ];
+  }
+
+  const orderIndexMap: Record<string, number> = {
+    PENDING: 0,
+    UNDER_REVIEW: 0,
+    NEEDS_CORRECTION: 0,
+    PAYMENT_PENDING: 1,
+    PAYMENT_NEEDS_CORRECTION: 1,
+    PAYMENT_UNDER_REVIEW: 1,
+    PAYMENT_VERIFIED: 2,
+    PROCESSING: 2,
+    READY_FOR_SIGNING: 3,
+    READY_FOR_PICKUP: 4,
+    COMPLETED: 5,
+    RETURNED: 5,
+  };
+  const currentIdx = orderIndexMap[status] ?? 0;
+
+  const stages: { key: string; label: string; description: string }[] = [
+    {
+      key: "review",
+      label: "Staff Review",
+      description:
+        status === "NEEDS_CORRECTION"
+          ? "Corrections requested by parish staff."
+          : currentIdx > 0
+            ? "Application requirements reviewed."
+            : "Submitted for initial staff review.",
+    },
+    {
+      key: "payment",
+      label: "Payment & Review",
+      description:
+        status === "PAYMENT_NEEDS_CORRECTION"
+          ? "Replacement payment receipt requested."
+          : status === "PAYMENT_UNDER_REVIEW"
+            ? "Receipt uploaded; awaiting parish verification."
+            : currentIdx > 1
+              ? "Payment verified by parish office."
+              : "Awaiting fee settlement and receipt verification.",
+    },
+    {
+      key: "preparation",
+      label: "Record Preparation",
+      description:
+        currentIdx > 2
+          ? "Sacramental record prepared."
+          : status === "PROCESSING"
+            ? "Parish records is preparing your certificate."
+            : "Certificate preparation follows payment verification.",
+    },
+    {
+      key: "signing",
+      label: "Clergy Signing",
+      description:
+        currentIdx > 3
+          ? "Signed by authorized parish clergy."
+          : status === "READY_FOR_SIGNING"
+            ? "Certificate prepared and awaiting clergy signature."
+            : "Awaiting clergy signature after preparation.",
+    },
+    {
+      key: "pickup",
+      label: "Ready for Pickup",
+      description:
+        currentIdx > 4
+          ? "Claimed at the parish office."
+          : status === "READY_FOR_PICKUP"
+            ? "Ready for pickup at the parish office (not yet released)."
+            : "Available for parish office pickup once signed.",
+    },
+    {
+      key: "released",
+      label: status === "RETURNED" ? "Returned for Correction" : "Released",
+      description:
+        status === "RETURNED"
+          ? "Returned post-release for free replacement."
+          : currentIdx >= 5
+            ? "Document officially released."
+            : "Marked released upon claiming at the parish.",
+    },
+  ];
+
+  return stages.map((stage, idx) => ({
+    ...stage,
+    state: idx < currentIdx ? "done" : idx === currentIdx ? "current" : "upcoming",
+  }));
+};
 
 export const replaceRecognizedStatusTokens = (text?: string | null): string => {
   if (!text) return "";

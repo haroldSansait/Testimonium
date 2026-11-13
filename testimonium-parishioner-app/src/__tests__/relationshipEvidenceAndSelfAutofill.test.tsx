@@ -44,6 +44,7 @@ jest.mock("@/components/ui/SelectionRow", () => ({
 }));
 jest.mock("@/features/parishes/api", () => ({
   useParishes: () => ({ data: { items: [{ id: 1, name: "Fixture Parish", availableDocuments: null }] }, isLoading: false }),
+  useAllActiveParishes: () => ({ data: [{ id: 1, name: "Fixture Parish", availableDocuments: null }], isLoading: false }),
 }));
 jest.mock("@/features/requests/components/RegistrantIdCapturePicker", () => ({
   RegistrantIdCapturePicker: ({ side, onSelected }: any) => {
@@ -82,6 +83,9 @@ jest.mock("@/features/requests/api", () => ({
     };
   },
   useCreateRequestDraft: () => ({ mutateAsync: mockCreate }),
+  useRequestDetail: () => ({ data: undefined, isLoading: false }),
+  useUpdateRequestDraft: () => ({ mutateAsync: jest.fn() }),
+  useDeleteRequestDraft: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useSubmitRequestDraft: () => ({ mutateAsync: mockSubmit }),
   useUploadSupportingFile: () => ({ mutateAsync: mockUpload }),
   useUploadRegistrantId: () => ({ mutateAsync: mockUploadId }),

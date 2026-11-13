@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Modal,
+  Pressable,
   StyleSheet,
   View,
 } from "react-native";
@@ -21,6 +23,7 @@ export const PaymentQrCard: React.FC<PaymentQrCardProps> = ({
 }) => {
   const [imageLoading, setImageLoading] = useState(false);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const [isEnlarged, setIsEnlarged] = useState(false);
   const qrUrl = configuration?.qrCode?.imageUrl ?? null;
   const qrImageUrl = qrUrl || "";
   const imageError = failedImageUrl === qrUrl;
@@ -56,7 +59,12 @@ export const PaymentQrCard: React.FC<PaymentQrCardProps> = ({
 
       {!imageError ? (
         <View style={styles.qrContainer}>
-          <View style={styles.qrFrame}>
+          <Pressable
+            onPress={() => setIsEnlarged(true)}
+            style={styles.qrFrame}
+            accessibilityRole="button"
+            accessibilityLabel="Enlarge official parish payment QR code"
+          >
             {imageLoading ? (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="small" color={colors.primary} />
@@ -72,9 +80,9 @@ export const PaymentQrCard: React.FC<PaymentQrCardProps> = ({
               accessibilityRole="image"
               accessibilityLabel="Official parish payment QR code"
             />
-          </View>
+          </Pressable>
           <Text style={styles.qrPrompt} allowFontScaling>
-            Scan using the payment app supported by this parish QR code.
+            Tap the QR code to enlarge. Save a clear screenshot showing the reference number, amount, and date.
           </Text>
         </View>
       ) : (
@@ -96,6 +104,37 @@ export const PaymentQrCard: React.FC<PaymentQrCardProps> = ({
           </Text>
         </View>
       ) : null}
+
+      <Modal
+        visible={isEnlarged}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsEnlarged(false)}
+      >
+        <View style={styles.qrModalBackdrop}>
+          <View style={styles.qrModalCard}>
+            <View style={styles.qrModalHeader}>
+              <Text style={styles.qrModalTitle} allowFontScaling>
+                Official Parish QR Code
+              </Text>
+              <Pressable
+                onPress={() => setIsEnlarged(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close enlarged QR code"
+                hitSlop={8}
+              >
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+            <Image
+              source={{ uri: qrImageUrl }}
+              style={styles.qrModalImage}
+              resizeMode="contain"
+              accessibilityLabel="Enlarged official parish payment QR code"
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -201,5 +240,35 @@ const styles = StyleSheet.create({
     ...fontStyles.bodySmall,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  qrModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  qrModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  qrModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  qrModalTitle: {
+    ...fontStyles.subheading,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  qrModalImage: {
+    width: "100%",
+    height: 300,
+    backgroundColor: colors.surface,
   },
 });

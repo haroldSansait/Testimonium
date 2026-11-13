@@ -5,6 +5,8 @@ export const requestKeys = {
   lists: (uid?: string | null) => [...requestKeys.all(uid), "list"] as const,
   list: (uid?: string | null, filters?: DocumentRequestListFilters) =>
     [...requestKeys.lists(uid), filters ?? {}] as const,
+  infiniteList: (uid?: string | null, filters?: Omit<DocumentRequestListFilters, "page">) =>
+    [...requestKeys.lists(uid), "infinite", filters ?? {}] as const,
   details: (uid?: string | null) => [...requestKeys.all(uid), "detail"] as const,
   detail: (uid?: string | null, requestId?: string | number | null) =>
     [...requestKeys.details(uid), String(requestId ?? "")] as const,

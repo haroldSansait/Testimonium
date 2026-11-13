@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import {
   AppHeader,
+  Button,
   EmptyState,
   PageSection,
   RecordSection,
@@ -19,6 +21,17 @@ import {
   StatusLabel,
 } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import { useParishDetail } from "@/features/parishes/api";
+import {
+  buildEmailUrl,
+  buildMapUrl,
+  buildPhoneUrl,
+  openExternalUrl,
+} from "@/features/parishes/utils";
+import {
+  exportIcsCalendarFile,
+  openGoogleCalendarExport,
+} from "@/services/calendar/calendarExport";
 import { useCurrentMonthEvents } from "./api";
 import {
   formatEventDate,
@@ -30,6 +43,7 @@ import type { MonthParams } from "./types";
 export const EventDetailScreen: React.FC = () => {
   const router = useRouter();
   const { contentBottomInset } = useAppLayoutMetrics();
+  const [calendarBusy, setCalendarBusy] = useState(false);
   const params = useLocalSearchParams<{
     id: string;
     year?: string;
@@ -48,6 +62,9 @@ export const EventDetailScreen: React.FC = () => {
   const { data: events = [], isLoading } = useCurrentMonthEvents(monthParams);
 
   const event = events.find((e) => String(e.id) === String(params.id));
+  const { data: parish } = useParishDetail(
+    event?.parishId ? String(event.parishId) : undefined
+  );
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -94,6 +111,80 @@ export const EventDetailScreen: React.FC = () => {
 
   const timeFormatted = formatEventTime(event.startTime, event.endTime);
   const dateFormatted = formatEventDate(event.eventDate, "full");
+  const parishName = parish?.name || event.parish?.parishName;
+  const venueLocation = [
+    event.location,
+    parish?.address,
+    parish?.municipalityCity,
+    parish?.province,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const phoneUrl = buildPhoneUrl(parish?.contactNumber);
+  const emailUrl = buildEmailUrl(parish?.email);
+  const mapUrl = buildMapUrl({
+    latitude: parish?.latitude,
+    longitude: parish?.longitude,
+    address: event.location || parish?.address || venueLocation,
+    name: parishName || event.title,
+  });
+
+  const handleGoogleCalendar = async () => {
+    setCalendarBusy(true);
+    try {
+      const opened = await openGoogleCalendarExport({
+        uidPrefix: "testimonium-event",
+        id: event.id,
+        title: parishName ? `${event.title} — ${parishName}` : event.title,
+        date: event.eventDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        location: venueLocation || parishName,
+        description: event.description,
+      });
+      if (!opened) {
+        Alert.alert("Unavailable", "This event does not have a valid date for calendar export.");
+      }
+    } catch (err: unknown) {
+      Alert.alert(
+        "Calendar Export Failed",
+        err instanceof Error ? err.message : "Unable to open Google Calendar."
+      );
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
+
+  const handleExportIcs = async () => {
+    setCalendarBusy(true);
+    try {
+      const result = await exportIcsCalendarFile({
+        uidPrefix: "testimonium-event",
+        id: event.id,
+        title: parishName ? `${event.title} — ${parishName}` : event.title,
+        date: event.eventDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        location: venueLocation || parishName,
+        description: event.description,
+      });
+      if (result.method === "saved") {
+        Alert.alert(
+          "Calendar File Saved",
+          "The .ics event invitation was saved to your selected folder."
+        );
+      } else if (result.method === "failed") {
+        Alert.alert("Export Failed", "Unable to export .ics calendar file.");
+      }
+    } catch (err: unknown) {
+      Alert.alert(
+        "Export Failed",
+        err instanceof Error ? err.message : "Unable to export .ics calendar file."
+      );
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
 
   const scheduleFields = [
     {
@@ -160,9 +251,42 @@ export const EventDetailScreen: React.FC = () => {
           style={styles.sectionSpacing}
         />
 
+        {/* Calendar Export */}
+        <View style={styles.calendarCard}>
+          <View style={styles.calendarHeader}>
+            <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            <Text style={styles.calendarTitle} allowFontScaling>
+              Save Event to Calendar
+            </Text>
+          </View>
+          <Text style={styles.calendarHint} allowFontScaling>
+            Times follow Philippine Standard Time (Asia/Manila).
+          </Text>
+          <View style={styles.calendarActions}>
+            <Button
+              title="Google Calendar"
+              size="sm"
+              variant="outline"
+              icon="logo-google"
+              onPress={() => void handleGoogleCalendar()}
+              disabled={calendarBusy}
+              style={styles.calendarBtn}
+            />
+            <Button
+              title="Export .ICS"
+              size="sm"
+              variant="secondary"
+              icon="download-outline"
+              onPress={() => void handleExportIcs()}
+              disabled={calendarBusy}
+              style={styles.calendarBtn}
+            />
+          </View>
+        </View>
+
         {/* Parish Church Section */}
         {event.parish ? (
-          <PageSection title="Parish Church" style={styles.sectionSpacing}>
+          <PageSection title="Parish Church & Contact" style={styles.sectionSpacing}>
             <Pressable
               onPress={handleParishPress}
               accessibilityRole="button"
@@ -181,10 +305,25 @@ export const EventDetailScreen: React.FC = () => {
               />
               <View style={styles.parishInfoCol}>
                 <Text style={styles.parishNameText} allowFontScaling>
-                  {event.parish.parishName}
+                  {parishName || event.parish.parishName}
                 </Text>
-                <Text style={styles.parishSubtext} allowFontScaling>
-                  Tap to view parish directory & sacraments
+                {venueLocation ? (
+                  <Text style={styles.parishSubtext} allowFontScaling>
+                    {venueLocation}
+                  </Text>
+                ) : null}
+                {parish?.contactNumber ? (
+                  <Text style={styles.parishSubtext} allowFontScaling>
+                    Phone: {parish.contactNumber}
+                  </Text>
+                ) : null}
+                {parish?.email ? (
+                  <Text style={styles.parishSubtext} allowFontScaling>
+                    Email: {parish.email}
+                  </Text>
+                ) : null}
+                <Text style={styles.parishTapHint} allowFontScaling>
+                  Tap to view full parish profile →
                 </Text>
               </View>
               <Ionicons
@@ -193,6 +332,41 @@ export const EventDetailScreen: React.FC = () => {
                 color={colors.primary}
               />
             </Pressable>
+
+            {phoneUrl || emailUrl || mapUrl ? (
+              <View style={styles.contactActionsRow}>
+                {phoneUrl ? (
+                  <Button
+                    title="Call Parish"
+                    variant="secondary"
+                    size="sm"
+                    icon="call-outline"
+                    onPress={() => void openExternalUrl(phoneUrl)}
+                    style={styles.calendarBtn}
+                  />
+                ) : null}
+                {emailUrl ? (
+                  <Button
+                    title="Email"
+                    variant="secondary"
+                    size="sm"
+                    icon="mail-outline"
+                    onPress={() => void openExternalUrl(emailUrl)}
+                    style={styles.calendarBtn}
+                  />
+                ) : null}
+                {mapUrl ? (
+                  <Button
+                    title="Directions"
+                    variant="outline"
+                    size="sm"
+                    icon="navigate-outline"
+                    onPress={() => void openExternalUrl(mapUrl)}
+                    style={styles.calendarBtn}
+                  />
+                ) : null}
+              </View>
+            ) : null}
           </PageSection>
         ) : null}
 
@@ -277,5 +451,48 @@ const styles = StyleSheet.create({
     ...fontStyles.body,
     color: colors.textSecondary,
     lineHeight: 22,
+  },
+  calendarCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  calendarTitle: {
+    ...fontStyles.bodySmall,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  calendarHint: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  calendarActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  calendarBtn: {
+    flex: 1,
+  },
+  parishTapHint: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  contactActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
 });

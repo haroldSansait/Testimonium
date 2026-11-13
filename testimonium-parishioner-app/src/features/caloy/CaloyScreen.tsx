@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { AppHeader, IconButton } from "@/components/ui";
-import { useParishes } from "@/features/parishes/api";
+import { useAllActiveParishes } from "@/features/parishes/api";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { CaloyAvatar } from "./components/CaloyAvatar";
 import { CaloyMessageBubble } from "./components/CaloyMessageBubble";
@@ -53,8 +53,8 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
     handleRevealComplete,
   } = useChatSession();
 
-  const { data: parishesData } = useParishes({ limit: 100 });
-  const parishes = useMemo(() => parishesData?.items || [], [parishesData?.items]);
+  const { data: parishesData } = useAllActiveParishes();
+  const parishes = useMemo(() => parishesData || [], [parishesData]);
 
   // Filter parishes in modal
   const filteredParishes = useMemo(() => {

@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { MotionPressable } from "@/components/ui/MotionPressable";
@@ -18,9 +18,16 @@ import type { DocumentRequestDetail } from "../types";
 export interface RequestCardProps {
   request: DocumentRequestDetail;
   onPress: (request: DocumentRequestDetail) => void;
+  onResumeDraft?: (request: DocumentRequestDetail) => void;
+  onDiscardDraft?: (request: DocumentRequestDetail) => void;
 }
 
-export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) => {
+export const RequestCard: React.FC<RequestCardProps> = ({
+  request,
+  onPress,
+  onResumeDraft,
+  onDiscardDraft,
+}) => {
   const docTypeLabel = formatDocumentType(request.documentType);
   const statusInfo = formatStatus(request.status, request.isDraft);
   const dateLabel = formatDate(request.dateRequested || request.createdAt);
@@ -101,12 +108,44 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request, onPress }) =>
 
         {/* Attention Action Banners */}
         {request.isDraft ? (
-          <View style={[styles.alertBanner, styles.draftBanner]}>
-            <Ionicons name="create-outline" size={15} color={colors.primary} />
-            <Text style={styles.alertText} allowFontScaling>
-              Continue Draft & Attach Documents
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+          <View style={styles.draftActionsWrap}>
+            <View style={[styles.alertBanner, styles.draftBanner]}>
+              <Ionicons name="create-outline" size={15} color={colors.primary} />
+              <Text style={styles.alertText} allowFontScaling>
+                Saved Draft — Complete Details & Attachments
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+            </View>
+            {(onResumeDraft || onDiscardDraft) ? (
+              <View style={styles.draftBtnRow}>
+                {onResumeDraft ? (
+                  <Pressable
+                    onPress={() => onResumeDraft(request)}
+                    style={styles.draftPrimaryBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Resume draft for ${docTypeLabel}`}
+                  >
+                    <Ionicons name="play-outline" size={14} color={colors.primary} />
+                    <Text style={styles.draftPrimaryBtnText} allowFontScaling>
+                      Resume Draft
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {onDiscardDraft ? (
+                  <Pressable
+                    onPress={() => onDiscardDraft(request)}
+                    style={styles.draftDangerBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Discard draft for ${docTypeLabel}`}
+                  >
+                    <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                    <Text style={styles.draftDangerBtnText} allowFontScaling>
+                      Discard
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         ) : showPaymentAlert ? (
           <View style={[styles.alertBanner, styles.paymentBanner]}>
@@ -257,5 +296,48 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "600",
     flex: 1,
+  },
+  draftActionsWrap: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  draftBtnRow: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  draftPrimaryBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minHeight: 36,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+  },
+  draftPrimaryBtnText: {
+    ...fontStyles.captionMedium,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  draftDangerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    minHeight: 36,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSoft,
+    paddingHorizontal: spacing.sm,
+  },
+  draftDangerBtnText: {
+    ...fontStyles.captionMedium,
+    color: colors.danger,
+    fontWeight: "600",
   },
 });

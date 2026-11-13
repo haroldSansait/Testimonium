@@ -16,7 +16,7 @@ export const checkProfileRequirement = (
         { text: "Browse App", style: "cancel" },
         {
           text: "Complete Profile",
-          onPress: () => router.push("/(app)/(tabs)/profile" as any),
+          onPress: () => router.push("/(app)/profile/edit" as any),
         },
       ]
     );
@@ -42,12 +42,34 @@ export const useRequireCompleteProfile = () => {
 };
 
 export const checkGovernmentIdRequirement = (
-  profile: { needsProfileCompletion?: boolean | null; isGovernmentIdVerified?: boolean | null } | null | undefined,
+  profile:
+    | {
+        needsProfileCompletion?: boolean | null;
+        needsLegalNameConfirmation?: boolean | null;
+        isGovernmentIdVerified?: boolean | null;
+      }
+    | null
+    | undefined,
   router: { push: (href: any) => void },
   onAllowed: () => void
 ): boolean => {
   if (profile?.needsProfileCompletion) {
     return checkProfileRequirement(profile, router, onAllowed);
+  }
+
+  if (profile?.needsLegalNameConfirmation) {
+    Alert.alert(
+      "Legal Name Confirmation Required",
+      "Confirm or update your legal name in Profile before verifying your Government ID.",
+      [
+        { text: "Browse App", style: "cancel" },
+        {
+          text: "Review Legal Name",
+          onPress: () => router.push("/(app)/profile/edit" as any),
+        },
+      ]
+    );
+    return false;
   }
 
   if (!profile?.isGovernmentIdVerified) {

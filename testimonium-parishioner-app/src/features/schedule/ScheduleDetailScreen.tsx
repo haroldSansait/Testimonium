@@ -20,23 +20,32 @@ import { RecordSection } from "@/components/ui/RecordSection";
 import { Divider } from "@/components/ui/Divider";
 import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
+import { SecureFileViewerModal } from "@/components/files/SecureFileViewerModal";
+import {
+  exportIcsCalendarFile,
+  openGoogleCalendarExport,
+} from "@/services/calendar/calendarExport";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
   useAvailabilityDates,
   useAvailableSlots,
   useProposeAlternativeDate,
   useRespondReschedule,
+  useScheduleAttachments,
   useScheduleDetail,
   useWithdrawAlternativeDate,
 } from "./api";
 import { SchedulingCalendar } from "./components/SchedulingCalendar";
 import {
   extractTimeSlotFromSchedule,
+  formatManilaTimestamp,
+  formatScheduleConfirmationRef,
   formatScheduleDate,
+  getScheduleMilestones,
   isRescheduleProposalPending,
   getScheduleDisplayTitle,
 } from "./presentation";
-import { getScheduleEventLabel } from "./types";
+import { getScheduleEventLabel, type ScheduleAttachment } from "./types";
 
 export const ScheduleDetailScreen: React.FC = () => {
   const router = useRouter();
@@ -47,12 +56,18 @@ export const ScheduleDetailScreen: React.FC = () => {
   const [alternativeDate, setAlternativeDate] = useState("");
   const [alternativeSlot, setAlternativeSlot] = useState("");
   const [alternativeNote, setAlternativeNote] = useState("");
+  const [viewerAttachment, setViewerAttachment] = useState<ScheduleAttachment | null>(null);
+  const [calendarBusy, setCalendarBusy] = useState(false);
 
   const {
     data: schedule,
     isLoading,
     refetch,
   } = useScheduleDetail(id, { ...refreshOptions, enabled: refreshOptions.enabled && Boolean(id) });
+
+  const attachmentsQuery = useScheduleAttachments(id, {
+    enabled: Boolean(id && schedule),
+  });
 
   const respondMutation = useRespondReschedule();
   const proposeAlternativeMutation = useProposeAlternativeDate();
@@ -213,19 +228,98 @@ export const ScheduleDetailScreen: React.FC = () => {
   }
 
   const eventLabel = getScheduleEventLabel(schedule.eventType);
+  const confirmationRef = formatScheduleConfirmationRef(schedule.id, schedule.createdAt);
   const dateFormatted = formatScheduleDate(schedule.requestedDate, "full");
   const timeSlot = extractTimeSlotFromSchedule(schedule);
   const hasProposal = isRescheduleProposalPending(schedule.status);
   const hasPriestAssigned = Boolean(schedule.assignedPriestId);
   const isPriestAccepted = hasPriestAssigned && schedule.priestResponseStatus === "ACCEPTED";
   const canAcceptReschedule = hasProposal && isPriestAccepted;
+  const milestones = getScheduleMilestones(schedule);
+  const rescheduleHistory = schedule.rescheduleHistory ?? [];
+  const attachments = attachmentsQuery.data ?? [];
+  const canExportCalendar = schedule.status !== "CANCELLED" && schedule.status !== "REJECTED";
+  const calendarLocation = [
+    schedule.location || schedule.parish?.parishName,
+    schedule.parish?.address,
+    schedule.parish?.municipalityCity,
+    schedule.parish?.province,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const calendarDescription = [
+    confirmationRef ? `Confirmation Reference: ${confirmationRef}` : null,
+    schedule.parish?.parishName ? `Parish: ${schedule.parish.parishName}` : null,
+    schedule.remarks ? `Remarks: ${schedule.remarks}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
   const bottomInset = contentBottomInset("none");
+
+  const handleOpenGoogleCalendar = async () => {
+    setCalendarBusy(true);
+    try {
+      const opened = await openGoogleCalendarExport({
+        uidPrefix: "testimonium-schedule",
+        id: schedule.id,
+        title: `${getScheduleDisplayTitle(schedule)} — ${schedule.parish?.parishName || "Parish"}`,
+        date: schedule.requestedDate,
+        startTime: timeSlot,
+        startDatetime: schedule.startDatetime,
+        endDatetime: schedule.endDatetime,
+        location: calendarLocation,
+        description: calendarDescription,
+      });
+      if (!opened) {
+        Alert.alert("Unavailable", "This schedule does not have a valid date to export yet.");
+      }
+    } catch (err: unknown) {
+      Alert.alert(
+        "Calendar Export Failed",
+        err instanceof Error ? err.message : "Unable to open Google Calendar."
+      );
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
+
+  const handleExportIcs = async () => {
+    setCalendarBusy(true);
+    try {
+      const result = await exportIcsCalendarFile({
+        uidPrefix: "testimonium-schedule",
+        id: schedule.id,
+        title: `${getScheduleDisplayTitle(schedule)} — ${schedule.parish?.parishName || "Parish"}`,
+        date: schedule.requestedDate,
+        startTime: timeSlot,
+        startDatetime: schedule.startDatetime,
+        endDatetime: schedule.endDatetime,
+        location: calendarLocation,
+        description: calendarDescription,
+      });
+      if (result.method === "saved") {
+        Alert.alert(
+          "Calendar File Saved",
+          "The .ics calendar invitation was saved to your selected folder."
+        );
+      } else if (result.method === "failed") {
+        Alert.alert("Export Failed", "Unable to export .ics calendar file.");
+      }
+    } catch (err: unknown) {
+      Alert.alert(
+        "Export Failed",
+        err instanceof Error ? err.message : "Unable to export .ics calendar file."
+      );
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
 
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
         title="Schedule Details"
-        subtitle={`#SCH-${schedule.id}`}
+        subtitle={confirmationRef || `Schedule #${schedule.id}`}
         onBack={handleBack}
       />
 
@@ -592,16 +686,218 @@ export const ScheduleDetailScreen: React.FC = () => {
           <RecordSection
             title="Appointment Details"
             fields={[
+              ...(confirmationRef
+                ? [{ label: "Confirmation No.", value: confirmationRef }]
+                : []),
               { label: "Service / Sacrament", value: getScheduleDisplayTitle(schedule) },
               { label: "Requested Date", value: dateFormatted },
               { label: "Time Slot", value: timeSlot },
+              ...(schedule.location
+                ? [{ label: "Venue / Location", value: schedule.location }]
+                : []),
               ...(schedule.remarks
                 ? [{ label: "Remarks & Notes", value: schedule.remarks }]
                 : []),
             ]}
           />
 
+          {canExportCalendar ? (
+            <View style={styles.calendarExportCard}>
+              <View style={styles.calendarExportHeader}>
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                <Text style={styles.calendarExportTitle} allowFontScaling>
+                  Save to Your Calendar
+                </Text>
+              </View>
+              <Text style={styles.calendarExportHint} allowFontScaling>
+                Uses Philippine Standard Time (Asia/Manila) for scheduled appointment hours.
+              </Text>
+              <View style={styles.calendarExportActions}>
+                <Button
+                  title="Google Calendar"
+                  size="sm"
+                  variant="outline"
+                  icon="logo-google"
+                  onPress={() => void handleOpenGoogleCalendar()}
+                  disabled={calendarBusy}
+                  style={styles.calendarBtn}
+                />
+                <Button
+                  title="Export .ICS"
+                  size="sm"
+                  variant="secondary"
+                  icon="download-outline"
+                  onPress={() => void handleExportIcs()}
+                  disabled={calendarBusy}
+                  style={styles.calendarBtn}
+                />
+              </View>
+            </View>
+          ) : null}
+
           <Divider />
+
+          {/* Record Section: Progression & History */}
+          <View style={styles.timelineSection}>
+            <Text style={styles.sectionHeading} allowFontScaling>
+              Schedule Progression
+            </Text>
+            <View style={styles.milestoneList}>
+              {milestones.map((m, idx) => {
+                const isDone = m.state === "completed";
+                const isCurrent = m.state === "current";
+                const isCancelled = m.state === "cancelled";
+                return (
+                  <View key={m.key} style={styles.milestoneRow}>
+                    <View style={styles.milestoneRail}>
+                      <View
+                        style={[
+                          styles.milestoneDot,
+                          isDone && styles.milestoneDotDone,
+                          isCurrent && styles.milestoneDotCurrent,
+                          isCancelled && styles.milestoneDotCancelled,
+                        ]}
+                      >
+                        {isDone ? (
+                          <Ionicons name="checkmark" size={11} color={colors.textInverse} />
+                        ) : isCancelled ? (
+                          <Ionicons name="close" size={11} color={colors.textInverse} />
+                        ) : null}
+                      </View>
+                      {idx < milestones.length - 1 ? (
+                        <View
+                          style={[
+                            styles.milestoneLine,
+                            isDone && styles.milestoneLineDone,
+                          ]}
+                        />
+                      ) : null}
+                    </View>
+                    <View style={styles.milestoneBody}>
+                      <View style={styles.milestoneTitleRow}>
+                        <Text
+                          style={[
+                            styles.milestoneTitle,
+                            m.state === "upcoming" && styles.milestoneTitleMuted,
+                          ]}
+                          allowFontScaling
+                        >
+                          {m.label}
+                        </Text>
+                        <Text style={styles.milestoneStateTag} allowFontScaling>
+                          {isDone
+                            ? "Recorded"
+                            : isCurrent
+                              ? "In Progress"
+                              : isCancelled
+                                ? "Closed"
+                                : "Upcoming"}
+                        </Text>
+                      </View>
+                      <Text style={styles.milestoneDetail} allowFontScaling>
+                        {m.detail}
+                      </Text>
+                      {m.timestamp ? (
+                        <Text style={styles.milestoneTime} allowFontScaling>
+                          {m.timestamp}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {rescheduleHistory.length > 0 ? (
+            <>
+              <Divider />
+              <View style={styles.timelineSection}>
+                <Text style={styles.sectionHeading} allowFontScaling>
+                  Reschedule History
+                </Text>
+                {rescheduleHistory.map((entry, idx) => (
+                  <View key={`${entry.changedAt}-${idx}`} style={styles.historyCard}>
+                    <View style={styles.historyHeader}>
+                      <Text style={styles.historyBadge} allowFontScaling>
+                        Schedule Updated
+                      </Text>
+                      {entry.changedAt ? (
+                        <Text style={styles.historyTimestamp} allowFontScaling>
+                          {formatManilaTimestamp(entry.changedAt)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.historyShift} allowFontScaling>
+                      From: {formatScheduleDate(entry.previousDate, "short")}
+                      {entry.previousStart ? ` • ${formatManilaTimestamp(entry.previousStart).split(" • ")[1] || ""}` : ""}
+                    </Text>
+                    <Text style={styles.historyShiftNew} allowFontScaling>
+                      To: {formatScheduleDate(entry.newDate, "short")}
+                      {entry.newStart ? ` • ${formatManilaTimestamp(entry.newStart).split(" • ")[1] || ""}` : ""}
+                    </Text>
+                    {entry.reason ? (
+                      <Text style={styles.historyReason} allowFontScaling>
+                        Reason: {entry.reason}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          <Divider />
+
+          {/* Prerequisite Documents */}
+          {(attachmentsQuery.isLoading || attachmentsQuery.isError || attachments.length > 0) ? (
+            <>
+              <View style={styles.timelineSection}>
+                <Text style={styles.sectionHeading} allowFontScaling>
+                  Submitted Prerequisite Documents
+                </Text>
+                {attachmentsQuery.isLoading ? (
+                  <Skeleton height={56} borderRadius={radii.sm} />
+                ) : attachmentsQuery.isError ? (
+                  <View style={styles.availabilityErrorBox}>
+                    <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+                    <Text style={styles.availabilityErrorText} allowFontScaling>
+                      Unable to load prerequisite documents.
+                    </Text>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      onPress={() => void attachmentsQuery.refetch()}
+                      style={styles.retryChip}
+                    >
+                      <Text style={styles.retryChipText} allowFontScaling>Retry</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  attachments.map((att) => (
+                    <View key={att.id} style={styles.attachmentRow}>
+                      <View style={styles.attachmentMeta}>
+                        <Text style={styles.attachmentLabel} allowFontScaling>
+                          {att.requirementLabel}
+                        </Text>
+                        <Text style={styles.attachmentFile} numberOfLines={1} allowFontScaling>
+                          {att.fileName}
+                        </Text>
+                      </View>
+                      <Button
+                        title="View"
+                        size="sm"
+                        variant="outline"
+                        icon="document-text-outline"
+                        onPress={() => setViewerAttachment(att)}
+                        accessibilityLabel={`View ${att.requirementLabel}`}
+                      />
+                    </View>
+                  ))
+                )}
+              </View>
+              <Divider />
+            </>
+          ) : null}
 
           {/* Record Section 2: Celebrant Details */}
           <RecordSection
@@ -643,6 +939,19 @@ export const ScheduleDetailScreen: React.FC = () => {
           />
         </ContentColumn>
       </ScrollView>
+
+      <SecureFileViewerModal
+        visible={Boolean(viewerAttachment)}
+        endpointPath={
+          viewerAttachment
+            ? `/schedule-requests/${schedule.id}/attachments/${viewerAttachment.id}/file`
+            : null
+        }
+        fileName={viewerAttachment?.fileName ?? ""}
+        mimeType={viewerAttachment?.fileType}
+        title={viewerAttachment?.requirementLabel || "Prerequisite Document"}
+        onClose={() => setViewerAttachment(null)}
+      />
     </Screen>
   );
 };
@@ -1031,5 +1340,182 @@ const styles = StyleSheet.create({
   alternativeNote: {
     minHeight: 72,
     textAlignVertical: "top",
+  },
+  calendarExportCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  calendarExportHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  calendarExportTitle: {
+    ...fontStyles.bodySmall,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  calendarExportHint: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  calendarExportActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  calendarBtn: {
+    flex: 1,
+  },
+  timelineSection: {
+    gap: spacing.sm,
+  },
+  sectionHeading: {
+    ...fontStyles.captionBold,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  milestoneList: {
+    gap: spacing.xs,
+  },
+  milestoneRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  milestoneRail: {
+    alignItems: "center",
+    width: 22,
+  },
+  milestoneDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  milestoneDotDone: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  milestoneDotCurrent: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceVariant,
+  },
+  milestoneDotCancelled: {
+    backgroundColor: colors.danger,
+    borderColor: colors.danger,
+  },
+  milestoneLine: {
+    width: 2,
+    flex: 1,
+    minHeight: 18,
+    backgroundColor: colors.borderLight,
+    marginVertical: 2,
+  },
+  milestoneLineDone: {
+    backgroundColor: colors.success,
+  },
+  milestoneBody: {
+    flex: 1,
+    paddingBottom: spacing.sm,
+    gap: 2,
+  },
+  milestoneTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  milestoneTitle: {
+    ...fontStyles.bodySmall,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  milestoneTitleMuted: {
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  milestoneStateTag: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  milestoneDetail: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  milestoneTime: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+  },
+  historyCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  historyHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  historyBadge: {
+    ...fontStyles.caption,
+    color: colors.warning,
+    fontWeight: "700",
+  },
+  historyTimestamp: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+  },
+  historyShift: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  historyShiftNew: {
+    ...fontStyles.caption,
+    color: colors.success,
+    fontWeight: "700",
+  },
+  historyReason: {
+    ...fontStyles.caption,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  attachmentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+  },
+  attachmentMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  attachmentLabel: {
+    ...fontStyles.bodySmall,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  attachmentFile: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
   },
 });

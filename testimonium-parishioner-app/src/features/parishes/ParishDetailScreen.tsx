@@ -76,12 +76,25 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
     address: parish?.address,
     name: parish?.name,
   });
+  const safeFacebookUrl =
+    parish?.facebookPage && /^https?:\/\//i.test(parish.facebookPage.trim())
+      ? parish.facebookPage.trim()
+      : null;
 
   const officeHoursRows = formatOfficeHours(parish?.officeHours);
 
   const locationLabel = [parish?.municipalityCity, parish?.province]
     .filter(Boolean)
     .join(", ");
+
+  const offeredDocuments = getEffectiveOfferedDocuments(parish?.availableDocuments);
+  const assignedPriest = parish?.priest || parish?.priestName;
+  const assistantPriestNames = Array.isArray(parish?.assistantPriests)
+    ? parish.assistantPriests.map((a) => a.name).filter(Boolean).join(", ")
+    : "";
+  const assignedSecretary = parish?.secretary || parish?.secretaryName;
+  const pastoralMembers = parish?.councils?.pastoral?.members ?? [];
+  const financeMembers = parish?.councils?.finance?.members ?? [];
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -197,7 +210,7 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
             </View>
 
             {/* Quick Actions Bar */}
-            {phoneUrl || emailUrl || mapUrl ? (
+            {phoneUrl || emailUrl || mapUrl || safeFacebookUrl ? (
               <View style={styles.actionsBlock}>
                 <Text style={styles.actionsTitle} allowFontScaling>
                   Contact & Location
@@ -244,43 +257,73 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                       style={styles.actionBtn}
                     />
                   ) : null}
+
+                  {safeFacebookUrl ? (
+                    <Button
+                      title="Facebook"
+                      variant="secondary"
+                      size="sm"
+                      icon="logo-facebook"
+                      onPress={() => {
+                        void openExternalUrl(safeFacebookUrl);
+                      }}
+                      accessibilityLabel={`Open Facebook page for ${parish.name}`}
+                      style={styles.actionBtn}
+                    />
+                  ) : null}
                 </View>
               </View>
             ) : null}
 
-            {/* Request Document CTA */}
-            {getEffectiveOfferedDocuments(parish.availableDocuments).length > 0 ? (
-              <View style={styles.requestCtaContainer}>
-                <View style={styles.requestCtaHeader}>
-                  <Ionicons
-                    name="document-text-outline"
-                    size={20}
-                    color={colors.primary}
-                    style={{ marginRight: spacing.xs }}
-                  />
-                  <View style={styles.requestCtaTextGroup}>
-                    <Text style={styles.requestCtaTitle} allowFontScaling>
-                      Request Sacramental Certificate
-                    </Text>
-                    <Text style={styles.requestCtaSubtitle} allowFontScaling>
-                      Apply online for baptismal, confirmation, or marriage records.
-                    </Text>
-                  </View>
+            {/* Request Document & Schedule Appointment CTAs */}
+            <View style={styles.requestCtaContainer}>
+              <View style={styles.requestCtaHeader}>
+                <Ionicons
+                  name="document-text-outline"
+                  size={20}
+                  color={colors.primary}
+                  style={{ marginRight: spacing.xs }}
+                />
+                <View style={styles.requestCtaTextGroup}>
+                  <Text style={styles.requestCtaTitle} allowFontScaling>
+                    Parish Services & Requests
+                  </Text>
+                  <Text style={styles.requestCtaSubtitle} allowFontScaling>
+                    Apply online for certificates or request a sacramental or mass schedule.
+                  </Text>
                 </View>
+              </View>
+              <View style={styles.ctaButtonRow}>
+                {offeredDocuments.length > 0 ? (
+                  <Button
+                    title="Request Document"
+                    variant="primary"
+                    size="md"
+                    icon="arrow-forward"
+                    onPress={() => {
+                      requireCompleteProfile(() => {
+                        router.push(`/(app)/requests/new?parishId=${parish.id}` as any);
+                      });
+                    }}
+                    accessibilityLabel={`Request document from ${parish.name}`}
+                    style={styles.ctaButtonHalf}
+                  />
+                ) : null}
                 <Button
-                  title="Request Document"
-                  variant="primary"
+                  title="Book Schedule"
+                  variant={offeredDocuments.length > 0 ? "outline" : "primary"}
                   size="md"
-                  icon="arrow-forward"
+                  icon="calendar-outline"
                   onPress={() => {
                     requireCompleteProfile(() => {
-                      router.push(`/(app)/requests/new?parishId=${parish.id}` as any);
+                      router.push(`/(app)/schedule/new?parishId=${parish.id}` as any);
                     });
                   }}
-                  accessibilityLabel={`Request document from ${parish.name}`}
+                  accessibilityLabel={`Book schedule at ${parish.name}`}
+                  style={styles.ctaButtonHalf}
                 />
               </View>
-            ) : null}
+            </View>
 
             {/* About Description */}
             {parish.directoryDescription ? (
@@ -299,6 +342,80 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                   label: row.day,
                   value: row.hours,
                 }))}
+                style={styles.sectionSpacing}
+              />
+            ) : null}
+
+            {/* Parish Administration */}
+            {assignedPriest || assistantPriestNames || assignedSecretary || parish.venueCapacity ? (
+              <RecordSection
+                title="Parish Administration"
+                fields={[
+                  ...(assignedPriest ? [{ label: "Parish Priest", value: assignedPriest }] : []),
+                  ...(assistantPriestNames
+                    ? [{ label: "Assistant Priests", value: assistantPriestNames }]
+                    : []),
+                  ...(assignedSecretary
+                    ? [{ label: "Parish Secretary", value: assignedSecretary }]
+                    : []),
+                  ...(parish.venueCapacity
+                    ? [{ label: "Seating Capacity", value: `${parish.venueCapacity} people` }]
+                    : []),
+                ]}
+                style={styles.sectionSpacing}
+              />
+            ) : null}
+
+            {/* Offered Certificates */}
+            {offeredDocuments.length > 0 ? (
+              <PageSection title="Offered Certificates" style={styles.sectionSpacing}>
+                <View style={styles.chipsWrap}>
+                  {offeredDocuments.map((doc) => (
+                    <StatusLabel
+                      key={doc}
+                      label={doc.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      status="neutral"
+                      showDot={false}
+                    />
+                  ))}
+                </View>
+              </PageSection>
+            ) : null}
+
+            {/* Parish Councils Summary */}
+            {(pastoralMembers.length > 0 || financeMembers.length > 0) ? (
+              <RecordSection
+                title="Parish Pastoral & Finance Councils"
+                fields={[
+                  ...(pastoralMembers.length > 0
+                    ? [
+                        {
+                          label: "Pastoral Council",
+                          value: pastoralMembers
+                            .slice(0, 5)
+                            .map((m) => `${m.memberName} (${m.positionTitle})`)
+                            .join(", ") +
+                            (pastoralMembers.length > 5
+                              ? ` +${pastoralMembers.length - 5} more`
+                              : ""),
+                        },
+                      ]
+                    : []),
+                  ...(financeMembers.length > 0
+                    ? [
+                        {
+                          label: "Finance Council",
+                          value: financeMembers
+                            .slice(0, 5)
+                            .map((m) => `${m.memberName} (${m.positionTitle})`)
+                            .join(", ") +
+                            (financeMembers.length > 5
+                              ? ` +${financeMembers.length - 5} more`
+                              : ""),
+                        },
+                      ]
+                    : []),
+                ]}
                 style={styles.sectionSpacing}
               />
             ) : null}
@@ -437,5 +554,19 @@ const styles = StyleSheet.create({
     ...fontStyles.body,
     color: colors.textPrimary,
     lineHeight: 22,
+  },
+  ctaButtonRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  ctaButtonHalf: {
+    flex: 1,
+    minWidth: 140,
+  },
+  chipsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
 });

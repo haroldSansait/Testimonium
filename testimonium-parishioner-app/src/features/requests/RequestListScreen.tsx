@@ -1,13 +1,15 @@
 import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   View,
 } from "react-native";
-import { TextInput } from "@/components/Typography";
+import { Text, TextInput } from "@/components/Typography";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
@@ -19,11 +21,17 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
-import { useRequestList, useRequestTrackingLookup } from "./api";
+import {
+  mergeRequestPages,
+  useDeleteRequestDraft,
+  useInfiniteRequestList,
+  useRequestTrackingLookup,
+} from "./api";
 import { RequestCard } from "./components/RequestCard";
 import type { DocumentRequestDetail } from "./types";
 
-type FilterTab = "ALL" | "ACTIVE" | "COMPLETED";
+type FilterTab = "ALL" | "ACTIVE" | "PAST" | "DRAFTS";
+const PAST_STATUSES = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 
 export const RequestListScreen: React.FC = () => {
   const router = useRouter();
@@ -32,35 +40,89 @@ export const RequestListScreen: React.FC = () => {
   const { contentBottomInset } = useAppLayoutMetrics();
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
   const [trackingNumber, setTrackingNumber] = useState("");
+  const [deletedDraftIds, setDeletedDraftIds] = useState<Set<number>>(() => new Set());
+  const deletingDraftRef = useRef(false);
   const trackingLookup = useRequestTrackingLookup();
+  const deleteDraftMutation = useDeleteRequestDraft();
 
   const {
-    data: response,
+    data: pagesData,
     isLoading,
     error,
     refetch,
-  } = useRequestList({}, refreshOptions);
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteRequestList({ limit: 20 }, refreshOptions);
   const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
 
-  const requests = response?.data || [];
+  const requests = useMemo(
+    () =>
+      mergeRequestPages(pagesData?.pages).filter(
+        (req) => !deletedDraftIds.has(req.id)
+      ),
+    [pagesData?.pages, deletedDraftIds]
+  );
 
-  const activeCount = requests.filter(
-    (req) => !["COMPLETED", "CANCELLED", "REJECTED"].includes(req.status)
-  ).length;
+  const serverTotal = pagesData?.pages?.[0]?.pagination?.total;
+  const totalCount =
+    typeof serverTotal === "number"
+      ? Math.max(requests.length, serverTotal - deletedDraftIds.size)
+      : requests.length;
 
-  const pastCount = requests.filter(
-    (req) => ["COMPLETED", "CANCELLED", "REJECTED"].includes(req.status)
-  ).length;
+  const activeRequests = useMemo(
+    () => requests.filter((req) => !req.isDraft && !PAST_STATUSES.has(req.status)),
+    [requests]
+  );
 
-  const filteredRequests = requests.filter((req) => {
-    if (activeTab === "ACTIVE") {
-      return !["COMPLETED", "CANCELLED", "REJECTED"].includes(req.status);
+  const pastRequests = useMemo(
+    () => requests.filter((req) => !req.isDraft && PAST_STATUSES.has(req.status)),
+    [requests]
+  );
+
+  const draftRequests = useMemo(
+    () => requests.filter((req) => Boolean(req.isDraft)),
+    [requests]
+  );
+
+  const normalizedFilter = trackingNumber.trim().toLowerCase();
+
+  const filteredRequests = useMemo(() => {
+    const base =
+      activeTab === "ACTIVE"
+        ? activeRequests
+        : activeTab === "PAST"
+          ? pastRequests
+          : activeTab === "DRAFTS"
+            ? draftRequests
+            : requests;
+
+    if (!normalizedFilter) return base;
+    return base.filter((req) => {
+      const tracking = (req.trackingNumber || "").toLowerCase();
+      const applicant = (req.applicantName || "").toLowerCase();
+      const parish = (req.parish?.parishName || "").toLowerCase();
+      const docType = (req.documentType || "").toLowerCase();
+      return (
+        tracking.includes(normalizedFilter) ||
+        applicant.includes(normalizedFilter) ||
+        parish.includes(normalizedFilter) ||
+        docType.includes(normalizedFilter)
+      );
+    });
+  }, [activeRequests, activeTab, draftRequests, normalizedFilter, pastRequests, requests]);
+
+  useEffect(() => {
+    if (
+      activeTab !== "ALL" &&
+      filteredRequests.length === 0 &&
+      hasNextPage &&
+      !isFetchingNextPage &&
+      !isLoading
+    ) {
+      void fetchNextPage();
     }
-    if (activeTab === "COMPLETED") {
-      return ["COMPLETED", "CANCELLED", "REJECTED"].includes(req.status);
-    }
-    return true;
-  });
+  }, [activeTab, fetchNextPage, filteredRequests.length, hasNextPage, isFetchingNextPage, isLoading]);
 
   const handleStartRequest = () => {
     requireCompleteProfile(() => {
@@ -72,9 +134,50 @@ export const RequestListScreen: React.FC = () => {
     router.push(`/(app)/requests/${request.id}` as any);
   };
 
+  const handleResumeDraft = (request: DocumentRequestDetail) => {
+    requireCompleteProfile(() => {
+      router.push(`/(app)/requests/new?draftId=${request.id}` as any);
+    });
+  };
+
+  const handleDiscardDraft = (request: DocumentRequestDetail) => {
+    if (!request.isDraft || deletingDraftRef.current) return;
+    Alert.alert(
+      "Discard Saved Draft?",
+      `Discard your ${request.applicantName || "draft"} application? Uploaded draft attachments will be permanently removed.`,
+      [
+        { text: "Keep Draft", style: "cancel" },
+        {
+          text: "Discard Draft",
+          style: "destructive",
+          onPress: async () => {
+            if (deletingDraftRef.current) return;
+            deletingDraftRef.current = true;
+            try {
+              await deleteDraftMutation.mutateAsync(request.id);
+              setDeletedDraftIds((prev) => {
+                const next = new Set(prev);
+                next.add(request.id);
+                return next;
+              });
+              Alert.alert("Draft Discarded", "Your saved draft has been deleted.");
+            } catch (err: any) {
+              Alert.alert(
+                "Discard Failed",
+                err?.message || "Could not discard this draft. Please try again."
+              );
+            } finally {
+              deletingDraftRef.current = false;
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleTrackingLookup = async () => {
     if (!trackingNumber.trim()) {
-      Alert.alert("Tracking Number Required", "Enter the tracking number shown on your request.");
+      Alert.alert("Tracking Number Required", "Enter a document tracking number (e.g. SR-2026-000452).");
       return;
     }
     try {
@@ -85,6 +188,7 @@ export const RequestListScreen: React.FC = () => {
     }
   };
 
+  const loadedSuffix = hasNextPage ? "+" : "";
   const bottomPadding = contentBottomInset("tab");
 
   return (
@@ -116,14 +220,24 @@ export const RequestListScreen: React.FC = () => {
           <TextInput
             value={trackingNumber}
             onChangeText={setTrackingNumber}
-            placeholder="Search by tracking number..."
+            placeholder="Search or track (e.g. SR-2026-000452)"
             placeholderTextColor={colors.textMuted}
             autoCapitalize="characters"
             style={styles.trackingInput}
-            accessibilityLabel="Request tracking number"
+            accessibilityLabel="Request tracking number or filter search"
             returnKeyType="search"
             onSubmitEditing={() => void handleTrackingLookup()}
           />
+          {trackingNumber.length > 0 ? (
+            <Pressable
+              onPress={() => setTrackingNumber("")}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search input"
+              hitSlop={8}
+            >
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
         </View>
         <Button
           title="Track"
@@ -140,9 +254,10 @@ export const RequestListScreen: React.FC = () => {
       <View style={styles.filterSection}>
         <SegmentedControl<FilterTab>
           options={[
-            { value: "ALL", label: `All (${requests.length})` },
-            { value: "ACTIVE", label: `Active (${activeCount})` },
-            { value: "COMPLETED", label: `Past (${pastCount})` },
+            { value: "ALL", label: `All (${totalCount})` },
+            { value: "ACTIVE", label: `Active (${activeRequests.length}${loadedSuffix})` },
+            { value: "PAST", label: `Past (${pastRequests.length}${loadedSuffix})` },
+            { value: "DRAFTS", label: `Drafts (${draftRequests.length}${loadedSuffix})` },
           ]}
           selectedValue={activeTab}
           onSelect={(val: FilterTab) => setActiveTab(val)}
@@ -157,7 +272,7 @@ export const RequestListScreen: React.FC = () => {
             <Skeleton width="100%" height={100} style={styles.skeletonItem} />
             <Skeleton width="100%" height={100} style={styles.skeletonItem} />
           </View>
-        ) : error && !response ? (
+        ) : error && !pagesData ? (
           <View style={styles.centerContainer}>
             <EmptyState
               icon="alert-circle-outline"
@@ -167,24 +282,46 @@ export const RequestListScreen: React.FC = () => {
               onAction={() => void refetch()}
             />
           </View>
-        ) : filteredRequests.length === 0 ? (
+        ) : filteredRequests.length === 0 && !isFetchingNextPage ? (
           <View style={styles.centerContainer}>
             <EmptyState
               icon="document-text-outline"
               title={
-                activeTab === "ACTIVE"
-                  ? "No Active Requests"
-                  : activeTab === "COMPLETED"
-                  ? "No Past Requests"
-                  : "No Requests Yet"
+                normalizedFilter
+                  ? "No Matching Requests"
+                  : activeTab === "ACTIVE"
+                    ? "No Active Requests"
+                    : activeTab === "PAST"
+                      ? "No Past Requests"
+                      : activeTab === "DRAFTS"
+                        ? "No Saved Drafts"
+                        : "No Requests Yet"
               }
               description={
-                activeTab === "ALL"
-                  ? "Request official baptismal, confirmation, or marriage certificates from any parish in the Diocese of San Carlos."
-                  : "You do not have any requests matching this filter."
+                normalizedFilter
+                  ? "No loaded requests match your filter. Press Track above to look up any tracking reference directly on the server."
+                  : activeTab === "ALL"
+                    ? "Request official baptismal, confirmation, or marriage certificates from any parish in the Diocese of San Carlos."
+                    : activeTab === "DRAFTS"
+                      ? "Saved document request drafts will appear here so you can resume or discard them."
+                      : "You do not have any requests matching this filter."
               }
-              actionLabel={activeTab === "ALL" ? "Start New Request" : undefined}
-              onAction={activeTab === "ALL" ? handleStartRequest : undefined}
+              actionLabel={
+                hasNextPage
+                  ? "Load More History"
+                  : activeTab === "ALL" && !normalizedFilter
+                    ? "Start New Request"
+                    : undefined
+              }
+              onAction={
+                hasNextPage
+                  ? () => {
+                      void fetchNextPage();
+                    }
+                  : activeTab === "ALL" && !normalizedFilter
+                    ? handleStartRequest
+                    : undefined
+              }
             />
           </View>
         ) : (
@@ -192,10 +329,48 @@ export const RequestListScreen: React.FC = () => {
             data={filteredRequests}
             keyExtractor={(item) => String(item.id)}
             renderItem={({ item }) => (
-              <RequestCard request={item} onPress={handleRequestPress} />
+              <RequestCard
+                request={item}
+                onPress={handleRequestPress}
+                onResumeDraft={item.isDraft ? handleResumeDraft : undefined}
+                onDiscardDraft={item.isDraft ? handleDiscardDraft : undefined}
+              />
             )}
             contentContainerStyle={[styles.listContent, { paddingBottom: bottomPadding }]}
             showsVerticalScrollIndicator={false}
+            onEndReachedThreshold={0.4}
+            onEndReached={() => {
+              if (hasNextPage && !isFetchingNextPage) {
+                void fetchNextPage();
+              }
+            }}
+            ListFooterComponent={
+              hasNextPage ? (
+                <View style={styles.footerLoadMore}>
+                  {isFetchingNextPage ? (
+                    <View style={styles.footerLoadingRow}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.footerLoadingText} allowFontScaling>
+                        Loading more requests ({requests.length} of {totalCount})...
+                      </Text>
+                    </View>
+                  ) : (
+                    <Button
+                      title={`Load More (${requests.length} of ${totalCount})`}
+                      variant="outline"
+                      size="sm"
+                      onPress={() => {
+                        void fetchNextPage();
+                      }}
+                    />
+                  )}
+                </View>
+              ) : requests.length > 0 ? (
+                <Text style={styles.footerCompleteText} allowFontScaling>
+                  Showing {filteredRequests.length} request{filteredRequests.length === 1 ? "" : "s"} ({requests.length} of {totalCount} loaded)
+                </Text>
+              ) : null
+            }
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -269,5 +444,24 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
     justifyContent: "center",
+  },
+  footerLoadMore: {
+    paddingVertical: spacing.md,
+    alignItems: "center",
+  },
+  footerLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  footerLoadingText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  footerCompleteText: {
+    ...fontStyles.caption,
+    color: colors.textMuted,
+    textAlign: "center",
+    paddingVertical: spacing.sm,
   },
 });

@@ -146,7 +146,9 @@ export interface PaymentTransaction {
   provider?: string | null;
   referenceNumber?: string | null;
   status: string;
+  verifiedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
   receipts?: ReceiptUpload[];
 }
 
@@ -222,6 +224,15 @@ export interface CreateDraftRequestPayload {
   relationship?: string;
   purpose?: string;
   idempotencyKey?: string;
+}
+
+export interface UpdateDraftRequestPayload {
+  applicantName?: string;
+  applicantFirstName?: string;
+  applicantMiddleName?: string;
+  applicantLastName?: string;
+  relationship?: string;
+  purpose?: string;
 }
 
 export interface LocalSelectedFile {

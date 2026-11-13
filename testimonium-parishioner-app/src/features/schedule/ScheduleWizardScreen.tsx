@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   AppState,
   type AppStateStatus,
+  BackHandler,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -26,7 +28,7 @@ import { useFeedback } from "@/providers/FeedbackProvider";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { isAppError } from "@/services/api/errors";
-import { useParishes } from "@/features/parishes/api";
+import { useAllActiveParishes } from "@/features/parishes/api";
 import type { ParishDto } from "@/features/parishes/types";
 import {
   useAvailabilityDates,
@@ -39,6 +41,7 @@ import {
 import { SupportingFilePicker } from "@/features/requests/components/SupportingFilePicker";
 import type { LocalSelectedFile } from "@/features/requests/types";
 import {
+  formatScheduleConfirmationRef,
   formatScheduleDate,
   makeSchedulePayloadSignature,
 } from "./presentation";
@@ -128,6 +131,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [requestedPriestId, setRequestedPriestId] = useState<number | null>(null);
   const [remarks, setRemarks] = useState("");
+  const [parishSearch, setParishSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState({ year: today.year, month: today.month });
 
@@ -135,11 +139,20 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   const lastRefreshAtRef = useRef(0);
   const inactiveAtRef = useRef<number | null>(null);
 
-  const { data: parishesResponse, isLoading: isLoadingParishes } = useParishes({ limit: 50 });
+  const { data: parishesData, isLoading: isLoadingParishes } = useAllActiveParishes();
   const parishes: ParishDto[] = useMemo(
-    () => parishesResponse?.items || [],
-    [parishesResponse?.items]
+    () => parishesData || [],
+    [parishesData]
   );
+  const filteredParishes = useMemo(() => {
+    const q = parishSearch.trim().toLowerCase();
+    if (!q) return parishes;
+    return parishes.filter((parish) =>
+      [parish.name, parish.municipalityCity, parish.address, parish.type]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(q))
+    );
+  }, [parishes, parishSearch]);
   const selectedParish = parishes.find((parish) => Number(parish.id) === selectedParishId);
 
   const configurationQuery = useSchedulingConfiguration(selectedParishId);
@@ -292,15 +305,40 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
     setErrorMessage(null);
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (submittingRef.current) return;
-    if (currentStep === 1) {
-      router.back();
-    } else {
+    if (currentStep > 1) {
       setCurrentStep((step) => step - 1);
       setErrorMessage(null);
+      return;
     }
-  };
+    const hasProgress =
+      Boolean(selectedEventType) ||
+      Boolean(selectedDate) ||
+      Boolean(remarks.trim()) ||
+      (!routeParishId && Boolean(selectedParishId));
+    if (hasProgress) {
+      Alert.alert(
+        "Discard Schedule Request?",
+        "Your current selections have not been submitted yet.",
+        [
+          { text: "Keep Editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: () => router.back() },
+        ]
+      );
+      return;
+    }
+    router.back();
+  }, [currentStep, remarks, routeParishId, router, selectedDate, selectedEventType, selectedParishId]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (submittingRef.current) return true;
+      handleBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [handleBack]);
 
   const getIdempotencyKey = async () => {
     const activeFiles = Object.fromEntries(requirements.map((r) => [r.id, requirementFiles[r.id]]));
@@ -331,7 +369,20 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
         confirmText: "Complete Profile",
         cancelText: "Cancel",
         onConfirm: () => {
-          router.push("/(app)/(tabs)/profile" as any);
+          router.push("/(app)/profile/edit" as any);
+        },
+      });
+      return;
+    }
+
+    if (profile?.needsLegalNameConfirmation) {
+      feedback.showWarning({
+        title: "Legal Name Confirmation Required",
+        message: "Please confirm your official legal name in Edit Profile before verifying ID or scheduling.",
+        confirmText: "Edit Profile",
+        cancelText: "Cancel",
+        onConfirm: () => {
+          router.push("/(app)/profile/edit" as any);
         },
       });
       return;
@@ -380,7 +431,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
       feedback.showSuccess({
         title: "Schedule Request Submitted",
         message: `Your appointment request has been sent to ${selectedParish?.name || "the parish"} for review.`,
-        referenceNumber: `SR-${created.id}`,
+        referenceNumber: formatScheduleConfirmationRef(created.id, created.createdAt),
         confirmText: "View Details",
         onConfirm: () => {
           router.replace(`/(app)/schedule/${created.id}` as never);
@@ -441,7 +492,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
           confirmText: "Complete Profile",
           cancelText: "Cancel",
           onConfirm: () => {
-            router.push("/(app)/(tabs)/profile" as any);
+            router.push("/(app)/profile/edit" as any);
           },
         });
         return;
@@ -591,7 +642,33 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
             description="Complete your profile to access document and schedule requests. Parish offices require your official contact details."
             icon="person-circle-outline"
             actionLabel="Complete Profile"
-            onAction={() => router.push("/(app)/(tabs)/profile" as any)}
+            onAction={() => router.push("/(app)/profile/edit" as any)}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (profile?.needsLegalNameConfirmation) {
+    return (
+      <Screen safeArea style={styles.screen} testID="schedule-wizard-legal-name-blocked">
+        <AppHeader
+          title="New Schedule"
+          onBack={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(app)/(tabs)/(schedule)" as any);
+            }
+          }}
+        />
+        <View style={styles.centerContainer}>
+          <EmptyState
+            title="Legal Name Confirmation Required"
+            description="Confirm your official legal name in Edit Profile before verifying government ID or scheduling a parish appointment."
+            icon="person-circle-outline"
+            actionLabel="Edit Profile"
+            onAction={() => router.push("/(app)/profile/edit" as any)}
           />
         </View>
       </Screen>
@@ -671,21 +748,34 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
                 Select the parish where you would like to request an appointment.
               </Text>
 
+              <RNTextInput
+                value={parishSearch}
+                onChangeText={setParishSearch}
+                placeholder="Search parishes by name or municipality..."
+                placeholderTextColor={colors.textMuted}
+                style={styles.parishSearchInput}
+                accessibilityLabel="Search parishes"
+              />
+
               {isLoadingParishes ? (
                 <>
                   <Skeleton height={60} borderRadius={radii.sm} />
                   <Skeleton height={60} borderRadius={radii.sm} />
                   <Skeleton height={60} borderRadius={radii.sm} />
                 </>
-              ) : parishes.length === 0 ? (
+              ) : filteredParishes.length === 0 ? (
                 <EmptyState
                   icon="location-outline"
-                  title="No parishes available"
-                  description="Please try again when parish directory information is available."
+                  title={parishes.length === 0 ? "No parishes available" : "No matching parishes"}
+                  description={
+                    parishes.length === 0
+                      ? "Please try again when parish directory information is available."
+                      : "Try a different parish name or municipality."
+                  }
                 />
               ) : (
                 <View style={styles.selectionList}>
-                  {parishes.map((parish) => (
+                  {filteredParishes.map((parish) => (
                     <SelectionRow
                       key={parish.id}
                       title={parish.name}
@@ -1046,20 +1136,23 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
 
               <View style={styles.notesContainer}>
                 <Text style={styles.inputLabel} allowFontScaling>
-                  Notes for the parish (optional)
+                  Venue, Location & Parish Notes (optional)
+                </Text>
+                <Text style={styles.disclaimerText} allowFontScaling>
+                  For blessings, funerals, wake masses, or private ceremonies held outside the main parish church, include the exact chapel, home, funeral parlor, or cemetery address and any landmark. For parish church services, add intention names or special accessibility needs.
                 </Text>
                 <RNTextInput
                   value={remarks}
                   editable={!isSubmitting}
                   onChangeText={setRemarks}
-                  placeholder="Add relevant details or special assistance needs"
+                  placeholder="e.g., Main Parish Church, or Brgy. San Roque Chapel (near plaza), or Mass Intention names"
                   placeholderTextColor={colors.textMuted}
                   multiline
                   style={styles.notesInput}
                   maxLength={500}
                 />
                 <Text style={styles.disclaimerText} allowFontScaling>
-                  Parish office staff will review and confirm this request.
+                  Parish office staff will review and confirm your request and venue details.
                 </Text>
               </View>
             </View>
@@ -1434,5 +1527,16 @@ const styles = StyleSheet.create({
   },
   fullWidthAction: {
     width: "100%",
+  },
+  parishSearchInput: {
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
   },
 });

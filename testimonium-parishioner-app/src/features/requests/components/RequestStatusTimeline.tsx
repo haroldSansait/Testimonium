@@ -2,20 +2,29 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, fontStyles, spacing } from "@/theme/tokens";
-import { formatActionLabel, formatDateTime, formatHistoryRemarks } from "../presentation";
-import type { RequestHistoryItem } from "../types";
+import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
+import {
+  formatActionLabel,
+  formatDateTime,
+  formatHistoryRemarks,
+  getDocumentWorkflowStages,
+} from "../presentation";
+import type { DocumentRequestDetail, RequestHistoryItem } from "../types";
 
 export interface RequestStatusTimelineProps {
   history?: RequestHistoryItem[];
   estimatedDays?: number | null;
+  request?: Pick<DocumentRequestDetail, "status" | "isDraft"> | null;
 }
 
 export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
   history = [],
   estimatedDays,
+  request,
 }) => {
-  if (!history || history.length === 0) {
+  const workflowStages = getDocumentWorkflowStages(request);
+
+  if ((!history || history.length === 0) && workflowStages.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText} allowFontScaling>
@@ -26,7 +35,7 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
   }
 
   // Sort chronologically ascending
-  const sortedHistory = [...history].sort(
+  const sortedHistory = [...(history || [])].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
 
@@ -46,55 +55,118 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
         </View>
       ) : null}
 
-      <View style={styles.timelineList}>
-        {sortedHistory.map((item, index) => {
-          const isLast = index === sortedHistory.length - 1;
-          const formattedDate = formatDateTime(item.createdAt);
-          const actorName = item.actor?.fullName || (item.actorId ? "Parish Staff" : "System");
-          const formattedRemarks = formatHistoryRemarks(item);
+      {sortedHistory.length > 0 ? (
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionHeader} allowFontScaling>
+            Recorded Events
+          </Text>
+          <View style={styles.timelineList}>
+            {sortedHistory.map((item, index) => {
+              const isLast = index === sortedHistory.length - 1;
+              const formattedDate = formatDateTime(item.createdAt);
+              const actorName = item.actor?.fullName || (item.actorId ? "Parish Staff" : "System");
+              const formattedRemarks = formatHistoryRemarks(item);
 
-          return (
-            <View key={item.id || index} style={styles.timelineItem}>
-              <View style={styles.nodeColumn}>
-                <View
-                  style={[
-                    styles.dot,
-                    isLast ? styles.dotActive : styles.dotPast,
-                  ]}
-                >
+              return (
+                <View key={item.id || index} style={styles.timelineItem}>
+                  <View style={styles.nodeColumn}>
+                    <View
+                      style={[
+                        styles.dot,
+                        isLast ? styles.dotActive : styles.dotPast,
+                      ]}
+                    >
+                      <Ionicons
+                        name={isLast ? "checkmark" : "ellipse"}
+                        size={isLast ? 10 : 6}
+                        color={colors.surface}
+                      />
+                    </View>
+                    {!isLast && <View style={styles.line} />}
+                  </View>
+
+                  <View style={styles.contentColumn}>
+                    <View style={styles.row}>
+                      <Text style={styles.actionTitle} allowFontScaling>
+                        {formatActionLabel(item.action, item)}
+                      </Text>
+                      <Text style={styles.dateText} allowFontScaling>
+                        {formattedDate}
+                      </Text>
+                    </View>
+
+                    {formattedRemarks ? (
+                      <Text style={styles.remarks} allowFontScaling>
+                        {formattedRemarks}
+                      </Text>
+                    ) : null}
+
+                    <Text style={styles.actorText} allowFontScaling>
+                      By: {actorName}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {workflowStages.length > 0 ? (
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionHeader} allowFontScaling>
+            Expected Processing Stages
+          </Text>
+          <View style={styles.stagesList}>
+            {workflowStages.map((stage) => {
+              const isDone = stage.state === "done";
+              const isCurrent = stage.state === "current";
+              return (
+                <View key={stage.key} style={styles.stageRow}>
                   <Ionicons
-                    name={isLast ? "checkmark" : "ellipse"}
-                    size={isLast ? 10 : 6}
-                    color={colors.surface}
+                    name={
+                      isDone
+                        ? "checkmark-circle"
+                        : isCurrent
+                          ? "radio-button-on"
+                          : "ellipse-outline"
+                    }
+                    size={16}
+                    color={
+                      isDone
+                        ? colors.success
+                        : isCurrent
+                          ? colors.primary
+                          : colors.textMuted
+                    }
+                    style={styles.stageIcon}
                   />
+                  <View style={styles.stageBody}>
+                    <View style={styles.stageTitleRow}>
+                      <Text
+                        style={[
+                          styles.stageLabel,
+                          isCurrent && styles.stageLabelCurrent,
+                          !isDone && !isCurrent && styles.stageLabelUpcoming,
+                        ]}
+                        allowFontScaling
+                      >
+                        {stage.label}
+                      </Text>
+                      <Text style={styles.stageStateTag} allowFontScaling>
+                        {isDone ? "Recorded" : isCurrent ? "Current" : "Pending"}
+                      </Text>
+                    </View>
+                    <Text style={styles.stageDesc} allowFontScaling>
+                      {stage.description}
+                    </Text>
+                  </View>
                 </View>
-                {!isLast && <View style={styles.line} />}
-              </View>
-
-              <View style={styles.contentColumn}>
-                <View style={styles.row}>
-                  <Text style={styles.actionTitle} allowFontScaling>
-                    {formatActionLabel(item.action, item)}
-                  </Text>
-                  <Text style={styles.dateText} allowFontScaling>
-                    {formattedDate}
-                  </Text>
-                </View>
-
-                {formattedRemarks ? (
-                  <Text style={styles.remarks} allowFontScaling>
-                    {formattedRemarks}
-                  </Text>
-                ) : null}
-
-                <Text style={styles.actorText} allowFontScaling>
-                  By: {actorName}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -189,5 +261,61 @@ const styles = StyleSheet.create({
   actorText: {
     ...fontStyles.caption,
     color: colors.textMuted,
+  },
+  sectionBlock: {
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  sectionHeader: {
+    ...fontStyles.captionBold,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: spacing.xxs,
+  },
+  stagesList: {
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+  },
+  stageRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
+  stageIcon: {
+    marginTop: 2,
+  },
+  stageBody: {
+    flex: 1,
+  },
+  stageTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  stageLabel: {
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+  stageLabelCurrent: {
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  stageLabelUpcoming: {
+    color: colors.textSecondary,
+  },
+  stageStateTag: {
+    ...fontStyles.caption,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  stageDesc: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
   },
 });

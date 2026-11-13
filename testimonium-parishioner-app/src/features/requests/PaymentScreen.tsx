@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import {
   Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -15,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SafeBottomActionBar } from "@/components/ui/SafeBottomActionBar";
 import { ContentColumn } from "@/components/layout/ContentColumn";
+import { SecureFileViewerModal } from "@/components/files/SecureFileViewerModal";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -26,9 +28,11 @@ import {
 import { PaymentQrCard } from "./components/PaymentQrCard";
 import { ReceiptCapturePicker } from "./components/ReceiptCapturePicker";
 import {
+  formatDateTime,
   formatDocumentType,
   formatFee,
   hasAuthoritativeFee,
+  humanizeSnakeCase,
   isPaymentEligible,
 } from "./presentation";
 import type { LocalSelectedReceipt } from "./types";
@@ -52,10 +56,18 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
   const {
     data: paymentConfig,
     isLoading: loadingConfig,
+    error: configError,
+    refetch: refetchConfig,
   } = usePaymentConfiguration(isValidId ? requestId : null);
 
   const [selectedReceipt, setSelectedReceipt] = useState<LocalSelectedReceipt | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [viewerFile, setViewerFile] = useState<{
+    path: string;
+    fileName: string;
+    mimeType?: string | null;
+    title?: string;
+  } | null>(null);
   const inFlightGuard = useRef(false);
 
   const uploadReceiptMutation = useUploadPaymentReceipt();
@@ -271,10 +283,78 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
             </View>
 
             {/* Payment Configuration (QR + Bank/Wallet info) */}
-            <PaymentQrCard
-              configuration={paymentConfig}
-              feeAmount={request.fee}
-            />
+            {configError && !paymentConfig ? (
+              <View style={styles.configErrorBox}>
+                <View style={styles.configErrorHeader}>
+                  <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+                  <Text style={styles.configErrorTitle} allowFontScaling>
+                    Unable to Load Parish Payment Details
+                  </Text>
+                </View>
+                <Text style={styles.configErrorText} allowFontScaling>
+                  Could not load payment instructions from the server. Check your connection and retry before submitting a receipt.
+                </Text>
+                <Button
+                  title="Retry Payment Instructions"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => {
+                    void refetchConfig();
+                  }}
+                />
+              </View>
+            ) : (
+              <PaymentQrCard
+                configuration={paymentConfig}
+                feeAmount={request.fee}
+              />
+            )}
+
+            {/* Existing Transactions / Receipts History (M8 / M3) */}
+            {request.paymentTransactions && request.paymentTransactions.length > 0 ? (
+              <View style={styles.summaryBlock}>
+                <Text style={styles.docType} allowFontScaling>
+                  Previous Payment Attempts
+                </Text>
+                {request.paymentTransactions.map((tx) => (
+                  <View key={tx.id} style={styles.txItem}>
+                    <Text style={styles.applicant} allowFontScaling>
+                      Ref: {tx.referenceNumber || "Pending extraction"} • {formatFee(tx.amount ?? request.fee)} • {humanizeSnakeCase(tx.status)}
+                    </Text>
+                    {tx.verifiedAt ? (
+                      <Text style={styles.parish} allowFontScaling>
+                        Verified: {formatDateTime(tx.verifiedAt)}
+                      </Text>
+                    ) : null}
+                    {tx.receipts?.map((receipt) => (
+                      <View key={receipt.id} style={styles.receiptRow}>
+                        <Text style={styles.receiptMeta} numberOfLines={1} allowFontScaling>
+                          {receipt.fileName} • {formatDateTime(receipt.uploadedAt)}
+                        </Text>
+                        <Pressable
+                          onPress={() =>
+                            setViewerFile({
+                              path: `/requests/${request.id}/receipts/${receipt.id}/download`,
+                              fileName: receipt.fileName,
+                              mimeType: receipt.mimeType,
+                              title: "Uploaded Payment Receipt",
+                            })
+                          }
+                          style={styles.viewReceiptBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`View receipt ${receipt.fileName}`}
+                        >
+                          <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                          <Text style={styles.viewReceiptBtnText} allowFontScaling>
+                            View
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             {/* Receipt Selection & Preview */}
             <ReceiptCapturePicker
@@ -317,6 +397,15 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ requestId }) => {
           />
         </SafeBottomActionBar>
       )}
+
+      <SecureFileViewerModal
+        visible={Boolean(viewerFile)}
+        endpointPath={viewerFile?.path || null}
+        fileName={viewerFile?.fileName || "receipt"}
+        mimeType={viewerFile?.mimeType}
+        title={viewerFile?.title}
+        onClose={() => setViewerFile(null)}
+      />
     </Screen>
   );
 };
@@ -426,5 +515,63 @@ const styles = StyleSheet.create({
   },
   fullWidthAction: {
     width: "100%",
+  },
+  configErrorBox: {
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  configErrorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  configErrorTitle: {
+    ...fontStyles.captionMedium,
+    color: colors.danger,
+    fontWeight: "700",
+  },
+  configErrorText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  txItem: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    gap: 4,
+  },
+  receiptRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+    marginTop: 2,
+  },
+  receiptMeta: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  viewReceiptBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  viewReceiptBtnText: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
   },
 });

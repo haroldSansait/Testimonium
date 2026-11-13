@@ -1,4 +1,5 @@
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -26,6 +27,7 @@ import type {
   PaymentConfiguration,
   ReceiptUploadResponse,
   RequestAttachment,
+  UpdateDraftRequestPayload,
 } from "./types";
 
 /**
@@ -126,6 +128,55 @@ export const useRequestList = (
     enabled: Boolean(user?.uid),
     staleTime: 30 * 1000,
     ...options,
+  });
+};
+
+/** Merges paginated request pages */
+export const mergeRequestPages = (
+  pages?: DocumentRequestListResponse[]
+): DocumentRequestDetail[] => {
+  if (!pages || pages.length === 0) return [];
+  const seen = new Set<number>();
+  const merged: DocumentRequestDetail[] = [];
+  for (const page of pages) {
+    for (const item of page.data || []) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
+};
+
+/**
+ * Paginated / infinite request list hook covering all historical requests & drafts (M1).
+ */
+export const useInfiniteRequestList = (
+  filters: Omit<DocumentRequestListFilters, "page"> = {},
+  options?: {
+    enabled?: boolean;
+    refetchInterval?: number | false;
+    refetchIntervalInBackground?: boolean;
+  }
+) => {
+  const { user } = useAuth();
+  const limit = filters.limit ?? 20;
+
+  return useInfiniteQuery({
+    queryKey: requestKeys.infiniteList(user?.uid, { ...filters, limit }),
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) =>
+      fetchRequestList({ ...filters, limit, page: Number(pageParam) || 1 }, signal),
+    getNextPageParam: (lastPage) => {
+      const currentPage = lastPage?.pagination?.page ?? 1;
+      const totalPages = lastPage?.pagination?.totalPages ?? 1;
+      return currentPage < totalPages ? currentPage + 1 : undefined;
+    },
+    enabled: Boolean(user?.uid) && (options?.enabled ?? true),
+    staleTime: 30 * 1000,
+    refetchInterval: options?.refetchInterval,
+    refetchIntervalInBackground: options?.refetchIntervalInBackground,
   });
 };
 
@@ -261,6 +312,70 @@ export const useCreateRequestDraft = () => {
       if (data?.id) {
         queryClient.setQueryData(requestKeys.detail(user?.uid, data.id), data);
       }
+    },
+  });
+};
+
+export const updateRequestDraft = async ({
+  requestId,
+  payload,
+}: {
+  requestId: number | string;
+  payload: UpdateDraftRequestPayload;
+}): Promise<DocumentRequestDetail> => {
+  return apiClient.request<DocumentRequestDetail>({
+    method: "PATCH",
+    path: `/requests/${requestId}`,
+    body: payload,
+    auth: true,
+  });
+};
+
+export const useUpdateRequestDraft = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: updateRequestDraft,
+    retry: false,
+    onSuccess: (data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: requestKeys.lists(user?.uid),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: requestKeys.detail(user?.uid, variables.requestId),
+      });
+      if (data?.id) {
+        queryClient.setQueryData(requestKeys.detail(user?.uid, data.id), data);
+      }
+    },
+  });
+};
+
+export const deleteRequestDraft = async (
+  requestId: number | string
+): Promise<{ deleted?: boolean }> => {
+  return apiClient.request<{ deleted?: boolean }>({
+    method: "DELETE",
+    path: `/requests/${requestId}`,
+    auth: true,
+  });
+};
+
+export const useDeleteRequestDraft = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: deleteRequestDraft,
+    retry: false,
+    onSuccess: (_data, requestId) => {
+      void queryClient.invalidateQueries({
+        queryKey: requestKeys.lists(user?.uid),
+      });
+      queryClient.removeQueries({
+        queryKey: requestKeys.detail(user?.uid, requestId),
+      });
     },
   });
 };

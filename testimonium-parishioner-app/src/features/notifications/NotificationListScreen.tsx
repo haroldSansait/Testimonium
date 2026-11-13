@@ -1,5 +1,5 @@
 import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
-import { AppHeader, Button, EmptyState, Skeleton } from "@/components/ui";
+import { AppHeader, Button, EmptyState, SegmentedControl, Skeleton } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
   useMarkAllNotificationsRead,
@@ -87,6 +87,7 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   const router = useRouter();
   const refreshOptions = useScreenRefresh(false);
   const { contentBottomInset } = useAppLayoutMetrics();
+  const [filterTab, setFilterTab] = useState<"all" | "unread">("all");
 
   const {
     data: notificationData,
@@ -97,8 +98,15 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
 
   const notifications = useMemo(() => notificationData ?? [], [notificationData]);
-
-  const unreadCount = useUnreadNotificationCount();
+  const unreadNotificationsCount = useUnreadNotificationCount();
+  const unreadCount = useMemo(
+    () => unreadNotificationsCount || notifications.filter((n) => !n.isRead).length,
+    [unreadNotificationsCount, notifications]
+  );
+  const filteredNotifications = useMemo(
+    () => (filterTab === "unread" ? notifications.filter((n) => !n.isRead) : notifications),
+    [filterTab, notifications]
+  );
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
 
@@ -111,12 +119,30 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   };
 
   const handleMarkAllRead = () => {
-    markAllReadMutation.mutate();
+    markAllReadMutation.mutate(undefined, {
+      onError: (err: unknown) => {
+        Alert.alert(
+          "Update Failed",
+          err instanceof Error
+            ? err.message
+            : "Unable to mark notifications as read. Please try again."
+        );
+      },
+    });
   };
 
   const handleNotificationPress = (item: NotificationItem) => {
     if (!item.isRead) {
-      markReadMutation.mutate(item.id);
+      markReadMutation.mutate(item.id, {
+        onError: (err: unknown) => {
+          Alert.alert(
+            "Could Not Mark as Read",
+            err instanceof Error
+              ? err.message
+              : "Failed to update notification read status."
+          );
+        },
+      });
     }
 
     if (item.referenceType === "DOCUMENT_REQUEST" && item.referenceId) {
@@ -142,8 +168,8 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
 
   // Group notifications chronologically into Today, Yesterday, Earlier
   const groupedSections = useMemo(
-    () => groupNotificationsByManilaDate(notifications),
-    [notifications]
+    () => groupNotificationsByManilaDate(filteredNotifications),
+    [filteredNotifications]
   );
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
@@ -236,6 +262,17 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
         }
       />
 
+      <View style={styles.filterBar}>
+        <SegmentedControl<"all" | "unread">
+          options={[
+            { value: "all", label: `All (${notifications.length})` },
+            { value: "unread", label: `Unread (${unreadCount})` },
+          ]}
+          selectedValue={filterTab}
+          onSelect={setFilterTab}
+        />
+      </View>
+
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <Skeleton height={64} borderRadius={radii.xs} style={styles.skeleton} />
@@ -281,8 +318,12 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
             <View style={styles.emptyContainer}>
               <EmptyState
                 icon="notifications-outline"
-                title="No Notifications"
-                description="You're all caught up! Updates regarding your document requests and schedules will appear here."
+                title={filterTab === "unread" ? "No Unread Notifications" : "No Notifications"}
+                description={
+                  filterTab === "unread"
+                    ? "All notifications have been read. Switch to All to review past updates."
+                    : "You're all caught up! Updates regarding your document requests and schedules will appear here."
+                }
               />
             </View>
           }
@@ -404,5 +445,12 @@ const styles = StyleSheet.create({
     ...fontStyles.caption,
     fontWeight: "600",
     color: colors.primary,
+  },
+  filterBar: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
 });

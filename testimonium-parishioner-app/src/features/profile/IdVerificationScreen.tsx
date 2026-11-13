@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen } from "@/components/Screen";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Button } from "@/components/ui/Button";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, radii, spacing } from "@/theme/tokens";
 import { GovernmentIdCameraScanner } from "./components/GovernmentIdCameraScanner";
@@ -77,6 +78,7 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, refreshProfile } = useAuth();
+  const reduceMotion = useReducedMotion();
 
   const [step, setStep] = useState<FlowStep>("CAMERA_FRONT");
   const [frontUri, setFrontUri] = useState<string | null>(null);
@@ -236,9 +238,9 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
   }, [backUri, frontUri, retryNonce, step, verifyPair]);
 
   useEffect(() => {
-    if (!isSubmitting) {
+    if (!isSubmitting || reduceMotion) {
       scanProgress.stopAnimation();
-      scanProgress.setValue(0);
+      scanProgress.setValue(isSubmitting && reduceMotion ? 0.5 : 0);
       return;
     }
     const animation = Animated.loop(
@@ -259,7 +261,7 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
     );
     animation.start();
     return () => animation.stop();
-  }, [isSubmitting, scanProgress]);
+  }, [isSubmitting, reduceMotion, scanProgress]);
 
   const retake = (target: RetakeTarget) => {
     if (isSubmitting) return;
@@ -291,6 +293,52 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
     if (router.canGoBack()) router.back();
     else router.replace("/(app)/(tabs)/(profile)" as any);
   };
+
+  if (profile?.needsProfileCompletion || profile?.needsLegalNameConfirmation) {
+    const isIncompleteProfile = Boolean(profile?.needsProfileCompletion);
+    return (
+      <Screen safeArea={true} style={styles.screen}>
+        <AppHeader
+          title="Verify Government ID"
+          subtitle={isIncompleteProfile ? "Profile Required" : "Legal Name Required"}
+          onBack={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(app)/(tabs)/(profile)" as any);
+          }}
+        />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.xl },
+          ]}
+        >
+          <View style={styles.infoBanner}>
+            <Ionicons name="person-circle-outline" size={24} color={colors.primary} />
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={styles.infoBannerTitle}>
+                {isIncompleteProfile
+                  ? "Complete Your Profile First"
+                  : "Confirm Your Legal Name First"}
+              </Text>
+              <Text style={styles.infoBannerText}>
+                {isIncompleteProfile
+                  ? "Complete your personal profile details before verifying your Philippine Government ID."
+                  : "Your legal name must be confirmed or updated in Edit Profile so it matches your Philippine Government ID before scanning."}
+              </Text>
+            </View>
+          </View>
+          <Button
+            title={isIncompleteProfile ? "Complete Profile" : "Review & Confirm Legal Name"}
+            variant="primary"
+            size="lg"
+            icon="create-outline"
+            onPress={() => router.replace("/(app)/profile/edit" as any)}
+          />
+        </ScrollView>
+      </Screen>
+    );
+  }
 
   if (step === "CAMERA_FRONT") {
     return (
@@ -436,9 +484,11 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
                       <View style={[styles.previewBracket, styles.bracketTopRight]} />
                       <View style={[styles.previewBracket, styles.bracketBottomLeft]} />
                       <View style={[styles.previewBracket, styles.bracketBottomRight]} />
-                      <Animated.View
-                        style={[styles.scanLine, { transform: [{ translateY: scanLineTranslateY }] }]}
-                      />
+                      {!reduceMotion ? (
+                        <Animated.View
+                          style={[styles.scanLine, { transform: [{ translateY: scanLineTranslateY }] }]}
+                        />
+                      ) : null}
                     </View>
                   ) : null}
                   <View style={styles.readyBadge}>
@@ -484,9 +534,11 @@ export const IdVerificationScreen: React.FC<IdVerificationScreenProps> = ({
                       <View style={[styles.previewBracket, styles.bracketTopRight]} />
                       <View style={[styles.previewBracket, styles.bracketBottomLeft]} />
                       <View style={[styles.previewBracket, styles.bracketBottomRight]} />
-                      <Animated.View
-                        style={[styles.scanLine, { transform: [{ translateY: scanLineTranslateY }] }]}
-                      />
+                      {!reduceMotion ? (
+                        <Animated.View
+                          style={[styles.scanLine, { transform: [{ translateY: scanLineTranslateY }] }]}
+                        />
+                      ) : null}
                     </View>
                   ) : null}
                   <View style={styles.readyBadge}>

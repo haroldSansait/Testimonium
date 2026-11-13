@@ -66,7 +66,7 @@ export const EditProfileScreen: React.FC = () => {
     try {
       const payload: UpdateProfilePayload = {
         contactNumber: contactNumber.trim() || undefined,
-        address: address.trim() || undefined,
+        address: address.trim(),
       };
 
       await updateProfile(payload);

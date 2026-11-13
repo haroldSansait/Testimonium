@@ -87,6 +87,10 @@ jest.mock("@/features/parishes/api", () => ({
     data: { items: mockParishes },
     isLoading: false,
   }),
+  useAllActiveParishes: () => ({
+    data: mockParishes,
+    isLoading: false,
+  }),
 }));
 
 // Mock schedule API hooks

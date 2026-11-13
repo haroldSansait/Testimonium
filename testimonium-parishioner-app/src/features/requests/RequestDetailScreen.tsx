@@ -2,6 +2,7 @@ import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh"
 import React, { useRef, useState } from "react";
 import {
   Alert,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -19,12 +20,14 @@ import { StatusLabel } from "@/components/ui/StatusLabel";
 import { RecordSection } from "@/components/ui/RecordSection";
 import { Divider } from "@/components/ui/Divider";
 import { ContentColumn } from "@/components/layout/ContentColumn";
+import { SecureFileViewerModal } from "@/components/files/SecureFileViewerModal";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { navigateBackOrReplace } from "@/services/navigation/back";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
 import {
   useCancelRequest,
+  useDeleteRequestDraft,
   useDocumentRequirements,
   useRequestDetail,
   useResubmitCorrections,
@@ -42,9 +45,12 @@ import { RegistrantIdCapturePicker } from "./components/RegistrantIdCapturePicke
 import { ReturnDocumentModal } from "./components/ReturnDocumentModal";
 import {
   formatDate,
+  formatDateTime,
   formatDocumentType,
   formatFee,
   formatStatus,
+  hasAuthoritativeFee,
+  humanizeSnakeCase,
   isCancelEligible,
   isDocumentCorrectionEligible,
   isDocumentReturnEligible,
@@ -73,7 +79,12 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   } = useRequestDetail(isValidId ? requestId : null, { ...refreshOptions, enabled: refreshOptions.enabled && isValidId });
   const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
 
-  const { data: requirements } = useDocumentRequirements(
+  const {
+    data: requirements,
+    isLoading: loadingRequirements,
+    error: requirementsError,
+    refetch: refetchRequirements,
+  } = useDocumentRequirements(
     request
       ? { documentType: request.documentType, parishId: request.parishId, relationship: request.relationship || "Self" }
       : undefined
@@ -83,11 +94,19 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
   const [correctionRegistrantIdFront, setCorrectionRegistrantIdFront] = useState<LocalRegistrantIdImage | null>(null);
   const [correctionRegistrantIdBack, setCorrectionRegistrantIdBack] = useState<LocalRegistrantIdImage | null>(null);
   const [draftFiles, setDraftFiles] = useState<Record<string, LocalSelectedFile>>({});
+  const [replacingDraftReqIds, setReplacingDraftReqIds] = useState<Record<string, boolean>>({});
   const [draftUploadingReqId, setDraftUploadingReqId] = useState<string | null>(null);
   const [isReturnModalVisible, setIsReturnModalVisible] = useState(false);
+  const [viewerFile, setViewerFile] = useState<{
+    path: string;
+    fileName: string;
+    mimeType?: string | null;
+    title?: string;
+  } | null>(null);
   const inFlightGuard = useRef(false);
 
   const cancelMutation = useCancelRequest();
+  const deleteDraftMutation = useDeleteRequestDraft();
   const resubmitMutation = useResubmitCorrections();
   const submitDraftMutation = useSubmitRequestDraft();
   const uploadFileMutation = useUploadSupportingFile();
@@ -150,6 +169,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
         category: requirementId,
       });
       setDraftFiles((prev) => ({ ...prev, [requirementId]: localFile }));
+      setReplacingDraftReqIds((prev) => ({ ...prev, [requirementId]: false }));
       Alert.alert("Attachment Uploaded", `"${localFile.name}" has been attached to your draft.`);
       void refetch();
     } catch (err: any) {
@@ -178,6 +198,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
       });
       if (side === "front") setCorrectionRegistrantIdFront(image);
       else setCorrectionRegistrantIdBack(image);
+      setReplacingDraftReqIds((prev) => ({ ...prev, [`registrant_id_${side}`]: false }));
       Alert.alert("Image Uploaded", `The registrant ID ${side} image is attached to this draft.`);
       void refetch();
     } catch (err: any) {
@@ -255,8 +276,43 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
     }
   };
 
+  const handleDiscardDraft = () => {
+    if (!request || !request.isDraft || inFlightGuard.current) return;
+    Alert.alert(
+      "Discard Saved Draft?",
+      "This will permanently delete your saved draft and its uploaded attachments. This action cannot be undone.",
+      [
+        { text: "Keep Draft", style: "cancel" },
+        {
+          text: "Discard Draft",
+          style: "destructive",
+          onPress: async () => {
+            if (inFlightGuard.current) return;
+            inFlightGuard.current = true;
+            try {
+              await deleteDraftMutation.mutateAsync(request.id);
+              Alert.alert("Draft Discarded", "Your saved draft has been deleted.");
+              handleBack();
+            } catch (err: any) {
+              Alert.alert("Discard Failed", err?.message || "Could not discard draft.");
+            } finally {
+              inFlightGuard.current = false;
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleFinalizeDraft = async () => {
     if (!request || inFlightGuard.current) return;
+    if (loadingRequirements || requirementsError || !hasAuthoritativeFee(requirements?.baseFee)) {
+      Alert.alert(
+        "Requirements Unavailable",
+        "Wait for authoritative parish requirements and fees to load before submitting this draft."
+      );
+      return;
+    }
     inFlightGuard.current = true;
 
     try {
@@ -306,7 +362,11 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
     }
     return !uploadedRequirementIds.has(d.id);
   });
-  const isDraftComplete = missingRequiredDocs.length === 0;
+  const isDraftComplete =
+    !loadingRequirements &&
+    !requirementsError &&
+    hasAuthoritativeFee(requirements?.baseFee) &&
+    missingRequiredDocs.length === 0;
 
   const bottomPadding = contentBottomInset("none");
 
@@ -385,111 +445,176 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                     Draft Checklist
                   </Text>
                 </View>
-                <Text style={styles.alertBoxDesc} allowFontScaling>
-                  {isDraftComplete
-                    ? "All required attachments have been uploaded to this draft. You can now finalize and submit."
-                    : `Please attach the remaining ${missingRequiredDocs.length} required document(s) to continue.`}
-                </Text>
 
-                {requiredDocuments.map((reqDoc) => {
-                  const uploadedAtt = attachments.find((a) => a.category === reqDoc.id);
-                  const registrantSide =
-                    reqDoc.id === "registrant_id_front"
-                      ? "front"
-                      : reqDoc.id === "registrant_id_back"
-                        ? "back"
-                        : null;
-                  const registrantUploaded = registrantSide
-                    ? Boolean(
-                        registrantSide === "front"
-                          ? request.registrantIdEvidence?.frontUploadedAt
-                          : request.registrantIdEvidence?.backUploadedAt
-                      )
-                    : false;
-
-                  if (reqDoc.id === "valid_id" && isProfileGovIdVerified) {
-                    return (
-                      <View key={reqDoc.id} style={styles.draftUploadedRow}>
-                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                        <View style={styles.draftUploadedDetails}>
-                          <Text style={styles.draftUploadedLabel} allowFontScaling>
-                            {reqDoc.label || "Valid Government ID"}
-                          </Text>
-                          <Text style={styles.draftUploadedFileName} allowFontScaling>
-                            Verified via Profile ({profile?.governmentIdType || "Government ID"})
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  if (uploadedAtt || registrantUploaded) {
-                    return (
-                      <View key={reqDoc.id} style={styles.draftUploadedRow}>
-                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                        <View style={styles.draftUploadedDetails}>
-                          <Text style={styles.draftUploadedLabel} allowFontScaling>
-                            {reqDoc.label || reqDoc.id}
-                          </Text>
-                          <Text style={styles.draftUploadedFileName} numberOfLines={1} allowFontScaling>
-                            {uploadedAtt?.fileName || "Private registrant ID image uploaded"}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  if (registrantSide) {
-                    return (
-                      <RegistrantIdCapturePicker
-                        key={reqDoc.id}
-                        side={registrantSide}
-                        image={
-                          registrantSide === "front"
-                            ? correctionRegistrantIdFront
-                            : correctionRegistrantIdBack
-                        }
-                        onSelected={(image) => void handleDraftRegistrantIdUpload(registrantSide, image)}
-                        onRemoved={() => {
-                          if (registrantSide === "front") setCorrectionRegistrantIdFront(null);
-                          else setCorrectionRegistrantIdBack(null);
-                        }}
-                        disabled={
-                          uploadRegistrantIdMutation.isPending ||
-                          submitDraftMutation.isPending ||
-                          draftUploadingReqId === reqDoc.id
-                        }
-                      />
-                    );
-                  }
-
-                  return (
-                    <SupportingFilePicker
-                      key={reqDoc.id}
-                      requirement={reqDoc}
-                      selectedFile={draftFiles[reqDoc.id]}
-                      onFileSelected={(file) => void handleDraftFileUpload(reqDoc.id, file)}
-                      onFileRemoved={() => {
-                        setDraftFiles((prev) => {
-                          const updated = { ...prev };
-                          delete updated[reqDoc.id];
-                          return updated;
-                        });
+                {loadingRequirements ? (
+                  <View style={{ gap: spacing.xs }}>
+                    <Skeleton width="100%" height={44} style={styles.skeletonCard} />
+                    <Skeleton width="100%" height={44} style={styles.skeletonCard} />
+                  </View>
+                ) : requirementsError || !hasAuthoritativeFee(requirements?.baseFee) ? (
+                  <View style={{ gap: spacing.xs }}>
+                    <Text style={[styles.alertBoxDesc, { color: colors.danger }]} allowFontScaling>
+                      Unable to load authoritative parish requirements and fee for this draft. Retry before submitting.
+                    </Text>
+                    <Button
+                      title="Retry Requirements"
+                      variant="outline"
+                      size="sm"
+                      icon="refresh-outline"
+                      onPress={() => {
+                        void refetchRequirements();
                       }}
-                      disabled={
-                        uploadFileMutation.isPending ||
-                        submitDraftMutation.isPending ||
-                        draftUploadingReqId === reqDoc.id
-                      }
                     />
-                  );
-                })}
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.alertBoxDesc} allowFontScaling>
+                      {isDraftComplete
+                        ? "All required attachments have been uploaded to this draft. You can now finalize and submit."
+                        : `Please attach the remaining ${missingRequiredDocs.length} required document(s) to continue.`}
+                    </Text>
+
+                    {requiredDocuments.map((reqDoc) => {
+                      const uploadedAtt = attachments.find((a) => a.category === reqDoc.id);
+                      const isReplacing = Boolean(replacingDraftReqIds[reqDoc.id]);
+                      const registrantSide =
+                        reqDoc.id === "registrant_id_front"
+                          ? "front"
+                          : reqDoc.id === "registrant_id_back"
+                            ? "back"
+                            : null;
+                      const registrantUploaded = registrantSide
+                        ? Boolean(
+                            registrantSide === "front"
+                              ? request.registrantIdEvidence?.frontUploadedAt
+                              : request.registrantIdEvidence?.backUploadedAt
+                          )
+                        : false;
+
+                      if (reqDoc.id === "valid_id" && isProfileGovIdVerified) {
+                        return (
+                          <View key={reqDoc.id} style={styles.draftUploadedRow}>
+                            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                            <View style={styles.draftUploadedDetails}>
+                              <Text style={styles.draftUploadedLabel} allowFontScaling>
+                                {reqDoc.label || "Valid Government ID"}
+                              </Text>
+                              <Text style={styles.draftUploadedFileName} allowFontScaling>
+                                Verified via Profile ({profile?.governmentIdType || "Government ID"})
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      }
+
+                      if ((uploadedAtt || registrantUploaded) && !isReplacing) {
+                        return (
+                          <View key={reqDoc.id} style={styles.draftUploadedRow}>
+                            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                            <View style={styles.draftUploadedDetails}>
+                              <Text style={styles.draftUploadedLabel} allowFontScaling>
+                                {reqDoc.label || reqDoc.id}
+                              </Text>
+                              <Text style={styles.draftUploadedFileName} numberOfLines={1} allowFontScaling>
+                                {uploadedAtt?.fileName || "Private registrant ID image uploaded"}
+                              </Text>
+                            </View>
+                            <View style={styles.inlineActionGroup}>
+                              {uploadedAtt ? (
+                                <Pressable
+                                  onPress={() =>
+                                    setViewerFile({
+                                      path: `/requests/${request.id}/attachments/${uploadedAtt.id}/download`,
+                                      fileName: uploadedAtt.fileName,
+                                      mimeType: uploadedAtt.fileType,
+                                      title: reqDoc.label || uploadedAtt.category,
+                                    })
+                                  }
+                                  style={styles.inlineSmallBtn}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`View ${uploadedAtt.fileName}`}
+                                >
+                                  <Ionicons name="eye-outline" size={13} color={colors.primary} />
+                                  <Text style={styles.inlineSmallBtnText} allowFontScaling>
+                                    View
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+                              <Pressable
+                                onPress={() =>
+                                  setReplacingDraftReqIds((prev) => ({ ...prev, [reqDoc.id]: true }))
+                                }
+                                style={styles.inlineSmallBtn}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Replace ${reqDoc.label || reqDoc.id}`}
+                              >
+                                <Ionicons name="swap-horizontal-outline" size={13} color={colors.primary} />
+                                <Text style={styles.inlineSmallBtnText} allowFontScaling>
+                                  Replace
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        );
+                      }
+
+                      if (registrantSide) {
+                        return (
+                          <RegistrantIdCapturePicker
+                            key={reqDoc.id}
+                            side={registrantSide}
+                            image={
+                              registrantSide === "front"
+                                ? correctionRegistrantIdFront
+                                : correctionRegistrantIdBack
+                            }
+                            onSelected={(image) => void handleDraftRegistrantIdUpload(registrantSide, image)}
+                            onRemoved={() => {
+                              if (registrantSide === "front") setCorrectionRegistrantIdFront(null);
+                              else setCorrectionRegistrantIdBack(null);
+                            }}
+                            disabled={
+                              uploadRegistrantIdMutation.isPending ||
+                              submitDraftMutation.isPending ||
+                              draftUploadingReqId === reqDoc.id
+                            }
+                          />
+                        );
+                      }
+
+                      return (
+                        <SupportingFilePicker
+                          key={reqDoc.id}
+                          requirement={reqDoc}
+                          selectedFile={draftFiles[reqDoc.id]}
+                          onFileSelected={(file) => void handleDraftFileUpload(reqDoc.id, file)}
+                          onFileRemoved={() => {
+                            setDraftFiles((prev) => {
+                              const updated = { ...prev };
+                              delete updated[reqDoc.id];
+                              return updated;
+                            });
+                          }}
+                          disabled={
+                            uploadFileMutation.isPending ||
+                            submitDraftMutation.isPending ||
+                            draftUploadingReqId === reqDoc.id
+                          }
+                        />
+                      );
+                    })}
+                  </>
+                )}
 
                 <Button
                   title={
-                    isDraftComplete
-                      ? "Finalize & Submit Request"
-                      : `Submit Request (${missingRequiredDocs.length} Missing)`
+                    loadingRequirements
+                      ? "Loading Requirements..."
+                      : requirementsError || !hasAuthoritativeFee(requirements?.baseFee)
+                        ? "Requirements Unavailable"
+                        : isDraftComplete
+                          ? "Finalize & Submit Request"
+                          : `Submit Request (${missingRequiredDocs.length} Missing)`
                   }
                   variant={isDraftComplete ? "primary" : "outline"}
                   size="md"
@@ -499,12 +624,35 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   }}
                   loading={submitDraftMutation.isPending || uploadRegistrantIdMutation.isPending}
                   disabled={
+                    loadingRequirements ||
+                    Boolean(requirementsError) ||
+                    !hasAuthoritativeFee(requirements?.baseFee) ||
+                    !isDraftComplete ||
                     submitDraftMutation.isPending ||
                     uploadRegistrantIdMutation.isPending ||
                     Boolean(draftUploadingReqId)
                   }
                   style={styles.fullWidthAction}
                 />
+
+                <View style={styles.draftManageRow}>
+                  <Button
+                    title="Edit Draft Details"
+                    variant="outline"
+                    size="sm"
+                    icon="create-outline"
+                    onPress={() => router.push(`/(app)/requests/new?draftId=${request.id}` as any)}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    title="Discard Draft"
+                    variant="ghost"
+                    size="sm"
+                    icon="trash-outline"
+                    loading={deleteDraftMutation.isPending}
+                    onPress={handleDiscardDraft}
+                  />
+                </View>
               </View>
             ) : isPaymentActionAvailable ? (
               <View style={styles.alertBox}>
@@ -720,7 +868,67 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                   ),
                 },
               ]}
-            />
+            >
+              {request.paymentTransactions && request.paymentTransactions.length > 0 ? (
+                <View style={styles.txSectionWrap}>
+                  {request.paymentTransactions.map((tx) => (
+                    <View key={tx.id} style={styles.txCard}>
+                      <View style={styles.txHeaderRow}>
+                        <Text style={styles.txRefText} allowFontScaling>
+                          {tx.referenceNumber
+                            ? `Payment Ref: ${tx.referenceNumber}`
+                            : `Transaction #${tx.id}`}
+                        </Text>
+                        <Text style={styles.txStatusText} allowFontScaling>
+                          {humanizeSnakeCase(tx.status)}
+                        </Text>
+                      </View>
+                      <Text style={styles.attachmentMeta} allowFontScaling>
+                        Amount: {formatFee(tx.amount ?? request.fee)}
+                        {tx.provider ? ` • ${tx.provider}` : ""}
+                        {tx.verifiedAt ? ` • Verified ${formatDateTime(tx.verifiedAt)}` : ""}
+                      </Text>
+                      {tx.receipts?.map((receipt) => (
+                        <View key={receipt.id} style={styles.txReceiptRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.attachmentName} numberOfLines={1} allowFontScaling>
+                              {receipt.fileName}
+                            </Text>
+                            <Text style={styles.attachmentMeta} allowFontScaling>
+                              Uploaded {formatDateTime(receipt.uploadedAt)}
+                              {receipt.ocrResult?.status
+                                ? ` • OCR: ${humanizeSnakeCase(receipt.ocrResult.status)}`
+                                : ""}
+                              {receipt.ocrResult?.referenceNumber
+                                ? ` (${receipt.ocrResult.referenceNumber})`
+                                : ""}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() =>
+                              setViewerFile({
+                                path: `/requests/${request.id}/receipts/${receipt.id}/download`,
+                                fileName: receipt.fileName,
+                                mimeType: receipt.mimeType,
+                                title: "Payment Receipt",
+                              })
+                            }
+                            style={styles.inlineSmallBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`View receipt ${receipt.fileName}`}
+                          >
+                            <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                            <Text style={styles.inlineSmallBtnText} allowFontScaling>
+                              View
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </RecordSection>
 
             <Divider />
 
@@ -744,6 +952,26 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                           {att.category} • {formatDate(att.uploadedAt)}
                         </Text>
                       </View>
+                      {att.id ? (
+                        <Pressable
+                          onPress={() =>
+                            setViewerFile({
+                              path: `/requests/${request.id}/attachments/${att.id}/download`,
+                              fileName: att.fileName,
+                              mimeType: att.fileType,
+                              title: att.category,
+                            })
+                          }
+                          style={styles.inlineSmallBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`View attachment ${att.fileName}`}
+                        >
+                          <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                          <Text style={styles.inlineSmallBtnText} allowFontScaling>
+                            View
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                   ))}
                 </RecordSection>
@@ -791,6 +1019,46 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
                             </Text>
                           )}
                         </View>
+                        <View style={styles.inlineActionGroup}>
+                          <Pressable
+                            onPress={() =>
+                              setViewerFile({
+                                path: `/requests/${request.id}/returns/${ret.id}/file/returned`,
+                                fileName: ret.returnedFileName,
+                                mimeType: ret.returnedFileType,
+                                title: `Defective Document (Cycle #${ret.cycleNumber})`,
+                              })
+                            }
+                            style={styles.inlineSmallBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`View defective document ${ret.returnedFileName}`}
+                          >
+                            <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                            <Text style={styles.inlineSmallBtnText} allowFontScaling>
+                              View Defective
+                            </Text>
+                          </Pressable>
+                          {ret.correctedFileName ? (
+                            <Pressable
+                              onPress={() =>
+                                setViewerFile({
+                                  path: `/requests/${request.id}/returns/${ret.id}/file/corrected`,
+                                  fileName: ret.correctedFileName!,
+                                  mimeType: ret.correctedFileType,
+                                  title: `Corrected Replacement (Cycle #${ret.cycleNumber})`,
+                                })
+                              }
+                              style={styles.inlineSmallBtn}
+                              accessibilityRole="button"
+                              accessibilityLabel={`View corrected document ${ret.correctedFileName}`}
+                            >
+                              <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+                              <Text style={styles.inlineSmallBtnText} allowFontScaling>
+                                View Corrected
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
                       </View>
                     );
                   })}
@@ -802,6 +1070,7 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
             {/* Record Section 4: Request Timeline & History */}
             <RecordSection title="Request History & Timeline">
               <RequestStatusTimeline
+                request={request}
                 history={request.requestHistory}
                 estimatedDays={requirements?.estimatedProcessingDays}
               />
@@ -836,6 +1105,15 @@ export const RequestDetailScreen: React.FC<RequestDetailScreenProps> = ({
           }}
         />
       ) : null}
+
+      <SecureFileViewerModal
+        visible={Boolean(viewerFile)}
+        endpointPath={viewerFile?.path || null}
+        fileName={viewerFile?.fileName || "document"}
+        mimeType={viewerFile?.mimeType}
+        title={viewerFile?.title}
+        onClose={() => setViewerFile(null)}
+      />
     </Screen>
   );
 };
@@ -1079,5 +1357,73 @@ const styles = StyleSheet.create({
   returnHistoryFilePending: {
     ...fontStyles.captionBold,
     color: colors.warning,
+  },
+  inlineActionGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexWrap: "wrap",
+    marginTop: 4,
+  },
+  inlineSmallBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 5,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  inlineSmallBtnText: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  draftManageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.xxs,
+  },
+  txSectionWrap: {
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  txCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  txHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  txRefText: {
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+    fontWeight: "700",
+    flex: 1,
+  },
+  txStatusText: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  txReceiptRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingTop: spacing.xxs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    marginTop: 4,
   },
 });

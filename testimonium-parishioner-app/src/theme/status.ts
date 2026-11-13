@@ -51,12 +51,18 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
         accessibilityLabel: "Status: Under Staff Review by parish staff",
       };
     case "PROCESSING":
-    case "READY_FOR_SIGNING":
       return {
         label: "In Preparation",
         intent: "info",
         color: colors.information,
         accessibilityLabel: "Status: In Preparation by parish records",
+      };
+    case "READY_FOR_SIGNING":
+      return {
+        label: "Ready for Signing",
+        intent: "info",
+        color: colors.information,
+        accessibilityLabel: "Status: Ready for Signing by clergy",
       };
     case "NEEDS_CORRECTION":
     case "CORRECTION_REQUIRED":
@@ -85,10 +91,10 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
     case "PAYMENT_UNDER_REVIEW":
     case "RECEIPT_UNDER_REVIEW":
       return {
-        label: "Payment Under Review",
+        label: "Awaiting Payment Review",
         intent: "info",
         color: colors.information,
-        accessibilityLabel: "Status: Payment Under Review by parish staff",
+        accessibilityLabel: "Status: Awaiting Payment Review by parish staff",
       };
     case "PAYMENT_NEEDS_CORRECTION":
       return {
@@ -110,15 +116,15 @@ export function getStatusConfig(rawStatus: string | undefined | null): StatusCon
         label: "Ready for Pickup",
         intent: "success",
         color: colors.success,
-        accessibilityLabel: "Status: Document ready for pickup at parish",
+        accessibilityLabel: "Status: Ready for Pickup at parish, not yet released",
       };
     case "COMPLETED":
     case "ISSUED":
       return {
-        label: "Completed",
+        label: "Released",
         intent: "success",
         color: colors.success,
-        accessibilityLabel: "Status: Completed and issued",
+        accessibilityLabel: "Status: Document released",
       };
     case "REJECTED":
       return {

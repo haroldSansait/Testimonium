@@ -1,13 +1,14 @@
 import { useScreenRefresh, useManualRefresh } from "@/hooks/useAutomaticRefresh";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
   View,
 } from "react-native";
-import { Text } from "@/components/Typography";
+import { Text, TextInput } from "@/components/Typography";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
@@ -22,13 +23,21 @@ import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
-import { useScheduleList } from "./api";
+import { isAppError } from "@/services/api/errors";
+import {
+  mergeSchedulePages,
+  useInfiniteScheduleList,
+  useScheduleTrackingLookup,
+} from "./api";
 import {
   extractTimeSlotFromSchedule,
+  formatScheduleConfirmationRef,
   formatScheduleDate,
   getScheduleStatusBadge,
   isRescheduleProposalPending,
+  isValidScheduleTrackingReference,
   getScheduleDisplayTitle,
+  normalizeScheduleTrackingReference,
 } from "./presentation";
 import { getScheduleEventLabel, type ScheduleItem } from "./types";
 
@@ -40,16 +49,65 @@ export const ScheduleListScreen: React.FC = () => {
   const { requireCompleteProfile } = useRequireCompleteProfile();
   const { contentBottomInset } = useAppLayoutMetrics();
   const [activeTab, setActiveTab] = useState<ScopeTab>("upcoming");
+  const [trackingQuery, setTrackingQuery] = useState("");
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [trackedSchedule, setTrackedSchedule] = useState<ScheduleItem | null>(null);
+
+  const trackingMutation = useScheduleTrackingLookup();
 
   const {
-    data: scheduleData,
+    data: infiniteData,
     isLoading,
     error,
     refetch,
-  } = useScheduleList(activeTab, refreshOptions);
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteScheduleList(activeTab, 20, {
+    refetchInterval: refreshOptions.refetchInterval,
+  });
   const { refreshing, onRefresh } = useManualRefresh(() => refetch({ cancelRefetch: false }));
 
-  const schedules = scheduleData ?? [];
+  const schedules = useMemo(
+    () => mergeSchedulePages(infiniteData?.pages),
+    [infiniteData?.pages]
+  );
+
+  const handleTrackingSearch = async () => {
+    const normalized = normalizeScheduleTrackingReference(trackingQuery);
+    if (!normalized) {
+      setTrackedSchedule(null);
+      setTrackingError(null);
+      return;
+    }
+    if (!isValidScheduleTrackingReference(normalized)) {
+      setTrackedSchedule(null);
+      setTrackingError(
+        normalized.startsWith("SR-")
+          ? "SR- references are for document requests. Enter a schedule confirmation (e.g. CONF-2026-0026) or numeric ID."
+          : "Enter a confirmation reference (e.g. CONF-2026-0026) or numeric schedule ID."
+      );
+      return;
+    }
+    setTrackingError(null);
+    try {
+      const result = await trackingMutation.mutateAsync(normalized);
+      setTrackedSchedule(result);
+    } catch (err: unknown) {
+      setTrackedSchedule(null);
+      const appErr = isAppError(err) ? err : null;
+      setTrackingError(
+        appErr?.message ||
+          "No schedule found for that confirmation number or ID. Verify the reference and try again."
+      );
+    }
+  };
+
+  const handleClearTracking = () => {
+    setTrackingQuery("");
+    setTrackingError(null);
+    setTrackedSchedule(null);
+  };
 
   const handleStartBooking = () => {
     requireCompleteProfile(() => {
@@ -67,6 +125,7 @@ export const ScheduleListScreen: React.FC = () => {
     const dateFormatted = formatScheduleDate(item.requestedDate, "short");
     const timeSlot = extractTimeSlotFromSchedule(item);
     const statusLabel = getScheduleStatusBadge(item.status).label;
+    const confirmationRef = formatScheduleConfirmationRef(item.id, item.createdAt);
 
     return (
       <View key={item.id}>
@@ -75,7 +134,7 @@ export const ScheduleListScreen: React.FC = () => {
           onPress={() => handleSchedulePress(item)}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel={`${eventLabel} at ${item.parish?.parishName || "Parish"}, status: ${statusLabel}`}
+          accessibilityLabel={`${eventLabel} ${confirmationRef} at ${item.parish?.parishName || "Parish"}, status: ${statusLabel}`}
         >
           {hasProposal && (
             <View style={styles.proposalBanner}>
@@ -89,6 +148,11 @@ export const ScheduleListScreen: React.FC = () => {
 
           <View style={styles.rowHeader}>
             <View style={styles.titleWrap}>
+              {confirmationRef ? (
+                <Text style={styles.confRefText} numberOfLines={1} allowFontScaling>
+                  {confirmationRef}
+                </Text>
+              ) : null}
               <Text style={styles.eventTitle} numberOfLines={1} allowFontScaling>
                 {getScheduleDisplayTitle(item)}
               </Text>
@@ -162,6 +226,81 @@ export const ScheduleListScreen: React.FC = () => {
       />
 
       <ContentColumn style={styles.contentColumn}>
+        {/* Tracking Lookup */}
+        <View style={styles.trackingContainer}>
+          <View style={styles.trackingInputRow}>
+            <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+            <TextInput
+              value={trackingQuery}
+              onChangeText={(text) => {
+                setTrackingQuery(text);
+                if (trackingError) setTrackingError(null);
+              }}
+              placeholder="Track schedule (e.g. CONF-2026-0026 or ID)"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="characters"
+              returnKeyType="search"
+              onSubmitEditing={() => void handleTrackingSearch()}
+              style={styles.trackingInput}
+              accessibilityLabel="Track schedule confirmation number"
+            />
+            {trackingQuery.length > 0 ? (
+              <TouchableOpacity
+                onPress={handleClearTracking}
+                accessibilityRole="button"
+                accessibilityLabel="Clear schedule search"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+            <Button
+              title={trackingMutation.isPending ? "…" : "Track"}
+              size="sm"
+              variant="secondary"
+              onPress={() => void handleTrackingSearch()}
+              disabled={trackingMutation.isPending || !trackingQuery.trim()}
+              accessibilityLabel="Look up schedule reference"
+            />
+          </View>
+
+          {trackingError ? (
+            <View style={styles.trackingErrorBox}>
+              <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+              <Text style={styles.trackingErrorText} allowFontScaling>
+                {trackingError}
+              </Text>
+            </View>
+          ) : null}
+
+          {trackedSchedule ? (
+            <TouchableOpacity
+              style={styles.trackedCard}
+              onPress={() => handleSchedulePress(trackedSchedule)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open tracked schedule ${formatScheduleConfirmationRef(trackedSchedule.id, trackedSchedule.createdAt)}`}
+            >
+              <View style={styles.trackedHeader}>
+                <Text style={styles.trackedRef} allowFontScaling>
+                  {formatScheduleConfirmationRef(trackedSchedule.id, trackedSchedule.createdAt)}
+                </Text>
+                <StatusLabel status={trackedSchedule.status} />
+              </View>
+              <Text style={styles.trackedTitle} numberOfLines={1} allowFontScaling>
+                {getScheduleDisplayTitle(trackedSchedule)} • {trackedSchedule.parish?.parishName || "Parish"}
+              </Text>
+              <View style={styles.trackedFooter}>
+                <Text style={styles.trackedDate} allowFontScaling>
+                  {formatScheduleDate(trackedSchedule.requestedDate, "short")} • {extractTimeSlotFromSchedule(trackedSchedule)}
+                </Text>
+                <Text style={styles.trackedOpenLink} allowFontScaling>
+                  View Details →
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         {/* Scope Filter Segment */}
         <View style={styles.filterBar}>
           <SegmentedControl<ScopeTab>
@@ -175,13 +314,13 @@ export const ScheduleListScreen: React.FC = () => {
         </View>
 
         {/* Content Body */}
-        {isLoading ? (
+        {isLoading && schedules.length === 0 ? (
           <View style={styles.loadingContainer}>
             <Skeleton height={90} borderRadius={radii.sm} />
             <Skeleton height={90} borderRadius={radii.sm} />
             <Skeleton height={90} borderRadius={radii.sm} />
           </View>
-        ) : error && !scheduleData ? (
+        ) : error && schedules.length === 0 ? (
           <View style={styles.errorContainer}>
             <EmptyState
               icon="alert-circle-outline"
@@ -197,6 +336,31 @@ export const ScheduleListScreen: React.FC = () => {
             keyExtractor={(item) => String(item.id)}
             renderItem={renderScheduleItem}
             contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + spacing.lg }]}
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (hasNextPage && !isFetchingNextPage) {
+                void fetchNextPage();
+              }
+            }}
+            ListFooterComponent={
+              isFetchingNextPage ? (
+                <View style={styles.footerLoading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.footerText} allowFontScaling>
+                    Loading more schedules…
+                  </Text>
+                </View>
+              ) : hasNextPage ? (
+                <View style={styles.footerLoading}>
+                  <Button
+                    title="Load More Schedules"
+                    size="sm"
+                    variant="outline"
+                    onPress={() => void fetchNextPage()}
+                  />
+                </View>
+              ) : null
+            }
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -333,6 +497,97 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   priestText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  trackingContainer: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  trackingInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.xxs,
+    paddingVertical: 4,
+  },
+  trackingInput: {
+    flex: 1,
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
+    paddingVertical: 6,
+  },
+  trackingErrorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.xs,
+  },
+  trackingErrorText: {
+    ...fontStyles.caption,
+    color: colors.danger,
+    flex: 1,
+  },
+  trackedCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  trackedHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  trackedRef: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  trackedTitle: {
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  trackedFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  trackedDate: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  trackedOpenLink: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  confRefText: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  footerLoading: {
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  footerText: {
     ...fontStyles.caption,
     color: colors.textSecondary,
   },

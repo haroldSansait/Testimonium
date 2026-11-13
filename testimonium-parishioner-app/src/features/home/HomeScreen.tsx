@@ -15,6 +15,8 @@ import { AppHeader } from "@/components/ui/AppHeader";
 import { IconButton } from "@/components/ui/IconButton";
 import { ListRow } from "@/components/ui/ListRow";
 import { Divider } from "@/components/ui/Divider";
+import { InlineError } from "@/components/ui/InlineError";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusLabel } from "@/components/ui/StatusLabel";
 import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
@@ -24,7 +26,12 @@ import { useUnreadNotificationCount } from "@/features/notifications/api";
 import { useRequestList } from "@/features/requests/api";
 import { formatDocumentType, formatStatus } from "@/features/requests/presentation";
 import { useScheduleList } from "@/features/schedule/api";
-import { getScheduleStatusBadge } from "@/features/schedule/presentation";
+import {
+  extractTimeSlotFromSchedule,
+  formatScheduleConfirmationRef,
+  formatScheduleDate,
+  getScheduleStatusBadge,
+} from "@/features/schedule/presentation";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, fontStyles, radii, shadows, spacing } from "@/theme/tokens";
 
@@ -34,8 +41,18 @@ export const HomeScreen: React.FC = () => {
   const { profile, isRegistrationSession } = useAuth();
   const { contentBottomInset } = useAppLayoutMetrics();
 
-  const { data: requestsData, refetch: refetchRequests } = useRequestList({ limit: 3 }, refreshOptions);
-  const { data: scheduleData, refetch: refetchSchedule } = useScheduleList("upcoming", refreshOptions);
+  const {
+    data: requestsData,
+    isLoading: isLoadingRequests,
+    error: requestsError,
+    refetch: refetchRequests,
+  } = useRequestList({ limit: 3 }, refreshOptions);
+  const {
+    data: scheduleData,
+    isLoading: isLoadingSchedule,
+    error: scheduleError,
+    refetch: refetchSchedule,
+  } = useScheduleList("upcoming", refreshOptions);
   const unreadNotificationsCount = useUnreadNotificationCount();
 
   const handleRefresh = async () => {
@@ -193,23 +210,35 @@ export const HomeScreen: React.FC = () => {
               )}
             </View>
 
-            {recentRequests.length > 0 ? (
+            {isLoadingRequests && recentRequests.length === 0 ? (
+              <View style={styles.loadingGroup}>
+                <Skeleton height={52} borderRadius={radii.sm} />
+                <Skeleton height={52} borderRadius={radii.sm} />
+              </View>
+            ) : requestsError && recentRequests.length === 0 ? (
+              <InlineError
+                message="Unable to load recent document requests."
+                onRetry={() => void refetchRequests()}
+              />
+            ) : recentRequests.length > 0 ? (
               <View style={styles.rowsContainer}>
                 {recentRequests.map((req, idx) => {
                   const docTitle = formatDocumentType(req.documentType);
                   const statusInfo = formatStatus(req.status, req.isDraft);
-                  const tracking = req.trackingNumber || `REQ-${req.id}`;
+                  const tracking = req.isDraft
+                    ? `Draft #${req.id}`
+                    : req.trackingNumber || `#${req.id}`;
                   const parishName = req.parish?.parishName;
 
                   return (
                     <ListRow
                       key={req.id}
                       title={docTitle}
-                      subtitle={`Tracking: ${tracking}${parishName ? ` • ${parishName}` : ""}`}
+                      subtitle={`${req.isDraft ? tracking : `Tracking: ${tracking}`}${parishName ? ` • ${parishName}` : ""}`}
                       trailing={<StatusLabel status={req.isDraft ? "DRAFT" : req.status} />}
                       showDivider={idx < recentRequests.length - 1}
                       onPress={() => router.push(`/(app)/requests/${req.id}` as any)}
-                      accessibilityLabel={`Request ${docTitle}, tracking ${tracking}, status: ${statusInfo.label}`}
+                      accessibilityLabel={`Request ${docTitle}, ${tracking}, status: ${statusInfo.label}`}
                     />
                   );
                 })}
@@ -250,23 +279,36 @@ export const HomeScreen: React.FC = () => {
               )}
             </View>
 
-            {upcomingAppointments.length > 0 ? (
+            {isLoadingSchedule && upcomingAppointments.length === 0 ? (
+              <View style={styles.loadingGroup}>
+                <Skeleton height={52} borderRadius={radii.sm} />
+                <Skeleton height={52} borderRadius={radii.sm} />
+              </View>
+            ) : scheduleError && upcomingAppointments.length === 0 ? (
+              <InlineError
+                message="Unable to load upcoming appointments."
+                onRetry={() => void refetchSchedule()}
+              />
+            ) : upcomingAppointments.length > 0 ? (
               <View style={styles.rowsContainer}>
                 {upcomingAppointments.map((item, idx) => {
                   const title = item.displayTitle || item.eventType.replace(/_/g, " ");
-                  const dateStr = item.requestedDate;
+                  const dateFormatted = formatScheduleDate(item.requestedDate, "short");
+                  const timeSlot = extractTimeSlotFromSchedule(item);
+                  const confRef = formatScheduleConfirmationRef(item.id, item.createdAt);
                   const parishName = item.parish?.parishName;
                   const statusInfo = getScheduleStatusBadge(item.status);
+                  const timePart = timeSlot && timeSlot !== "TBD" ? ` • ${timeSlot}` : "";
 
                   return (
                     <ListRow
                       key={item.id}
                       title={title}
-                      subtitle={`${dateStr}${parishName ? ` • ${parishName}` : ""}`}
+                      subtitle={`${confRef ? `${confRef} • ` : ""}${dateFormatted}${timePart}${parishName ? ` • ${parishName}` : ""}`}
                       trailing={<StatusLabel status={item.status} />}
                       showDivider={idx < upcomingAppointments.length - 1}
                       onPress={() => router.push(`/(app)/schedule/${item.id}` as any)}
-                      accessibilityLabel={`Appointment ${title} on ${dateStr}, status: ${statusInfo.label}`}
+                      accessibilityLabel={`Appointment ${title} ${confRef} on ${dateFormatted}, status: ${statusInfo.label}`}
                     />
                   );
                 })}
@@ -466,5 +508,9 @@ const styles = StyleSheet.create({
   },
   discoverySection: {
     gap: spacing.xxs,
+  },
+  loadingGroup: {
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
   },
 });

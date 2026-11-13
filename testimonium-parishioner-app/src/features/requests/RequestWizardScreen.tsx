@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BackHandler,
   Modal,
   Pressable,
   ScrollView,
@@ -22,8 +23,9 @@ import { FormSection } from "@/components/ui/FormSection";
 import { RecordSection } from "@/components/ui/RecordSection";
 import { Divider } from "@/components/ui/Divider";
 import { SafeBottomActionBar } from "@/components/ui/SafeBottomActionBar";
+import { SecureFileViewerModal } from "@/components/files/SecureFileViewerModal";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
-import { useParishes } from "@/features/parishes/api";
+import { useAllActiveParishes } from "@/features/parishes/api";
 import type { ParishDto } from "@/features/parishes/types";
 import { useFeedback } from "@/providers/FeedbackProvider";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -32,7 +34,9 @@ import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
   useCreateRequestDraft,
   useDocumentRequirements,
+  useRequestDetail,
   useSubmitRequestDraft,
+  useUpdateRequestDraft,
   useUploadSupportingFile,
   useUploadRegistrantId,
 } from "./api";
@@ -43,38 +47,38 @@ import { SupportingFilePicker } from "./components/SupportingFilePicker";
 import { RegistrantIdCapturePicker } from "./components/RegistrantIdCapturePicker";
 import { normalizeAuthorizationLetterFile } from "./supportingUpload";
 import {
+  DOCUMENT_SPECIALIZED_GUIDANCE,
   FAMILY_PROOF_DESCRIPTION,
   FAMILY_PROOF_LABEL,
+  RELATIONSHIP_OPTIONS,
   formatDocumentType,
   formatFee,
+  formatPurposeWithRegistryYear,
+  getDocumentTypeDescription,
   getEffectiveOfferedDocuments,
   hasAuthoritativeFee,
   isFamilyProofRelationship,
+  parsePurposeAndRegistryYear,
+  parseSavedApplicantName,
   resolveSelfProfileName,
 } from "./presentation";
 import {
   CanonicalDocumentType,
   LocalSelectedFile,
   LocalRegistrantIdImage,
+  type RequestAttachment,
 } from "./types";
 
 export interface RequestWizardScreenProps {
   initialParishId?: string | null;
+  draftId?: string | null;
 }
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 
-const RELATIONSHIP_OPTIONS = [
-  "Self",
-  "Spouse",
-  "Child",
-  "Parent",
-  "Sibling",
-  "Authorized Representative",
-];
-
 export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   initialParishId,
+  draftId,
 }) => {
   const router = useRouter();
   const { profile, user } = useAuth();
@@ -95,64 +99,157 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   const [relationship, setRelationship] = useState("Self");
   const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
   const [purpose, setPurpose] = useState("");
+  const [approximateYear, setApproximateYear] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{
     firstName?: string;
     lastName?: string;
     purpose?: string;
+    approximateYear?: string;
   }>({});
 
   // Files
   const [selectedFiles, setSelectedFiles] = useState<Record<string, LocalSelectedFile>>({});
   const [registrantIdFront, setRegistrantIdFront] = useState<LocalRegistrantIdImage | null>(null);
   const [registrantIdBack, setRegistrantIdBack] = useState<LocalRegistrantIdImage | null>(null);
+  const [replacingAttachmentIds, setReplacingAttachmentIds] = useState<Record<string, boolean>>({});
+  const [viewerFile, setViewerFile] = useState<{
+    path: string;
+    fileName: string;
+    mimeType?: string | null;
+    title?: string;
+  } | null>(null);
 
-  // Submission state
+  // Submission / draft state
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [submissionStage, setSubmissionStage] = useState("");
   const idempotencyKeyRef = useRef<string | null>(null);
   const inFlightGuard = useRef(false);
   const draftFingerprintRef = useRef<string | null>(null);
-  const userEditedNameRef = useRef(false);
-  const autoFilledSelfRef = useRef<{
+  const createdDraftIdRef = useRef<number | null>(null);
+  const [createdDraftIdState, setCreatedDraftIdState] = useState<number | null>(null);
+  const [hydratedDraftId, setHydratedDraftId] = useState<number | null>(null);
+  const [hasManualNameEdit, setHasManualNameEdit] = useState(false);
+  const [autoFilledSelf, setAutoFilledSelf] = useState<{
     firstName: string;
     middleName: string;
     lastName: string;
   } | null>(null);
+  const [prevSelfSyncKey, setPrevSelfSyncKey] = useState<string>("");
 
-  useEffect(() => {
-    if (inFlightGuard.current) return;
-    if (relationship !== "Self") return;
-    if (userEditedNameRef.current) return;
-    const profileMatchesUser = Boolean(user?.uid && profile?.firebaseUid === user.uid);
-    const resolved = profileMatchesUser ? resolveSelfProfileName(profile) : null;
-    if (!resolved || !resolved.firstName || !resolved.lastName) {
-      if (autoFilledSelfRef.current) {
-        setApplicantFirstName("");
-        setApplicantMiddleName("");
-        setApplicantLastName("");
-        autoFilledSelfRef.current = null;
-      }
-      return;
-    }
-    autoFilledSelfRef.current = resolved;
-    setApplicantFirstName((prev) => (prev === resolved.firstName ? prev : resolved.firstName));
-    setApplicantMiddleName((prev) => (prev === resolved.middleName ? prev : resolved.middleName));
-    setApplicantLastName((prev) => (prev === resolved.lastName ? prev : resolved.lastName));
-  }, [profile, user?.uid, relationship]);
+  const validDraftId = draftId && /^[1-9]\d*$/.test(String(draftId).trim()) ? String(draftId).trim() : null;
+  const { data: existingDraftData, isLoading: loadingExistingDraft } = useRequestDetail(validDraftId);
+  const existingDraft = validDraftId ? existingDraftData : undefined;
 
   // Queries
-  const { data: parishesResponse, isLoading: loadingParishes } = useParishes({
-    limit: 50,
-  });
-  const parishes = parishesResponse?.items || [];
+  const { data: parishesData, isLoading: loadingParishes } = useAllActiveParishes();
+  const parishes: ParishDto[] = useMemo(() => parishesData || [], [parishesData]);
 
-  const selectedParish =
-    selectedParishOverride ??
-    (initialParishId ? parishes.find((p) => String(p.id) === String(initialParishId)) ?? null : null);
+  const selectedParish: ParishDto | null = useMemo(
+    () =>
+      selectedParishOverride ??
+      (existingDraft
+        ? parishes.find((p) => String(p.id) === String(existingDraft.parishId)) ?? {
+            id: String(existingDraft.parishId),
+            name: existingDraft.parish?.parishName || "Parish",
+            municipalityCity: existingDraft.parish?.municipalityCity || "",
+            province: existingDraft.parish?.province || "",
+            type: existingDraft.parish?.type || "Parish",
+            availableDocuments: undefined,
+          }
+        : initialParishId
+          ? parishes.find((p) => String(p.id) === String(initialParishId)) ?? null
+          : null),
+    [selectedParishOverride, existingDraft, parishes, initialParishId]
+  );
 
   const setSelectedParish = (parish: ParishDto | null) => {
     setSelectedParishOverride(parish);
   };
+
+  useEffect(() => {
+    createdDraftIdRef.current = createdDraftIdState;
+  }, [createdDraftIdState]);
+
+  if (existingDraft && existingDraft.isDraft && hydratedDraftId !== existingDraft.id) {
+    setHydratedDraftId(existingDraft.id);
+    setCreatedDraftIdState(existingDraft.id);
+
+    const draftRel = existingDraft.relationship?.trim() || "Self";
+    setRelationship(draftRel);
+    setSelectedDocType(existingDraft.documentType as CanonicalDocumentType);
+
+    const parsedPurpose = parsePurposeAndRegistryYear(existingDraft.purpose);
+    setPurpose(parsedPurpose.purpose);
+    setApproximateYear(parsedPurpose.approximateYear);
+
+    const savedName = (existingDraft.applicantName || "").trim();
+    const parsedName = parseSavedApplicantName(savedName);
+    if (parsedName.firstName && parsedName.lastName) {
+      setApplicantFirstName(parsedName.firstName);
+      setApplicantMiddleName(parsedName.middleName);
+      setApplicantLastName(parsedName.lastName);
+    } else if (draftRel === "Self" && profile?.firebaseUid === user?.uid) {
+      const selfName = resolveSelfProfileName(profile);
+      if (selfName) {
+        setApplicantFirstName(selfName.firstName);
+        setApplicantMiddleName(selfName.middleName);
+        setApplicantLastName(selfName.lastName);
+      }
+    } else if (savedName) {
+      const tokens = savedName.split(/\s+/).filter(Boolean);
+      if (tokens.length >= 2) {
+        setApplicantFirstName(tokens.slice(0, -1).join(" "));
+        setApplicantMiddleName("");
+        setApplicantLastName(tokens[tokens.length - 1]);
+      } else {
+        setApplicantFirstName(savedName);
+      }
+    }
+    if (draftRel !== "Self" || savedName) {
+      setHasManualNameEdit(true);
+    }
+
+    const matchingParish = parishes.find((p) => String(p.id) === String(existingDraft.parishId));
+    if (matchingParish) {
+      setSelectedParishOverride(matchingParish);
+    }
+    if (step < 3) {
+      setStep(3);
+    }
+  }
+
+  const selfSyncKey = `${user?.uid ?? ""}|${profile?.firebaseUid ?? ""}|${profile?.fullName ?? ""}|${profile?.firstName ?? ""}|${profile?.middleName ?? ""}|${profile?.lastName ?? ""}|${relationship}|${hydratedDraftId ?? ""}|${hasManualNameEdit ? "1" : "0"}`;
+  if (step <= 3 && selfSyncKey !== prevSelfSyncKey) {
+    setPrevSelfSyncKey(selfSyncKey);
+    if (
+      hydratedDraftId === null &&
+      relationship === "Self" &&
+      !hasManualNameEdit
+    ) {
+      const profileMatchesUser = Boolean(user?.uid && profile?.firebaseUid === user.uid);
+      const resolved = profileMatchesUser ? resolveSelfProfileName(profile) : null;
+      if (!resolved || !resolved.firstName || !resolved.lastName) {
+        if (autoFilledSelf) {
+          setApplicantFirstName("");
+          setApplicantMiddleName("");
+          setApplicantLastName("");
+          setAutoFilledSelf(null);
+        }
+      } else {
+        setAutoFilledSelf(resolved);
+        if (applicantFirstName !== resolved.firstName) {
+          setApplicantFirstName(resolved.firstName);
+        }
+        if (applicantMiddleName !== resolved.middleName) {
+          setApplicantMiddleName(resolved.middleName);
+        }
+        if (applicantLastName !== resolved.lastName) {
+          setApplicantLastName(resolved.lastName);
+        }
+      }
+    }
+  }
 
   // Requirements query for selected parish and document type
   const {
@@ -167,25 +264,51 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
   // Mutations
   const createDraftMutation = useCreateRequestDraft();
+  const updateDraftMutation = useUpdateRequestDraft();
   const uploadFileMutation = useUploadSupportingFile();
   const uploadRegistrantIdMutation = useUploadRegistrantId();
   const submitDraftMutation = useSubmitRequestDraft();
   const hasValidRequirementsFee = hasAuthoritativeFee(requirements?.baseFee);
   const queryClient = useQueryClient();
-  const createdDraftIdRef = useRef<number | null>(null);
+  const createdDraftIdRef_sync = createdDraftIdState ?? (existingDraft?.isDraft ? existingDraft.id : null);
+  const activeDraftId = createdDraftIdRef_sync;
+
+  const existingAttachmentsByCategory = useMemo(() => {
+    const map: Record<string, RequestAttachment> = {};
+    if (existingDraft?.isDraft && Array.isArray(existingDraft.attachments)) {
+      for (const att of existingDraft.attachments) {
+        if (att.category && !map[att.category]) {
+          map[att.category] = att;
+        }
+      }
+    }
+    return map;
+  }, [existingDraft]);
+
+  const serverRegistrantIdFront = Boolean(
+    existingDraft?.isDraft && existingDraft.registrantIdEvidence?.frontUploadedAt
+  );
+  const serverRegistrantIdBack = Boolean(
+    existingDraft?.isDraft && existingDraft.registrantIdEvidence?.backUploadedAt
+  );
 
   // Resolve offered documents for selected parish with explicit empty array semantics
   const offeredDocTypes: CanonicalDocumentType[] = React.useMemo(() => {
     return getEffectiveOfferedDocuments(selectedParish?.availableDocuments);
   }, [selectedParish]);
 
-  const handleBack = () => {
-    if (step > 1 && !isSubmitting) {
+  const handleBack = useCallback(() => {
+    if (isSubmitting || isSavingDraft) return;
+    if (step > 1 && (!activeDraftId || step > 3)) {
       setStep((prev) => (prev - 1) as WizardStep);
       return;
     }
 
-    if (applicantName.trim() || Object.keys(selectedFiles).length > 0) {
+    const hasUnsavedChanges = Boolean(
+      !activeDraftId && (applicantName.trim() || purpose.trim() || Object.keys(selectedFiles).length > 0 || registrantIdFront || registrantIdBack)
+    );
+
+    if (hasUnsavedChanges) {
       feedback.showConfirm(
         "Discard Request?",
         "You have unsaved information. Are you sure you want to leave this wizard?",
@@ -210,7 +333,35 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       () => router.back(),
       () => router.replace("/(app)/(tabs)/(requests)" as any)
     );
-  };
+  }, [
+    activeDraftId,
+    applicantName,
+    feedback,
+    isSavingDraft,
+    isSubmitting,
+    purpose,
+    registrantIdBack,
+    registrantIdFront,
+    router,
+    selectedFiles,
+    step,
+  ]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (viewerFile) {
+        setViewerFile(null);
+        return true;
+      }
+      if (isRelationshipModalOpen) {
+        setIsRelationshipModalOpen(false);
+        return true;
+      }
+      handleBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [handleBack, isRelationshipModalOpen, viewerFile]);
 
   if (profile?.needsProfileCompletion) {
     return (
@@ -231,7 +382,33 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             description="Complete your profile to access document and schedule requests. Parish offices require your official contact details."
             icon="person-circle-outline"
             actionLabel="Complete Profile"
-            onAction={() => router.push("/(app)/(tabs)/profile" as any)}
+            onAction={() => router.push("/(app)/profile/edit" as any)}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (profile?.needsLegalNameConfirmation) {
+    return (
+      <Screen testID="request-wizard-name-blocked">
+        <AppHeader
+          title="Request Document"
+          onBack={() => {
+            navigateBackOrReplace(
+              () => router.canGoBack(),
+              () => router.back(),
+              () => router.replace("/(app)/(tabs)/(requests)" as any)
+            );
+          }}
+        />
+        <View style={{ flex: 1, padding: spacing.lg, justifyContent: "center" }}>
+          <EmptyState
+            title="Legal Name Confirmation Required"
+            description="Confirm or update your legal name in Edit Profile before requesting official sacramental documents."
+            icon="person-circle-outline"
+            actionLabel="Review Legal Name"
+            onAction={() => router.push("/(app)/profile/edit" as any)}
           />
         </View>
       </Screen>
@@ -288,57 +465,65 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
 
     const prevRel = relationship;
-    createdDraftIdRef.current = null;
     draftFingerprintRef.current = null;
-    idempotencyKeyRef.current = null;
     setRelationship(opt);
 
     if (opt === "Self") {
-      userEditedNameRef.current = false;
+      setHasManualNameEdit(false);
       const profileMatchesUser = Boolean(user?.uid && profile?.firebaseUid === user.uid);
       const resolved = profileMatchesUser ? resolveSelfProfileName(profile) : null;
       if (resolved) {
         setApplicantFirstName(resolved.firstName);
         setApplicantMiddleName(resolved.middleName);
         setApplicantLastName(resolved.lastName);
-        autoFilledSelfRef.current = resolved.firstName && resolved.lastName ? resolved : null;
+        setAutoFilledSelf(resolved.firstName && resolved.lastName ? resolved : null);
       } else {
         setApplicantFirstName("");
         setApplicantMiddleName("");
         setApplicantLastName("");
-        autoFilledSelfRef.current = null;
+        setAutoFilledSelf(null);
       }
       setFieldErrors((prev) => ({ ...prev, firstName: undefined, lastName: undefined }));
     } else if (prevRel === "Self") {
-      const autoFilled = autoFilledSelfRef.current;
       if (
-        autoFilled &&
-        applicantFirstName === autoFilled.firstName &&
-        applicantMiddleName === autoFilled.middleName &&
-        applicantLastName === autoFilled.lastName
+        autoFilledSelf &&
+        applicantFirstName === autoFilledSelf.firstName &&
+        applicantMiddleName === autoFilledSelf.middleName &&
+        applicantLastName === autoFilledSelf.lastName
       ) {
         setApplicantFirstName("");
         setApplicantMiddleName("");
         setApplicantLastName("");
-        autoFilledSelfRef.current = null;
+        setAutoFilledSelf(null);
       }
     }
 
     setIsRelationshipModalOpen(false);
   };
 
-  // Step 3 -> Step 4
-  const handleValidateFormAndNext = () => {
+  const validateDetailsStep = (): boolean => {
     if (profile?.needsProfileCompletion) {
       feedback.showWarning(
         "Profile Details Required",
         "Please complete your profile (full name and contact number) before requesting documents.",
         {
           confirmText: "Complete Profile",
-          onConfirm: () => router.push("/(app)/(tabs)/profile" as any),
+          onConfirm: () => router.push("/(app)/profile/edit" as any),
         }
       );
-      return;
+      return false;
+    }
+
+    if (profile?.needsLegalNameConfirmation) {
+      feedback.showWarning(
+        "Legal Name Confirmation Required",
+        "Confirm or update your legal name in Edit Profile before requesting documents.",
+        {
+          confirmText: "Review Legal Name",
+          onConfirm: () => router.push("/(app)/profile/edit" as any),
+        }
+      );
+      return false;
     }
 
     if (!profile?.isGovernmentIdVerified) {
@@ -350,10 +535,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
           onConfirm: () => router.push("/(app)/profile/id-verification" as any),
         }
       );
-      return;
+      return false;
     }
 
-    const errs: { firstName?: string; lastName?: string; purpose?: string } = {};
+    const errs: {
+      firstName?: string;
+      lastName?: string;
+      purpose?: string;
+      approximateYear?: string;
+    } = {};
     if (!applicantFirstName.trim()) {
       errs.firstName = "First name is required";
     }
@@ -363,13 +553,27 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     if (!purpose.trim()) {
       errs.purpose = "Please state the reason or purpose for this request";
     }
+    const trimmedYear = approximateYear.trim();
+    if (trimmedYear) {
+      const numericYear = Number(trimmedYear);
+      const maxYear = new Date().getFullYear();
+      if (!/^\d{4}$/.test(trimmedYear) || numericYear < 1900 || numericYear > maxYear) {
+        errs.approximateYear = `Enter a valid 4-digit year between 1900 and ${maxYear}.`;
+      }
+    }
 
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
-      return;
+      return false;
     }
 
     setFieldErrors({});
+    return true;
+  };
+
+  // Step 3 -> Step 4
+  const handleValidateFormAndNext = () => {
+    if (!validateDetailsStep()) return;
     setStep(4);
   };
 
@@ -388,7 +592,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       if (d.id === "valid_id" && profile?.isGovernmentIdVerified) {
         return false;
       }
-      return !selectedFiles[d.id];
+      return !selectedFiles[d.id] && !existingAttachmentsByCategory[d.id];
     });
 
     if (missing.length > 0) {
@@ -400,7 +604,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
 
-    if (relationship !== "Self" && !selectedFiles["authorization_letter"]) {
+    if (
+      relationship !== "Self" &&
+      !selectedFiles["authorization_letter"] &&
+      !existingAttachmentsByCategory["authorization_letter"]
+    ) {
       if (isFamilyProofRelationship(relationship)) {
         feedback.showWarning(
           "Proof of Relationship Required",
@@ -414,7 +622,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       }
       return;
     }
-    if (relationship !== "Self" && (!registrantIdFront || !registrantIdBack)) {
+    if (
+      relationship !== "Self" &&
+      ((!registrantIdFront && !serverRegistrantIdFront) ||
+        (!registrantIdBack && !serverRegistrantIdBack))
+    ) {
       feedback.showWarning("Registrant ID Required", "Select clear front and back images of the registrant's Government ID.");
       return;
     }
@@ -430,6 +642,125 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     return idempotencyKeyRef.current;
   };
 
+  const persistDraftAndSelectedFiles = async (stageUpdater: (msg: string) => void): Promise<number> => {
+    const finalPurpose = formatPurposeWithRegistryYear(purpose, approximateYear);
+    let draftId = createdDraftIdRef.current ?? (existingDraft?.isDraft ? existingDraft.id : null);
+
+    if (!draftId) {
+      stageUpdater("Initializing server draft...");
+      const draft = await createDraftMutation.mutateAsync({
+        payload: {
+          parishId: Number(selectedParish!.id),
+          documentType: selectedDocType!,
+          applicantFirstName: applicantFirstName.trim(),
+          applicantMiddleName: applicantMiddleName.trim() || undefined,
+          applicantLastName: applicantLastName.trim(),
+          relationship: relationship.trim(),
+          purpose: finalPurpose,
+        },
+        idempotencyKey: getOrCreateIdempotencyKey(),
+      });
+      draftId = draft.id;
+      createdDraftIdRef.current = draft.id;
+      setCreatedDraftIdState(draft.id);
+    } else {
+      stageUpdater("Saving draft changes...");
+      await updateDraftMutation.mutateAsync({
+        requestId: draftId,
+        payload: {
+          applicantFirstName: applicantFirstName.trim(),
+          applicantMiddleName: applicantMiddleName.trim(),
+          applicantLastName: applicantLastName.trim(),
+          relationship: relationship.trim(),
+          purpose: finalPurpose,
+        },
+      });
+    }
+
+    const activeIds = new Set(
+      (requirements?.requiredDocuments || [])
+        .filter((item) => item.required && item.id !== "valid_id")
+        .map((item) => item.id)
+    );
+    if (relationship !== "Self") activeIds.add("authorization_letter");
+    const fileEntries = Object.entries(selectedFiles).filter(([category]) => activeIds.has(category));
+    if (fileEntries.length > 0) {
+      stageUpdater(`Attaching supporting files (0 of ${fileEntries.length})...`);
+      let count = 0;
+      for (const [category, file] of fileEntries) {
+        count++;
+        stageUpdater(`Attaching supporting files (${count} of ${fileEntries.length})...`);
+        await uploadFileMutation.mutateAsync({
+          requestId: draftId,
+          file,
+          category,
+        });
+      }
+    }
+
+    if (relationship !== "Self" && (registrantIdFront || registrantIdBack)) {
+      stageUpdater("Uploading registrant Government ID evidence...");
+      await uploadRegistrantIdMutation.mutateAsync({
+        requestId: draftId,
+        front: registrantIdFront || undefined,
+        back: registrantIdBack || undefined,
+      });
+    }
+
+    return draftId;
+  };
+
+  const handleSaveDraft = async () => {
+    if (!selectedParish || !selectedDocType || inFlightGuard.current) return;
+    if (!validateDetailsStep()) {
+      if (step !== 3) setStep(3);
+      return;
+    }
+
+    inFlightGuard.current = true;
+    setIsSavingDraft(true);
+    try {
+      const savedId = await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
+      inFlightGuard.current = false;
+      setIsSavingDraft(false);
+      setSubmissionStage("");
+      setSelectedFiles({});
+      setRegistrantIdFront(null);
+      setRegistrantIdBack(null);
+      setReplacingAttachmentIds({});
+      void queryClient.invalidateQueries({ queryKey: requestKeys.lists(user?.uid) });
+      void queryClient.invalidateQueries({ queryKey: requestKeys.detail(user?.uid, String(savedId)) });
+
+      feedback.showConfirm(
+        "Draft Saved",
+        "Your document request draft and uploaded files have been saved. You can resume or submit it anytime from your Requests tab.",
+        () => {
+          router.replace(`/(app)/requests/${savedId}` as any);
+        },
+        {
+          confirmText: "View Draft",
+          cancelText: "Keep Editing",
+        }
+      );
+    } catch (err: any) {
+      inFlightGuard.current = false;
+      setIsSavingDraft(false);
+      setSubmissionStage("");
+      if (err?.code === "DRAFT_RELATIONSHIP_EVIDENCE_CONFLICT") {
+        feedback.showWarning(
+          "Relationship Change Blocked",
+          err.message ||
+            "This draft already has uploaded relationship evidence on the server. Discard this draft and start a new one to switch relationship type."
+        );
+        return;
+      }
+      feedback.showError(
+        "Could Not Save Draft",
+        err?.message || "Failed to save your draft. Please check your connection and try again."
+      );
+    }
+  };
+
   const handleConfirmAndSubmit = async () => {
     if (!selectedParish || !selectedDocType || loadingRequirements || inFlightGuard.current) return;
     if (!hasValidRequirementsFee) {
@@ -437,7 +768,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
 
-    if (relationship !== "Self" && !selectedFiles["authorization_letter"]) {
+    if (
+      relationship !== "Self" &&
+      !selectedFiles["authorization_letter"] &&
+      !existingAttachmentsByCategory["authorization_letter"]
+    ) {
       if (isFamilyProofRelationship(relationship)) {
         feedback.showWarning("Proof of Relationship Required", FAMILY_PROOF_DESCRIPTION);
       } else {
@@ -445,67 +780,22 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       }
       return;
     }
-    if (relationship !== "Self" && (!registrantIdFront || !registrantIdBack)) {
+    if (
+      relationship !== "Self" &&
+      ((!registrantIdFront && !serverRegistrantIdFront) ||
+        (!registrantIdBack && !serverRegistrantIdBack))
+    ) {
       feedback.showWarning("Registrant ID Required", "Select clear front and back images of the registrant's Government ID.");
       return;
     }
 
     inFlightGuard.current = true;
     setIsSubmitting(true);
-    let createdDraftId: number | null = createdDraftIdRef.current;
+    let createdDraftId: number | null = createdDraftIdRef.current ?? (existingDraft?.isDraft ? existingDraft.id : null);
 
     try {
-      const draftFingerprint = JSON.stringify({ parishId: selectedParish.id, documentType: selectedDocType, applicantFirstName: applicantFirstName.trim(), applicantMiddleName: applicantMiddleName.trim(), applicantLastName: applicantLastName.trim(), relationship: relationship.trim(), purpose: purpose.trim() });
-      if (draftFingerprintRef.current && draftFingerprintRef.current !== draftFingerprint) {
-        createdDraftIdRef.current = null;
-        idempotencyKeyRef.current = null;
-        createdDraftId = null;
-      }
-      // Stage 1: Reuse only a draft whose authoritative payload still matches.
-      if (!createdDraftId) {
-        setSubmissionStage("Initializing server draft...");
-        const draft = await createDraftMutation.mutateAsync({
-          payload: {
-            parishId: Number(selectedParish.id),
-            documentType: selectedDocType,
-            applicantFirstName: applicantFirstName.trim(),
-            applicantMiddleName: applicantMiddleName.trim() || undefined,
-            applicantLastName: applicantLastName.trim(),
-            relationship: relationship.trim(),
-            purpose: purpose.trim(),
-          },
-          idempotencyKey: getOrCreateIdempotencyKey(),
-        });
-
-        createdDraftId = draft.id;
-        createdDraftIdRef.current = draft.id;
-        draftFingerprintRef.current = draftFingerprint;
-      }
-
-      const draftId = createdDraftId;
-
-      // Stage 2: Upload all selected supporting files
-      const activeIds = new Set((requirements?.requiredDocuments || []).filter((item) => item.required && item.id !== "valid_id").map((item) => item.id));
-      if (relationship !== "Self") activeIds.add("authorization_letter");
-      const fileEntries = Object.entries(selectedFiles).filter(([category]) => activeIds.has(category));
-      if (fileEntries.length > 0) {
-        setSubmissionStage(`Attaching supporting files (0 of ${fileEntries.length})...`);
-        let count = 0;
-        for (const [category, file] of fileEntries) {
-          count++;
-          setSubmissionStage(`Attaching supporting files (${count} of ${fileEntries.length})...`);
-          await uploadFileMutation.mutateAsync({
-            requestId: draftId,
-            file,
-            category,
-          });
-        }
-      }
-
-      if (relationship !== "Self" && registrantIdFront && registrantIdBack) {
-        setSubmissionStage("Uploading registrant Government ID evidence...");
-        await uploadRegistrantIdMutation.mutateAsync({ requestId: draftId, front: registrantIdFront, back: registrantIdBack });
-      }
+      const draftId = await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
+      createdDraftId = draftId;
 
       // Stage 3: Submit draft
       setSubmissionStage("Finalizing and submitting request...");
@@ -514,6 +804,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       // Clean local wizard state
       idempotencyKeyRef.current = null;
       createdDraftIdRef.current = null;
+      setCreatedDraftIdState(null);
       draftFingerprintRef.current = null;
 
       // Invalidate relevant queries
@@ -538,6 +829,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             confirmText: "Verify ID",
             onConfirm: () => router.push("/(app)/profile/id-verification" as any),
           }
+        );
+        return;
+      }
+
+      if (err?.code === "DRAFT_RELATIONSHIP_EVIDENCE_CONFLICT") {
+        feedback.showWarning(
+          "Relationship Change Blocked",
+          err.message ||
+            "This draft already has uploaded relationship evidence. Discard the draft to change relationship type."
         );
         return;
       }
@@ -592,7 +892,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
-        title="New Document Request"
+        title={activeDraftId ? "Resume Saved Draft" : "New Document Request"}
         subtitle={`Step ${step} of 5 — ${getStepTitle()}`}
         onBack={handleBack}
         backAccessibilityLabel="Back to previous step or requests"
@@ -691,7 +991,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   <SelectionRow
                     key={type}
                     title={formatDocumentType(type)}
-                    subtitle="Official authenticated sacramental certificate"
+                    subtitle={getDocumentTypeDescription(type)}
                     selected={selectedDocType === type}
                     onSelect={() => handleSelectDocType(type)}
                     mode="radio"
@@ -700,95 +1000,56 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 ))}
               </View>
             )}
+            {selectedDocType && DOCUMENT_SPECIALIZED_GUIDANCE[selectedDocType] ? (
+              <View style={styles.guidanceCallout}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+                <Text style={styles.guidanceCalloutText} allowFontScaling>
+                  {DOCUMENT_SPECIALIZED_GUIDANCE[selectedDocType]}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
         {/* ================= STEP 3: APPLICANT INFORMATION ================= */}
         {step === 3 ? (
           <View style={styles.stepContainer}>
+            {validDraftId && loadingExistingDraft ? (
+              <View style={styles.skeletonList}>
+                <Skeleton width="100%" height={80} style={styles.skeletonItem} />
+                <Skeleton width="100%" height={140} style={styles.skeletonItem} />
+              </View>
+            ) : (
+              <>
             {/* Requester vs Registrant Distinction Card */}
             <View style={styles.verifiedIdBanner}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <Text style={styles.verifiedIdTitle}>Requester Identity</Text>
+                <Text style={styles.verifiedIdTitle}>Requester vs. Record Holder (Registrant)</Text>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Ionicons name="checkmark-circle" size={14} color="#059669" style={{ marginRight: 4 }} />
                   <Text style={{ fontSize: 11, fontWeight: "600", color: "#059669" }}>ID Verified</Text>
                 </View>
               </View>
               <Text style={styles.verifiedIdSubtext}>
-                Logged in as: {profile?.fullName || [profile?.firstName, profile?.lastName].filter(Boolean).join(" ")}
+                Requester (Account Owner): {profile?.fullName || [profile?.firstName, profile?.lastName].filter(Boolean).join(" ")}
               </Text>
               {relationship === "Self" ? (
                 <Text style={[styles.verifiedIdSubtext, { marginTop: 4 }]}>
-                  Requesting for yourself (Self). Enter your legal name as recorded in parish books.
+                  Requesting for yourself (Self). Your verified profile legal name is used and must match the parish register. No third-party documents are needed.
                 </Text>
               ) : (
                 <Text style={[styles.verifiedIdSubtext, { marginTop: 4, color: "#92400e" }]}>
                   {isFamilyProofRelationship(relationship)
-                    ? `Third-party request (${relationship}). Enter the registrant's name below. ${FAMILY_PROOF_LABEL} and the registrant's Government ID will be required in Step 4.`
-                    : `Third-party request (${relationship}). Enter the registrant's name below. A signed Authorization Letter and the registrant's Government ID will be required in Step 4.`}
+                    ? `Third-party request (${relationship}). Enter the registrant's legal name as written in the parish registry. ${FAMILY_PROOF_LABEL} and clear front/back photos of the registrant's Government ID are required in Step 4.`
+                    : `Third-party request (${relationship}). Enter the registrant's legal name as written in the parish registry. A signed Authorization Letter and clear front/back photos of the registrant's Government ID are required in Step 4.`}
                 </Text>
               )}
             </View>
 
-            <FormSection
-              title="Registrant Information"
-              description={`For ${formatDocumentType(selectedDocType)} at ${selectedParish?.name}`}
-            >
-              <TextInput
-                label="First Name *"
-                value={applicantFirstName}
-                onChangeText={(val) => {
-                  userEditedNameRef.current = true;
-                  setApplicantFirstName(val);
-                  if (fieldErrors.firstName) {
-                    setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
-                  }
-                }}
-                placeholder="e.g. Juan"
-                maxLength={50}
-                autoCapitalize="words"
-                error={fieldErrors.firstName}
-                accessibilityLabel="First name of the applicant"
-              />
-
-              <TextInput
-                label="Middle Name (Optional)"
-                value={applicantMiddleName}
-                onChangeText={(val) => {
-                  userEditedNameRef.current = true;
-                  setApplicantMiddleName(val);
-                }}
-                placeholder="e.g. Santos"
-                maxLength={50}
-                autoCapitalize="words"
-                accessibilityLabel="Middle name of the applicant"
-              />
-
-              <TextInput
-                label="Last Name *"
-                value={applicantLastName}
-                onChangeText={(val) => {
-                  userEditedNameRef.current = true;
-                  setApplicantLastName(val);
-                  if (fieldErrors.lastName) {
-                    setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
-                  }
-                }}
-                placeholder="e.g. Dela Cruz"
-                maxLength={50}
-                autoCapitalize="words"
-                error={fieldErrors.lastName}
-                accessibilityLabel="Last name of the applicant"
-              />
-            </FormSection>
-
-            <Divider />
-
-            {/* Relationship Section */}
+            {/* Relationship Section FIRST (U1) */}
             <FormSection
               title="Relationship to Record Holder *"
-              description="Select your relationship to the person named on the sacramental record."
+              description="Choose who owns the sacramental record before entering the registrant's legal name."
             >
               <Pressable
                 accessibilityRole="button"
@@ -811,7 +1072,68 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
             <Divider />
 
-            <FormSection title="Purpose of Request">
+            <FormSection
+              title="Registrant Legal Name"
+              description={`Enter the exact legal name of the person named on the ${formatDocumentType(selectedDocType)} register at ${selectedParish?.name}.`}
+            >
+              <TextInput
+                label="First Name *"
+                value={applicantFirstName}
+                onChangeText={(val) => {
+                  setHasManualNameEdit(true);
+                  setApplicantFirstName(val);
+                  if (fieldErrors.firstName) {
+                    setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
+                  }
+                }}
+                placeholder="e.g. Juan"
+                maxLength={50}
+                autoCapitalize="words"
+                error={fieldErrors.firstName}
+                accessibilityLabel="First name of the applicant"
+              />
+
+              <TextInput
+                label="Middle Name (Optional)"
+                value={applicantMiddleName}
+                onChangeText={(val) => {
+                  setHasManualNameEdit(true);
+                  setApplicantMiddleName(val);
+                }}
+                placeholder="e.g. Santos"
+                maxLength={50}
+                autoCapitalize="words"
+                accessibilityLabel="Middle name of the applicant"
+              />
+
+              <TextInput
+                label="Last Name *"
+                value={applicantLastName}
+                onChangeText={(val) => {
+                  setHasManualNameEdit(true);
+                  setApplicantLastName(val);
+                  if (fieldErrors.lastName) {
+                    setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
+                  }
+                }}
+                placeholder="e.g. Dela Cruz"
+                maxLength={50}
+                autoCapitalize="words"
+                error={fieldErrors.lastName}
+                accessibilityLabel="Last name of the applicant"
+              />
+            </FormSection>
+
+            <Divider />
+
+            <FormSection
+              title="Purpose & Record Details"
+              description={
+                selectedDocType && DOCUMENT_SPECIALIZED_GUIDANCE[selectedDocType]
+                  ? DOCUMENT_SPECIALIZED_GUIDANCE[selectedDocType]
+                  : undefined
+              }
+            >
               <TextInput
                 label="Purpose / Reason for Request *"
                 value={purpose}
@@ -828,7 +1150,26 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 error={fieldErrors.purpose}
                 accessibilityLabel="Purpose or reason for requesting this certificate"
               />
+
+              <TextInput
+                label="Approximate Registry Year (Optional)"
+                value={approximateYear}
+                onChangeText={(val) => {
+                  setApproximateYear(val.replace(/[^0-9]/g, "").slice(0, 4));
+                  if (fieldErrors.approximateYear) {
+                    setFieldErrors((prev) => ({ ...prev, approximateYear: undefined }));
+                  }
+                }}
+                placeholder="e.g. 2004"
+                keyboardType="number-pad"
+                maxLength={4}
+                error={fieldErrors.approximateYear}
+                helperText="Helps parish staff locate older sacramental book entries faster."
+                accessibilityLabel="Approximate sacramental registry year"
+              />
             </FormSection>
+              </>
+            )}
           </View>
         ) : null}
 
@@ -856,18 +1197,75 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 description="Unable to load authoritative document requirements for this parish."
               />
             ) : requirements?.requiredDocuments && requirements.requiredDocuments.length > 0 ? (
-              requirements.requiredDocuments.map((reqDoc) =>
-                reqDoc.id === "valid_id" && profile?.isGovernmentIdVerified ? (
-                  <View key={reqDoc.id} style={styles.verifiedIdBanner}>
-                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                      <Ionicons name="checkmark-circle" size={18} color="#059669" style={{ marginRight: 6 }} />
-                      <Text style={styles.verifiedIdTitle}>Valid Government ID</Text>
+              requirements.requiredDocuments.map((reqDoc) => {
+                if (reqDoc.id === "valid_id" && profile?.isGovernmentIdVerified) {
+                  return (
+                    <View key={reqDoc.id} style={styles.verifiedIdBanner}>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                        <Ionicons name="checkmark-circle" size={18} color="#059669" style={{ marginRight: 6 }} />
+                        <Text style={styles.verifiedIdTitle}>Valid Government ID</Text>
+                      </View>
+                      <Text style={styles.verifiedIdSubtext}>
+                        Verified through your TESTIMONIUM profile ({profile?.governmentIdType || "Government ID"}). No additional upload required.
+                      </Text>
                     </View>
-                    <Text style={styles.verifiedIdSubtext}>
-                      Verified through your TESTIMONIUM profile ({profile?.governmentIdType || "Government ID"}). No additional upload required.
-                    </Text>
-                  </View>
-                ) : (
+                  );
+                }
+
+                const existingAtt = existingAttachmentsByCategory[reqDoc.id];
+                const isReplacing = Boolean(replacingAttachmentIds[reqDoc.id]);
+                if (existingAtt && activeDraftId && !selectedFiles[reqDoc.id] && !isReplacing) {
+                  return (
+                    <View key={reqDoc.id} style={styles.savedAttachmentCard}>
+                      <View style={styles.savedAttachmentHeader}>
+                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                        <View style={styles.savedAttachmentInfo}>
+                          <Text style={styles.savedAttachmentTitle} allowFontScaling>
+                            {reqDoc.label}
+                          </Text>
+                          <Text style={styles.savedAttachmentName} numberOfLines={1} allowFontScaling>
+                            Saved on draft: {existingAtt.fileName}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.savedAttachmentActions}>
+                        <Pressable
+                          onPress={() =>
+                            setViewerFile({
+                              path: `/requests/${activeDraftId}/attachments/${existingAtt.id}/download`,
+                              fileName: existingAtt.fileName,
+                              mimeType: existingAtt.fileType,
+                              title: reqDoc.label,
+                            })
+                          }
+                          style={styles.savedAttachmentBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`View saved ${reqDoc.label}`}
+                        >
+                          <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                          <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                            View
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() =>
+                            setReplacingAttachmentIds((prev) => ({ ...prev, [reqDoc.id]: true }))
+                          }
+                          style={styles.savedAttachmentBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Replace saved ${reqDoc.label}`}
+                        >
+                          <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+                          <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                            Replace
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                }
+
+                return (
                   <SupportingFilePicker
                     key={reqDoc.id}
                     requirement={reqDoc}
@@ -883,8 +1281,8 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                       })
                     }
                   />
-                )
-              )
+                );
+              })
             ) : (
               <View style={styles.noReqContainer}>
                 <Text style={styles.noReqText} allowFontScaling>
@@ -921,6 +1319,63 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 : useFamilyProof
                   ? FAMILY_PROOF_DESCRIPTION
                   : "Upload the signed Authorization Letter required for this non-Self request. Accepted: PDF, JPEG, PNG (Max 5 MB).";
+              const savedRelAtt = existingAttachmentsByCategory["authorization_letter"];
+              const isReplacingRel = Boolean(replacingAttachmentIds["authorization_letter"]);
+
+              if (savedRelAtt && activeDraftId && !selectedFiles["authorization_letter"] && !isReplacingRel) {
+                return (
+                  <View key="authorization_letter_saved" style={styles.savedAttachmentCard}>
+                    <View style={styles.savedAttachmentHeader}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                      <View style={styles.savedAttachmentInfo}>
+                        <Text style={styles.savedAttachmentTitle} allowFontScaling>
+                          {evidenceLabel.replace(/\s*\*$/, "")}
+                        </Text>
+                        <Text style={styles.savedAttachmentName} numberOfLines={1} allowFontScaling>
+                          Saved on draft: {savedRelAtt.fileName}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.savedAttachmentActions}>
+                      <Pressable
+                        onPress={() =>
+                          setViewerFile({
+                            path: `/requests/${activeDraftId}/attachments/${savedRelAtt.id}/download`,
+                            fileName: savedRelAtt.fileName,
+                            mimeType: savedRelAtt.fileType,
+                            title: evidenceLabel.replace(/\s*\*$/, ""),
+                          })
+                        }
+                        style={styles.savedAttachmentBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="View saved relationship evidence"
+                      >
+                        <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                        <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                          View
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          setReplacingAttachmentIds((prev) => ({
+                            ...prev,
+                            authorization_letter: true,
+                          }))
+                        }
+                        style={styles.savedAttachmentBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Replace saved relationship evidence"
+                      >
+                        <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+                        <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                          Replace
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              }
+
               return (
               <SupportingFilePicker
                 key="authorization_letter"
@@ -956,8 +1411,82 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
             {relationship !== "Self" ? (
               <>
-                <RegistrantIdCapturePicker side="front" image={registrantIdFront} onSelected={setRegistrantIdFront} onRemoved={() => setRegistrantIdFront(null)} disabled={isSubmitting} />
-                <RegistrantIdCapturePicker side="back" image={registrantIdBack} onSelected={setRegistrantIdBack} onRemoved={() => setRegistrantIdBack(null)} disabled={isSubmitting} />
+                {serverRegistrantIdFront && !registrantIdFront && !replacingAttachmentIds["registrant_id_front"] ? (
+                  <View style={styles.savedAttachmentCard}>
+                    <View style={styles.savedAttachmentHeader}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                      <View style={styles.savedAttachmentInfo}>
+                        <Text style={styles.savedAttachmentTitle} allowFontScaling>
+                          Registrant Government ID — Front
+                        </Text>
+                        <Text style={styles.savedAttachmentName} allowFontScaling>
+                          Private image saved on draft
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.savedAttachmentActions}>
+                      <Pressable
+                        onPress={() =>
+                          setReplacingAttachmentIds((prev) => ({ ...prev, registrant_id_front: true }))
+                        }
+                        style={styles.savedAttachmentBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Replace registrant ID front image"
+                      >
+                        <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+                        <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                          Replace
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <RegistrantIdCapturePicker
+                    side="front"
+                    image={registrantIdFront}
+                    onSelected={setRegistrantIdFront}
+                    onRemoved={() => setRegistrantIdFront(null)}
+                    disabled={isSubmitting || isSavingDraft}
+                  />
+                )}
+                {serverRegistrantIdBack && !registrantIdBack && !replacingAttachmentIds["registrant_id_back"] ? (
+                  <View style={styles.savedAttachmentCard}>
+                    <View style={styles.savedAttachmentHeader}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                      <View style={styles.savedAttachmentInfo}>
+                        <Text style={styles.savedAttachmentTitle} allowFontScaling>
+                          Registrant Government ID — Back
+                        </Text>
+                        <Text style={styles.savedAttachmentName} allowFontScaling>
+                          Private image saved on draft
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.savedAttachmentActions}>
+                      <Pressable
+                        onPress={() =>
+                          setReplacingAttachmentIds((prev) => ({ ...prev, registrant_id_back: true }))
+                        }
+                        style={styles.savedAttachmentBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Replace registrant ID back image"
+                      >
+                        <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+                        <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                          Replace
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <RegistrantIdCapturePicker
+                    side="back"
+                    image={registrantIdBack}
+                    onSelected={setRegistrantIdBack}
+                    onRemoved={() => setRegistrantIdBack(null)}
+                    disabled={isSubmitting || isSavingDraft}
+                  />
+                )}
               </>
             ) : null}
 
@@ -968,7 +1497,18 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         ) : null}
 
         {/* ================= STEP 5: REVIEW & SUBMIT ================= */}
-        {step === 5 ? (
+        {step === 5 ? (() => {
+          const activeDocIds = new Set(
+            (requirements?.requiredDocuments || [])
+              .filter((item) => item.required && item.id !== "valid_id")
+              .map((item) => item.id)
+          );
+          if (relationship !== "Self") activeDocIds.add("authorization_letter");
+          const activeSupportingCount = Array.from(activeDocIds).filter(
+            (id) => Boolean(selectedFiles[id] || existingAttachmentsByCategory[id])
+          ).length;
+
+          return (
           <View style={styles.stepContainer}>
             <View style={styles.stepHeader}>
               <Text style={styles.stepHeading} allowFontScaling>
@@ -997,7 +1537,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 { label: "Requester (Account)", value: profile?.fullName || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || "You" },
                 { label: "Record Holder Name", value: applicantName },
                 { label: "Relationship", value: relationship },
-                { label: "Purpose", value: purpose },
+                { label: "Purpose", value: formatPurposeWithRegistryYear(purpose, approximateYear) },
               ]}
             />
 
@@ -1007,7 +1547,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             <RecordSection
               title="Supporting Attachments"
               fields={[
-                { label: "Attached Files", value: `${Object.keys(selectedFiles).length} file(s) attached` },
+                { label: "Attached Files", value: `${activeSupportingCount} file(s) attached` },
                 ...(profile?.isGovernmentIdVerified
                   ? [{ label: "Government ID", value: "Verified on Profile (Auto-satisfied)" }]
                   : []),
@@ -1015,10 +1555,29 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                   ? [
                       {
                         label: isFamilyProofRelationship(relationship) ? FAMILY_PROOF_LABEL : "Authorization Letter",
-                        value: selectedFiles["authorization_letter"] ? "Attached (Ready)" : "Missing",
+                        value:
+                          selectedFiles["authorization_letter"]
+                            ? "Selected (Ready)"
+                            : existingAttachmentsByCategory["authorization_letter"]
+                              ? "Saved on Draft (Ready)"
+                              : "Missing",
                       },
-                      { label: "Registrant ID - Front", value: registrantIdFront ? "Selected (Ready)" : "Missing" },
-                      { label: "Registrant ID - Back", value: registrantIdBack ? "Selected (Ready)" : "Missing" },
+                      {
+                        label: "Registrant ID - Front",
+                        value: registrantIdFront
+                          ? "Selected (Ready)"
+                          : serverRegistrantIdFront
+                            ? "Saved on Draft (Ready)"
+                            : "Missing",
+                      },
+                      {
+                        label: "Registrant ID - Back",
+                        value: registrantIdBack
+                          ? "Selected (Ready)"
+                          : serverRegistrantIdBack
+                            ? "Saved on Draft (Ready)"
+                            : "Missing",
+                      },
                     ]
                   : []),
               ]}
@@ -1049,7 +1608,8 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               </Text>
             </View>
           </View>
-        ) : null}
+          );
+        })() : null}
         </Animated.View>
       </ScrollView>
 
@@ -1074,35 +1634,78 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
             style={styles.fullWidthAction}
           />
         ) : step === 3 ? (
-          <Button
-            title="Continue to Attachments"
-            variant="primary"
-            size="lg"
-            disabled={!applicantFirstName.trim() || !applicantLastName.trim() || !purpose.trim()}
-            onPress={handleValidateFormAndNext}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title="Continue to Attachments"
+              variant="primary"
+              size="lg"
+              disabled={!applicantFirstName.trim() || !applicantLastName.trim() || !purpose.trim() || isSavingDraft}
+              onPress={handleValidateFormAndNext}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={!applicantFirstName.trim() || !applicantLastName.trim() || !purpose.trim() || isSavingDraft}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : step === 4 ? (
-          <Button
-            title="Continue to Review"
-            variant="primary"
-            size="lg"
-            onPress={handleValidateFilesAndNext}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title="Continue to Review"
+              variant="primary"
+              size="lg"
+              disabled={isSavingDraft}
+              onPress={handleValidateFilesAndNext}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={isSavingDraft}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : step === 5 ? (
-          <Button
-            title={isSubmitting ? submissionStage || "Submitting..." : "Confirm & Submit Request"}
-            variant="primary"
-            size="lg"
-            onPress={() => {
-              void handleConfirmAndSubmit();
-            }}
-            loading={isSubmitting}
-            disabled={isSubmitting || !hasValidRequirementsFee}
-            accessibilityLabel="Confirm and submit your document request"
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title={isSubmitting ? submissionStage || "Submitting..." : "Confirm & Submit Request"}
+              variant="primary"
+              size="lg"
+              onPress={() => {
+                void handleConfirmAndSubmit();
+              }}
+              loading={isSubmitting}
+              disabled={isSubmitting || isSavingDraft || !hasValidRequirementsFee}
+              accessibilityLabel="Confirm and submit your document request"
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={isSubmitting || isSavingDraft}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : null}
       </SafeBottomActionBar>
 
@@ -1162,6 +1765,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
           </View>
         </View>
       </Modal>
+
+      <SecureFileViewerModal
+        visible={Boolean(viewerFile)}
+        endpointPath={viewerFile?.path || null}
+        fileName={viewerFile?.fileName || "attachment"}
+        mimeType={viewerFile?.mimeType}
+        title={viewerFile?.title}
+        onClose={() => setViewerFile(null)}
+      />
     </Screen>
   );
 };
@@ -1399,6 +2011,73 @@ const styles = StyleSheet.create({
   modalOptionsList: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    gap: spacing.xs,
+  },
+  guidanceCallout: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+  },
+  guidanceCalloutText: {
+    ...fontStyles.caption,
+    color: colors.textPrimary,
+    flex: 1,
+    lineHeight: 18,
+  },
+  savedAttachmentCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  savedAttachmentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  savedAttachmentInfo: {
+    flex: 1,
+  },
+  savedAttachmentTitle: {
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  savedAttachmentName: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  savedAttachmentActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xxs,
+  },
+  savedAttachmentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  savedAttachmentBtnText: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  actionStack: {
+    width: "100%",
     gap: spacing.xs,
   },
 });

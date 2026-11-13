@@ -136,12 +136,31 @@ export interface ScheduleItem {
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
   version?: number;
+  rescheduleHistory?: ScheduleRescheduleHistoryEntry[];
   createdAt: string;
   updatedAt: string;
   parish?: ScheduleParish;
   user?: ScheduleUser;
   assignedPriest?: ScheduleStaff | null;
   processedBy?: ScheduleStaff | null;
+}
+
+export interface ScheduleRescheduleHistoryEntry {
+  previousDate: string;
+  previousStart: string | null;
+  newDate: string;
+  newStart: string | null;
+  reason: string;
+  changedAt: string;
+}
+
+export interface ScheduleAttachment {
+  id: number;
+  requirementId?: string;
+  requirementLabel: string;
+  fileName: string;
+  fileType: string;
+  fileSize?: number;
 }
 
 export interface ScheduleListResponse {

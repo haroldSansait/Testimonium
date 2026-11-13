@@ -28,6 +28,7 @@ jest.mock("@react-native-firebase/auth", () => {
     signInWithCredential: jest.fn(),
     signOut: jest.fn(),
     sendEmailVerification: jest.fn(),
+    sendPasswordResetEmail: jest.fn(async () => undefined),
     reload: jest.fn(),
     getIdToken: jest.fn(async (_user, _force) => "mock-token"),
     GoogleAuthProvider: {

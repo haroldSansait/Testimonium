@@ -2,8 +2,17 @@ export const scheduleKeys = {
   all: ["schedules"] as const,
   lists: (userId?: number | string | null, scope?: "upcoming" | "history") =>
     [...scheduleKeys.all, "list", userId ?? "anon", scope ?? "all"] as const,
+  infiniteList: (
+    userId?: number | string | null,
+    scope?: "upcoming" | "history",
+    limit = 20
+  ) => [...scheduleKeys.all, "infinite-list", userId ?? "anon", scope ?? "all", limit] as const,
   detail: (userId?: number | string | null, scheduleId?: number | string) =>
     [...scheduleKeys.all, "detail", userId ?? "anon", String(scheduleId ?? "")] as const,
+  attachments: (userId?: number | string | null, scheduleId?: number | string) =>
+    [...scheduleKeys.all, "attachments", userId ?? "anon", String(scheduleId ?? "")] as const,
+  tracking: (userId?: number | string | null, reference?: string) =>
+    [...scheduleKeys.all, "tracking", userId ?? "anon", reference ?? ""] as const,
   configuration: (parishId?: number | string | null) =>
     [...scheduleKeys.all, "configuration", String(parishId ?? "")] as const,
   availabilityDates: (parishId?: number | string | null, eventType?: string | null) =>

@@ -35,7 +35,10 @@ jest.mock("@/components/ui/SelectionRow", () => ({ SelectionRow: ({ title, onSel
   const { Pressable, Text } = jest.requireActual("react-native");
   return <Pressable onPress={onSelect} accessibilityLabel={accessibilityLabel}><Text>{title}</Text></Pressable>;
 } }));
-jest.mock("@/features/parishes/api", () => ({ useParishes: () => ({ data: { items: [{ id: 1, name: "Fixture Parish", availableDocuments: null }] }, isLoading: false }) }));
+jest.mock("@/features/parishes/api", () => ({
+  useParishes: () => ({ data: { items: [{ id: 1, name: "Fixture Parish", availableDocuments: null }] }, isLoading: false }),
+  useAllActiveParishes: () => ({ data: [{ id: 1, name: "Fixture Parish", availableDocuments: null }], isLoading: false }),
+}));
 jest.mock("@/features/requests/components/RegistrantIdCapturePicker", () => ({ RegistrantIdCapturePicker: () => null }));
 jest.mock("@/features/requests/components/ReturnDocumentModal", () => ({ ReturnDocumentModal: () => null }));
 jest.mock("@/features/requests/components/RequestStatusTimeline", () => ({ RequestStatusTimeline: () => null }));
@@ -43,6 +46,8 @@ jest.mock("@/features/requests/api", () => ({
   useDocumentRequirements: () => ({ data: { baseFee: 100, requiredDocuments: mockRequiredDocuments }, isLoading: false }),
   useRequestDetail: () => ({ data: mockRequest, isLoading: false, refetch: mockRefetch }),
   useCreateRequestDraft: () => ({ mutateAsync: mockCreate }),
+  useUpdateRequestDraft: () => ({ mutateAsync: jest.fn() }),
+  useDeleteRequestDraft: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useSubmitRequestDraft: () => ({ mutateAsync: mockSubmit }),
   useUploadSupportingFile: () => ({ mutateAsync: mockUpload }),
   useUploadRegistrantId: () => ({ mutateAsync: jest.fn() }),

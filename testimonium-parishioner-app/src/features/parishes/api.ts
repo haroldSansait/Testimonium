@@ -88,6 +88,51 @@ export const useInfiniteParishes = (
   });
 };
 
+export const fetchAllActiveParishes = async (
+  filters: Omit<ParishListFilters, "page" | "limit"> = {},
+  options?: Partial<ApiRequestOptions>
+): Promise<ParishDto[]> => {
+  const pageSize = 100;
+  const maxPages = 100;
+  const allParishes: ParishDto[] = [];
+  const seenIds = new Set<string>();
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = await fetchParishes(
+      { ...filters, page, limit: pageSize },
+      options
+    );
+    const items = response?.items || [];
+    for (const parish of items) {
+      const idKey = String(parish.id);
+      if (seenIds.has(idKey)) continue;
+      seenIds.add(idKey);
+      if (!parish.status || parish.status.toLowerCase() === "active") {
+        allParishes.push(parish);
+      }
+    }
+
+    const totalPages = Number(response?.totalPages || 0);
+    if (items.length === 0 || totalPages <= 0 || page >= totalPages) {
+      break;
+    }
+  }
+
+  return allParishes;
+};
+
+export const useAllActiveParishes = (
+  filters: Omit<ParishListFilters, "page" | "limit"> = {},
+  queryOptions?: Omit<UseQueryOptions<ParishDto[], Error>, "queryKey" | "queryFn">
+) => {
+  return useQuery({
+    queryKey: [...parishKeys.lists(), "all-active", filters] as const,
+    queryFn: ({ signal }) => fetchAllActiveParishes(filters, { signal }),
+    staleTime: 10 * 60 * 1000,
+    ...queryOptions,
+  });
+};
+
 export const useParishDetail = (
   id: string | number | undefined | null,
   queryOptions?: Omit<UseQueryOptions<ParishDto, Error>, "queryKey" | "queryFn">

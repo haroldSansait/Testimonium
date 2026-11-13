@@ -21,13 +21,13 @@ describe("Friendly Request Statuses and Preferred Priest UI", () => {
       UNDER_REVIEW: "Under Staff Review",
       NEEDS_CORRECTION: "Needs Correction",
       PAYMENT_PENDING: "Payment Required",
-      PAYMENT_UNDER_REVIEW: "Payment Under Review",
+      PAYMENT_UNDER_REVIEW: "Awaiting Payment Review",
       PAYMENT_NEEDS_CORRECTION: "Payment Correction",
       PAYMENT_VERIFIED: "Payment Verified",
       PROCESSING: "In Preparation",
-      READY_FOR_SIGNING: "In Preparation",
+      READY_FOR_SIGNING: "Ready for Signing",
       READY_FOR_PICKUP: "Ready for Pickup",
-      COMPLETED: "Completed",
+      COMPLETED: "Released",
       RETURNED: "Returned for Correction",
       REJECTED: "Declined",
       CANCELLED: "Cancelled",
@@ -40,9 +40,9 @@ describe("Friendly Request Statuses and Preferred Priest UI", () => {
       });
     });
 
-    it("verifies PROCESSING and READY_FOR_SIGNING both map to 'In Preparation'", () => {
+    it("verifies PROCESSING maps to 'In Preparation' and READY_FOR_SIGNING maps to 'Ready for Signing'", () => {
       expect(STATUS_PRESENTATION.PROCESSING.label).toBe("In Preparation");
-      expect(STATUS_PRESENTATION.READY_FOR_SIGNING.label).toBe("In Preparation");
+      expect(STATUS_PRESENTATION.READY_FOR_SIGNING.label).toBe("Ready for Signing");
     });
 
     it("verifies formatStatus handles draft requests with friendly Draft label", () => {
@@ -80,13 +80,13 @@ describe("Friendly Request Statuses and Preferred Priest UI", () => {
       expect(getStatusConfig("PENDING").label).toBe("Pending Review");
       expect(getStatusConfig("UNDER_REVIEW").label).toBe("Under Staff Review");
       expect(getStatusConfig("PROCESSING").label).toBe("In Preparation");
-      expect(getStatusConfig("READY_FOR_SIGNING").label).toBe("In Preparation");
+      expect(getStatusConfig("READY_FOR_SIGNING").label).toBe("Ready for Signing");
       expect(getStatusConfig("PAYMENT_PENDING").label).toBe("Payment Required");
-      expect(getStatusConfig("PAYMENT_UNDER_REVIEW").label).toBe("Payment Under Review");
+      expect(getStatusConfig("PAYMENT_UNDER_REVIEW").label).toBe("Awaiting Payment Review");
       expect(getStatusConfig("PAYMENT_NEEDS_CORRECTION").label).toBe("Payment Correction");
       expect(getStatusConfig("PAYMENT_VERIFIED").label).toBe("Payment Verified");
       expect(getStatusConfig("READY_FOR_PICKUP").label).toBe("Ready for Pickup");
-      expect(getStatusConfig("COMPLETED").label).toBe("Completed");
+      expect(getStatusConfig("COMPLETED").label).toBe("Released");
       expect(getStatusConfig("RETURNED").label).toBe("Returned for Correction");
       expect(getStatusConfig("REJECTED").label).toBe("Declined");
       expect(getStatusConfig("CANCELLED").label).toBe("Cancelled");
@@ -112,7 +112,7 @@ describe("Friendly Request Statuses and Preferred Priest UI", () => {
         newStatus: "PAYMENT_VERIFIED",
         remarks: "Status updated from PAYMENT_UNDER_REVIEW to PAYMENT_VERIFIED",
       });
-      expect(formatted).toBe("Status updated from Payment Under Review to Payment Verified");
+      expect(formatted).toBe("Status updated from Awaiting Payment Review to Payment Verified");
     });
 
     it("formats legacy remarks where oldStatus/newStatus were not passed as discrete fields", () => {
@@ -153,12 +153,12 @@ describe("Friendly Request Statuses and Preferred Priest UI", () => {
       const examples: { oldStatus: string; newStatus: string; expectedHeading: string }[] = [
         { oldStatus: "PENDING", newStatus: "UNDER_REVIEW", expectedHeading: "Under Staff Review" },
         { oldStatus: "UNDER_REVIEW", newStatus: "PAYMENT_PENDING", expectedHeading: "Payment Required" },
-        { oldStatus: "PAYMENT_PENDING", newStatus: "PAYMENT_UNDER_REVIEW", expectedHeading: "Payment Under Review" },
+        { oldStatus: "PAYMENT_PENDING", newStatus: "PAYMENT_UNDER_REVIEW", expectedHeading: "Awaiting Payment Review" },
         { oldStatus: "PAYMENT_UNDER_REVIEW", newStatus: "PAYMENT_VERIFIED", expectedHeading: "Payment Verified" },
         { oldStatus: "PAYMENT_VERIFIED", newStatus: "PROCESSING", expectedHeading: "In Preparation" },
-        { oldStatus: "PROCESSING", newStatus: "READY_FOR_SIGNING", expectedHeading: "In Preparation" },
+        { oldStatus: "PROCESSING", newStatus: "READY_FOR_SIGNING", expectedHeading: "Ready for Signing" },
         { oldStatus: "READY_FOR_SIGNING", newStatus: "READY_FOR_PICKUP", expectedHeading: "Ready for Pickup" },
-        { oldStatus: "READY_FOR_PICKUP", newStatus: "COMPLETED", expectedHeading: "Completed" },
+        { oldStatus: "READY_FOR_PICKUP", newStatus: "COMPLETED", expectedHeading: "Released" },
         { oldStatus: "UNDER_REVIEW", newStatus: "NEEDS_CORRECTION", expectedHeading: "Needs Correction" },
         { oldStatus: "COMPLETED", newStatus: "RETURNED", expectedHeading: "Returned for Correction" },
         { oldStatus: "UNDER_REVIEW", newStatus: "REJECTED", expectedHeading: "Declined" },

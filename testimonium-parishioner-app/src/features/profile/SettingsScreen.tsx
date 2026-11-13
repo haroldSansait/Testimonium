@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Application from "expo-application";
+import { sendPasswordResetEmail } from "@react-native-firebase/auth";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
@@ -18,14 +19,21 @@ import {
   PageSection,
   RecordSection,
 } from "@/components/ui";
+import { Text } from "@/components/Typography";
 import { useAuth } from "@/providers/AuthProvider";
-import { colors, spacing } from "@/theme/tokens";
+import { firebaseAuth } from "@/services/firebase";
+import { colors, radii, spacing } from "@/theme/tokens";
 
 export const SettingsScreen: React.FC = () => {
   const router = useRouter();
   const { contentBottomInset } = useAppLayoutMetrics();
   const { profile, logout, refreshProfile, updateProfile } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
   const [isSavingEmailPreference, setIsSavingEmailPreference] = useState(false);
   const [emailPreferenceOverride, setEmailPreferenceOverride] = useState<
     boolean | null
@@ -97,6 +105,37 @@ export const SettingsScreen: React.FC = () => {
     }
   };
 
+  const handlePasswordReset = async () => {
+    if (isSendingReset) return;
+    const targetEmail = firebaseAuth.currentUser?.email || profile?.email;
+    if (!targetEmail) {
+      setResetFeedback({
+        kind: "error",
+        message: "No email address is linked to this account.",
+      });
+      return;
+    }
+
+    setIsSendingReset(true);
+    setResetFeedback(null);
+    try {
+      await sendPasswordResetEmail(firebaseAuth, targetEmail);
+      setResetFeedback({
+        kind: "success",
+        message: `Password reset email sent to ${targetEmail}. Please check your inbox and spam folder.`,
+      });
+    } catch (error: any) {
+      setResetFeedback({
+        kind: "error",
+        message:
+          error?.message ||
+          "Failed to send password reset email. Please try again later.",
+      });
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert(
       "Sign Out",
@@ -153,8 +192,56 @@ export const SettingsScreen: React.FC = () => {
               />
             }
             showChevron={true}
+            showDivider={false}
             onPress={() => handleNavigate("/(app)/profile/edit")}
           />
+        </PageSection>
+
+        {/* Security Section */}
+        <PageSection title="Security" style={styles.sectionWrap}>
+          <ListRow
+            title="Send Password Reset Email"
+            subtitle={
+              isSendingReset
+                ? "Sending verification email..."
+                : "Passwords are managed through Firebase. Request a reset link by email."
+            }
+            leading={
+              <Ionicons
+                name="key-outline"
+                size={20}
+                color={colors.primary}
+              />
+            }
+            showChevron={!isSendingReset}
+            disabled={isSendingReset}
+            showDivider={Boolean(resetFeedback)}
+            onPress={() => {
+              void handlePasswordReset();
+            }}
+          />
+          {resetFeedback ? (
+            <View
+              accessibilityRole="alert"
+              style={[
+                styles.feedbackBanner,
+                resetFeedback.kind === "error"
+                  ? styles.feedbackError
+                  : styles.feedbackSuccess,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.feedbackText,
+                  resetFeedback.kind === "error"
+                    ? styles.feedbackTextError
+                    : styles.feedbackTextSuccess,
+                ]}
+              >
+                {resetFeedback.message}
+              </Text>
+            </View>
+          ) : null}
         </PageSection>
 
         {/* Preferences Section */}
@@ -279,6 +366,31 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     marginBottom: spacing.md,
+  },
+  feedbackBanner: {
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+  },
+  feedbackSuccess: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
+  },
+  feedbackError: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  feedbackText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  feedbackTextSuccess: {
+    color: "#065F46",
+  },
+  feedbackTextError: {
+    color: "#991B1B",
   },
   logoutSection: {
     marginTop: spacing.sm,

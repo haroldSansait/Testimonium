@@ -44,7 +44,7 @@ describe("Phase 1 Mobile Profile Completion Gating", () => {
       expect(completeProfileBtn).toBeDefined();
 
       completeProfileBtn?.onPress?.();
-      expect(mockPush).toHaveBeenCalledWith("/(app)/(tabs)/profile");
+      expect(mockPush).toHaveBeenCalledWith("/(app)/profile/edit");
     });
   });
 

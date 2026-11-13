@@ -29,7 +29,8 @@ export const StatusLabel: React.FC<StatusLabelProps> = ({
   const resolvedLabel = customLabel ?? config.label;
   const resolvedColor = config.color;
 
-  const spokenLabel = accessibilityLabel ?? config.accessibilityLabel;
+  const spokenLabel =
+    accessibilityLabel ?? (customLabel ? `Status: ${customLabel}` : config.accessibilityLabel);
 
   return (
     <View

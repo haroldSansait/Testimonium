@@ -1,4 +1,5 @@
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -15,6 +16,7 @@ import type {
   CreateSchedulePayload,
   EligiblePriest,
   RecommendationRequestPayload,
+  ScheduleAttachment,
   ScheduleRecommendationsResponse,
   ScheduleServiceRequirement,
   SchedulingConfiguration,
@@ -64,6 +66,155 @@ export const useScheduleList = (
     queryKey: scheduleKeys.lists(user?.uid, scope),
     queryFn: ({ signal }) => fetchScheduleList({ scope, signal }),
     enabled: Boolean(user?.uid),
+    staleTime: 30 * 1000,
+    ...options,
+  });
+};
+
+export interface PaginatedScheduleResult {
+  data: ScheduleItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export const fetchScheduleListPage = async (
+  params?: ScheduleListParams
+): Promise<PaginatedScheduleResult> => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 20;
+  const queryParams = new URLSearchParams();
+  if (params?.scope) queryParams.set("scope", params.scope);
+  queryParams.set("page", String(page));
+  queryParams.set("limit", String(limit));
+
+  const path = `/schedule-requests?${queryParams.toString()}`;
+  const res = await apiClient.request<ScheduleListResponse | ScheduleItem[]>({
+    path,
+    signal: params?.signal,
+    auth: true,
+  });
+
+  if (Array.isArray(res)) {
+    return {
+      data: res,
+      pagination: {
+        page,
+        limit,
+        total: res.length,
+        totalPages: 1,
+      },
+    };
+  }
+
+  const items = Array.isArray(res?.data) ? res.data : [];
+  const pagination = res?.pagination;
+  return {
+    data: items,
+    pagination: {
+      page: pagination?.page ?? page,
+      limit: pagination?.limit ?? limit,
+      total: pagination?.total ?? items.length,
+      totalPages: pagination?.totalPages ?? (items.length < limit ? page : page + 1),
+    },
+  };
+};
+
+export const mergeSchedulePages = (
+  pages?: { data: ScheduleItem[] }[]
+): ScheduleItem[] => {
+  if (!pages || pages.length === 0) return [];
+  const seen = new Set<number>();
+  const merged: ScheduleItem[] = [];
+  for (const page of pages) {
+    for (const item of page.data) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
+};
+
+export const useInfiniteScheduleList = (
+  scope?: "upcoming" | "history",
+  limit = 20,
+  options?: { enabled?: boolean; refetchInterval?: number | false }
+) => {
+  const { user } = useAuth();
+  return useInfiniteQuery<PaginatedScheduleResult>({
+    queryKey: scheduleKeys.infiniteList(user?.uid, scope, limit),
+    initialPageParam: 1,
+    queryFn: ({ pageParam, signal }) =>
+      fetchScheduleListPage({
+        scope,
+        page: Number(pageParam) || 1,
+        limit,
+        signal,
+      }),
+    getNextPageParam: (lastPage) => {
+      if (!lastPage?.pagination) return undefined;
+      return lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined;
+    },
+    enabled: (options?.enabled ?? true) && Boolean(user?.uid),
+    staleTime: 30 * 1000,
+    refetchInterval: options?.refetchInterval,
+  });
+};
+
+export const fetchScheduleByTracking = async (
+  reference: string,
+  signal?: AbortSignal
+): Promise<ScheduleItem> => {
+  const trimmed = reference.trim().toUpperCase();
+  const res = await apiClient.request<ScheduleItem | { data: ScheduleItem }>({
+    path: `/schedule-requests/tracking/${encodeURIComponent(trimmed)}`,
+    signal,
+    auth: true,
+  });
+  if (res && typeof res === "object" && "data" in res && (res as { data?: ScheduleItem }).data) {
+    return (res as { data: ScheduleItem }).data;
+  }
+  return res as ScheduleItem;
+};
+
+export const useScheduleTrackingLookup = () => {
+  return useMutation({
+    mutationFn: (reference: string) => fetchScheduleByTracking(reference),
+  });
+};
+
+export const fetchScheduleAttachments = async (
+  scheduleId: number | string,
+  signal?: AbortSignal
+): Promise<ScheduleAttachment[]> => {
+  const res = await apiClient.request<ScheduleAttachment[] | { data: ScheduleAttachment[] }>({
+    path: `/schedule-requests/${scheduleId}/attachments`,
+    signal,
+    auth: true,
+  });
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray((res as { data?: ScheduleAttachment[] }).data)) {
+    return (res as { data: ScheduleAttachment[] }).data;
+  }
+  return [];
+};
+
+export const useScheduleAttachments = (
+  scheduleId?: number | string | null,
+  options?: Partial<UseQueryOptions<ScheduleAttachment[]>>
+) => {
+  const { user } = useAuth();
+  return useQuery<ScheduleAttachment[]>({
+    queryKey: scheduleKeys.attachments(user?.uid, scheduleId ?? undefined),
+    queryFn: ({ signal }) => fetchScheduleAttachments(scheduleId!, signal),
+    enabled: Boolean(user?.uid && scheduleId),
     staleTime: 30 * 1000,
     ...options,
   });

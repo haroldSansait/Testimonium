@@ -146,6 +146,156 @@ export const getScheduleDisplayTitle = (schedule: ScheduleItem): string =>
   || schedule.displayTitle
   || getScheduleEventLabel(schedule.eventType);
 
+export const formatScheduleConfirmationRef = (
+  id?: number | string | null,
+  createdAt?: string | null
+): string => {
+  if (id === undefined || id === null || id === "") return "";
+  const parsedDate = createdAt ? new Date(createdAt) : new Date();
+  const year = isNaN(parsedDate.getTime()) ? new Date().getFullYear() : parsedDate.getFullYear();
+  return `CONF-${year}-${String(id).padStart(4, "0")}`;
+};
+
+export const normalizeScheduleTrackingReference = (raw: string): string => {
+  return raw.trim().toUpperCase();
+};
+
+export const isValidScheduleTrackingReference = (raw: string): boolean => {
+  const normalized = normalizeScheduleTrackingReference(raw);
+  return /^CONF-\d{4}-\d+$/.test(normalized) || /^\d+$/.test(normalized);
+};
+
+export const formatManilaTimestamp = (isoString?: string | null): string => {
+  if (!isoString) return "";
+  const parsed = new Date(isoString);
+  if (isNaN(parsed.getTime())) return isoString;
+  try {
+    const datePart = parsed.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "Asia/Manila",
+    });
+    const timePart = parsed.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "Asia/Manila",
+    });
+    return `${datePart} • ${timePart}`;
+  } catch {
+    return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+};
+
+export interface ScheduleMilestone {
+  key:
+    | "submitted"
+    | "leader_assigned"
+    | "assignment_confirmed"
+    | "appointment_confirmed"
+    | "appointment_concluded";
+  label: string;
+  detail: string;
+  timestamp?: string;
+  state: "completed" | "current" | "upcoming" | "cancelled";
+}
+
+export const getScheduleMilestones = (schedule: ScheduleItem): ScheduleMilestone[] => {
+  const isTerminated = schedule.status === "CANCELLED" || schedule.status === "REJECTED";
+  const hasLeader = Boolean(
+    schedule.assignedPriestId || schedule.assignedPriest?.fullName || schedule.layMinisterAssigned
+  );
+  const priestAccepted = Boolean(schedule.assignedPriestId) && schedule.priestResponseStatus === "ACCEPTED";
+  const assignmentConfirmed = schedule.layMinisterAssigned
+    ? schedule.status === "CONFIRMED" || schedule.status === "COMPLETED"
+    : priestAccepted || (hasLeader && schedule.status === "COMPLETED");
+  const appointmentConfirmed =
+    schedule.status === "CONFIRMED" || schedule.status === "COMPLETED";
+  const appointmentConcluded = schedule.status === "COMPLETED";
+
+  const confRef = formatScheduleConfirmationRef(schedule.id, schedule.createdAt);
+
+  return [
+    {
+      key: "submitted",
+      label: "Request Submitted",
+      detail: confRef ? `Reference ${confRef} received by parish` : "Received by parish",
+      timestamp: formatManilaTimestamp(schedule.createdAt),
+      state: "completed",
+    },
+    {
+      key: "leader_assigned",
+      label: "Service Leader Assigned",
+      detail: schedule.layMinisterAssigned
+        ? "Authorized Lay Minister assigned"
+        : schedule.assignedPriest?.fullName
+          ? `Assigned Celebrant: ${schedule.assignedPriest.fullName}`
+          : isTerminated
+            ? "Closed prior to celebrant assignment"
+            : "Pending parish assignment",
+      state: hasLeader ? "completed" : isTerminated ? "cancelled" : "upcoming",
+    },
+    {
+      key: "assignment_confirmed",
+      label: "Assignment Confirmed",
+      detail: schedule.layMinisterAssigned
+        ? assignmentConfirmed
+          ? "Lay Minister service authorized"
+          : isTerminated
+            ? "Closed"
+            : "Pending parish confirmation"
+        : assignmentConfirmed
+          ? "Celebrant accepted assignment"
+          : hasLeader && !isTerminated
+            ? schedule.priestResponseStatus === "REJECTED"
+              ? "Reassignment in progress"
+              : "Awaiting celebrant confirmation"
+            : isTerminated
+              ? "Closed prior to confirmation"
+              : "Waiting for leader assignment",
+      state: assignmentConfirmed
+        ? "completed"
+        : isTerminated
+          ? "cancelled"
+          : hasLeader
+            ? "current"
+            : "upcoming",
+    },
+    {
+      key: "appointment_confirmed",
+      label: "Appointment Confirmed",
+      detail: appointmentConfirmed
+        ? `${formatScheduleDate(schedule.requestedDate, "short")} • ${extractTimeSlotFromSchedule(schedule)}`
+        : isRescheduleProposalPending(schedule.status)
+          ? "Alternative schedule proposed — awaiting your response"
+          : isTerminated
+            ? schedule.status === "CANCELLED"
+              ? "Schedule cancelled"
+              : "Schedule declined"
+            : "Pending final parish confirmation",
+      state: appointmentConfirmed
+        ? "completed"
+        : isTerminated
+          ? "cancelled"
+          : isRescheduleProposalPending(schedule.status) || schedule.status === "PENDING" || schedule.status === "REQUESTED"
+            ? "current"
+            : "upcoming",
+    },
+    {
+      key: "appointment_concluded",
+      label: "Appointment Concluded",
+      detail: appointmentConcluded
+        ? "Schedule marked completed by parish"
+        : isTerminated
+          ? "Not concluded (closed)"
+          : "Expected after scheduled service",
+      timestamp: appointmentConcluded ? formatManilaTimestamp(schedule.updatedAt) : undefined,
+      state: appointmentConcluded ? "completed" : isTerminated ? "cancelled" : "upcoming",
+    },
+  ];
+};
+
 export interface StatusBadgeInfo {
   label: string;
   bg: string;
