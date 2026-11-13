@@ -110,9 +110,14 @@ test('ScheduleRequestsPage and DocumentRequestsPage contracts implement combined
   assert.ok(schedulePageSrc.includes("value: 'OTHER'"), 'Must include Other event type option');
   assert.ok(schedulePageSrc.includes('getScheduleRequest('), 'Must fetch single schedule request by ID when deep-linked from notifications');
   assert.ok(!schedulePageSrc.includes('FILTER_TABS'), 'Segmented tab interface must be replaced with filtering toolbar');
+  assert.ok(!schedulePageSrc.includes("value: 'Under Review'"), 'Unsupported Under Review status must not be in ScheduleRequestsPage dropdown');
+
+  const apiSchedSrc = fs.readFileSync(path.join(srcDir, 'providers/api/ApiScheduleProvider.ts'), 'utf8');
+  assert.ok(!apiSchedSrc.includes("return 'UNDER_REVIEW';"), 'ApiScheduleProvider must not send UNDER_REVIEW status');
 
   const docPageSrc = fs.readFileSync(path.join(srcDir, 'pages/DocumentRequestsPage.tsx'), 'utf8');
   assert.ok(docPageSrc.includes('getDocumentRequest('), 'Must fetch single document request by ID when deep-linked beyond current page');
+  assert.ok(docPageSrc.includes('id="clear-document-filters"'), 'DocumentRequestsPage must include Clear filters button');
 
   const cardSrc = fs.readFileSync(path.join(srcDir, 'components/notifications/NotificationCard.tsx'), 'utf8');
   assert.ok(cardSrc.includes('data-notification-interactive="true"'), 'Clickable notifications must expose interactive semantics');

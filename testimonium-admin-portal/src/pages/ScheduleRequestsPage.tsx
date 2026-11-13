@@ -25,7 +25,6 @@ import { canManageScheduleRequests } from '@/permissions/rolePermissions';
 const SCHEDULE_STATUS_OPTIONS: { value: ScheduleStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Statuses' },
   { value: 'Pending', label: 'Pending' },
-  { value: 'Under Review', label: 'Under Review' },
   { value: 'Tentative', label: 'Tentative' },
   { value: 'Confirmed', label: 'Confirmed' },
   { value: 'Cancelled', label: 'Cancelled' },

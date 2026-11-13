@@ -293,8 +293,6 @@ const mapScheduleStatusToBackend = (status?: ScheduleStatus | 'all' | string): s
   switch (status) {
     case 'Pending':
       return 'PENDING,REQUESTED';
-    case 'Under Review':
-      return 'UNDER_REVIEW';
     case 'Tentative':
       return 'PROPOSED_RESCHEDULE,WAITING_PARISHIONER_RESPONSE';
     case 'Confirmed':

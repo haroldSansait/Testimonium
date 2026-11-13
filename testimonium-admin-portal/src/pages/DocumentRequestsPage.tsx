@@ -1536,9 +1536,16 @@ export function DocumentRequestsPage() {
   };
 
   // Reset page on filter change
+  const hasActiveFilters = search.trim() !== '' || documentType !== 'all' || status !== 'all';
   const handleSearch = (v: string) => { setSearch(v); setPage(1); };
   const handleType = (v: string) => { setDocumentType(v as DocumentType | 'all'); setPage(1); };
   const handleStatus = (v: string) => { setStatus(v as DocumentStatus | 'all'); setPage(1); };
+  const handleClearFilters = () => {
+    setSearch('');
+    setDocumentType('all');
+    setStatus('all');
+    setPage(1);
+  };
 
   return (
     <div>
@@ -1563,7 +1570,7 @@ export function DocumentRequestsPage() {
             onChange={handleSearch}
             className="flex-1"
           />
-          <div className="flex gap-3">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
             {/* Document Type filter */}
             <div className="w-[195px]">
               <CustomSelect
@@ -1587,6 +1594,18 @@ export function DocumentRequestsPage() {
                 aria-label="Filter by status"
               />
             </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                id="clear-document-filters"
+                onClick={handleClearFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-crimson-700 hover:text-crimson-800 hover:bg-crimson-50 rounded-md transition-colors whitespace-nowrap"
+              >
+                <X className="w-3.5 h-3.5" />
+                Clear filters
+              </button>
+            )}
           </div>
         </div>
       </div>

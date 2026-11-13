@@ -64,7 +64,6 @@ const VALID_SCHEDULE_STATUSES = new Set([
   "REJECTED",
 ]);
 const OTHER_CATEGORY_ENUMS = EventTypeCatalog.filter((e) => e.category === "Other").map((e) => e.enum);
-const CANONICAL_EVENT_TITLES = EventTypeCatalog.map((e) => e.title);
 
 const TERMINAL_STATUSES = TERMINAL_SCHEDULE_STATUSES;
 const OPEN_ALTERNATIVE_PROPOSAL_STATUSES = ["SUBMITTED", "PRIEST_PENDING"];
@@ -514,16 +513,7 @@ export class ScheduleService {
     if (trimmedEventType && trimmedEventType.toLowerCase() !== "all") {
       if (trimmedEventType.toUpperCase() === "OTHER") {
         compoundFilters.push({
-          OR: [
-            { eventType: { in: OTHER_CATEGORY_ENUMS } },
-            {
-              AND: [
-                { displayTitle: { not: null } },
-                { displayTitle: { not: "" } },
-                { displayTitle: { notIn: CANONICAL_EVENT_TITLES } },
-              ],
-            },
-          ],
+          eventType: { in: OTHER_CATEGORY_ENUMS },
         });
       } else {
         const resolved = resolveEventType(trimmedEventType);

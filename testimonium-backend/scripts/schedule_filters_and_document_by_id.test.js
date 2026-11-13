@@ -87,13 +87,19 @@ test("ScheduleService.list combines search (including REQ-YYYY-XXXX), eventType,
       eventType: "OTHER",
     });
     const otherWhere = capturedWhere[0];
-    const otherFilter = otherWhere.AND.find((clause) => Array.isArray(clause.OR));
-    assert.ok(otherFilter);
-    assert.ok(
-      otherFilter.OR.some(
-        (item) => item.eventType && Array.isArray(item.eventType.in) && item.eventType.in.includes("DELIVERANCE")
-      ),
-      "Expected OTHER filter to include Other-category event enums"
+    const otherFilter = otherWhere.AND.find(
+      (clause) => clause.eventType && Array.isArray(clause.eventType.in)
+    );
+    assert.ok(otherFilter, "Expected OTHER filter to match Other-category event enums");
+    assert.deepEqual(
+      otherFilter.eventType.in.sort(),
+      ["BLESSING", "DELIVERANCE", "FIESTA", "THANKSGIVING"],
+      "Expected OTHER filter to include only Other-category event enums"
+    );
+    assert.equal(
+      otherWhere.AND.some((clause) => Array.isArray(clause.OR)),
+      false,
+      "Expected OTHER filter not to match sacramental/Mass records via displayTitle mismatch"
     );
   } finally {
     prisma.schedule.findMany = originalFindMany;
