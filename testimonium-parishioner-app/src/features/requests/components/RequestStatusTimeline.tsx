@@ -34,9 +34,9 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
     );
   }
 
-  // Sort chronologically ascending
+  // Sort chronologically descending (newest first)
   const sortedHistory = [...(history || [])].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
   return (
@@ -62,6 +62,7 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
           </Text>
           <View style={styles.timelineList}>
             {sortedHistory.map((item, index) => {
+              const isLatest = index === 0;
               const isLast = index === sortedHistory.length - 1;
               const formattedDate = formatDateTime(item.createdAt);
               const actorName = item.actor?.fullName || (item.actorId ? "Parish Staff" : "System");
@@ -73,12 +74,12 @@ export const RequestStatusTimeline: React.FC<RequestStatusTimelineProps> = ({
                     <View
                       style={[
                         styles.dot,
-                        isLast ? styles.dotActive : styles.dotPast,
+                        isLatest ? styles.dotActive : styles.dotPast,
                       ]}
                     >
                       <Ionicons
-                        name={isLast ? "checkmark" : "ellipse"}
-                        size={isLast ? 10 : 6}
+                        name={isLatest ? "checkmark" : "ellipse"}
+                        size={isLatest ? 10 : 6}
                         color={colors.surface}
                       />
                     </View>

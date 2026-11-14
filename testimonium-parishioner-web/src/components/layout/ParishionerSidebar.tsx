@@ -15,6 +15,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import { Avatar } from '../ui/Avatar';
+import logoUrl from '../../assets/TESTIMONIUM_official_logo.png';
 
 interface NavItem {
   to: string;
@@ -251,32 +252,41 @@ export const ParishionerSidebar: React.FC<ParishionerSidebarProps> = ({
     >
       {/* Brand Header */}
       <div className="h-16 px-3 flex items-center flex-shrink-0 border-b border-border/40 relative overflow-hidden">
-        {/* Collapsed 'T' Logo - Smooth crossfade, centered in collapsed rail */}
+        {/* Collapsed Logo - Smooth crossfade, centered in collapsed rail */}
         <div
           className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ease-in-out pointer-events-none ${
             isExpanded ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
           }`}
           aria-hidden={isExpanded}
         >
-          <span className="font-serif font-black text-crimson text-xl tracking-widest select-none">
-            T
-          </span>
+          <img
+            src={logoUrl}
+            alt="TESTIMONIUM Logo"
+            className="w-10 h-10 object-contain"
+          />
         </div>
 
-        {/* Expanded Header Content (Title, Subtitle & Pin Button) */}
+        {/* Expanded Header Content (Logo, Title, Subtitle & Pin Button) */}
         <div
-          className={`flex items-center justify-between w-full min-w-0 transition-all duration-300 ease-in-out ${
+          className={`flex items-center justify-between w-full min-w-0 transition-all duration-300 ease-in-out px-1 ${
             isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-3 pointer-events-none'
           }`}
           aria-hidden={!isExpanded}
         >
-          <div className="flex flex-col justify-center min-w-0 pl-1">
-            <span className="font-serif font-black text-crimson text-lg tracking-wider leading-tight truncate">
-              TESTIMONIUM
-            </span>
-            <span className="text-[10px] text-text-muted font-semibold tracking-wider uppercase truncate">
-              Parishioner Portal
-            </span>
+          <div className="flex items-center gap-3 min-w-0">
+            <img
+              src={logoUrl}
+              alt="TESTIMONIUM Logo"
+              className="w-10 h-10 object-contain flex-shrink-0"
+            />
+            <div className="flex flex-col justify-center min-w-0">
+              <span className="font-serif font-black text-crimson text-lg tracking-wider leading-tight truncate">
+                TESTIMONIUM
+              </span>
+              <span className="text-[10px] text-text-muted font-semibold tracking-wider uppercase truncate">
+                Parishioner Portal
+              </span>
+            </div>
           </div>
 
           {/* Desktop Pin / Unpin Button (Hidden in Mobile Drawer) */}

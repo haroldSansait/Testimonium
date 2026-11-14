@@ -6,7 +6,6 @@ import {
   Clock, 
   MapPin, 
   Building,
-  CalendarPlus,
   ArrowRight,
   Pause,
   Play
@@ -195,21 +194,6 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
     }
   };
 
-  const handleExportGoogleCalendar = (e: React.MouseEvent, event: Event) => {
-    e.stopPropagation();
-    const title = encodeURIComponent(event.title);
-    const details = encodeURIComponent(`${event.description}\n\nParish: ${event.parishName}\nLocation: ${event.location}`);
-    const location = encodeURIComponent(`${event.location}, ${event.parishName}`);
-    
-    const dateStr = event.startDate.replace(/-/g, '');
-    const startTimeStr = event.startTime ? event.startTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00' : '080000';
-    const endTimeStr = event.endTime ? event.endTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00' : '100000';
-    
-    const dates = `${dateStr}T${startTimeStr}/${dateStr}T${endTimeStr}`;
-    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
   const isFirstSlide = currentIndex === 0;
   const isLastSlide = currentIndex === totalSlides - 1;
 
@@ -338,16 +322,6 @@ export const FeaturedEventsCarousel: React.FC<FeaturedEventsCarouselProps> = ({
                       <span>View Details</span>
                       <ArrowRight size={13} className="ml-1.5 shrink-0" />
                     </Button>
-                    
-                    <button
-                      type="button"
-                      onClick={(e) => handleExportGoogleCalendar(e, event)}
-                      title="Add to Google Calendar"
-                      className="px-2.5 sm:px-3 py-2 border border-border rounded-lg text-text-muted hover:text-crimson hover:bg-red-50/40 hover:border-crimson/30 transition-all text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap"
-                    >
-                      <CalendarPlus size={15} className="shrink-0" />
-                      <span className="inline text-xs font-semibold">Add to Calendar</span>
-                    </button>
                   </div>
                   
                   {/* Participant indicators */}

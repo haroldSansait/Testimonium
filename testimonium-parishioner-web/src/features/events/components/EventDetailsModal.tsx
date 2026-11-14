@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -7,12 +7,7 @@ import {
   User, 
   Phone, 
   Globe, 
-  Check, 
-  AlertCircle, 
-  Download,
-  CalendarPlus,
-  Users,
-  Navigation
+  Users
 } from 'lucide-react';
 import type { Event } from '../../../types';
 import { getEventCountdownLabel, formatEventCalendarDate } from '../../../utils/date';
@@ -25,49 +20,6 @@ interface EventDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onViewParish?: (parishId: string) => void;
-}
-
-// ─── ICS Download Utility (parishioner events) ──────────────────────────────
-
-function buildEventIcs(event: Event): string {
-  const now = new Date();
-  const stamp = now.toISOString().replace(new RegExp('[-' + '.:]', 'g'), '').slice(0, 15) + 'Z';
-  const startDate = event.startDate.replace(/-/g, '');
-  const endDate = event.endDate.replace(/-/g, '');
-
-  const escape = (s: string) =>
-    s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//TESTIMONIUM//Parish Events//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:testimonium-event-${event.id}@testimonium.parish`,
-    `DTSTAMP:${stamp}`,
-    `DTSTART;VALUE=DATE:${startDate}`,
-    `DTEND;VALUE=DATE:${endDate}`,
-    `SUMMARY:${escape(event.title)}`,
-    `LOCATION:${escape(event.location + ', ' + event.parishName)}`,
-    `DESCRIPTION:${escape(event.description || '')}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ].join('\r\n');
-}
-
-function downloadEventIcs(event: Event) {
-  const content = buildEventIcs(event);
-  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${event.title.replace(/\s+/g, '_')}.ics`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 // ─── Category Color Helper ──────────────────────────────────────────────────
@@ -85,10 +37,6 @@ const getCategoryColor = (category: Event['category']): "ready" | "pending" | "u
   }
 };
 
-// ─── Inline action feedback states ──────────────────────────────────────────
-
-type FeedbackState = 'idle' | 'success' | 'error';
-
 export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   event: incomingEvent,
   isOpen,
@@ -102,45 +50,7 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   }
   const event = incomingEvent || lastEventRef.current;
 
-  // Per-action inline feedback states (no browser alert())
-  const [calendarFeedback, setCalendarFeedback] = useState<FeedbackState>('idle');
-
-  const resetFeedback = (setter: React.Dispatch<React.SetStateAction<FeedbackState>>) => {
-    setTimeout(() => setter('idle'), 2500);
-  };
-
-  const handleAddToCalendar = useCallback(() => {
-    if (!event) return;
-    try {
-      downloadEventIcs(event);
-      setCalendarFeedback('success');
-      resetFeedback(setCalendarFeedback);
-    } catch {
-      setCalendarFeedback('error');
-      resetFeedback(setCalendarFeedback);
-    }
-  }, [event]);
-
   if (!event) return null;
-
-  const handleDirections = () => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location + ', ' + event.parishName)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleExportGoogleCalendar = () => {
-    const title = encodeURIComponent(event.title);
-    const details = encodeURIComponent(`${event.description || ''}\n\nParish: ${event.parishName}\nLocation: ${event.location}`);
-    const location = encodeURIComponent(`${event.location}, ${event.parishName}`);
-    
-    const dateStr = event.startDate.replace(/-/g, '');
-    const startTimeStr = event.startTime ? event.startTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00' : '080000';
-    const endTimeStr = event.endTime ? event.endTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '100000' : '100000';
-    
-    const dates = `${dateStr}T${startTimeStr}/${dateStr}T${endTimeStr}`;
-    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
 
   const countdown = getEventCountdownLabel(event.startDate, event.startTime);
   const participantPercentage = event.maxParticipants && event.currentParticipants !== undefined
@@ -189,20 +99,6 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
             </p>
           </div>
         </div>
-
-        {/* Action Feedback Alerts */}
-        {calendarFeedback === 'success' && (
-          <div role="status" className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
-            <Check size={15} className="text-emerald-600 flex-shrink-0" />
-            <span>Event calendar file (.ics) downloaded. Open it to sync with your device calendar.</span>
-          </div>
-        )}
-        {calendarFeedback === 'error' && (
-          <div role="alert" className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
-            <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
-            <span>Could not download calendar file. Please try again.</span>
-          </div>
-        )}
 
         {/* Proportional 2-Column Content Details Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-left items-start">
@@ -362,66 +258,18 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
         </div>
 
         {/* Action Buttons Row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-border/80">
-          {/* Google Calendar Link */}
-          <button
-            type="button"
-            onClick={handleExportGoogleCalendar}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-crimson transition-colors py-1.5 px-2 rounded-lg hover:bg-red-50/50"
-            title="Open in Google Calendar"
-          >
-            <CalendarPlus size={14} className="text-crimson" />
-            <span>Google Calendar</span>
-          </button>
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2 justify-end">
-            {/* Add to Calendar (.ics) button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddToCalendar}
-              className={`flex items-center space-x-1.5 transition-colors text-xs font-semibold ${
-                calendarFeedback === 'success'
-                  ? 'border-green-500 text-green-700 bg-green-50'
-                  : calendarFeedback === 'error'
-                  ? 'border-red-400 text-red-600'
-                  : ''
-              }`}
-            >
-              {calendarFeedback === 'success' ? (
-                <><Check size={13} /><span>Downloaded!</span></>
-              ) : calendarFeedback === 'error' ? (
-                <><AlertCircle size={13} /><span>Failed</span></>
-              ) : (
-                <><Download size={13} /><span>.ICS File</span></>
-              )}
-            </Button>
-
-            {/* Directions button */}
+        {onViewParish && (
+          <div className="flex items-center justify-end pt-4 border-t border-border/80">
             <Button 
-              variant="outline" 
               size="sm" 
-              onClick={handleDirections} 
-              className="flex items-center space-x-1.5 text-xs font-semibold"
+              onClick={() => onViewParish(event.parishId)} 
+              className="bg-crimson hover:bg-crimson-dark text-white flex items-center space-x-1.5 text-xs font-semibold shadow-xs"
             >
-              <Navigation size={13} />
-              <span>Directions</span>
+              <Globe size={13} />
+              <span>View Parish</span>
             </Button>
-
-            {/* View Parish button */}
-            {onViewParish && (
-              <Button 
-                size="sm" 
-                onClick={() => onViewParish(event.parishId)} 
-                className="bg-crimson hover:bg-crimson-dark text-white flex items-center space-x-1.5 text-xs font-semibold shadow-xs"
-              >
-                <Globe size={13} />
-                <span>View Parish</span>
-              </Button>
-            )}
           </div>
-        </div>
+        )}
       </div>
     </Modal>
   );

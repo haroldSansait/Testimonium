@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,14 +23,9 @@ import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useParishDetail } from "@/features/parishes/api";
 import {
   buildEmailUrl,
-  buildMapUrl,
   buildPhoneUrl,
   openExternalUrl,
 } from "@/features/parishes/utils";
-import {
-  exportIcsCalendarFile,
-  openGoogleCalendarExport,
-} from "@/services/calendar/calendarExport";
 import { useCurrentMonthEvents } from "./api";
 import {
   formatEventDate,
@@ -43,7 +37,6 @@ import type { MonthParams } from "./types";
 export const EventDetailScreen: React.FC = () => {
   const router = useRouter();
   const { contentBottomInset } = useAppLayoutMetrics();
-  const [calendarBusy, setCalendarBusy] = useState(false);
   const params = useLocalSearchParams<{
     id: string;
     year?: string;
@@ -122,69 +115,6 @@ export const EventDetailScreen: React.FC = () => {
     .join(", ");
   const phoneUrl = buildPhoneUrl(parish?.contactNumber);
   const emailUrl = buildEmailUrl(parish?.email);
-  const mapUrl = buildMapUrl({
-    latitude: parish?.latitude,
-    longitude: parish?.longitude,
-    address: event.location || parish?.address || venueLocation,
-    name: parishName || event.title,
-  });
-
-  const handleGoogleCalendar = async () => {
-    setCalendarBusy(true);
-    try {
-      const opened = await openGoogleCalendarExport({
-        uidPrefix: "testimonium-event",
-        id: event.id,
-        title: parishName ? `${event.title} — ${parishName}` : event.title,
-        date: event.eventDate,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        location: venueLocation || parishName,
-        description: event.description,
-      });
-      if (!opened) {
-        Alert.alert("Unavailable", "This event does not have a valid date for calendar export.");
-      }
-    } catch (err: unknown) {
-      Alert.alert(
-        "Calendar Export Failed",
-        err instanceof Error ? err.message : "Unable to open Google Calendar."
-      );
-    } finally {
-      setCalendarBusy(false);
-    }
-  };
-
-  const handleExportIcs = async () => {
-    setCalendarBusy(true);
-    try {
-      const result = await exportIcsCalendarFile({
-        uidPrefix: "testimonium-event",
-        id: event.id,
-        title: parishName ? `${event.title} — ${parishName}` : event.title,
-        date: event.eventDate,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        location: venueLocation || parishName,
-        description: event.description,
-      });
-      if (result.method === "saved") {
-        Alert.alert(
-          "Calendar File Saved",
-          "The .ics event invitation was saved to your selected folder."
-        );
-      } else if (result.method === "failed") {
-        Alert.alert("Export Failed", "Unable to export .ics calendar file.");
-      }
-    } catch (err: unknown) {
-      Alert.alert(
-        "Export Failed",
-        err instanceof Error ? err.message : "Unable to export .ics calendar file."
-      );
-    } finally {
-      setCalendarBusy(false);
-    }
-  };
 
   const scheduleFields = [
     {
@@ -251,39 +181,6 @@ export const EventDetailScreen: React.FC = () => {
           style={styles.sectionSpacing}
         />
 
-        {/* Calendar Export */}
-        <View style={styles.calendarCard}>
-          <View style={styles.calendarHeader}>
-            <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-            <Text style={styles.calendarTitle} allowFontScaling>
-              Save Event to Calendar
-            </Text>
-          </View>
-          <Text style={styles.calendarHint} allowFontScaling>
-            Times follow Philippine Standard Time (Asia/Manila).
-          </Text>
-          <View style={styles.calendarActions}>
-            <Button
-              title="Google Calendar"
-              size="sm"
-              variant="outline"
-              icon="logo-google"
-              onPress={() => void handleGoogleCalendar()}
-              disabled={calendarBusy}
-              style={styles.calendarBtn}
-            />
-            <Button
-              title="Export .ICS"
-              size="sm"
-              variant="secondary"
-              icon="download-outline"
-              onPress={() => void handleExportIcs()}
-              disabled={calendarBusy}
-              style={styles.calendarBtn}
-            />
-          </View>
-        </View>
-
         {/* Parish Church Section */}
         {event.parish ? (
           <PageSection title="Parish Church & Contact" style={styles.sectionSpacing}>
@@ -333,7 +230,7 @@ export const EventDetailScreen: React.FC = () => {
               />
             </Pressable>
 
-            {phoneUrl || emailUrl || mapUrl ? (
+            {phoneUrl || emailUrl ? (
               <View style={styles.contactActionsRow}>
                 {phoneUrl ? (
                   <Button
@@ -352,16 +249,6 @@ export const EventDetailScreen: React.FC = () => {
                     size="sm"
                     icon="mail-outline"
                     onPress={() => void openExternalUrl(emailUrl)}
-                    style={styles.calendarBtn}
-                  />
-                ) : null}
-                {mapUrl ? (
-                  <Button
-                    title="Directions"
-                    variant="outline"
-                    size="sm"
-                    icon="navigate-outline"
-                    onPress={() => void openExternalUrl(mapUrl)}
                     style={styles.calendarBtn}
                   />
                 ) : null}
@@ -451,34 +338,6 @@ const styles = StyleSheet.create({
     ...fontStyles.body,
     color: colors.textSecondary,
     lineHeight: 22,
-  },
-  calendarCard: {
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  calendarHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  calendarTitle: {
-    ...fontStyles.bodySmall,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  calendarHint: {
-    ...fontStyles.caption,
-    color: colors.textSecondary,
-  },
-  calendarActions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
   },
   calendarBtn: {
     flex: 1,

@@ -206,7 +206,8 @@ const styles = StyleSheet.create({
   userTimestamp: {
     ...fontStyles.meta,
     color: "rgba(255, 255, 255, 0.7)",
-    fontSize: 12,
+    fontSize: 10,
+    lineHeight: 14,
     alignSelf: "flex-end",
     marginTop: 2,
   },
@@ -256,6 +257,7 @@ const styles = StyleSheet.create({
   caloyTimestamp: {
     ...fontStyles.meta,
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 10,
+    lineHeight: 14,
   },
 });

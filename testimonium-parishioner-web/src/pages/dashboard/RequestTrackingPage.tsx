@@ -1690,7 +1690,9 @@ export const RequestTrackingPage: React.FC = () => {
 
                           <div className="relative border-l-2 border-border/80 pl-6 ml-3 space-y-6 py-2">
                             {selectedRequest.requestHistory && selectedRequest.requestHistory.length > 0 ? (
-                              selectedRequest.requestHistory.map((h) => {
+                              [...selectedRequest.requestHistory]
+                                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                                .map((h) => {
                                 const dateStr = new Date(h.createdAt).toLocaleDateString(undefined, {
                                   year: 'numeric',
                                   month: 'short',

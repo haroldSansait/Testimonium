@@ -15,7 +15,6 @@ import {
   Building,
   CalendarDays,
   User as UserIcon,
-  CalendarPlus,
   ChevronRight,
   AlertCircle,
 } from 'lucide-react';
@@ -74,52 +73,6 @@ const getBadgeVariant = (status: any): 'pending' | 'under-review' | 'ready' | 'r
     default:
       return 'under-review';
   }
-};
-
-const exportToGoogleCalendar = (appt: any, parishName: string) => {
-  const title = encodeURIComponent(appt.serviceName);
-  const details = encodeURIComponent(`Testimonium Parish Appointment\nParish: ${parishName}\nConfirmation: ${appt.confirmationNumber || appt.id}`);
-  const locationStr = encodeURIComponent(parishName);
-
-  const dateObj = new Date(`${appt.date}T${appt.timeSlot.includes('AM') ? '09:00:00' : '14:00:00'}`);
-  const startStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  dateObj.setHours(dateObj.getHours() + 1);
-  const endStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
-  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${locationStr}`;
-  window.open(url, '_blank');
-};
-
-const exportToICS = (appt: any, parishName: string) => {
-  const dateObj = new Date(`${appt.date}T${appt.timeSlot.includes('AM') ? '09:00:00' : '14:00:00'}`);
-  const startStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  dateObj.setHours(dateObj.getHours() + 1);
-  const endStr = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
-  const icsContent = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Testimonium//NONSGML Calendar//EN',
-    'BEGIN:VEVENT',
-    `UID:${appt.id}@testimonium.app`,
-    `DTSTAMP:${startStr}`,
-    `DTSTART:${startStr}`,
-    `DTEND:${endStr}`,
-    `SUMMARY:${appt.serviceName}`,
-    `DESCRIPTION:Parish: ${parishName}\\nConfirmation Number: ${appt.confirmationNumber || appt.id}`,
-    `LOCATION:${parishName}`,
-    'END:VEVENT',
-    'END:VCALENDAR'
-  ].join('\r\n');
-
-  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', `${appt.serviceName.replace(/\s+/g, '_')}_Appointment.ics`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 };
 
 export const HomePage: React.FC = () => {
@@ -758,26 +711,6 @@ export const HomePage: React.FC = () => {
                       <p className="text-xs text-text-muted">
                         {getParishName(appt.parishId)} • {appt.date} at {appt.timeSlot}
                       </p>
-                      <div className="flex flex-wrap gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            exportToGoogleCalendar(appt, getParishName(appt.parishId));
-                          }}
-                          className="px-2 py-0.5 text-[11px] font-semibold text-crimson bg-red-50 hover:bg-red-100 rounded border border-crimson/20 flex items-center gap-1 focus-ring"
-                        >
-                          <CalendarPlus size={11} /> Google Cal
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            exportToICS(appt, getParishName(appt.parishId));
-                          }}
-                          className="px-2 py-0.5 text-[11px] font-semibold text-crimson bg-red-50 hover:bg-red-100 rounded border border-crimson/20 flex items-center gap-1 focus-ring"
-                        >
-                          <CalendarPlus size={11} /> iCal / .ics
-                        </button>
-                      </div>
                     </div>
                     <Badge variant="ready" className="self-start sm:self-center">
                       {appt.status}
