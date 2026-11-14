@@ -13,6 +13,7 @@
  */
 
 import { TOOL_IDS } from "./liveTools/liveToolSchemas.js";
+import { validateCalendarFacts } from "./calendarFactValidation.js";
 
 // Known diocesan parishes to prevent cross-parish hallucinations
 const KNOWN_PARISH_IDENTIFIERS = [
@@ -170,6 +171,7 @@ export function validateFactPreservation({
   toolId = null,
   facts: aliasFacts,
   text: aliasText,
+  userMessage = "",
 }) {
   const structuredFacts = inputFacts !== undefined ? inputFacts : (aliasFacts !== undefined ? aliasFacts : null);
   const composedAnswer = inputAnswer !== undefined ? inputAnswer : (aliasText !== undefined ? aliasText : "");
@@ -196,36 +198,7 @@ export function validateFactPreservation({
     return true;
   }
 
-  // New calendar and assignment facts remain backend decisions. Require a
-  // separate identifiable row per occurrence so one priest's acceptance cannot
-  // be applied to another occurrence by a fluent paraphrase.
-  if (Array.isArray(structuredFacts.massSchedules)) {
-    const rows = composedAnswer.split(/\n+/);
-    for (const mass of structuredFacts.massSchedules) {
-      const row = rows.find(text => text.includes(mass.timeSlot) && (!mass.date || text.includes(mass.date)));
-      if (!row) return false;
-      if (mass.priestName && !row.includes(mass.priestName)) return false;
-      const status = mass.assignmentStatus;
-      if (status && !new RegExp(`\\b${status}\\b`, "i").test(row)) return false;
-      if (!mass.priestName && /\b(?:Father|Fr\.)\s+\p{L}/iu.test(row)) return false;
-      const positiveAssertions = row.replace(/\b(?:not|never)\s+(?:yet\s+|officially\s+)?(?:confirmed|accepted)\b|\b(?:hindi|indi|dili)\s+pa\s+kumpirmado\b/gi, "");
-      if (status !== "ACCEPTED" && /\b(?:confirmed|accepted|kumpirmado)\b/i.test(positiveAssertions)) return false;
-    }
-  }
-  if (structuredFacts.currentClock && !structuredFacts.officeDays) {
-    if (!composedAnswer.includes(structuredFacts.currentClock.date)) return false;
-    const weekdays = composedAnswer.match(/\b(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/gi) || [];
-    if (weekdays.some(day => day.toLowerCase() !== structuredFacts.currentClock.weekday.toLowerCase())) return false;
-  }
-  if (Array.isArray(structuredFacts.officeDays)) {
-    for (const day of structuredFacts.officeDays) {
-      const row = composedAnswer.split(/\n+/).find(text => text.includes(day.date));
-      if (!row) return false;
-      if (!new RegExp(`\\b${day.status}\\b`, "i").test(row)) return false;
-      if (day.opensAt && (!row.includes(day.opensAt) || !row.includes(day.closesAt))) return false;
-      if (day.currentStatus !== "NOT_APPLICABLE" && day.currentStatus !== "UNKNOWN" && !new RegExp(`\\b${day.currentStatus}\\b`, "i").test(row)) return false;
-    }
-  }
+  if (!validateCalendarFacts(structuredFacts, composedAnswer, userMessage)) return false;
 
   // 2. Currency & Numeric Amounts
   // Protect against: changed amounts, invented fees, alternate currencies (USD, EUR, etc.)
@@ -360,6 +333,9 @@ export function validateFactPreservation({
 
   // 6. Dates (ISO & Range preservation)
   const approvedDates = new Set();
+  for (const row of [...(structuredFacts.massSchedules || []), ...(structuredFacts.officeDays || [])]) {
+    if (row.date) approvedDates.add(row.date);
+  }
   if (structuredFacts.date) approvedDates.add(String(structuredFacts.date));
   if (structuredFacts.startDate) approvedDates.add(String(structuredFacts.startDate));
   if (structuredFacts.endDate) approvedDates.add(String(structuredFacts.endDate));

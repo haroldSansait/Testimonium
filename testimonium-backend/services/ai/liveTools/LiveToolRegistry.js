@@ -34,6 +34,7 @@ import {
 import { normalizeTimeSlotString } from "../../BookingValidator.js";
 import { ParishEventService } from "../../ParishEventService.js";
 import { resolveMassDisplayLabel } from "../../../shared/LayMinisterPresentation.js";
+import { resolveManilaTimeSlot } from "../semanticValidationHelper.js";
 
 export class LiveToolRegistry {
   constructor({
@@ -1818,6 +1819,7 @@ export class LiveToolRegistry {
     let massSchedules = [];
     try {
       const templateDelegate = this.prisma?.massScheduleTemplate || this.prisma?.parishMassScheduleTemplate;
+      if (!templateDelegate?.findMany) throw new Error("Mass schedule lookup is unavailable.");
       if (templateDelegate?.findMany) {
         const pDate = parseManilaDateOnly(parsedDate.dateStr);
         const dayOfWeek = pDate ? new Date(Date.UTC(pDate.year, pDate.month - 1, pDate.day)).getUTCDay() : new Date(parsedDate.dateStr).getDay();
@@ -1948,20 +1950,38 @@ export class LiveToolRegistry {
     const end = endDate || date;
     if (!parseStrictManilaDateOnly(date) || !parseStrictManilaDateOnly(end) || end < date || (Date.parse(end) - Date.parse(date)) > 6 * 86400000) throw new Error("A valid date range of at most seven days is required.");
     const masses = [];
+    let scheduleCount = 0;
+    let timeMatchCount = 0;
+    const period = /^(morning|afternoon|evening)$/i.test(timeSlot || "") ? timeSlot.toLowerCase() : null;
+    const normalizedTime = timeSlot && !period ? resolveManilaTimeSlot(timeSlot) : null;
+    if (timeSlot && !period && !normalizedTime) throw new Error("Invalid Mass time filter.");
+    const clean = name => String(name || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/^(?:rev\.?\s*(?:fr\.?|father)|fr\.?|father)\s+/i, "").replace(/[^\p{L}\p{N}\s]/gu, "").trim();
     let parishName = null;
     for (let day = date; day <= end; day = addCalendarDays(day, 1)) {
       const result = await this.getParishEventsForDate({ parishId, date: day });
+      if (!result.structuredFacts || !Array.isArray(result.liveData?.massSchedules || result.structuredFacts.massSchedules)) throw new Error("Public Mass assignments are unavailable.");
       parishName = result.structuredFacts?.parishName || parishName;
-      for (const mass of result.liveData?.massSchedules || []) {
-        if (timeSlot && normalizeTimeSlotString(mass.timeSlot) !== normalizeTimeSlotString(timeSlot)) continue;
-        const clean = name => String(name || "").toLowerCase().replace(/^(rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").trim();
-        if (priestName && !clean(mass.priestName).includes(clean(priestName))) continue;
+      for (const mass of result.liveData?.massSchedules || result.structuredFacts.massSchedules) {
+        scheduleCount++;
+        const slot = resolveManilaTimeSlot(mass.timeSlot);
+        if (normalizedTime && slot !== normalizedTime) continue;
+        if (period) {
+          const hour = slot && Number(slot.slice(0, 2)) % 12 + (slot.endsWith("PM") ? 12 : 0);
+          const labelPeriod = mass.label?.match(/\b(morning|afternoon|evening)\b/i)?.[0]?.toLowerCase();
+          if (labelPeriod ? labelPeriod !== period : hour === null || !(period === "morning" ? hour < 12 : period === "afternoon" ? hour >= 12 && hour < 17 : hour >= 17)) continue;
+        }
+        timeMatchCount++;
+        if (priestName && (!mass.priestName || !clean(priestName).split(/\s+/).every(part => clean(mass.priestName).split(/\s+/).includes(part)))) continue;
         masses.push({ ...mass, date: day });
       }
     }
     const lines = masses.map(m => `- **${m.date} ${m.timeSlot}** - ${m.label}: ${this.massAssignmentText({ ...m, assignedPriest: m.priestName ? { fullName: m.priestName } : null })}`);
-    const answer = masses.length ? `Public Mass assignments at **${parishName}**:\n\n${lines.join("\n")}` : `No matching public Mass assignments were found for **${date}${end !== date ? " to " + end : ""}**. This does not establish a priest's private availability.`;
-    return { answer, fallbackAnswer: answer, structuredFacts: { parishName, date, endDate: end, massSchedules: masses }, liveData: { label: "Current TESTIMONIUM Data", asOf: this.now().toISOString(), parishId: Number(parishId), massSchedules: masses } };
+    const resultCode = masses.length ? "MATCHES_FOUND" : !scheduleCount ? "NO_MASS_SCHEDULES" : !timeMatchCount ? "NO_TIME_MATCH" : "NO_PRIEST_ASSIGNMENT";
+    const empty = resultCode === "NO_MASS_SCHEDULES" ? "No public Mass schedules are recorded for this date range."
+      : resultCode === "NO_TIME_MATCH" ? `Mass schedules exist, but none match the requested time (${timeSlot}).`
+      : `Mass schedules exist, but no matching assignment is recorded for ${priestName}.`;
+    const answer = masses.length ? `Public Mass assignments at **${parishName}**:\n\n${lines.join("\n")}` : `**${parishName}**, **${date}${end !== date ? " to " + end : ""}**: ${empty}`;
+    return { answer, fallbackAnswer: answer, structuredFacts: { parishName, date, endDate: end, currentClock: manilaClock(this.now()), requestedTimeSlot: timeSlot, requestedPriestName: priestName, scheduleCount, timeMatchCount, resultCode, massSchedules: masses }, liveData: { label: "Current TESTIMONIUM Data", asOf: this.now().toISOString(), parishId: Number(parishId), massSchedules: masses } };
   }
 
   /**

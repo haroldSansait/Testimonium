@@ -154,7 +154,18 @@ NO BOOKING / RESERVATION SUBMISSION CAPABILITY:
 /**
  * Builds the canonical system instruction block for CaloyResponseComposer
  */
-export function buildComposerSystemInstruction({ capabilityHints = [] } = {}) {
+export function buildComposerSystemInstruction({ capabilityHints = [], naturalLiveFacts = false } = {}) {
+  const groundingPolicy = naturalLiveFacts ? CALOY_GROUNDING_POLICY
+    .replace(/^- Render each (?:officeDays|massSchedules).*$/gm, "")
+    .replace(/  \* Dates .*$/m, "  * Date values must stay correct; natural dates and localized weekdays are welcome.")
+    .replace(/  \* Times .*$/m, "  * Time values must stay correct; equivalent 12-hour and 24-hour formats are welcome.")
+    + `\nLIVE FACT PRESENTATION:
+- Answer the factual question directly and conversationally. For yes/no questions, answer yes or no first when the verified facts establish it. Do not introduce answers as recorded/database information.
+- For a weekday-only question, the correct localized weekday suffices; omit the ISO date and precise current time unless relevant. Explain corrections naturally.
+- Office status may be explained in the user's language without printing enum codes. Distinguish configured daily hours from open/closed now. A configured closed day is known closed even without opening times. Do not claim UNKNOWN for a known closure. Mention that these are weekly hours rather than verified holiday exceptions when relevant.
+- Keep each Mass occurrence identifiable by its actual date and time, using natural dates or weekdays when unambiguous. Preserve official parish and priest names. Explain assignment status in the user's language: pending acceptance is not confirmed; accepted, rejected, withdrawn, unassigned and Lay Minister are distinct. For multiple occurrences, keep each on its own line so dates, times, names and statuses cannot be mixed.
+- Respect resultCode and the requested filters: no schedules, no time match and no matching priest assignment are different findings. Never turn a filtered empty result into a claim that no Mass schedules exist.`
+    : CALOY_GROUNDING_POLICY;
   const hintsList = capabilityHints.length > 0
     ? `\nVALID FOLLOW-UP CAPABILITIES:\n${capabilityHints.map((c) => `- ${c}`).join("\n")}`
     : "";
@@ -163,7 +174,7 @@ export function buildComposerSystemInstruction({ capabilityHints = [] } = {}) {
 
 ${CALOY_PERSONALITY}
 
-${CALOY_GROUNDING_POLICY}
+${groundingPolicy}
 
 ${CALOY_LANGUAGE_MIRRORING}
 

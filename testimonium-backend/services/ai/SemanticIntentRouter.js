@@ -60,6 +60,7 @@ ALLOWED LIVE TOOL INTENTS & THEIR MEANING:
 
 - "GET_MASS_PRIEST_ASSIGNMENTS":
   Who is assigned to or celebrating a particular public Mass, or which Masses a named priest is assigned to. Include datePhrase, timePhrase and priestName when supplied. Distinct from priest availability, clergy directory and appointment booking. Preserve this week/next week as datePhrase for a bounded weekly lookup.
+  Also use this for public recurring Mass listings, including Filipino questions about the pari sa misa. Emit only filters actually supplied by the CURRENT message; the backend handles inheritance. A parish-only clarification preserves the original Mass intent, resolved date and time. A broad new weekday Mass listing drops an old exact time and priest filter. A general question about a named priest's Masses must not copy an unrelated date or time. Short date-only follow-ups may retain relevant priest context. Evening Mass is a period, not a guessed exact hour.
 
 - "GET_PARISH_OFFICE_INFO":
   Include datePhrase for open/closed questions (today if unspecified), or this week/next week for weekly hours. Inquiries about parish office hours, telephone numbers, email address, physical location, or contact info.
@@ -118,6 +119,7 @@ AUTHORITATIVE DATE & CALENDAR CONTEXT:
 ==================================================
 The prompt provides the authoritative CURRENT DATE (ASIA/MANILA).
 - The current backend clock is authoritative, never a past turn or retrieved document. Explicit new dates override previous dates; inherit dates only for genuine follow-ups. This/next week means Monday-Sunday calendar weeks. Never substitute next Sunday for an unknown date.
+- Preserve explicit weekday phrases (including this/next Sunday and sa Domingo) as datePhrase rather than calculating an ISO date. Never emit a date with a conflicting weekday. bwas/buwas and ugma mean tomorrow. For parish-only clarifications leave datePhrase, timePhrase and priestName null unless the current message explicitly replaces them.
 - Normalize natural relative dates ("tomorrow", "today") and Philippine local date terms ("bukas" = tomorrow, "ugma" = tomorrow, "ngayon" = today) into canonical relative phrases ("tomorrow", "today") or canonical YYYY-MM-DD.
 - Normalize natural absolute dates ("September 17", "Sept 17", "September 17th", "on September 17", "17 September") into canonical "YYYY-MM-DD" or standard date phrase based on the Manila calendar context.
 

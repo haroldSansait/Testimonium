@@ -362,7 +362,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
   // 3. "tomorrow", "bukas", "ugma"
   if (
     dateWords.some((word) => isMinorRelativeDateMisspelling(word, "tomorrow")) ||
-    /\b(bukas|ugma|buwas)\b/i.test(lower)
+    /\b(bukas|ugma|buwas|bwas)\b/i.test(lower)
   ) {
     const tomorrow = new Date(manilaToday.getTime() + 24 * 60 * 60 * 1000);
     return tomorrow.toISOString().slice(0, 10);
@@ -374,6 +374,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const localDayNames = {
     linggo: 0,
+    domingo: 0,
     lunes: 1,
     martes: 2,
     miyerkules: 3,
@@ -385,7 +386,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
 
   for (let targetDay = 0; targetDay < 7; targetDay++) {
     const name = dayNames[targetDay];
-    if (lower.includes(name)) {
+    if (new RegExp(`\\b${name}\\b`, "i").test(lower)) {
       const currentDayOfWeek = manilaToday.getUTCDay();
       let diffDays = targetDay - currentDayOfWeek;
       if (/\bnext\b/i.test(lower)) {
@@ -511,9 +512,13 @@ export function extractTimeSlotFromText(text) {
 export function extractPriestReference(text) {
   if (!text || typeof text !== "string") return null;
 
-  const match = text.match(/\b(?:Rev\.?\s*Fr\.?|Fr\.?|Father)\s+([A-Za-z]+(?:\s+[A-Za-z]\.?)?(?:\s+[A-Za-z]+)?)\b/i);
+  const match = text.match(/\b(?:Rev\.?\s*Fr\.?|Fr\.?|Father)\s+([\p{L}]+\.?(?:\s+[\p{L}]+\.?){0,5})/iu);
   if (match) {
-    return match[1].trim();
+    // Stop at the question's predicate instead of searching for a priest named
+    // "Julius assigned to". Keep initials and accented surnames intact.
+    const parts = match[1].trim().split(/\s+/);
+    const end = parts.findIndex(part => /^(?:is|are|was|assigned|available|free|celebrating|celebrate|on|at|for|to|in|sa|nga|ang|ba)$/i.test(part));
+    return parts.slice(0, end < 0 ? parts.length : end).join(" ") || null;
   }
 
   if (/\b(parish\s+priest|pastor)\b/i.test(text)) {

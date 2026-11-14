@@ -6,6 +6,8 @@
  * and mixed messages remain eligible for intentional code-switching.
  */
 
+import { LOCAL_WEEKDAYS } from "./calendarFactValidation.js";
+
 const ENGLISH_SIGNAL = /\b(the|is|are|can|could|would|should|what|who|whose|why|how|where|when|do|does|did|not|need|prepare|file|receive|requesting|someone|about|from|with|for|my|mine|your|hers|own|adult|sister|parent|child|documents?|upload)\b/gi;
 const PHILIPPINE_SIGNAL = /\b(ang|mga|kailangan|kinahanglan|kinahanglanon|mangyaring|maaari|hindi|indi|dili|inyong|imong|ninyo|nimo|iyong|para\s+sa|ano|unsa|tagpila|pila|sang|gid|bala|ukon|kag|nga|ug|po|opo)\b/gi;
 
@@ -79,7 +81,7 @@ export function localizedFallback(kind, message = "", previousStyle = null) {
 // language. Only explicitly public fields are eligible; never serialize a whole
 // result object or a client-supplied context as fallback prose.
 export function localizedFactFallback(facts, fallback, message, previousStyle = null) {
-  const style = detectLanguageStyle(message) || previousStyle || "ENGLISH";
+  const style = detectLanguageStyle(message) || (/\bbwas\b/i.test(message) ? "HILIGAYNON" : null) || previousStyle || "ENGLISH";
   if (style === "ENGLISH" || !facts) return fallback;
   const words = {
     FILIPINO: { intro: "Ito ang nakatalang impormasyon", unknown: "Hindi pa matiyak", day: "Araw", now: "Ngayon", hours: "Oras ng opisina", pending: "Naghihintay pa ng pagtanggap; hindi pa kumpirmado", none: "Walang nakatalagang pari", empty: "Walang katugmang tala", parish: "Parokya", priest: "Pari", fee: "Bayad", status: "Katayuan" },
@@ -90,12 +92,31 @@ export function localizedFactFallback(facts, fallback, message, previousStyle = 
   const lines = [];
   if (facts.parishName) lines.push(`**${facts.parishName}**`);
   if (Array.isArray(facts.officeDays)) {
-    for (const day of facts.officeDays) lines.push(`- **${day.date}**: ${words.day}: **${day.status}**; ${day.opensAt ? `${words.hours}: ${day.opensAt} - ${day.closesAt}` : words.unknown}${day.currentStatus !== "NOT_APPLICABLE" ? `; ${words.now}: ${day.currentStatus}` : ""}.`);
+    for (const day of facts.officeDays) {
+      // A closed weekday intentionally has no hours; missing times do not make
+      // that authoritative closure unknown.
+      const hours = day.status === "CLOSED" ? "" : day.opensAt && day.closesAt ? `; ${words.hours}: ${day.opensAt} - ${day.closesAt}` : `; ${words.unknown}`;
+      lines.push(`- **${day.date}**: ${words.day}: **${day.status}**${hours}${["OPEN", "CLOSED"].includes(day.currentStatus) ? `; ${words.now}: ${day.currentStatus}` : ""}.`);
+    }
   } else if (Array.isArray(facts.massSchedules)) {
     for (const mass of facts.massSchedules) lines.push(`- **${mass.date || facts.date} ${mass.timeSlot}**: ${mass.label}; ${mass.priestName || (mass.layMinisterAssigned ? "Lay Minister" : words.none)}; **${mass.assignmentStatus}**${mass.assignmentStatus === "PENDING" ? ` (${words.pending})` : ""}.`);
-    if (!facts.massSchedules.length) lines.push(words.empty);
+    if (!facts.massSchedules.length) {
+      const emptyMessages = {
+        FILIPINO: { NO_MASS_SCHEDULES: "Walang nakatalang iskedyul ng Misa sa mga petsang ito.", NO_TIME_MATCH: "May nakatalang Misa, pero walang tumutugma sa oras na hiniling.", NO_PRIEST_ASSIGNMENT: "May nakatalang Misa, pero walang katugmang pagtatalaga sa paring hiniling." },
+        CEBUANO: { NO_MASS_SCHEDULES: "Walay natala nga iskedyul sa Misa niining mga petsaha.", NO_TIME_MATCH: "Adunay natala nga Misa, pero walay katugbang sa gipangayong oras.", NO_PRIEST_ASSIGNMENT: "Adunay natala nga Misa, pero walay katugbang nga assignment sa gipangayong pari." },
+        HILIGAYNON: { NO_MASS_SCHEDULES: "Wala sang nakarekord nga iskedyul sang Misa sa sini nga mga petsa.", NO_TIME_MATCH: "May nakarekord nga Misa, pero wala sang nagakaigo sa ginpangayo nga oras.", NO_PRIEST_ASSIGNMENT: "May nakarekord nga Misa, pero wala sang nagakaigo nga assignment sa ginpangayo nga pari." },
+      }[style];
+      lines.push([facts.date, facts.endDate !== facts.date ? facts.endDate : null].filter(Boolean).join(" - "));
+      lines.push(emptyMessages?.[facts.resultCode] || words.empty);
+      if (facts.requestedTimeSlot) lines.push(facts.requestedTimeSlot);
+      if (facts.requestedPriestName) lines.push(facts.requestedPriestName);
+    }
   } else if (facts.currentClock) {
-    lines.push(`${facts.currentClock.date} (${facts.currentClock.weekday}), ${facts.currentClock.time} Asia/Manila`);
+    const date = new Date(`${facts.currentClock.date}T00:00:00Z`);
+    const weekday = LOCAL_WEEKDAYS[style][date.getUTCDay()];
+    const naturalDate = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" }).format(date);
+    const asksTime = /\b(?:time|oras|anong\s+oras|what\s+time)\b/i.test(message);
+    return `${weekday} ${words.now.toLowerCase()}, ${naturalDate}${asksTime ? `, ${facts.currentClock.time} Asia/Manila` : ""}.`;
   } else {
     for (const key of ["documentTitle", "priestName", "date", "timeSlot", "trackingNumber", "safeStatus"]) {
       if (typeof facts[key] === "string") lines.push(`- ${facts[key]}`);
@@ -111,5 +132,5 @@ export function localizedFactFallback(facts, fallback, message, previousStyle = 
       }
     }
   }
-  return lines.length ? `${words.intro}:\n\n${lines.join("\n")}` : localizedFallback("UNAVAILABLE", message, style);
+  return lines.length ? `${Array.isArray(facts.officeDays) || Array.isArray(facts.massSchedules) ? "" : `${words.intro}:\n\n`}${lines.join("\n")}` : localizedFallback("UNAVAILABLE", message, style);
 }

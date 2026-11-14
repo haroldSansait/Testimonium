@@ -468,7 +468,7 @@ export class ChatbotService {
         let updatedCtx = safeContext;
         if (liveResult.responseType === "LIVE_DATA") {
           updatedCtx = this.contextManager.updateContext(contextKey, {
-            lastIntent: interpretation.intent,
+            lastIntent: liveResult.executedParams?.intentId || interpretation.intent,
             lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
             lastParishName: liveResult.executedParams?.parishName || null,
             lastDocumentType: liveResult.executedParams?.documentType || null,

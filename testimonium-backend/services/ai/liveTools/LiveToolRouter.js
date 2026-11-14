@@ -1,4 +1,4 @@
-import { manilaClock, calendarWeek } from "../CaloyCalendar.js";
+import { manilaClock, calendarWeek, addCalendarDays } from "../CaloyCalendar.js";
 import { localizedFallback, localizedFactFallback } from "../languageMirroring.js";
 import { TOOL_IDS, TOOL_DEFINITIONS } from "./liveToolSchemas.js";
 import { LiveToolRegistry } from "./LiveToolRegistry.js";
@@ -17,6 +17,20 @@ import {
 import { getCaloyResponseComposer } from "../providerFactory.js";
 import { getParishSchedulingConfiguration } from "../../SchedulingConfiguration.js";
 import { humanizeEventType } from "./enumFormatters.js";
+
+function isPublicMassQuestion(text) {
+  return /\b(?:mass(?:es)?|misa)\b/i.test(text)
+    && !/\b(?:book|booking|reserve|request|private|wake|funeral|intention|wedding|free|available|availability|fees?|cost|payment|requirements?|documents?|(?:can|may)\s+i\s+schedule|schedule\s+(?:a|my)|(?:can|could)\s+(?:father|fr\.?|rev\.?))\b/i.test(text)
+    && !/\b(?:my|our)\b.*\b(?:appointment|booking|schedule)\b/i.test(text);
+}
+
+function explicitCalendarPhrase(text) {
+  const month = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+  if (new RegExp(`\\b${month}\\.?\\s+\\d{1,2}\\b|\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${month}\\b`, "i").test(text)) return text;
+  return text.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0]
+    || text.match(/\b(?:(?:this|next)\s+)?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|domingo|linggo|lunes|martes|miyerkules|miyerkoles|huwebes|biyernes|sabado)\b/i)?.[0]
+    || text.match(/\b(today|tomorrow|yesterday|ngayon|subong|karon|karun|ugma|buwas|bwas|kahapon|kagahapon)\b/i)?.[0];
+}
 
 export const EFFECTIVE_CAPABILITY_HINTS = {
   [TOOL_IDS.GET_ACTIVE_PARISHES]: [TOOL_IDS.GET_PARISH_DOCUMENTS, TOOL_IDS.GET_PARISH_SCHEDULABLE_EVENTS, TOOL_IDS.GET_PARISH_OFFICE_INFO],
@@ -185,6 +199,8 @@ export class LiveToolRouter {
         return { toolId: TOOL_IDS.GET_MY_UPCOMING_SCHEDULES };
       }
     }
+
+    if (isPublicMassQuestion(text)) return { toolId: TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS };
 
     // 5. Active Parish Priests
     const isPriestPolicy = /\b(can\s+i\s+(choose|request|pick)\s+a\s+preferred\s+priest|who\s+assigns\s+the\s+priest|preferred\s+priest\s+policy)\b/i.test(lower);
@@ -413,6 +429,31 @@ export class LiveToolRouter {
       return null;
     }
 
+    // Public Mass questions must never turn into private availability or an
+    // appointment lookup merely because a semantic proposal chose that tool.
+    const publicMassCandidates = [TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS, TOOL_IDS.GET_PARISH_EVENTS_FOR_DATE, TOOL_IDS.GET_ACTIVE_PARISH_PRIESTS, TOOL_IDS.CHECK_PRIEST_AVAILABILITY, TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY];
+    if (!structuredClarification && publicMassCandidates.includes(intentId) && isPublicMassQuestion(normalizedQuestion)) intentId = TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS;
+
+    const isMass = intentId === TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS;
+    const explicitCalendar = explicitCalendarPhrase(normalizedQuestion);
+    const explicitTime = extractTimeSlotFromText(normalizedQuestion);
+    const explicitPeriod = !explicitTime && normalizedQuestion.match(/\b(morning|afternoon|evening)\b/i)?.[0]?.toLowerCase();
+    const explicitPriest = extractPriestReference(normalizedQuestion);
+    const semanticPriest = semanticProposal?.entities?.priestName || "";
+    const nameToken = semanticPriest.toLowerCase().replace(/^(?:rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").match(/\p{L}+/u)?.[0];
+    const mentionedPriest = explicitPriest || (nameToken && (normalizedQuestion.toLowerCase().match(/\p{L}+/gu) || []).includes(nameToken) ? semanticPriest : null);
+    const massContinuation = isMass && canInherit && [TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS, TOOL_IDS.GET_PARISH_EVENTS_FOR_DATE].includes(conversationContext?.lastIntent);
+    const massClarification = isMass && Boolean(structuredClarification);
+    const parishCorrection = massContinuation && Boolean(semanticProposal?.entities?.parishName)
+      && !explicitCalendar && !explicitTime && !explicitPeriod && !explicitPriest && !isPublicMassQuestion(normalizedQuestion);
+    const priestSearch = isMass && Boolean(mentionedPriest)
+      && !massClarification && !parishCorrection && !explicitCalendar
+      && !/\b(?:then|that\s+day|same\s+day|those|these|them)\b/i.test(normalizedQuestion);
+    const keepMassFilters = massClarification || parishCorrection || (massContinuation && !priestSearch
+      && (!isPublicMassQuestion(normalizedQuestion) || /\b(?:same|that|those|it|them)\b/i.test(normalizedQuestion)));
+    const keepMassPriest = keepMassFilters || (massContinuation && Boolean(explicitTime || explicitPeriod)
+      && /\b(?:how\s+about|what\s+about)\b/i.test(normalizedQuestion));
+
     // 2. Authoritative Tool Check: Arbitrary tool execution is strictly impossible
     const toolDef = TOOL_DEFINITIONS[intentId];
     if (!toolDef) {
@@ -554,20 +595,32 @@ export class LiveToolRouter {
         resolvedDate = resolveManilaDate(conversationContext.lastDatePhrase, this.now());
       }
     }
-    // Explicit current-turn calendar references outrank a model-normalized stale
-    // date. "Bukas" is intentionally left to semantics: it can also mean open.
-    const absoluteNatural = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b/i.test(normalizedQuestion);
-    const explicitCalendar = (absoluteNatural ? normalizedQuestion : null) || normalizedQuestion.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0]
-      || normalizedQuestion.match(/\b(today|tomorrow|yesterday|ngayon|subong|karon|karun|ugma|buwas|kahapon|kagahapon)\b/i)?.[0];
+    // User calendar wording outranks a model-normalized ISO date, including
+    // explicit weekdays. "Bukas" remains semantic because it can mean open.
     if (explicitCalendar) { resolvedDate = resolveManilaDate(explicitCalendar, this.now()); resolvedEndDate = null; }
 
-    const datePhrase = semanticProposal?.entities?.datePhrase || "";
-    if ([TOOL_IDS.GET_PARISH_OFFICE_INFO, TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS].includes(intentId) && /\b(this|next)\s+week\b/i.test(datePhrase)) {
+    const datePhrase = normalizedQuestion.match(/\b(?:this|next)\s+week\b/i)?.[0] || semanticProposal?.entities?.datePhrase || "";
+    if (!explicitCalendar && [TOOL_IDS.GET_PARISH_OFFICE_INFO, TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS].includes(intentId) && /\b(this|next)\s+week\b/i.test(datePhrase)) {
       const week = calendarWeek(manilaClock(this.now()).date, /\bnext\b/i.test(datePhrase));
       resolvedDate = week.startDate;
       resolvedEndDate = week.endDate;
     }
     if (intentId === TOOL_IDS.GET_PARISH_OFFICE_INFO && !resolvedDate && !explicitCalendar) resolvedDate = manilaClock(this.now()).date;
+
+    if (isMass && !explicitCalendar) {
+      if (massClarification || parishCorrection || (massContinuation && !priestSearch && !/\b(?:this|next)\s+week\b/i.test(normalizedQuestion))) {
+        resolvedDate = collected.date || conversationContext?.lastDatePhrase || resolvedDate;
+        resolvedEndDate = collected.endDate || conversationContext?.lastEndDate || null;
+      } else if (priestSearch && !/\b(?:this|next)\s+week\b/i.test(normalizedQuestion)) {
+        // A general inquiry about a named priest searches the next seven Manila
+        // dates instead of silently retaining an unrelated past exact date.
+        resolvedDate = manilaClock(this.now()).date;
+        resolvedEndDate = addCalendarDays(resolvedDate, 6);
+      } else if (!massContinuation && !massClarification && !datePhrase) {
+        resolvedDate = null;
+        resolvedEndDate = null;
+      }
+    }
 
     // 7. Resolve Time Slot
     let resolvedTimeSlot = collected.timeSlot || null;
@@ -598,6 +651,18 @@ export class LiveToolRouter {
       }
     }
 
+    if (isMass) {
+      const inheritedTime = collected.timeSlot || (keepMassFilters ? conversationContext?.lastTimePhrase : null);
+      resolvedTimeSlot = explicitTime || explicitPeriod || (keepMassFilters ? inheritedTime : null) || null;
+      // Model entities may contain copied filters even on a broad new question.
+      // Only use a new semantic time when the current wording refers to time.
+      if (!resolvedTimeSlot && /\b(?:time|oras|alas)\b/i.test(normalizedQuestion) && semanticProposal?.entities?.timePhrase) {
+        resolvedTimeSlot = resolveManilaTimeSlot(semanticProposal.entities.timePhrase);
+      }
+      resolvedPriestName = mentionedPriest || (keepMassPriest ? collected.priestName || conversationContext?.lastPriestName : null) || null;
+      resolvedPriestId = resolvedPriestName && keepMassPriest && !mentionedPriest ? collected.priestId || conversationContext?.lastPriestId || null : null;
+    }
+
     // 9. Tracking Number & Identity
     // NEVER allow model or client body to authorize userId
     const effectiveUserId = userId || null;
@@ -618,6 +683,7 @@ export class LiveToolRouter {
     }
 
     const params = {
+      intentId,
       parishId: resolvedParishId,
       parishName: resolvedParishName,
       documentType: resolvedDocType,
