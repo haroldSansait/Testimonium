@@ -44,9 +44,28 @@ export const NotificationsPage: React.FC = () => {
   } = useNotifications();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread'>('all');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const INITIAL_NOTIFICATION_LIMIT = 10;
   const targetNotification = notifications.find(n => n.id === targetNotificationId);
 
+  const handleFilterChange = (filter: 'all' | 'unread') => {
+    setActiveFilter(filter);
+    setIsExpanded(false);
+  };
+
   useEffect(() => { setHighlightedId(null); }, [location.key]);
+
+  const filteredNotifications = useMemo(
+    () => notifications.filter(notif => (activeFilter === 'unread' ? !notif.read : true)),
+    [notifications, activeFilter]
+  );
+
+  const hasMoreNotifications = filteredNotifications.length > INITIAL_NOTIFICATION_LIMIT;
+
+  const visibleNotifications = useMemo(
+    () => (isExpanded ? filteredNotifications : filteredNotifications.slice(0, INITIAL_NOTIFICATION_LIMIT)),
+    [filteredNotifications, isExpanded]
+  );
 
   // Handle deep-linked notificationId by ensuring visibility, scrolling into view, and highlighting
   useEffect(() => {
@@ -55,8 +74,15 @@ export const NotificationsPage: React.FC = () => {
 
     // Ensure the targeted item is visible even if user is currently on unread tab and item is read
     if (targetNotification.read && activeFilter === 'unread') {
-      setActiveFilter('all');
+      handleFilterChange('all');
       return; // Schedule the scroll after the all-notifications render commits.
+    }
+
+    // Automatically reveal the target notification if it falls outside the initial 10-item limit
+    const targetIndex = filteredNotifications.findIndex(n => n.id === targetNotificationId);
+    if (targetIndex >= INITIAL_NOTIFICATION_LIMIT && !isExpanded) {
+      setIsExpanded(true);
+      return; // Schedule the scroll after the expanded list render commits.
     }
 
     const timer = setTimeout(() => {
@@ -71,7 +97,7 @@ export const NotificationsPage: React.FC = () => {
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [targetNotificationId, location.key, loading, error, targetNotification, activeFilter]);
+  }, [targetNotificationId, location.key, loading, error, targetNotification, activeFilter, filteredNotifications, isExpanded]);
 
   // Query updates must not cancel the eventual removal of a completed highlight.
   useEffect(() => {
@@ -85,12 +111,7 @@ export const NotificationsPage: React.FC = () => {
     { id: 'unread', label: `Unread (${unreadCount})` },
   ];
 
-  const filteredNotifications = notifications.filter(notif => {
-    if (activeFilter === 'unread') return !notif.read;
-    return true;
-  });
-
-  // Group notifications by date (Today, Yesterday, Earlier)
+  // Group visible notifications by date (Today, Yesterday, Earlier)
   const groupedNotifications = useMemo(() => {
     const today: AppNotification[] = [];
     const yesterday: AppNotification[] = [];
@@ -103,7 +124,7 @@ export const NotificationsPage: React.FC = () => {
     yesterdayDate.setDate(now.getDate() - 1);
     const yesterdayDateStr = yesterdayDate.toDateString();
 
-    filteredNotifications.forEach(notif => {
+    visibleNotifications.forEach(notif => {
       const notifDate = new Date(notif.createdAt);
       const notifDateStr = notifDate.toDateString();
 
@@ -121,7 +142,7 @@ export const NotificationsPage: React.FC = () => {
       { title: 'Yesterday', items: yesterday },
       { title: 'Earlier', items: earlier }
     ].filter(group => group.items.length > 0);
-  }, [filteredNotifications]);
+  }, [visibleNotifications]);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -207,7 +228,7 @@ export const NotificationsPage: React.FC = () => {
             <Tabs 
               tabs={tabs} 
               activeTab={activeFilter} 
-              onChange={(id) => setActiveFilter(id as any)} 
+              onChange={(id) => handleFilterChange(id as 'all' | 'unread')} 
             />
 
             {loading && notifications.length === 0 ? (
@@ -316,6 +337,20 @@ export const NotificationsPage: React.FC = () => {
                     </div>
                   </div>
                 ))}
+
+                {hasMoreNotifications && (
+                  <div className="flex justify-center pt-2 border-t border-border/60">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsExpanded(prev => !prev)}
+                      className="focus-ring"
+                    >
+                      {isExpanded ? 'View Less' : 'View All'}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

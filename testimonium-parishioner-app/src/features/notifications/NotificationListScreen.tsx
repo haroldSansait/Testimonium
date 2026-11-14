@@ -81,6 +81,8 @@ export const groupNotificationsByManilaDate = (
   return groups;
 };
 
+const INITIAL_NOTIFICATION_LIMIT = 10;
+
 export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   showBackButton = true,
 }) => {
@@ -88,6 +90,12 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   const refreshOptions = useScreenRefresh(false);
   const { contentBottomInset } = useAppLayoutMetrics();
   const [filterTab, setFilterTab] = useState<"all" | "unread">("all");
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleSelectTab = (tab: "all" | "unread") => {
+    setFilterTab(tab);
+    setIsExpanded(false);
+  };
 
   const {
     data: notificationData,
@@ -106,6 +114,14 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
   const filteredNotifications = useMemo(
     () => (filterTab === "unread" ? notifications.filter((n) => !n.isRead) : notifications),
     [filterTab, notifications]
+  );
+  const hasMoreNotifications = filteredNotifications.length > INITIAL_NOTIFICATION_LIMIT;
+  const visibleNotifications = useMemo(
+    () =>
+      isExpanded
+        ? filteredNotifications
+        : filteredNotifications.slice(0, INITIAL_NOTIFICATION_LIMIT),
+    [filteredNotifications, isExpanded]
   );
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
@@ -168,8 +184,8 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
 
   // Group notifications chronologically into Today, Yesterday, Earlier
   const groupedSections = useMemo(
-    () => groupNotificationsByManilaDate(filteredNotifications),
-    [filteredNotifications]
+    () => groupNotificationsByManilaDate(visibleNotifications),
+    [visibleNotifications]
   );
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
@@ -269,7 +285,7 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
             { value: "unread", label: `Unread (${unreadCount})` },
           ]}
           selectedValue={filterTab}
-          onSelect={setFilterTab}
+          onSelect={handleSelectTab}
         />
       </View>
 
@@ -313,6 +329,21 @@ export const NotificationListScreen: React.FC<NotificationListScreenProps> = ({
               colors={[colors.primary]}
               tintColor={colors.primary}
             />
+          }
+          ListFooterComponent={
+            hasMoreNotifications ? (
+              <View style={styles.footerContainer}>
+                <Button
+                  title={isExpanded ? "View Less" : "View All"}
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsExpanded((prev) => !prev)}
+                  accessibilityLabel={
+                    isExpanded ? "View fewer notifications" : "View all notifications"
+                  }
+                />
+              </View>
+            ) : null
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -452,5 +483,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
+  },
+  footerContainer: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    alignItems: "center",
   },
 });
