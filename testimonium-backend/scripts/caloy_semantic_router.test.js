@@ -622,12 +622,12 @@ test("Caloy Semantic Router & Safe Tool Validation Test Suite", async (t) => {
   // =========================================================================
   // Section 35: Rate Limiting (Semantic Calls are AI Calls)
   // =========================================================================
-  await t.test("35. Rate Limiting: substantive semantic calls consume quota; trivial greetings do not", async () => {
+  await t.test("35. Rate Limiting: semantic routing and composed greetings consume quota", async () => {
     const { chatbotService, quotaTracker } = createTestHarness();
 
     // 1. Trivial greeting: 0 quota consumed
     await chatbotService.answerQuestion({ question: "hello" });
-    assert.equal(quotaTracker.timestamps.size, 0, "Trivial greeting must consume 0 quota");
+    assert.equal(quotaTracker.timestamps.get("anonymous")?.length, 1, "Composed greeting must consume one quota unit");
 
     // 2. Substantive live tool question: consumes 1 quota
     await chatbotService.answerQuestion({

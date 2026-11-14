@@ -3,6 +3,8 @@
  */
 
 export const TOOL_IDS = {
+  GET_CURRENT_DATE: "GET_CURRENT_DATE",
+  GET_MASS_PRIEST_ASSIGNMENTS: "GET_MASS_PRIEST_ASSIGNMENTS",
   GET_ACTIVE_PARISHES: "GET_ACTIVE_PARISHES",
   GET_ACTIVE_PARISH_PRIESTS: "GET_ACTIVE_PARISH_PRIESTS",
   GET_PARISH_DOCUMENTS: "GET_PARISH_DOCUMENTS",
@@ -22,6 +24,14 @@ export const TOOL_IDS = {
 };
 
 export const TOOL_DEFINITIONS = {
+  [TOOL_IDS.GET_CURRENT_DATE]: {
+    id: TOOL_IDS.GET_CURRENT_DATE, name: "Get Current Manila Date", description: "Returns the current date, weekday and time from the authoritative backend Manila clock.", classification: "PUBLIC_DIRECTORY", requiredParameters: [],
+  },
+  [TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS]: {
+    id: TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS, name: "Get Public Mass Priest Assignments", description: "Returns effective public Mass occurrences and their priest or Lay Minister assignment status for a date or bounded week.", classification: "PUBLIC_PARISH",
+    requiredParameters: ["parishId", "date"], optionalParameters: ["timeSlot", "priestName", "endDate"],
+    clarificationTypeIfMissing: { parishId: "PARISH", date: "DATE" },
+  },
   [TOOL_IDS.GET_VICARIATE_DIRECTORY]: {
     id: TOOL_IDS.GET_VICARIATE_DIRECTORY,
     name: "Get Vicariate Directory",
@@ -100,6 +110,7 @@ export const TOOL_DEFINITIONS = {
   [TOOL_IDS.GET_PARISH_OFFICE_INFO]: {
     id: TOOL_IDS.GET_PARISH_OFFICE_INFO,
     name: "Get Parish Office Information",
+    optionalParameters: ["date", "endDate"],
     classification: "PUBLIC_PARISH",
     description: "Returns office hours, contact numbers, email, and address for a specific parish.",
     requiredParameters: ["parishId"],
@@ -119,6 +130,7 @@ export const TOOL_DEFINITIONS = {
       parishId: "PARISH",
       eventType: "SCHEDULE_EVENT",
       date: "DATE",
+      eventType: "SCHEDULE_EVENT",
     },
   },
 
@@ -140,11 +152,13 @@ export const TOOL_DEFINITIONS = {
     name: "Check Priest Availability",
     classification: "PUBLIC_PARISH",
     description: "Checks whether a specific priest is available on a date, optional time slot, and event type at a parish.",
-    requiredParameters: ["parishId", "priestName", "date"],
-    optionalParameters: ["timeSlot", "eventType"],
+    requiredParameters: ["parishId", "priestName", "date", "eventType"],
+    optionalParameters: ["timeSlot"],
     clarificationTypeIfMissing: {
       parishId: "PARISH",
       date: "DATE",
+      priestName: "PRIEST",
+      eventType: "SCHEDULE_EVENT",
     },
   },
 
@@ -153,11 +167,12 @@ export const TOOL_DEFINITIONS = {
     name: "Get Available Priests For Slot",
     classification: "PUBLIC_PARISH",
     description: "Returns active clergy available for a specific date and time slot at a parish.",
-    requiredParameters: ["parishId", "date"],
-    optionalParameters: ["timeSlot", "eventType"],
+    requiredParameters: ["parishId", "date", "eventType"],
+    optionalParameters: ["timeSlot"],
     clarificationTypeIfMissing: {
       parishId: "PARISH",
       date: "DATE",
+      eventType: "SCHEDULE_EVENT",
     },
   },
 
@@ -171,6 +186,7 @@ export const TOOL_DEFINITIONS = {
     clarificationTypeIfMissing: {
       parishId: "PARISH",
       date: "DATE",
+      eventType: "SCHEDULE_EVENT",
     },
   },
 

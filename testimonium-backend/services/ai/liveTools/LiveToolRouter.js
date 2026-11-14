@@ -1,3 +1,5 @@
+import { manilaClock, calendarWeek } from "../CaloyCalendar.js";
+import { localizedFallback, localizedFactFallback } from "../languageMirroring.js";
 import { TOOL_IDS, TOOL_DEFINITIONS } from "./liveToolSchemas.js";
 import { LiveToolRegistry } from "./LiveToolRegistry.js";
 import { CANONICAL_DOCUMENT_TYPES } from "../../../config/documents.js";
@@ -36,8 +38,9 @@ export const EFFECTIVE_CAPABILITY_HINTS = {
 };
 
 export class LiveToolRouter {
-  constructor({ registry = null, prismaClient = null, responseComposer = null, responseComposerFactory = getCaloyResponseComposer } = {}) {
-    this.registry = registry || new LiveToolRegistry({ prismaClient });
+  constructor({ registry = null, prismaClient = null, responseComposer = null, responseComposerFactory = getCaloyResponseComposer, now = () => new Date() } = {}) {
+    this.now = now;
+    this.registry = registry || new LiveToolRegistry({ prismaClient, now });
     this.prisma = prismaClient || this.registry.prisma;
     this.responseComposer = responseComposer;
     this.responseComposerFactory = responseComposerFactory;
@@ -118,7 +121,7 @@ export class LiveToolRouter {
    * Helper: extract date in Asia/Manila context (YYYY-MM-DD)
    */
   extractDate(text) {
-    return resolveManilaDate(text);
+    return resolveManilaDate(text, this.now());
   }
 
   /**
@@ -390,6 +393,8 @@ export class LiveToolRouter {
     let intentId = null;
     let collected = {};
 
+    const canInherit = !semanticProposal || semanticProposal.usesPreviousContext === true || semanticProposal.pendingRelation === "ANSWER_PENDING";
+    if (!canInherit && conversationContext) conversationContext = { languageStyle: conversationContext.languageStyle, turnCount: conversationContext.turnCount, lastParishId: conversationContext.lastParishId, lastParishName: conversationContext.lastParishName };
     // 1. Check if continuing from structured clarification state
     if (structuredClarification && (structuredClarification.toolId || structuredClarification.originalIntent)) {
       intentId = structuredClarification.toolId || structuredClarification.originalIntent;
@@ -424,11 +429,11 @@ export class LiveToolRouter {
     const parishes = activeParishes || (await this.getActiveParishes());
 
     // 3. Resolve Parish
-    let resolvedParishId = selectedParishId || collected.parishId || null;
+    let resolvedParishId = collected.parishId ? Number(collected.parishId) : selectedParishId || null;
     if (
       !resolvedParishId &&
       structuredClarification?.selectedValue &&
-      (structuredClarification.missing === "parish" || structuredClarification.nextRequired === "parish")
+      (["parish", "parishId"].includes(structuredClarification.missing) || ["parish", "parishId"].includes(structuredClarification.nextRequired))
     ) {
       const parsedId = Number(structuredClarification.selectedValue);
       if (Number.isInteger(parsedId) && parsedId > 0) {
@@ -514,7 +519,7 @@ export class LiveToolRouter {
     ) {
       resolvedEventType = resolveScheduleEventType(structuredClarification.selectedValue) || structuredClarification.selectedValue;
     }
-    if (!resolvedEventType && semanticProposal?.entities?.scheduleEvent) {
+    if (semanticProposal?.entities?.scheduleEvent) {
       resolvedEventType = resolveScheduleEventType(semanticProposal.entities.scheduleEvent);
     } else if (!resolvedEventType) {
       const eventInText = this.extractEventType(normalizedQuestion);
@@ -530,30 +535,46 @@ export class LiveToolRouter {
 
     // 6. Resolve Date
     let resolvedDate = collected.date || null;
+    let resolvedEndDate = collected.endDate || (canInherit ? conversationContext?.lastEndDate : null) || null;
     if (
       !resolvedDate &&
       structuredClarification?.selectedValue &&
       (structuredClarification.missing === "date" || structuredClarification.nextRequired === "date")
     ) {
-      resolvedDate = resolveManilaDate(structuredClarification.selectedValue);
+      resolvedDate = resolveManilaDate(structuredClarification.selectedValue, this.now());
     }
     if (semanticProposal?.entities?.datePhrase) {
-      resolvedDate = resolveManilaDate(semanticProposal.entities.datePhrase);
-    } else if (!resolvedDate) {
+      resolvedEndDate = null;
+      resolvedDate = resolveManilaDate(semanticProposal.entities.datePhrase, this.now());
+    } else {
       const dateInText = this.extractDate(normalizedQuestion);
       if (dateInText) {
         resolvedDate = dateInText;
-      } else if (intentId !== TOOL_IDS.GET_AVAILABLE_DATES && conversationContext?.lastDatePhrase) {
-        resolvedDate = resolveManilaDate(conversationContext.lastDatePhrase);
+      } else if (!resolvedDate && intentId !== TOOL_IDS.GET_AVAILABLE_DATES && conversationContext?.lastDatePhrase) {
+        resolvedDate = resolveManilaDate(conversationContext.lastDatePhrase, this.now());
       }
     }
+    // Explicit current-turn calendar references outrank a model-normalized stale
+    // date. "Bukas" is intentionally left to semantics: it can also mean open.
+    const absoluteNatural = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b/i.test(normalizedQuestion);
+    const explicitCalendar = (absoluteNatural ? normalizedQuestion : null) || normalizedQuestion.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0]
+      || normalizedQuestion.match(/\b(today|tomorrow|yesterday|ngayon|subong|karon|karun|ugma|buwas|kahapon|kagahapon)\b/i)?.[0];
+    if (explicitCalendar) { resolvedDate = resolveManilaDate(explicitCalendar, this.now()); resolvedEndDate = null; }
+
+    const datePhrase = semanticProposal?.entities?.datePhrase || "";
+    if ([TOOL_IDS.GET_PARISH_OFFICE_INFO, TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS].includes(intentId) && /\b(this|next)\s+week\b/i.test(datePhrase)) {
+      const week = calendarWeek(manilaClock(this.now()).date, /\bnext\b/i.test(datePhrase));
+      resolvedDate = week.startDate;
+      resolvedEndDate = week.endDate;
+    }
+    if (intentId === TOOL_IDS.GET_PARISH_OFFICE_INFO && !resolvedDate && !explicitCalendar) resolvedDate = manilaClock(this.now()).date;
 
     // 7. Resolve Time Slot
     let resolvedTimeSlot = collected.timeSlot || null;
     if (semanticProposal?.entities?.timePhrase) {
       resolvedTimeSlot = resolveManilaTimeSlot(semanticProposal.entities.timePhrase) || extractTimeSlotFromText(semanticProposal.entities.timePhrase);
     } else if (!resolvedTimeSlot) {
-      const timeInText = extractTimeSlotFromText(normalizedQuestion) || resolveManilaTimeSlot(normalizedQuestion);
+      const timeInText = extractTimeSlotFromText(normalizedQuestion) || (conversationContext?.pendingMissingParam === "timeSlot" ? resolveManilaTimeSlot(normalizedQuestion) : null);
       if (timeInText) {
         resolvedTimeSlot = timeInText;
       } else if (conversationContext?.lastTimePhrase) {
@@ -566,6 +587,7 @@ export class LiveToolRouter {
     let resolvedPriestId = collected.priestId || null;
     if (semanticProposal?.entities?.priestName) {
       resolvedPriestName = semanticProposal.entities.priestName;
+      resolvedPriestId = null;
     } else if (!resolvedPriestName) {
       const priestInText = extractPriestReference(normalizedQuestion);
       if (priestInText) {
@@ -601,6 +623,7 @@ export class LiveToolRouter {
       documentType: resolvedDocType,
       eventType: resolvedEventType,
       date: resolvedDate,
+      endDate: resolvedEndDate,
       startDate: intentId === TOOL_IDS.GET_AVAILABLE_DATES ? resolvedDate : null,
       rangeDays: collected.rangeDays || null,
       timeSlot: resolvedTimeSlot,
@@ -612,23 +635,21 @@ export class LiveToolRouter {
     };
 
     // 10. Required Parameter Check
-    for (const reqParam of toolDef.requiredParameters) {
+    const requiredParameters = explicitCalendar && !resolvedDate ? [...new Set([...toolDef.requiredParameters, "date"])] : toolDef.requiredParameters;
+    for (const reqParam of requiredParameters) {
       if (params[reqParam] === null || params[reqParam] === undefined || params[reqParam] === "") {
-        const clarifyType = toolDef.clarificationTypeIfMissing?.[reqParam] || "PARISH";
+        const clarifyType = toolDef.clarificationTypeIfMissing?.[reqParam] || (reqParam === "date" ? "DATE" : "PARISH");
 
-        let clarifyPrompt = "";
         let clarificationOptions = [];
 
         if (clarifyType === "PARISH") {
-          clarifyPrompt = "Which parish are you referring to?";
+          clarificationOptions = parishes.map(parish => ({ label: parish.parishName, value: String(parish.id) }));
         } else if (clarifyType === "DOCUMENT_TYPE") {
-          clarifyPrompt = "Which document are you referring to?";
           clarificationOptions = CANONICAL_DOCUMENT_TYPES.map((type) => ({
             label: type.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
             value: type,
           }));
         } else if (clarifyType === "SCHEDULE_EVENT") {
-          clarifyPrompt = "Which event or service would you like to check?";
           const targetParish = await this.getParishWithSettings(resolvedParishId, parishes);
           if (targetParish) {
             const config = getParishSchedulingConfiguration(targetParish);
@@ -638,18 +659,12 @@ export class LiveToolRouter {
               value: type,
             }));
           }
-        } else if (clarifyType === "DATE") {
-          clarifyPrompt = "Which date would you like to check availability for (e.g. tomorrow or YYYY-MM-DD)?";
-        } else if (clarifyType === "TIME") {
-          clarifyPrompt = "What time would you like to check (e.g. 10:00 AM or 2:00 PM)?";
-        } else if (clarifyType === "PRIEST") {
-          clarifyPrompt = "Which priest would you like to check availability for?";
         }
 
         const stableClarificationId = `clarify_${intentId}_${reqParam}_${params.parishId || "global"}`;
 
         return {
-          answer: clarifyPrompt,
+          answer: localizedFallback(clarifyType, normalizedQuestion, conversationContext?.languageStyle),
           fallback: false,
           fallbackReason: null,
           responseType: "CLARIFICATION",
@@ -705,6 +720,12 @@ export class LiveToolRouter {
     let executionResult;
     try {
       switch (intentId) {
+        case TOOL_IDS.GET_CURRENT_DATE:
+          executionResult = this.registry.getCurrentDate();
+          break;
+        case TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS:
+          executionResult = await this.registry.getMassPriestAssignments(params);
+          break;
         case TOOL_IDS.GET_ACTIVE_PARISH_PRIESTS:
           executionResult = await this.registry.getActiveParishPriests({ parishId: params.parishId });
           break;
@@ -727,7 +748,7 @@ export class LiveToolRouter {
           });
           break;
         case TOOL_IDS.GET_PARISH_OFFICE_INFO:
-          executionResult = await this.registry.getParishOfficeInfo({ parishId: params.parishId });
+          executionResult = await this.registry.getParishOfficeInfo({ parishId: params.parishId, date: params.date, endDate: params.endDate });
           break;
         case TOOL_IDS.GET_ACTIVE_PARISHES:
           executionResult = await this.registry.getActiveParishes();
@@ -801,7 +822,7 @@ export class LiveToolRouter {
     } catch (err) {
       console.error(`[LiveToolRouter] Tool execution failed (${intentId}):`, err.message);
       return {
-        answer: "I was unable to retrieve this live data right now. Please try again or contact your parish office.",
+        answer: localizedFallback("UNAVAILABLE", normalizedQuestion, conversationContext?.languageStyle),
         fallback: true,
         fallbackReason: "LIVE_DATA_UNAVAILABLE",
         responseType: "FALLBACK",
@@ -814,7 +835,7 @@ export class LiveToolRouter {
       return executionResult;
     }
 
-    const fallbackAnswer = executionResult.fallbackAnswer || executionResult.answer;
+    const fallbackAnswer = localizedFactFallback(executionResult.structuredFacts, executionResult.fallbackAnswer || executionResult.answer, normalizedQuestion, conversationContext?.languageStyle);
     let finalAnswer = fallbackAnswer;
 
     // Check request deadline budget before invoking LLM response composer (Section 47)

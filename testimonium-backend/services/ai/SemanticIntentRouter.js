@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { env } from "../../config/env.js";
 import { abortableDelay, createCallerAbortError, throwIfCallerAborted } from "./retryUtils.js";
 import { TOOL_IDS } from "./liveTools/liveToolSchemas.js";
-import { getManilaDateString } from "../ConflictHelper.js";
+import { manilaClock } from "./CaloyCalendar.js";
 import { defaultAiUsageTelemetry, noOpAiUsageTelemetry, isAiUnitTestRuntime } from "../AiUsageTelemetryService.js";
 
 const ALLOWED_ROUTES = ["SOCIAL", "CAPABILITIES", "LIVE_TOOL", "RAG", "OUT_OF_SCOPE"];
@@ -19,8 +19,8 @@ ALLOWED ROUTES:
 ==================================================
 1. "SOCIAL":
    Greetings, identity inquiries (e.g. "Who are you?", "Introduce yourself", "What is your name?"), casual farewells, pleasantries (e.g. "Hello", "Good morning", "Thanks", "How are you?"), or polite acknowledgements / declines (e.g. "No, thanks", "No thanks", "Okay thanks", "Sige salamat", "Way kaso ah", "Okay lang").
-   Set intent to "WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", or "DECLINE_OR_CLOSE".
-   Do NOT use SOCIAL if the message contains an actual question or substantive inquiry.
+   Set intent to "WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", "GOODBYE", "CASUAL", or "DECLINE_OR_CLOSE".
+   Use CASUAL for harmless small talk without a factual parish inquiry. Never use SOCIAL for corrections about dates, office hours, or another factual answer. Substantive inquiries must use live tools or RAG, even if phrased casually.
 
 2. "CAPABILITIES":
    Inquiries asking what Caloy can do, what questions can be asked, or an overview of available features
@@ -55,8 +55,14 @@ ALLOWED LIVE TOOL INTENTS & THEIR MEANING:
 - "GET_DOCUMENT_FEE":
   Inquiries about the current configured fee, cost, or pricing for a sacramental document at a parish.
 
+- "GET_CURRENT_DATE":
+  Questions or corrections about the current date, weekday, or time. Use the backend clock; never inherit an old date.
+
+- "GET_MASS_PRIEST_ASSIGNMENTS":
+  Who is assigned to or celebrating a particular public Mass, or which Masses a named priest is assigned to. Include datePhrase, timePhrase and priestName when supplied. Distinct from priest availability, clergy directory and appointment booking. Preserve this week/next week as datePhrase for a bounded weekly lookup.
+
 - "GET_PARISH_OFFICE_INFO":
-  Inquiries about parish office hours, telephone numbers, email address, physical location, or contact info.
+  Include datePhrase for open/closed questions (today if unspecified), or this week/next week for weekly hours. Inquiries about parish office hours, telephone numbers, email address, physical location, or contact info.
 
 - "GET_CALENDAR_SLOT_AVAILABILITY":
   Inquiries asking to schedule, book, or check available appointment slots for a specific sacramental event (e.g. Wedding, Baptism, Wake Mass, Mass Intention, Funeral, etc.) at a parish, whether asking generally about scheduling that event, on a specific date, or at a specific time (e.g. "Can I schedule a Wake Mass?", "Pwede ba ako mag request ng schedule para sa isang wake mass?", "pwede ba ako mag sched ng wake mass sa St joseph?", "Pwede ba sa Monday mag schedule ng wake mass?").
@@ -111,6 +117,7 @@ LIVE TOOL vs. RAG SEMANTIC DISTINCTION:
 AUTHORITATIVE DATE & CALENDAR CONTEXT:
 ==================================================
 The prompt provides the authoritative CURRENT DATE (ASIA/MANILA).
+- The current backend clock is authoritative, never a past turn or retrieved document. Explicit new dates override previous dates; inherit dates only for genuine follow-ups. This/next week means Monday-Sunday calendar weeks. Never substitute next Sunday for an unknown date.
 - Normalize natural relative dates ("tomorrow", "today") and Philippine local date terms ("bukas" = tomorrow, "ugma" = tomorrow, "ngayon" = today) into canonical relative phrases ("tomorrow", "today") or canonical YYYY-MM-DD.
 - Normalize natural absolute dates ("September 17", "Sept 17", "September 17th", "on September 17", "17 September") into canonical "YYYY-MM-DD" or standard date phrase based on the Manila calendar context.
 
@@ -165,7 +172,9 @@ export class SemanticIntentRouter {
     maxRetries = null,
     client = null,
     telemetryRecorder = null,
+    now = () => new Date(),
   } = {}) {
+    this.now = now;
     this.modelName = model || env.chatbot?.semanticRouterModel || "gemini-3.5-flash-lite";
     this.apiKey = apiKey || env.chatbot?.geminiApiKey;
     this.timeoutMs = timeoutMs ?? (env.chatbot?.generationTimeoutMs || 30000);
@@ -182,12 +191,9 @@ export class SemanticIntentRouter {
     conversationContext,
     selectedParishName,
   }) {
-    const now = new Date();
-    const manilaDateStr = getManilaDateString(now);
-    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const [year, month, day] = manilaDateStr.split("-").map(Number);
-    const manilaToday = new Date(Date.UTC(year, month - 1, day));
-    const manilaDayName = dayNames[manilaToday.getUTCDay()];
+    const clock = manilaClock(this.now());
+    const manilaDateStr = clock.date;
+    const manilaDayName = clock.weekday;
 
     let pendingSection = "None";
     if (conversationContext?.pendingMissingParam || conversationContext?.pendingClarificationIntent) {
@@ -214,7 +220,7 @@ export class SemanticIntentRouter {
     const selectedParishSection = selectedParishName ? selectedParishName : "None selected";
 
     return `CURRENT DATE (ASIA/MANILA):
-${manilaDateStr} (${manilaDayName})
+${manilaDateStr} (${manilaDayName}), ${clock.time} Asia/Manila
 
 PENDING CLARIFICATION STATE:
 ${pendingSection}
@@ -243,6 +249,7 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
         .replace(/\s*```$/i, "")
         .trim();
       parsed = JSON.parse(cleaned);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid routing object");
     } catch {
       // JSON parse error -> safe RAG fallback
       return {
@@ -268,12 +275,12 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
       const rawIntent = String(parsed.intent || "").trim().toUpperCase();
       intent = ALLOWED_INTENTS.includes(rawIntent) ? rawIntent : null;
     } else if (route === "SOCIAL") {
-      const allowedSocialIntents = ["WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", "DECLINE_OR_CLOSE"];
+      const allowedSocialIntents = ["WHO_ARE_YOU", "HOW_ARE_YOU", "GREETING", "THANKS", "GOODBYE", "CASUAL", "DECLINE_OR_CLOSE"];
       const rawIntent = String(parsed.intent || "").trim().toUpperCase();
       intent = allowedSocialIntents.includes(rawIntent) ? rawIntent : "GREETING";
     }
 
-    const allowedPendingRelations = ["NEW_INQUIRY", "PROVIDING_CLARIFICATION", "FOLLOW_UP", "CLOSING_DECLINE", "NONE"];
+    const allowedPendingRelations = ["ANSWER_PENDING", "NEW_TOPIC"];
     const rawPendingRel = String(parsed.pendingRelation || "").trim().toUpperCase();
     const pendingRelation = allowedPendingRelations.includes(rawPendingRel) ? rawPendingRel : null;
 
@@ -307,7 +314,7 @@ Interpret the user's message in this context. Output ONLY the JSON object.`;
       intent,
       pendingRelation,
       entities,
-      usesPreviousContext: Boolean(parsed.usesPreviousContext),
+      usesPreviousContext: parsed.usesPreviousContext === true,
     };
   }
 

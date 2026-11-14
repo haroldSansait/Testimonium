@@ -1,0 +1,112 @@
+{
+  "preparedOn": "2026-11-14",
+  "projectRef": "dacqnzrepwnvkiyzdneo",
+  "status": "PREPARED_NOT_APPLIED",
+  "governance": "Use existing KnowledgeService.updateSource / authenticated source edit with expectedVersion. This resets authority to PROVISIONAL and status to DRAFT, stales old chunks and queues new PENDING chunks. A Diocese Coordinator must confirm the new version, the existing embedding worker must produce READY vectors, and the governed publication action must succeed. Re-read each source first; do not use these versions if changed. No direct SQL writes, automatic confirmation or publication.",
+  "updates": [
+    {
+      "sourceId": 2,
+      "expectedVersion": 2,
+      "observedStatus": "ACTIVE",
+      "observedAuthority": "CONFIRMED",
+      "previousSourceText": "A document request in TESTIMONIUM moves through a structured status lifecycle: PENDING (received and awaiting staff review), UNDER_REVIEW (parish staff actively examining submission details and checking physical church registries), NEEDS_CORRECTION (staff requested replacement documents or corrected information), PAYMENT_PENDING (awaiting payment proof upload for requests with fees), PAYMENT_UNDER_REVIEW (payment proof submitted and undergoing staff verification), PAYMENT_NEEDS_CORRECTION (payment receipt was rejected or failed readability and must be re-uploaded), PAYMENT_VERIFIED (staff confirmed receipt of funds), PROCESSING (parish records verified and official certificate being prepared, signed, and sealed), and READY_FOR_PICKUP (signed document ready for collection at the parish office). Parishioners may cancel their request while it is in PENDING, NEEDS_CORRECTION, PAYMENT_PENDING, or PAYMENT_NEEDS_CORRECTION status. Once released to the claimant, the request is marked COMPLETED. If records cannot be located or eligibility criteria are not met, the request is marked REJECTED.",
+      "payload": {
+        "expectedVersion": 2,
+        "title": "Document Request Status Lifecycle and Workflow",
+        "scope": "DIOCESE",
+        "parishId": null,
+        "category": "DOCUMENT_REQUESTS",
+        "sourceType": "SYSTEM_GUIDE",
+        "sourceReference": "TESTIMONIUM Request State Machine & Document Lifecycle",
+        "sourceText": "A document request in TESTIMONIUM moves through a structured status lifecycle: PENDING (received and awaiting staff review), UNDER_REVIEW (parish staff actively examining submission details and checking physical church registries), NEEDS_CORRECTION (staff requested replacement documents or corrected information), PAYMENT_PENDING (awaiting payment proof upload for requests with fees), PAYMENT_UNDER_REVIEW (payment proof submitted and undergoing staff verification), PAYMENT_NEEDS_CORRECTION (payment receipt was rejected or failed readability and must be re-uploaded), PAYMENT_VERIFIED (staff confirmed receipt of funds), PROCESSING (parish records verified and official certificate being prepared, signed, and sealed), READY_FOR_SIGNING (certificate awaiting the authorized signature), and READY_FOR_PICKUP (signed document ready for collection at the parish office). Parishioners may cancel their request while it is in PENDING, NEEDS_CORRECTION, PAYMENT_PENDING, or PAYMENT_NEEDS_CORRECTION status. Once released to the claimant, the request is marked COMPLETED. If records cannot be located or eligibility criteria are not met, the request is marked REJECTED. A released certificate that needs correction may enter RETURNED and later READY_FOR_PICKUP after parish staff completes the correction. SUBMITTED is not a current document request status.",
+        "chunks": [
+          {
+            "content": "A document request in TESTIMONIUM moves through a structured status lifecycle: PENDING (received and awaiting staff review), UNDER_REVIEW (parish staff actively examining submission details and checking physical church registries), NEEDS_CORRECTION (staff requested replacement documents or corrected information), PAYMENT_PENDING (awaiting payment proof upload for requests with fees), PAYMENT_UNDER_REVIEW (payment proof submitted and undergoing staff verification), PAYMENT_NEEDS_CORRECTION (payment receipt was rejected or failed readability and must be re-uploaded), PAYMENT_VERIFIED (staff confirmed receipt of funds), PROCESSING (parish records verified and official certificate being prepared, signed, and sealed), READY_FOR_SIGNING (certificate awaiting the authorized signature), and READY_FOR_PICKUP (signed document ready for collection at the parish office). Parishioners may cancel their request while it is in PENDING, NEEDS_CORRECTION, PAYMENT_PENDING, or PAYMENT_NEEDS_CORRECTION status. Once released to the claimant, the request is marked COMPLETED. If records cannot be located or eligibility criteria are not met, the request is marked REJECTED. A released certificate that needs correction may enter RETURNED and later READY_FOR_PICKUP after parish staff completes the correction. SUBMITTED is not a current document request status.",
+            "chunkOrder": 0
+          }
+        ]
+      }
+    },
+    {
+      "sourceId": 10,
+      "expectedVersion": 1,
+      "observedStatus": "ACTIVE",
+      "observedAuthority": "CONFIRMED",
+      "previousSourceText": "Caloy is the AI assistant for TESTIMONIUM designed to provide guidance on platform procedures, document request workflows, and scheduling steps. Caloy does NOT have access to private database records, live request tracking, personal payment statuses, or internal parish office records. Caloy cannot modify bookings, verify payments, or issue certificates. For questions regarding personal request status or urgent parish matters, parishioners should contact their parish office directly.",
+      "payload": {
+        "expectedVersion": 1,
+        "title": "Caloy Virtual Assistant Capabilities and Operational Limitations",
+        "scope": "DIOCESE",
+        "parishId": null,
+        "category": "SYSTEM_CAPABILITIES",
+        "sourceType": "SYSTEM_GUIDE",
+        "sourceReference": "Caloy Virtual Assistant Scope and Boundaries",
+        "sourceText": "Caloy is TESTIMONIUM's virtual parish assistant. It explains verified document-request procedures, scheduling steps and parish workflows using active, confirmed Knowledge Sources. It can query registered read-only live tools for parish document offerings, current fees and requirements, active clergy, configured office hours and contact details, public parish schedules, appointment slots and available dates.\n\nAfter authentication, Caloy can retrieve safe status summaries for the signed-in parishioner's own certificate requests and payment verification, and their upcoming appointments. A tracking number does not grant access to another person's records. Current operational answers come from authorized live tools, not static knowledge passages.\n\nCaloy cannot submit or change appointments, reserve slots, approve requests or payments, issue certificates, or perform administrative actions. It never invents unrecorded office hours or priest availability. Missing information or retrieval errors must be explained as unknown or unavailable; a failed lookup does not prove that no record exists. Pastoral and canonical decisions belong to authorized Church personnel.",
+        "chunks": [
+          {
+            "content": "Caloy is TESTIMONIUM's virtual parish assistant. It explains verified document-request procedures, scheduling steps and parish workflows using active, confirmed Knowledge Sources. It can query registered read-only live tools for parish document offerings, current fees and requirements, active clergy, configured office hours and contact details, public parish schedules, appointment slots and available dates.",
+            "chunkOrder": 0
+          },
+          {
+            "content": "After authentication, Caloy can retrieve safe status summaries for the signed-in parishioner's own certificate requests and payment verification, and their upcoming appointments. A tracking number does not grant access to another person's records. Current operational answers come from authorized live tools, not static knowledge passages.",
+            "chunkOrder": 1
+          },
+          {
+            "content": "Caloy cannot submit or change appointments, reserve slots, approve requests or payments, issue certificates, or perform administrative actions. It never invents unrecorded office hours or priest availability. Missing information or retrieval errors must be explained as unknown or unavailable; a failed lookup does not prove that no record exists. Pastoral and canonical decisions belong to authorized Church personnel.",
+            "chunkOrder": 2
+          }
+        ]
+      }
+    },
+    {
+      "sourceId": 31,
+      "expectedVersion": 1,
+      "observedStatus": "ACTIVE",
+      "observedAuthority": "CONFIRMED",
+      "previousSourceText": "Caloy is TESTIMONIUM's virtual assistant designed to provide general procedural guidance, document requirements, and workflow explanations. Caloy does NOT have access to live database records, real-time tracking of individual requests, personal payment statuses, or specific appointment availability slots. Caloy cannot check whether an individual's certificate is ready, confirm whether a payment was approved, or know unrecorded parish office hours. For live tracking updates and real-time questions, parishioners should check their dashboard or contact their parish office directly.",
+      "payload": {
+        "expectedVersion": 1,
+        "title": "System Boundaries and Live Operational Data Limitations",
+        "scope": "DIOCESE",
+        "parishId": null,
+        "category": "SYSTEM_LIMITATIONS",
+        "sourceType": "SYSTEM_GUIDE",
+        "sourceReference": "TESTIMONIUM Architectural Boundaries & Scope",
+        "sourceText": "Caloy combines verified procedural knowledge with registered read-only live tools. Public tools can retrieve parish-specific offerings, configured document fees and requirements, office information, public calendar information and appointment availability. Authenticated private tools can check only the signed-in parishioner's own request status, payment verification status and upcoming schedules.\n\nGeneral Knowledge Base passages do not establish a current payment approval, certificate readiness, office opening status, Mass assignment or appointment vacancy. Use the authorized live lookup for current facts. Caloy cannot guarantee availability, invent unrecorded hours, submit appointments, approve payments, or expose private staff records. If a lookup fails, describe the temporary inability to retrieve data without asserting a negative status.",
+        "chunks": [
+          {
+            "content": "Caloy combines verified procedural knowledge with registered read-only live tools. Public tools can retrieve parish-specific offerings, configured document fees and requirements, office information, public calendar information and appointment availability. Authenticated private tools can check only the signed-in parishioner's own request status, payment verification status and upcoming schedules.",
+            "chunkOrder": 0
+          },
+          {
+            "content": "General Knowledge Base passages do not establish a current payment approval, certificate readiness, office opening status, Mass assignment or appointment vacancy. Use the authorized live lookup for current facts. Caloy cannot guarantee availability, invent unrecorded hours, submit appointments, approve payments, or expose private staff records. If a lookup fails, describe the temporary inability to retrieve data without asserting a negative status.",
+            "chunkOrder": 1
+          }
+        ]
+      }
+    },
+    {
+      "sourceId": 32,
+      "expectedVersion": 1,
+      "observedStatus": "ACTIVE",
+      "observedAuthority": "CONFIRMED",
+      "previousSourceText": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy never accesses, reads, or exposes personal identification documents, payment screenshots, or private user records.",
+      "payload": {
+        "expectedVersion": 1,
+        "title": "Data Privacy Boundaries and Confidentiality Protections",
+        "scope": "DIOCESE",
+        "parishId": null,
+        "category": "PRIVACY",
+        "sourceType": "SYSTEM_GUIDE",
+        "sourceReference": "TESTIMONIUM Data Privacy Policy & Security Architecture",
+        "sourceText": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy's authenticated read-only tools return only safe status summaries for the signed-in parishioner's own requests, payment verification and upcoming appointments. Caloy never reads or exposes personal identification images, payment screenshots, internal staff records, or another parishioner's private records.",
+        "chunks": [
+          {
+            "content": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy's authenticated read-only tools return only safe status summaries for the signed-in parishioner's own requests, payment verification and upcoming appointments. Caloy never reads or exposes personal identification images, payment screenshots, internal staff records, or another parishioner's private records.",
+            "chunkOrder": 0
+          }
+        ]
+      }
+    }
+  ]
+}

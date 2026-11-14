@@ -1,5 +1,5 @@
-import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import React, { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
@@ -9,16 +9,27 @@ interface CaloyClarificationProps {
   clarification: CaloyClarificationData;
   onSelectOption: (option: CaloyClarificationOption) => void;
   disabled?: boolean;
+  parishOptions?: CaloyClarificationOption[];
+  parishesLoading?: boolean;
+  parishesError?: boolean;
+  onRetryParishes?: () => void;
 }
 
 export const CaloyClarification: React.FC<CaloyClarificationProps> = ({
   clarification,
   onSelectOption,
   disabled = false,
+  parishOptions,
+  parishesLoading = false,
+  parishesError = false,
+  onRetryParishes,
 }) => {
-  const options = clarification.clarificationOptions || [];
+  const [search, setSearch] = useState("");
+  const isParish = clarification.clarificationType === "PARISH" || clarification.missing === "parishId";
+  const allOptions = isParish ? parishOptions ?? clarification.clarificationOptions ?? [] : clarification.clarificationOptions || [];
+  const options = allOptions.filter(option => !isParish || option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
 
-  if (options.length === 0) {
+  if (!isParish && options.length === 0) {
     return null;
   }
 
@@ -67,7 +78,27 @@ export const CaloyClarification: React.FC<CaloyClarificationProps> = ({
         </Text>
       </View>
 
-      <View style={styles.optionsList}>
+      {isParish && (
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search parishes"
+          accessibilityLabel="Search parishes"
+          editable={!disabled}
+          style={styles.searchInput}
+          placeholderTextColor={colors.textMuted}
+        />
+      )}
+      {isParish && parishesLoading && <ActivityIndicator accessibilityLabel="Loading parishes" color={colors.primary} />}
+      {isParish && parishesError && (
+        <Pressable onPress={onRetryParishes} disabled={disabled} accessibilityRole="button" style={styles.optionRow}>
+          <Text>Unable to load parishes. Tap to retry.</Text>
+        </Pressable>
+      )}
+      {isParish && !parishesLoading && !parishesError && options.length === 0 && (
+        <Text style={styles.optionText}>{allOptions.length ? "No matching parishes." : "No active parishes are available. You can type a parish name."}</Text>
+      )}
+      <ScrollView style={styles.optionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
         {options.map((option, idx) => (
           <Pressable
             key={option.value}
@@ -96,7 +127,7 @@ export const CaloyClarification: React.FC<CaloyClarificationProps> = ({
             />
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -130,6 +161,15 @@ const styles = StyleSheet.create({
   },
   optionsList: {
     backgroundColor: colors.surface,
+    maxHeight: 240,
+  },
+  searchInput: {
+    ...fontStyles.bodySmall,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.sm,
+    minHeight: 44,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
   optionRow: {
     flexDirection: "row",

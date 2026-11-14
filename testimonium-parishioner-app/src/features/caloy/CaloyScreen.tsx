@@ -53,8 +53,10 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
     handleRevealComplete,
   } = useChatSession();
 
-  const { data: parishesData } = useAllActiveParishes();
+  const { data: parishesData, isLoading: parishesLoading, isError: parishesError, refetch: refetchParishes } = useAllActiveParishes();
   const parishes = useMemo(() => parishesData || [], [parishesData]);
+
+  const parishOptions = useMemo(() => parishes.map(p => ({ label: p.name, value: String(p.id) })), [parishes]);
 
   // Filter parishes in modal
   const filteredParishes = useMemo(() => {
@@ -145,9 +147,13 @@ export const CaloyScreen: React.FC<CaloyScreenProps> = ({
         onSelectClarificationOption={handleSelectClarification}
         onRevealComplete={handleRevealComplete}
         isInputDisabled={isTyping}
+        parishOptions={parishOptions}
+        parishesLoading={parishesLoading}
+        parishesError={parishesError}
+        onRetryParishes={() => { void refetchParishes(); }}
       />
     ),
-    [handleSelectClarification, handleRevealComplete, isTyping]
+    [handleSelectClarification, handleRevealComplete, isTyping, parishOptions, parishesLoading, parishesError, refetchParishes]
   );
 
   const bottomPadding = showBackButton

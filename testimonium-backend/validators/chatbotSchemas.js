@@ -37,7 +37,9 @@ export const chatbotQuerySchema = z
         originalQuestion: z.string().optional(),
         toolId: z.string().optional(),
         originalIntent: z.string().optional(),
-        collected: z.record(z.any()).optional(),
+        collected: z.record(z.string(), z.unknown()).optional(),
+        selectedValue: z.union([z.string(), z.number()]).optional(),
+        isButtonSelection: z.boolean().optional(),
         missing: z.string().optional(),
         nextRequired: z.string().optional(),
       })
@@ -51,7 +53,17 @@ export const chatbotQuerySchema = z
         lastDocumentType: z.string().nullable().optional(),
         lastScheduleEvent: z.string().nullable().optional(),
         lastDatePhrase: z.string().nullable().optional(),
+        lastEndDate: z.string().nullable().optional(),
         lastResponseType: z.string().nullable().optional(),
+        lastTimePhrase: z.string().nullable().optional(),
+        lastPriestName: z.string().nullable().optional(),
+        lastPriestId: z.number().int().positive().nullable().optional(),
+        lastVicariateName: z.string().nullable().optional(),
+        pendingClarificationIntent: z.string().nullable().optional(),
+        pendingMissingParam: z.string().nullable().optional(),
+        pendingCollected: z.record(z.string(), z.unknown()).nullable().optional(),
+        turnCount: z.number().int().min(0).optional(),
+        languageStyle: z.enum(["ENGLISH", "FILIPINO", "CEBUANO", "HILIGAYNON"]).nullable().optional(),
       })
       .optional()
       .nullable(),

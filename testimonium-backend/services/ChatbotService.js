@@ -12,12 +12,10 @@ import { TOOL_IDS } from "./ai/liveTools/liveToolSchemas.js";
 import { defaultAiQuotaTracker } from "./ai/aiQuotaTracker.js";
 import { defaultContextManager } from "./ai/ConversationContextManager.js";
 import { sanitizeQuestionForModel } from "./ai/semanticValidationHelper.js";
+import { detectLanguageStyle, localizedFallback } from "./ai/languageMirroring.js";
 import { sanitizeCitationMarkers } from "./ai/citationUtils.js";
 import { defaultCaloyRuntimeConfig } from "./CaloyRuntimeConfigService.js";
 import { isAiUnitTestRuntime } from "./AiUsageTelemetryService.js";
-
-const DEFAULT_FALLBACK_TEXT =
-  "I don't have enough verified TESTIMONIUM information to confirm that. Please contact your parish office for assistance.";
 
 const CHATBOT_REQUEST_DEADLINE_MS = 25000;
 
@@ -133,6 +131,7 @@ export class ChatbotService {
     conversationContext = null,
   }) {
     const startTime = Date.now();
+    const contextKey = sessionId && userId ? `${userId}:${sessionId}` : sessionId;
 
     // Section 16 & 21: Resolve ONE immutable effective runtime configuration snapshot at request start
     const configSnapshot = this.runtimeConfigService
@@ -182,46 +181,58 @@ export class ChatbotService {
       throw err;
     }
 
-    // 3. Zero-cost optimization ONLY for unambiguous, trivial single-purpose greetings/thanks
-    // NOTE: Runs BEFORE validateParish so greetings work even if selectedParishId in storage is stale or invalid!
-    const trivialSocial = detectTrivialSocial(normalizedQuestion);
+    const requestContext = this.contextManager.getContext(contextKey, conversationContext);
+    this.contextManager.updateContext(contextKey, { ...requestContext, languageStyle: detectLanguageStyle(normalizedQuestion) || requestContext.languageStyle, turnCount: requestContext.turnCount });
+    const consumeQuota = async (allowFallback = false) => {
+      if (!this.aiQuotaTracker) return true;
+      const limits = configSnapshot.runtimeOverridePresent ? { tenMinuteMax: configSnapshot.aiTenMinuteMax, dailyMax: configSnapshot.aiDailyMax } : {};
+      const check = this.aiQuotaTracker.consume(userId || sessionId || "anonymous", limits);
+      if (!check.allowed) {
+        if (allowFallback) return false;
+        const err = new Error(check.message);
+        Object.assign(err, { statusCode: 429, code: check.code || "CHATBOT_AI_LIMIT_REACHED", retryAfter: check.retryAfter });
+        await this.logRepository.logQuery({ userId, sessionId, question: normalizedQuestion, fallback: true, fallbackReason: err.code, responseType: "FALLBACK", traceId, latencyMs: Date.now() - startTime });
+        throw err;
+      }
+      return true;
+    };
+    const answerSocial = async (intent, context, allowComposer = true) => {
+      const priorReplies = this.contextManager.getSocialReplies?.(contextKey) || [];
+      let fallbackAnswer = localizedFallback(intent, normalizedQuestion, context.languageStyle);
+      if ((detectLanguageStyle(normalizedQuestion) || context.languageStyle || "ENGLISH") === "ENGLISH" && ["WHO_ARE_YOU", "HOW_ARE_YOU", "CAPABILITIES", "OUT_OF_SCOPE_CASUAL"].includes(intent)) fallbackAnswer = SOCIAL_RESPONSES[intent];
+      let answer = fallbackAnswer;
+      const composer = this.responseComposer || this.getResponseComposer(requestGenerationModel);
+      if (allowComposer && composer && Date.now() + 3000 <= requestDeadline) {
+        try {
+          const result = await composer.compose({
+            responseType: intent, structuredFacts: null,
+            conversationContext: { ...context, recentSocialReplies: priorReplies },
+            capabilityHints: [TOOL_IDS.GET_ACTIVE_PARISHES, TOOL_IDS.GET_PARISH_DOCUMENTS, TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY],
+            userMessage: normalizedQuestion, fallbackAnswer, traceId, signal: rootSignal,
+          });
+          answer = result?.answer || fallbackAnswer;
+        } catch { answer = fallbackAnswer; }
+      }
+      if (rootSignal.aborted) answer = fallbackAnswer;
+      this.contextManager.rememberSocialReply?.(contextKey, answer);
+      const updatedCtx = this.contextManager.updateContext(contextKey, { ...context, languageStyle: detectLanguageStyle(normalizedQuestion) || context.languageStyle, lastResponseType: "SOCIAL", turnCount: context.turnCount + 1 });
+      await this.logRepository.logQuery({ userId, sessionId, selectedParishId: null, question: normalizedQuestion, response: answer, fallback: false, category: "SOCIAL", responseType: "SOCIAL", traceId, latencyMs: Date.now() - startTime });
+      return { answer, fallback: false, fallbackReason: null, sessionId, category: "SOCIAL", responseType: "SOCIAL", sources: [], conversationContext: updatedCtx };
+    };
+    // Standalone social messages skip routing, but use the personality composer.
+    const trivialSocial = !structuredClarification && (detectTrivialSocial(normalizedQuestion) || detectSocialIntent(normalizedQuestion));
     if (trivialSocial) {
-      const updatedCtx = this.contextManager.updateContext(sessionId, {
-        lastResponseType: "SOCIAL",
-      });
-
-      await this.logRepository.logQuery({
-        userId,
-        sessionId,
-        selectedParishId: null,
-        question: normalizedQuestion,
-        response: trivialSocial.answer,
-        fallback: false,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        traceId,
-        latencyMs: Date.now() - startTime,
-      });
-
-      return {
-        answer: trivialSocial.answer,
-        fallback: false,
-        fallbackReason: null,
-        sessionId,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        sources: [],
-        conversationContext: updatedCtx,
-      };
+      const allowed = await consumeQuota(true);
+      return await answerSocial(trivialSocial.intent, this.contextManager.getContext(contextKey), allowed);
     }
 
     // 4. Validate optional parish for operational routes
     const parish = await this.validateParish(selectedParishId);
     const effectiveParishId = parish ? parish.id : null;
     const buildDeadlineFallbackResponse = async (fallbackContext = null) => {
-      const resolvedContext = fallbackContext || this.contextManager.getContext(sessionId, conversationContext);
+      const resolvedContext = fallbackContext || this.contextManager.getContext(contextKey, conversationContext);
       const payload = {
-        answer: DEFAULT_FALLBACK_TEXT,
+        answer: localizedFallback("EVIDENCE", normalizedQuestion, requestContext.languageStyle),
         fallback: true,
         fallbackReason: "DEADLINE_EXHAUSTED",
         responseType: "FALLBACK",
@@ -269,7 +280,7 @@ export class ChatbotService {
       (structuredClarification.toolId || structuredClarification.originalIntent) &&
       this.liveToolRouter
     ) {
-      const safeContext = this.contextManager.getContext(sessionId, conversationContext);
+      const safeContext = this.contextManager.getContext(contextKey, conversationContext);
       const liveResult = await this.liveToolRouter.validateAndExecute({
         structuredClarification,
         normalizedQuestion,
@@ -286,13 +297,14 @@ export class ChatbotService {
         if (rootSignal.aborted) return buildDeadlineFallbackResponse(safeContext);
         let updatedCtx = safeContext;
         if (liveResult.responseType === "LIVE_DATA") {
-          updatedCtx = this.contextManager.updateContext(sessionId, {
+          updatedCtx = this.contextManager.updateContext(contextKey, {
             lastIntent: liveResult.executedParams?.intentId || structuredClarification.toolId || structuredClarification.originalIntent,
             lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
             lastParishName: liveResult.executedParams?.parishName || null,
             lastDocumentType: liveResult.executedParams?.documentType || null,
             lastScheduleEvent: liveResult.executedParams?.eventType || null,
             lastDatePhrase: liveResult.executedParams?.date || null,
+            lastEndDate: liveResult.executedParams?.endDate || null,
             lastTimePhrase: liveResult.executedParams?.timeSlot || null,
             lastPriestName: liveResult.executedParams?.priestName || null,
             lastPriestId: liveResult.executedParams?.priestId || null,
@@ -303,13 +315,14 @@ export class ChatbotService {
             pendingCollected: null,
           });
         } else if (liveResult.responseType === "CLARIFICATION") {
-          updatedCtx = this.contextManager.updateContext(sessionId, {
+          updatedCtx = this.contextManager.updateContext(contextKey, {
             lastIntent: liveResult.structuredClarification?.toolId || structuredClarification.toolId || structuredClarification.originalIntent,
             lastParishId: liveResult.structuredClarification?.collected?.parishId || effectiveParishId,
             lastParishName: liveResult.structuredClarification?.collected?.parishName || safeContext.lastParishName || null,
             lastDocumentType: liveResult.structuredClarification?.collected?.documentType || null,
             lastScheduleEvent: liveResult.structuredClarification?.collected?.eventType || null,
             lastDatePhrase: liveResult.structuredClarification?.collected?.date || null,
+            lastEndDate: liveResult.structuredClarification?.collected?.endDate || null,
             lastTimePhrase: liveResult.structuredClarification?.collected?.timeSlot || null,
             lastPriestName: liveResult.structuredClarification?.collected?.priestName || null,
             lastPriestId: liveResult.structuredClarification?.collected?.priestId || null,
@@ -320,13 +333,14 @@ export class ChatbotService {
             pendingCollected: liveResult.structuredClarification?.collected || {},
           });
         } else {
-          updatedCtx = this.contextManager.updateContext(sessionId, {
+          updatedCtx = this.contextManager.updateContext(contextKey, {
             lastIntent: liveResult.executedParams?.intentId || structuredClarification.toolId || structuredClarification.originalIntent,
             lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
             lastParishName: liveResult.executedParams?.parishName || null,
             lastDocumentType: liveResult.executedParams?.documentType || null,
             lastScheduleEvent: liveResult.executedParams?.eventType || null,
             lastDatePhrase: liveResult.executedParams?.date || null,
+            lastEndDate: liveResult.executedParams?.endDate || null,
             lastTimePhrase: liveResult.executedParams?.timeSlot || null,
             lastPriestName: liveResult.executedParams?.priestName || null,
             lastPriestId: liveResult.executedParams?.priestId || null,
@@ -359,7 +373,7 @@ export class ChatbotService {
     }
 
     // 6. Safe Conversational Context
-    const safeContext = this.contextManager.getContext(sessionId, conversationContext);
+    const safeContext = this.contextManager.getContext(contextKey, conversationContext);
     if (structuredClarification && (structuredClarification.toolId || structuredClarification.originalIntent)) {
       safeContext.pendingClarificationIntent = structuredClarification.toolId || structuredClarification.originalIntent;
       safeContext.pendingMissingParam = structuredClarification.missing || structuredClarification.nextRequired || null;
@@ -369,36 +383,7 @@ export class ChatbotService {
     // 7. Sensitive Message Sanitization (extract tracking numbers locally before model call)
     const sanitizedQuestion = sanitizeQuestionForModel(normalizedQuestion);
 
-    // 8. AI Quota Check (Semantic Router Gemini call IS an AI call!)
-    if (this.aiQuotaTracker) {
-      const quotaKey = userId || sessionId || "anonymous";
-      const quotaLimits = configSnapshot.runtimeOverridePresent ? {
-        tenMinuteMax: configSnapshot.aiTenMinuteMax,
-        dailyMax: configSnapshot.aiDailyMax,
-      } : {};
-      const quotaCheck = this.aiQuotaTracker.consume(quotaKey, quotaLimits);
-      if (!quotaCheck.allowed) {
-        const safeErr = new Error(quotaCheck.message);
-        safeErr.statusCode = 429;
-        safeErr.code = quotaCheck.code || "CHATBOT_AI_LIMIT_REACHED";
-        safeErr.retryAfter = quotaCheck.retryAfter;
-
-        await this.logRepository.logQuery({
-          userId,
-          sessionId,
-          selectedParishId: effectiveParishId,
-          question: normalizedQuestion,
-          fallback: true,
-          fallbackReason: safeErr.code,
-          responseType: "FALLBACK",
-          traceId,
-          latencyMs: Date.now() - startTime,
-          errorCategory: safeErr.code,
-        });
-
-        throw safeErr;
-      }
-    }
+    await consumeQuota();
 
     // 9. Semantic Interpretation Layer (Gemini gemini-3.5-flash-lite)
     let interpretation;
@@ -428,154 +413,21 @@ export class ChatbotService {
       interpretation.intent = socialCheck.intent;
     }
 
-    // 10A. SOCIAL
-    if (interpretation.route === "SOCIAL") {
-      const socialIntent = interpretation.intent || socialCheck?.intent;
-
-      let answer = SOCIAL_RESPONSES.GREETING;
-      if (socialIntent === "THANKS") {
-        answer = SOCIAL_RESPONSES.THANKS;
-      } else if (socialIntent === "DECLINE_OR_CLOSE") {
-        answer = SOCIAL_RESPONSES.DECLINE_OR_CLOSE;
-      } else if (socialIntent === "GOODBYE") {
-        answer = SOCIAL_RESPONSES.GOODBYE;
-      } else if (socialIntent === "WHO_ARE_YOU" || socialIntent === "HOW_ARE_YOU") {
-        const defaultAnswer = socialIntent === "WHO_ARE_YOU"
-          ? SOCIAL_RESPONSES.WHO_ARE_YOU
-          : SOCIAL_RESPONSES.HOW_ARE_YOU;
-
-        const composer = this.responseComposer || this.getResponseComposer(requestGenerationModel);
-        const hasComposerBudget = Date.now() + 3000 <= requestDeadline;
-        if (composer && hasComposerBudget) {
-          try {
-            const compResult = await composer.compose({
-              responseType: socialIntent,
-              structuredFacts: null,
-              conversationContext: safeContext,
-              capabilityHints: [
-                TOOL_IDS.GET_ACTIVE_PARISHES,
-                TOOL_IDS.GET_PARISH_DOCUMENTS,
-                TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY,
-              ],
-              userMessage: normalizedQuestion,
-              fallbackAnswer: defaultAnswer,
-              traceId,
-              signal: rootSignal,
-            });
-            answer = compResult.answer || defaultAnswer;
-          } catch (compErr) {
-            console.warn(`[ChatbotService] Personality composer error (${socialIntent}), falling back: ${compErr.message}`);
-            answer = defaultAnswer;
-          }
-        } else {
-          answer = defaultAnswer;
-        }
-      }
-
-      if (rootSignal.aborted) return buildDeadlineFallbackResponse(safeContext);
-
-      const updatedCtx = this.contextManager.updateContext(sessionId, {
-        lastResponseType: "SOCIAL",
-      });
-
-      await this.logRepository.logQuery({
-        userId,
-        sessionId,
-        selectedParishId: null,
-        question: normalizedQuestion,
-        response: answer,
-        fallback: false,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        traceId,
-        latencyMs: Date.now() - startTime,
-      });
-
-      return {
-        answer,
-        fallback: false,
-        fallbackReason: null,
-        sessionId,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        sources: [],
-        conversationContext: updatedCtx,
-      };
-    }
-
-    // 10B. CAPABILITIES
-    if (interpretation.route === "CAPABILITIES") {
-      const answer = SOCIAL_RESPONSES.CAPABILITIES;
-      const updatedCtx = this.contextManager.updateContext(sessionId, {
-        lastResponseType: "SOCIAL",
-      });
-
-      await this.logRepository.logQuery({
-        userId,
-        sessionId,
-        selectedParishId: null,
-        question: normalizedQuestion,
-        response: answer,
-        fallback: false,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        traceId,
-        latencyMs: Date.now() - startTime,
-      });
-
-      return {
-        answer,
-        fallback: false,
-        fallbackReason: null,
-        sessionId,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        sources: [],
-        conversationContext: updatedCtx,
-      };
-    }
-
-    // 10C. OUT_OF_SCOPE
-    if (interpretation.route === "OUT_OF_SCOPE") {
-      const answer = SOCIAL_RESPONSES.OUT_OF_SCOPE_CASUAL;
-      const updatedCtx = this.contextManager.updateContext(sessionId, {
-        lastResponseType: "SOCIAL",
-      });
-
-      await this.logRepository.logQuery({
-        userId,
-        sessionId,
-        selectedParishId: null,
-        question: normalizedQuestion,
-        response: answer,
-        fallback: false,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        traceId,
-        latencyMs: Date.now() - startTime,
-      });
-
-      return {
-        answer,
-        fallback: false,
-        fallbackReason: null,
-        sessionId,
-        category: "SOCIAL",
-        responseType: "SOCIAL",
-        sources: [],
-        conversationContext: updatedCtx,
-      };
+    if (["SOCIAL", "CAPABILITIES", "OUT_OF_SCOPE"].includes(interpretation.route)) {
+      const intent = interpretation.route === "CAPABILITIES" ? "CAPABILITIES" : interpretation.route === "OUT_OF_SCOPE" ? "OUT_OF_SCOPE_CASUAL" : interpretation.intent || socialCheck?.intent || "CASUAL";
+      return await answerSocial(intent, safeContext);
     }
 
     // 10D. LIVE_TOOL
     if (interpretation.route === "LIVE_TOOL" && this.liveToolRouter) {
       // If user started a NEW_TOPIC, clear stale scheduling/intent context while preserving stable parish context
-      if (interpretation.pendingRelation === "NEW_TOPIC") {
+      if (interpretation.pendingRelation === "NEW_TOPIC" || (!interpretation.usesPreviousContext && interpretation.pendingRelation !== "ANSWER_PENDING")) {
         safeContext.pendingClarificationIntent = null;
         safeContext.pendingMissingParam = null;
         safeContext.pendingCollected = null;
         safeContext.lastScheduleEvent = null;
         safeContext.lastDatePhrase = null;
+        safeContext.lastEndDate = null;
         safeContext.lastTimePhrase = null;
         safeContext.lastPriestName = null;
         safeContext.lastPriestId = null;
@@ -604,7 +456,7 @@ export class ChatbotService {
         selectedParishId: effectiveParishId,
         userId,
         conversationContext: safeContext,
-        structuredClarification: structuredClarification || (safeContext.pendingClarificationIntent ? { toolId: safeContext.pendingClarificationIntent, collected: safeContext.pendingCollected } : null),
+        structuredClarification: structuredClarification || (interpretation.pendingRelation === "ANSWER_PENDING" && safeContext.pendingClarificationIntent ? { toolId: safeContext.pendingClarificationIntent, collected: safeContext.pendingCollected } : null),
         deadline: requestDeadline,
         generationModel: requestGenerationModel,
         traceId,
@@ -615,13 +467,14 @@ export class ChatbotService {
         if (rootSignal.aborted) return buildDeadlineFallbackResponse(safeContext);
         let updatedCtx = safeContext;
         if (liveResult.responseType === "LIVE_DATA") {
-          updatedCtx = this.contextManager.updateContext(sessionId, {
+          updatedCtx = this.contextManager.updateContext(contextKey, {
             lastIntent: interpretation.intent,
             lastParishId: liveResult.executedParams?.parishId || effectiveParishId,
             lastParishName: liveResult.executedParams?.parishName || null,
             lastDocumentType: liveResult.executedParams?.documentType || null,
             lastScheduleEvent: liveResult.executedParams?.eventType || null,
             lastDatePhrase: liveResult.executedParams?.date || null,
+            lastEndDate: liveResult.executedParams?.endDate || null,
             lastTimePhrase: liveResult.executedParams?.timeSlot || null,
             lastPriestName: liveResult.executedParams?.priestName || null,
             lastPriestId: liveResult.executedParams?.priestId || null,
@@ -632,13 +485,14 @@ export class ChatbotService {
             pendingCollected: null,
           });
         } else if (liveResult.responseType === "CLARIFICATION") {
-          updatedCtx = this.contextManager.updateContext(sessionId, {
+          updatedCtx = this.contextManager.updateContext(contextKey, {
             lastIntent: liveResult.structuredClarification?.toolId || interpretation.intent,
             lastParishId: liveResult.structuredClarification?.collected?.parishId || effectiveParishId,
             lastParishName: liveResult.structuredClarification?.collected?.parishName || safeContext.lastParishName || null,
             lastDocumentType: liveResult.structuredClarification?.collected?.documentType || null,
             lastScheduleEvent: liveResult.structuredClarification?.collected?.eventType || null,
             lastDatePhrase: liveResult.structuredClarification?.collected?.date || null,
+            lastEndDate: liveResult.structuredClarification?.collected?.endDate || null,
             lastTimePhrase: liveResult.structuredClarification?.collected?.timeSlot || null,
             lastPriestName: liveResult.structuredClarification?.collected?.priestName || null,
             lastPriestId: liveResult.structuredClarification?.collected?.priestId || null,
@@ -675,14 +529,19 @@ export class ChatbotService {
 
     // 10E. RAG Pipeline (Procedural and general platform knowledge)
     // Explicit topic change: previous scheduling/document intent is cleared
-    const updatedCtx = this.contextManager.updateContext(sessionId, {
+    const updatedCtx = this.contextManager.updateContext(contextKey, {
       lastIntent: null,
       lastScheduleEvent: null,
       lastDatePhrase: null,
+      lastEndDate: null,
       lastTimePhrase: null,
       lastPriestName: null,
       lastPriestId: null,
       lastResponseType: "RAG",
+      lastDocumentType: null,
+      pendingClarificationIntent: null,
+      pendingMissingParam: null,
+      pendingCollected: null,
     });
 
     // Check remaining deadline budget before RAG retrieval
@@ -746,7 +605,7 @@ export class ChatbotService {
 
     // Evidence Gate: if no evidence or top candidate fails minimum similarity, DO NOT call LLM
     if (!hasSufficientEvidence || candidates.length === 0) {
-      let fallbackAnswer = DEFAULT_FALLBACK_TEXT;
+      let fallbackAnswer = localizedFallback("EVIDENCE", normalizedQuestion, safeContext.languageStyle);
       if (parish) {
         const contactParts = [];
         if (parish.parishName) contactParts.push(parish.parishName);
@@ -856,7 +715,7 @@ export class ChatbotService {
 
     // Helper for parish-formatted safe fallback
     const buildFallbackResponse = (reason = "INSUFFICIENT_EVIDENCE") => {
-      let fallbackAnswer = DEFAULT_FALLBACK_TEXT;
+      let fallbackAnswer = localizedFallback("EVIDENCE", normalizedQuestion, safeContext.languageStyle);
       if (parish) {
         const contactParts = [];
         if (parish.parishName) contactParts.push(parish.parishName);

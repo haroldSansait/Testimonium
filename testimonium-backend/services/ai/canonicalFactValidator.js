@@ -196,6 +196,37 @@ export function validateFactPreservation({
     return true;
   }
 
+  // New calendar and assignment facts remain backend decisions. Require a
+  // separate identifiable row per occurrence so one priest's acceptance cannot
+  // be applied to another occurrence by a fluent paraphrase.
+  if (Array.isArray(structuredFacts.massSchedules)) {
+    const rows = composedAnswer.split(/\n+/);
+    for (const mass of structuredFacts.massSchedules) {
+      const row = rows.find(text => text.includes(mass.timeSlot) && (!mass.date || text.includes(mass.date)));
+      if (!row) return false;
+      if (mass.priestName && !row.includes(mass.priestName)) return false;
+      const status = mass.assignmentStatus;
+      if (status && !new RegExp(`\\b${status}\\b`, "i").test(row)) return false;
+      if (!mass.priestName && /\b(?:Father|Fr\.)\s+\p{L}/iu.test(row)) return false;
+      const positiveAssertions = row.replace(/\b(?:not|never)\s+(?:yet\s+|officially\s+)?(?:confirmed|accepted)\b|\b(?:hindi|indi|dili)\s+pa\s+kumpirmado\b/gi, "");
+      if (status !== "ACCEPTED" && /\b(?:confirmed|accepted|kumpirmado)\b/i.test(positiveAssertions)) return false;
+    }
+  }
+  if (structuredFacts.currentClock && !structuredFacts.officeDays) {
+    if (!composedAnswer.includes(structuredFacts.currentClock.date)) return false;
+    const weekdays = composedAnswer.match(/\b(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/gi) || [];
+    if (weekdays.some(day => day.toLowerCase() !== structuredFacts.currentClock.weekday.toLowerCase())) return false;
+  }
+  if (Array.isArray(structuredFacts.officeDays)) {
+    for (const day of structuredFacts.officeDays) {
+      const row = composedAnswer.split(/\n+/).find(text => text.includes(day.date));
+      if (!row) return false;
+      if (!new RegExp(`\\b${day.status}\\b`, "i").test(row)) return false;
+      if (day.opensAt && (!row.includes(day.opensAt) || !row.includes(day.closesAt))) return false;
+      if (day.currentStatus !== "NOT_APPLICABLE" && day.currentStatus !== "UNKNOWN" && !new RegExp(`\\b${day.currentStatus}\\b`, "i").test(row)) return false;
+    }
+  }
+
   // 2. Currency & Numeric Amounts
   // Protect against: changed amounts, invented fees, alternate currencies (USD, EUR, etc.)
   const alternateCurrencies = composedAnswer.match(/(?:\b(?:usd|eur|gbp|aud|cad)\b|[\$€£])\s*\d+/gi);
@@ -287,6 +318,9 @@ export function validateFactPreservation({
 
   // 5. Priest Identity Preservation
   const approvedPriests = new Set();
+  for (const mass of structuredFacts.massSchedules || []) {
+    if (mass.priestName) approvedPriests.add(mass.priestName.toLowerCase().replace(/^(rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").trim());
+  }
   if (structuredFacts.priestName && typeof structuredFacts.priestName === "string") {
     approvedPriests.add(structuredFacts.priestName.toLowerCase().replace(/^(rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").trim());
   }

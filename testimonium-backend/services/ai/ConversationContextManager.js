@@ -15,16 +15,19 @@ export class ConversationContextManager {
     this.ttlMs = ttlMs;
     // Map<sessionId, { context: object, updatedAt: number }>
     this.sessions = new Map();
+    this.socialReplies = new Map();
   }
 
   getEmptyContext() {
     return {
+      languageStyle: null,
       lastIntent: null,
       lastParishId: null,
       lastParishName: null,
       lastDocumentType: null,
       lastScheduleEvent: null,
       lastDatePhrase: null,
+      lastEndDate: null,
       lastTimePhrase: null,
       lastPriestName: null,
       lastPriestId: null,
@@ -59,11 +62,13 @@ export class ConversationContextManager {
       : (raw.lastIntent || raw.lastResponseType ? 1 : 0);
 
     return {
+      languageStyle: ["ENGLISH", "FILIPINO", "CEBUANO", "HILIGAYNON"].includes(raw.languageStyle) ? raw.languageStyle : null,
       lastIntent: typeof raw.lastIntent === "string" && raw.lastIntent.trim() ? raw.lastIntent.trim() : null,
       lastParishId: Number.isInteger(parishId) && parishId > 0 ? parishId : null,
       lastParishName: typeof raw.lastParishName === "string" && raw.lastParishName.trim() ? raw.lastParishName.trim() : null,
       lastDocumentType: typeof raw.lastDocumentType === "string" && raw.lastDocumentType.trim() ? raw.lastDocumentType.trim() : null,
       lastScheduleEvent: typeof raw.lastScheduleEvent === "string" && raw.lastScheduleEvent.trim() ? raw.lastScheduleEvent.trim() : null,
+      lastEndDate: typeof raw.lastEndDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.lastEndDate) ? raw.lastEndDate : null,
       lastDatePhrase: typeof raw.lastDatePhrase === "string" && raw.lastDatePhrase.trim() ? raw.lastDatePhrase.trim() : null,
       lastTimePhrase: typeof raw.lastTimePhrase === "string" && raw.lastTimePhrase.trim() ? raw.lastTimePhrase.trim() : null,
       lastPriestName: typeof raw.lastPriestName === "string" && raw.lastPriestName.trim() ? raw.lastPriestName.trim() : null,
@@ -97,6 +102,7 @@ export class ConversationContextManager {
 
     if (Date.now() - entry.updatedAt > this.ttlMs) {
       this.sessions.delete(sessionId);
+      this.socialReplies.delete(sessionId);
       return this.getEmptyContext();
     }
 
@@ -123,11 +129,23 @@ export class ConversationContextManager {
   }
 
   /**
-   * Clears context for a session (e.g. on logout or explicit reset).
+   * Recent social phrasing stays in expiring server memory, outside client DTOs.
    */
+  getSocialReplies(sessionId) {
+    const entry = this.socialReplies.get(sessionId);
+    if (!entry || Date.now() - entry.updatedAt > this.ttlMs) { this.socialReplies.delete(sessionId); return []; }
+    return [...entry.replies];
+  }
+
+  rememberSocialReply(sessionId, answer) {
+    if (!sessionId) return;
+    this.socialReplies.set(sessionId, { replies: [...this.getSocialReplies(sessionId), String(answer).slice(0, 600)].slice(-3), updatedAt: Date.now() });
+  }
+
   clearSession(sessionId) {
     if (sessionId && typeof sessionId === "string") {
       this.sessions.delete(sessionId);
+      this.socialReplies.delete(sessionId);
     }
   }
 
@@ -136,6 +154,7 @@ export class ConversationContextManager {
    */
   pruneExpired() {
     const now = Date.now();
+    for (const [key, entry] of this.socialReplies.entries()) { if (now - entry.updatedAt > this.ttlMs) this.socialReplies.delete(key); }
     for (const [key, entry] of this.sessions.entries()) {
       if (now - entry.updatedAt > this.ttlMs) {
         this.sessions.delete(key);

@@ -1,5 +1,6 @@
 import { CANONICAL_DOCUMENT_TYPES, normalizeDocumentType } from "../../config/documents.js";
 import { getManilaDateString, isValidStrictManilaDate } from "../ConflictHelper.js";
+import { addCalendarDays } from "./CaloyCalendar.js";
 import { normalizeTimeSlotString } from "../BookingValidator.js";
 
 export const TRACKING_NUMBER_REGEX = /\b(SR[-_ ]?\d{4}[-_ ]?\d{6})\b/i;
@@ -299,7 +300,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
   const dateWords = lower.match(/[a-z]+/g) || [];
 
   // 1. Direct ISO match: YYYY-MM-DD
-  const isoMatch = text.match(/\b(202\d-[01]\d-[0-3]\d)\b/);
+  const isoMatch = text.match(/\b(\d{4}-[01]\d-[0-3]\d)\b/);
   if (isoMatch) {
     const candidate = isoMatch[1];
     if (isValidStrictManilaDate(candidate)) {
@@ -307,31 +308,16 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
     }
   }
 
+  if (isoMatch) return null;
+
   const now = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime()) ? referenceDate : new Date();
   const manilaDateStr = getManilaDateString(now); // YYYY-MM-DD
   const [currentYear, currentMonth, currentDay] = manilaDateStr.split("-").map(Number);
   const manilaToday = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay));
 
-  // 2. "today", "ngayon", "karun"
-  if (
-    dateWords.some((word) => isMinorRelativeDateMisspelling(word, "today")) ||
-    /\b(ngayon|karun)\b/i.test(lower)
-  ) {
-    return manilaDateStr;
-  }
-
-  // 3. "tomorrow", "bukas", "ugma"
-  if (
-    dateWords.some((word) => isMinorRelativeDateMisspelling(word, "tomorrow")) ||
-    /\b(bukas|ugma)\b/i.test(lower)
-  ) {
-    const tomorrow = new Date(manilaToday.getTime() + 24 * 60 * 60 * 1000);
-    return tomorrow.toISOString().slice(0, 10);
-  }
-
   // 4. Absolute natural dates: Month + Day (e.g. "September 17", "Sept 17th", "on September 17", "September 17, 2026")
   const monthDayMatch = lower.match(
-    /(?:on\s+)?\b(january|february|march|april|may|june|july|august|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i
+    /(?:on\s+)?\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i
   );
   if (monthDayMatch) {
     const monthName = monthDayMatch[1].toLowerCase();
@@ -349,7 +335,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
 
   // 5. Absolute natural dates: Day + Month (e.g. "17 September", "17th of September", "17 Sept 2026")
   const dayMonthMatch = lower.match(
-    /(?:on\s+)?\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s+)?(january|february|march|april|may|june|july|august|september|sept|sep|october|oct|november|nov|december|dec)\.?(?:\s*,?\s*(\d{4}))?\b/i
+    /(?:on\s+)?\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s+)?(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?(?:\s*,?\s*(\d{4}))?\b/i
   );
   if (dayMonthMatch) {
     const day = parseInt(dayMonthMatch[1], 10);
@@ -364,6 +350,25 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
       }
     }
   }
+
+  // 2. "today", "ngayon", "karun"
+  if (
+    dateWords.some((word) => isMinorRelativeDateMisspelling(word, "today")) ||
+    /\b(ngayon|karun|karon|subong)\b/i.test(lower)
+  ) {
+    return manilaDateStr;
+  }
+
+  // 3. "tomorrow", "bukas", "ugma"
+  if (
+    dateWords.some((word) => isMinorRelativeDateMisspelling(word, "tomorrow")) ||
+    /\b(bukas|ugma|buwas)\b/i.test(lower)
+  ) {
+    const tomorrow = new Date(manilaToday.getTime() + 24 * 60 * 60 * 1000);
+    return tomorrow.toISOString().slice(0, 10);
+  }
+
+  if (/\b(yesterday|kahapon|kagahapon)\b/i.test(lower)) return addCalendarDays(manilaDateStr, -1);
 
   // 6. Day of the week (e.g. "Saturday", "next Saturday", "on Sunday", "sa lunes")
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -383,7 +388,11 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
     if (lower.includes(name)) {
       const currentDayOfWeek = manilaToday.getUTCDay();
       let diffDays = targetDay - currentDayOfWeek;
-      if (diffDays <= 0) diffDays += 7;
+      if (/\bnext\b/i.test(lower)) {
+        diffDays = -((currentDayOfWeek + 6) % 7) + 7 + ((targetDay + 6) % 7);
+      } else if (/\bthis\b/i.test(lower)) {
+        diffDays = -((currentDayOfWeek + 6) % 7) + ((targetDay + 6) % 7);
+      } else if (diffDays < 0) diffDays += 7;
 
       const targetDate = new Date(manilaToday.getTime() + diffDays * 24 * 60 * 60 * 1000);
       return targetDate.toISOString().slice(0, 10);
@@ -394,7 +403,7 @@ export function resolveManilaDate(datePhrase, referenceDate = new Date()) {
     if (new RegExp(`\\b${localDay}\\b`, "i").test(lower)) {
       const currentDayOfWeek = manilaToday.getUTCDay();
       let diffDays = dayNum - currentDayOfWeek;
-      if (diffDays <= 0) diffDays += 7;
+      if (diffDays < 0) diffDays += 7;
 
       const targetDate = new Date(manilaToday.getTime() + diffDays * 24 * 60 * 60 * 1000);
       return targetDate.toISOString().slice(0, 10);

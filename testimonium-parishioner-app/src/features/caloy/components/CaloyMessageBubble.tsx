@@ -16,6 +16,10 @@ interface CaloyMessageBubbleProps {
   onSelectClarificationOption?: (option: CaloyClarificationOption) => void;
   onRevealComplete?: (messageId: string) => void;
   isInputDisabled?: boolean;
+  parishOptions?: CaloyClarificationOption[];
+  parishesLoading?: boolean;
+  parishesError?: boolean;
+  onRetryParishes?: () => void;
 }
 
 export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
@@ -23,6 +27,10 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
   onSelectClarificationOption,
   onRevealComplete,
   isInputDisabled = false,
+  parishOptions,
+  parishesLoading,
+  parishesError,
+  onRetryParishes,
 }) => {
   const isUser = message.sender === "user";
   const reduceMotion = useReducedMotion();
@@ -153,6 +161,10 @@ export const CaloyMessageBubble: React.FC<CaloyMessageBubbleProps> = ({
             {message.structuredClarification && onSelectClarificationOption && (
               <CaloyClarification
                 clarification={message.structuredClarification}
+                parishOptions={parishOptions}
+                parishesLoading={parishesLoading}
+                parishesError={parishesError}
+                onRetryParishes={onRetryParishes}
                 onSelectOption={onSelectClarificationOption}
                 disabled={isInputDisabled}
               />

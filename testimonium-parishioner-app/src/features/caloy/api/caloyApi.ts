@@ -85,6 +85,8 @@ export function normalizeStructuredClarification(
     normalized.nextRequired = raw.nextRequired.trim();
   }
 
+  if (raw.isButtonSelection === true) normalized.isButtonSelection = true;
+  if (typeof raw.selectedValue === "string" || typeof raw.selectedValue === "number") normalized.selectedValue = raw.selectedValue;
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
@@ -112,7 +114,10 @@ export function normalizeConversationContext(
     "lastDocumentType",
     "lastScheduleEvent",
     "lastDatePhrase",
+    "lastEndDate",
     "lastResponseType",
+    "lastTimePhrase", "lastPriestName", "lastPriestId", "lastVicariateName",
+    "pendingClarificationIntent", "pendingMissingParam", "pendingCollected", "turnCount", "languageStyle",
   ] as const;
 
   const normalized: Record<string, unknown> = {};
@@ -122,7 +127,11 @@ export function normalizeConversationContext(
     const val = raw[key];
     if (val === undefined) continue;
 
-    if (key === "lastParishId") {
+    if (key === "pendingCollected") {
+      if (val === null || (typeof val === "object" && !Array.isArray(val))) { normalized[key] = val; hasValidField = true; }
+    } else if (key === "turnCount") {
+      if (typeof val === "number" && Number.isInteger(val) && val >= 0) { normalized[key] = val; hasValidField = true; }
+    } else if (key === "lastParishId" || key === "lastPriestId") {
       if (val === null) {
         normalized[key] = null;
         hasValidField = true;

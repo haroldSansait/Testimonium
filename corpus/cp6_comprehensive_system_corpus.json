@@ -388,7 +388,7 @@
     },
     {
       "title": "System Boundaries and Live Operational Data Limitations",
-      "sourceText": "Caloy is TESTIMONIUM's virtual assistant designed to provide general procedural guidance, document requirements, and workflow explanations. Caloy does NOT have access to live database records, real-time tracking of individual requests, personal payment statuses, or specific appointment availability slots. Caloy cannot check whether an individual's certificate is ready, confirm whether a payment was approved, or know unrecorded parish office hours. For live tracking updates and real-time questions, parishioners should check their dashboard or contact their parish office directly.",
+      "sourceText": "Caloy combines verified procedural knowledge with registered read-only live tools. Public tools can retrieve parish-specific offerings, configured document fees and requirements, office information, public calendar information and appointment availability. Authenticated private tools can check only the signed-in parishioner's own request status, payment verification status and upcoming schedules.\n\nGeneral Knowledge Base passages do not establish a current payment approval, certificate readiness, office opening status, Mass assignment or appointment vacancy. Use the authorized live lookup for current facts. Caloy cannot guarantee availability, invent unrecorded hours, submit appointments, approve payments, or expose private staff records. If a lookup fails, describe the temporary inability to retrieve data without asserting a negative status.",
       "category": "SYSTEM_LIMITATIONS",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "TESTIMONIUM Architectural Boundaries & Scope",
@@ -396,18 +396,18 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "Caloy provides procedural guidance and explanations of TESTIMONIUM rules. Caloy has no access to live database tracking, individual request statuses, or real-time appointment slot availability.",
+          "content": "Caloy combines verified procedural knowledge with registered read-only live tools. Public tools can retrieve parish-specific offerings, configured document fees and requirements, office information, public calendar information and appointment availability. Authenticated private tools can check only the signed-in parishioner's own request status, payment verification status and upcoming schedules.",
           "chunkOrder": 0
         },
         {
-          "content": "Caloy cannot look up personal payment verification outcomes, check if a specific certificate is ready, or guarantee priest schedules. Parishioners should check their dashboard or contact their parish office for live updates.",
+          "content": "General Knowledge Base passages do not establish a current payment approval, certificate readiness, office opening status, Mass assignment or appointment vacancy. Use the authorized live lookup for current facts. Caloy cannot guarantee availability, invent unrecorded hours, submit appointments, approve payments, or expose private staff records. If a lookup fails, describe the temporary inability to retrieve data without asserting a negative status.",
           "chunkOrder": 1
         }
       ]
     },
     {
       "title": "Data Privacy Boundaries and Confidentiality Protections",
-      "sourceText": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy never accesses, reads, or exposes personal identification documents, payment screenshots, or private user records.",
+      "sourceText": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy's authenticated read-only tools return only safe status summaries for the signed-in parishioner's own requests, payment verification and upcoming appointments. Caloy never reads or exposes personal identification images, payment screenshots, internal staff records, or another parishioner's private records.",
       "category": "PRIVACY",
       "sourceType": "SYSTEM_GUIDE",
       "sourceReference": "TESTIMONIUM Data Privacy Policy & Security Architecture",
@@ -415,12 +415,8 @@
       "parishId": null,
       "chunks": [
         {
-          "content": "Uploaded identification documents, authorization letters, and payment receipts are stored securely and accessible only to the applicant and authorized parish office staff handling the transaction.",
+          "content": "TESTIMONIUM protects parishioner privacy in strict compliance with privacy standards and sacramental confidentiality. Uploaded government IDs, Authorization Letters, payment receipts, and contact details are encrypted in secure storage and accessible solely to the submitting parishioner and authorized parish office staff handling the transaction. Sacramental records are confidential church archives released only to the record owner, parents of minors, or designated representatives. Caloy's authenticated read-only tools return only safe status summaries for the signed-in parishioner's own requests, payment verification and upcoming appointments. Caloy never reads or exposes personal identification images, payment screenshots, internal staff records, or another parishioner's private records.",
           "chunkOrder": 0
-        },
-        {
-          "content": "Sacramental records are confidential archives released only to authorized individuals. Caloy has no access to uploaded personal documents, payment proofs, or private parishioner files.",
-          "chunkOrder": 1
         }
       ]
     },

@@ -239,14 +239,16 @@ describe("Caloy Mobile - Normalization Boundaries & Backend Contract", () => {
         collected: { docType: "BAPTISM" },
         missing: "parishId",
         nextRequired: "parishId",
+        selectedValue: "1",
+        isButtonSelection: true,
       });
 
       // Verify client-only fields are stripped
       expect(normalized?.id).toBeUndefined();
       expect(normalized?.clarificationType).toBeUndefined();
       expect(normalized?.clarificationOptions).toBeUndefined();
-      expect(normalized?.selectedValue).toBeUndefined();
-      expect(normalized?.isButtonSelection).toBeUndefined();
+      expect(normalized?.selectedValue).toBe("1");
+      expect(normalized?.isButtonSelection).toBe(true);
     });
 
     it("returns null for non-object, empty, or undefined input", () => {

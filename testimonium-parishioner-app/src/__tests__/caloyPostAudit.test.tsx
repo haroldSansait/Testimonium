@@ -7,6 +7,7 @@ import {
   loadCaloyState,
   saveCaloyState,
 } from "@/features/caloy/caloyStorage";
+import { CaloyClarification } from "@/features/caloy/components/CaloyClarification";
 import { CaloyMessageBubble } from "@/features/caloy/components/CaloyMessageBubble";
 import { useChatSession } from "@/features/caloy/hooks/useChatSession";
 import type { CaloyMessage, CaloyQueryResponse } from "@/features/caloy/types";
@@ -216,7 +217,7 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
 
     // Transition directly to User B
     (useAuth as jest.Mock).mockReturnValue({ user: { uid: "user_B" } });
-    rerender({});
+    await rerender({});
 
     await waitFor(() => {
       expect(result.current.isRestored).toBe(true);
@@ -317,7 +318,7 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
       expect(result.current.isRestored).toBe(true);
     });
 
-    act(() => {
+    await act(async () => {
       void result.current.sendMessage("Check abort signal");
     });
 
@@ -349,5 +350,51 @@ describe("Caloy Mobile Post-Audit Corrections Suite (H-04, M-02, M-03, M-04, M-0
     const callArg = (apiClient.request as jest.Mock).mock.calls[0][0];
     expect(callArg.timeout).toBe(32_000);
     expect(callArg.timeout).toBeGreaterThan(25_000); // Backend deadline is 25_000ms
+  });
+});
+
+
+describe("Caloy parish clarification reliability", () => {
+  beforeEach(async () => { await AsyncStorage.clear(); jest.clearAllMocks(); });
+
+  it("shows and searches directory parishes when backend options are absent", async () => {
+    const select = jest.fn();
+    const ui = await render(<CaloyClarification clarification={{ clarificationType: "PARISH", missing: "parishId" }} parishOptions={[{ label: "St. Joseph Parish", value: "1" }, { label: "San Roque Parish", value: "2" }]} onSelectOption={select} />);
+    expect(ui.getByText("St. Joseph Parish")).toBeTruthy();
+    await fireEvent.changeText(ui.getByLabelText("Search parishes"), "roque");
+    expect(ui.queryByText("St. Joseph Parish")).toBeNull();
+    await fireEvent.press(ui.getByText("San Roque Parish"));
+    expect(select).toHaveBeenCalledWith({ label: "San Roque Parish", value: "2" });
+  });
+
+  it("handles loading, directory errors with retry and empty search results", async () => {
+    const retry = jest.fn();
+    const ui = await render(<CaloyClarification clarification={{ clarificationType: "PARISH" }} parishesLoading onSelectOption={jest.fn()} />);
+    expect(ui.getByLabelText("Loading parishes")).toBeTruthy();
+    await ui.rerender(<CaloyClarification clarification={{ clarificationType: "PARISH" }} parishesError onRetryParishes={retry} onSelectOption={jest.fn()} />);
+    await fireEvent.press(ui.getByText("Unable to load parishes. Tap to retry."));
+    expect(retry).toHaveBeenCalledTimes(1);
+    await ui.rerender(<CaloyClarification clarification={{ clarificationType: "PARISH" }} parishOptions={[]} onSelectOption={jest.fn()} />);
+    expect(ui.getByText("No active parishes are available. You can type a parish name.")).toBeTruthy();
+  });
+
+  it("resumes the original request with one selector action and retires the old selector", async () => {
+    (useAuth as jest.Mock).mockReturnValue({ user: { uid: "parish_selector_user" } });
+    const clarification = { toolId: "GET_DOCUMENT_FEE", originalIntent: "GET_DOCUMENT_FEE", originalQuestion: "How much is a Baptismal Certificate?", missing: "parishId", clarificationType: "PARISH", collected: { documentType: "BAPTISMAL_CERTIFICATE" } };
+    (apiClient.request as jest.Mock).mockResolvedValueOnce({ answer: "Which parish?", responseType: "CLARIFICATION", clarificationType: "PARISH", structuredClarification: clarification, sources: [] }).mockResolvedValueOnce({ answer: "The fee is recorded.", responseType: "LIVE_DATA", sources: [], conversationContext: { lastParishId: 1, lastParishName: "St. Joseph Parish" } });
+    const { result } = await renderHook(() => useChatSession());
+    await waitFor(() => expect(result.current.isRestored).toBe(true));
+    await act(async () => { await result.current.sendMessage(clarification.originalQuestion); });
+    await act(async () => {
+      result.current.selectClarificationOption({ label: "St. Joseph Parish", value: "1" });
+      result.current.selectClarificationOption({ label: "St. Joseph Parish", value: "1" });
+    });
+    await waitFor(() => expect(result.current.isTyping).toBe(false));
+    expect(apiClient.request).toHaveBeenCalledTimes(2);
+    const body = (apiClient.request as jest.Mock).mock.calls[1][0].body;
+    expect(body.selectedParishId).toBe(1);
+    expect(body.structuredClarification).toMatchObject({ originalQuestion: clarification.originalQuestion, toolId: "GET_DOCUMENT_FEE", isButtonSelection: true, selectedValue: "1", collected: { documentType: "BAPTISMAL_CERTIFICATE", parishId: 1 } });
+    expect(result.current.selectedParishId).toBe(1);
+    expect(result.current.messages.filter(m => m.structuredClarification)).toHaveLength(0);
   });
 });

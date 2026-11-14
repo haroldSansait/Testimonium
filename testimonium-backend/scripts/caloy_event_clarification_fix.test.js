@@ -257,7 +257,7 @@ test("Caloy Structured Clarification & Event Option Fix Suite", async (t) => {
     assert.equal(step2.structuredClarification?.missing, "eventType");
 
     // Verify date is preserved in context
-    const ctxAfterStep2 = contextManager.getContext(sessionId);
+    const ctxAfterStep2 = contextManager.getContext(`user-test:${sessionId}`);
     assert.equal(ctxAfterStep2.lastDatePhrase, "2026-09-17", "Date must be retained in context after parish selection");
 
     // Step 3: User selects Wake Mass from clarification

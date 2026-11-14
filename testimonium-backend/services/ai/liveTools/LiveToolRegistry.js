@@ -1,3 +1,4 @@
+import { manilaClock, addCalendarDays, resolveOfficeDay } from "../CaloyCalendar.js";
 import { effectiveMassOccurrence, massOverrideRange } from "../../../shared/MassOccurrenceOverride.js";
 import { prisma } from "../../../config/db.js";
 import { TOOL_IDS } from "./liveToolSchemas.js";
@@ -39,8 +40,10 @@ export class LiveToolRegistry {
     prismaClient = prisma,
     scheduleService = new ScheduleService(),
     requestRepository = new ParishionerRequestRepository(),
+    now = () => new Date(),
   } = {}) {
     this.prisma = prismaClient;
+    this.now = now;
     this.scheduleService = scheduleService;
     this.requestRepository = requestRepository;
   }
@@ -478,7 +481,7 @@ export class LiveToolRegistry {
   /**
    * Tool 5: GET_PARISH_OFFICE_INFO
    */
-  async getParishOfficeInfo({ parishId }) {
+  async getParishOfficeInfo({ parishId, date = null, endDate = null }) {
     const pId = Number(parishId);
     if (!pId || !Number.isInteger(pId) || pId <= 0) {
       throw new Error("A valid parish ID is required.");
@@ -507,6 +510,15 @@ export class LiveToolRegistry {
       };
     }
 
+    const now = this.now();
+    const clock = manilaClock(now);
+    const targetDate = date || clock.date;
+    if (!parseStrictManilaDateOnly(targetDate)) throw new Error("Invalid office date");
+    const officeDays = [];
+    const lastDate = endDate && parseStrictManilaDateOnly(endDate) ? endDate : targetDate;
+    for (let day = targetDate; day <= lastDate && officeDays.length < 7; day = addCalendarDays(day, 1)) {
+      officeDays.push(resolveOfficeDay(parish.officeHours, day, now));
+    }
     let hoursText = "Not specified in directory";
     if (parish.officeHours) {
       if (typeof parish.officeHours === "string") {
@@ -517,8 +529,8 @@ export class LiveToolRegistry {
             for (const [day, val] of Object.entries(parsed)) {
               if (val) {
                 if (typeof val === "string") lines.push(`- **${day}**: ${val}`);
-                else if (val.open && val.close) lines.push(`- **${day}**: ${val.open} - ${val.close}`);
                 else if (val.isClosed) lines.push(`- **${day}**: Closed`);
+                else if ((val.openTime || val.open) && (val.closeTime || val.close)) lines.push(`- **${day}**: ${val.openTime || val.open} - ${val.closeTime || val.close}`);
               }
             }
             if (lines.length > 0) hoursText = "\n" + lines.join("\n");
@@ -532,9 +544,15 @@ export class LiveToolRegistry {
       }
     }
 
+    if (parish.officeHours && typeof parish.officeHours === "object") hoursText = JSON.stringify(parish.officeHours);
+    const officeStatusText = officeDays.map(day => {
+      if (day.status === "UNKNOWN") return `**${day.date} (${day.weekday})**: office hours are missing or cannot be interpreted; open/closed status is unknown.`;
+      if (day.status === "CLOSED") return `**${day.date} (${day.weekday})**: the office is closed according to its weekly hours.`;
+      return `**${day.date} (${day.weekday})**: office hours are ${day.opensAt} - ${day.closesAt}.${day.date === clock.date ? ` At ${clock.time} Asia/Manila, it is ${day.currentStatus.toLowerCase()} according to those hours.` : ""}`;
+    }).join("\n");
     const locationText = [parish.address, parish.municipalityCity, parish.province].filter(Boolean).join(", ") || "Diocese of Antique";
 
-    const answer = `Here is the current office information for **${parish.parishName}**:\n\n- **Patron Saint:** ${parish.patronSaint || "N/A"}\n- **Address:** ${locationText}\n- **Office Hours:** ${hoursText}\n- **Contact Number:** ${parish.contactNumber || "Not listed"}\n- **Email:** ${parish.email || "Not listed"}`;
+    const answer = `Here is the current office information for **${parish.parishName}**:\n\n${officeStatusText}\n\n- **Patron Saint:** ${parish.patronSaint || "N/A"}\n- **Address:** ${locationText}\n- **Office Hours:** ${hoursText}\n- **Contact Number:** ${parish.contactNumber || "Not listed"}\n- **Email:** ${parish.email || "Not listed"}`;
 
     const structuredFacts = {
       parishName: parish.parishName,
@@ -543,6 +561,10 @@ export class LiveToolRegistry {
       contactNumber: parish.contactNumber || null,
       email: parish.email || null,
       officeHours: hoursText,
+      currentClock: clock,
+      date: targetDate,
+      endDate: lastDate,
+      officeDays,
     };
 
     return {
@@ -1472,7 +1494,8 @@ export class LiveToolRegistry {
     }
 
     const formattedPriest = formatClergyName(targetPriest.name);
-    const effectiveEvent = eventType || "WEDDING";
+    if (!eventType) throw new Error("An explicit event type is required to check appointment availability.");
+    const effectiveEvent = eventType;
     let parishAvailability;
     try {
       parishAvailability = await this.getClassifiedSlotAvailability(pId, date, effectiveEvent);
@@ -1629,7 +1652,8 @@ export class LiveToolRegistry {
       };
     }
 
-    const effectiveEvent = eventType || "WEDDING";
+    if (!eventType) throw new Error("An explicit event type is required to check appointment availability.");
+    const effectiveEvent = eventType;
     const parishAvailability = await this.getClassifiedSlotAvailability(pId, date, effectiveEvent);
     const parishSlots = Array.isArray(parishAvailability?.slots)
       ? parishAvailability.slots.map((s) => (typeof s === "string" ? s : s.timeSlot)).filter(Boolean)
@@ -1779,7 +1803,7 @@ export class LiveToolRegistry {
         events = await eventService.getEvents(pId, parsedDate.year, parsedDate.month, { publicOnly: true });
       }
     } catch {
-      events = [];
+      throw new Error("Public parish calendar data is unavailable.");
     }
 
     const dateEvents = (events || []).filter((e) => {
@@ -1805,6 +1829,9 @@ export class LiveToolRegistry {
             timeSlot: true,
             label: true,
             layMinisterAssigned: true,
+            assignedPriest: { select: { fullName: true } },
+            assignedPriestId: true,
+            priestResponseStatus: true,
             occurrenceRevision: true,
             occurrenceOverrides: massOverrideRange(parsedDate.databaseDate, parsedDate.databaseDate),
           },
@@ -1821,12 +1848,13 @@ export class LiveToolRegistry {
         });
       }
     } catch {
-      massSchedules = [];
+      throw new Error("Public Mass assignments are unavailable.");
     }
 
     if (dateEvents.length === 0 && massSchedules.length === 0) {
       return {
         answer: `There are no public calendar events scheduled at **${parish.parishName}** on **${date}**.\n\nRegular appointments and sacramental services may still be booked through the scheduling system.`,
+        structuredFacts: { parishName: parish.parishName, date, events: [], massSchedules: [] },
         liveData: { label: "Current TESTIMONIUM Data", asOf: new Date().toISOString(), parishId: pId, publicEvents: [], massSchedules: [] },
       };
     }
@@ -1842,7 +1870,7 @@ export class LiveToolRegistry {
       const labelDisplay = resolveMassDisplayLabel(m);
       const lang = m.language ? ` (${m.language})` : "";
       const loc = m.location ? ` — *${m.location}*` : "";
-      return `- ⛪ **${labelDisplay}**: ${timeDisplay}${lang}${loc}`;
+      return `- ⛪ **${labelDisplay}**: ${timeDisplay}${lang}${loc}. ${this.massAssignmentText(m)} [${this.massAssignmentStatus(m)}]`;
     });
 
     const combinedSections = [];
@@ -1869,6 +1897,9 @@ export class LiveToolRegistry {
         label: resolveMassDisplayLabel(m),
         configuredLabel: m.label || "Holy Mass",
         layMinisterAssigned: Boolean(m.layMinisterAssigned),
+        priestName: m.assignedPriest?.fullName || null,
+        priestResponseStatus: m.priestResponseStatus || null,
+        assignmentStatus: this.massAssignmentStatus(m),
         timeSlot: m.timeSlot || m.time || "Regular Time",
         language: m.language || null,
         location: m.location || null,
@@ -1884,9 +1915,53 @@ export class LiveToolRegistry {
         asOf: new Date().toISOString(),
         parishId: pId,
         publicEvents: dateEvents,
-        massSchedules,
+        massSchedules: massSchedules.map(m => ({ label: resolveMassDisplayLabel(m), timeSlot: m.timeSlot, layMinisterAssigned: Boolean(m.layMinisterAssigned), priestName: m.assignedPriest?.fullName || null, priestResponseStatus: m.priestResponseStatus || null, assignmentStatus: this.massAssignmentStatus(m) })),
       },
     };
+  }
+
+  getCurrentDate() {
+    const clock = manilaClock(this.now());
+    const answer = `The current date in Asia/Manila is **${clock.date} (${clock.weekday})**, and the time is **${clock.time}**.`;
+    return { answer, fallbackAnswer: answer, structuredFacts: { ...clock, currentClock: clock }, liveData: { label: "Current TESTIMONIUM Data", asOf: this.now().toISOString() } };
+  }
+
+  massAssignmentStatus(mass) {
+    if (mass.layMinisterAssigned) return "LAY_MINISTER";
+    if (!mass.assignedPriest?.fullName) return "UNASSIGNED";
+    const status = String(mass.priestResponseStatus || "").toUpperCase();
+    return ["ACCEPTED", "PENDING", "REJECTED", "WITHDRAWN"].includes(status) ? status : "UNKNOWN";
+  }
+
+  massAssignmentText(mass) {
+    const status = this.massAssignmentStatus(mass);
+    if (status === "LAY_MINISTER") return "A Lay Minister is assigned; no priest is assigned to this occurrence.";
+    if (status === "UNASSIGNED") return "No priest is currently assigned.";
+    const name = mass.assignedPriest?.fullName || mass.priestName;
+    if (status === "ACCEPTED") return `${name} - Accepted.`;
+    if (status === "PENDING") return `${name} - Pending acceptance; not confirmed.`;
+    if (status === "REJECTED" || status === "WITHDRAWN") return `${name} - ${status}; this is not a confirmed assignment.`;
+    return `${name} is recorded, but acceptance status is unknown.`;
+  }
+
+  async getMassPriestAssignments({ parishId, date, endDate = null, timeSlot = null, priestName = null }) {
+    const end = endDate || date;
+    if (!parseStrictManilaDateOnly(date) || !parseStrictManilaDateOnly(end) || end < date || (Date.parse(end) - Date.parse(date)) > 6 * 86400000) throw new Error("A valid date range of at most seven days is required.");
+    const masses = [];
+    let parishName = null;
+    for (let day = date; day <= end; day = addCalendarDays(day, 1)) {
+      const result = await this.getParishEventsForDate({ parishId, date: day });
+      parishName = result.structuredFacts?.parishName || parishName;
+      for (const mass of result.liveData?.massSchedules || []) {
+        if (timeSlot && normalizeTimeSlotString(mass.timeSlot) !== normalizeTimeSlotString(timeSlot)) continue;
+        const clean = name => String(name || "").toLowerCase().replace(/^(rev\.?\s*fr\.?|fr\.?|father)\s+/i, "").trim();
+        if (priestName && !clean(mass.priestName).includes(clean(priestName))) continue;
+        masses.push({ ...mass, date: day });
+      }
+    }
+    const lines = masses.map(m => `- **${m.date} ${m.timeSlot}** - ${m.label}: ${this.massAssignmentText({ ...m, assignedPriest: m.priestName ? { fullName: m.priestName } : null })}`);
+    const answer = masses.length ? `Public Mass assignments at **${parishName}**:\n\n${lines.join("\n")}` : `No matching public Mass assignments were found for **${date}${end !== date ? " to " + end : ""}**. This does not establish a priest's private availability.`;
+    return { answer, fallbackAnswer: answer, structuredFacts: { parishName, date, endDate: end, massSchedules: masses }, liveData: { label: "Current TESTIMONIUM Data", asOf: this.now().toISOString(), parishId: Number(parishId), massSchedules: masses } };
   }
 
   /**
@@ -1897,6 +1972,10 @@ export class LiveToolRegistry {
     const mergedParams = { ...params, userId: contextUser?.id || null };
 
     switch (toolId) {
+      case TOOL_IDS.GET_CURRENT_DATE:
+        return this.getCurrentDate();
+      case TOOL_IDS.GET_MASS_PRIEST_ASSIGNMENTS:
+        return this.getMassPriestAssignments(mergedParams);
       case TOOL_IDS.GET_ACTIVE_PARISHES:
         return this.getActiveParishes();
       case TOOL_IDS.GET_VICARIATE_DIRECTORY:
@@ -1921,7 +2000,7 @@ export class LiveToolRegistry {
           parishId: mergedParams.parishId,
         });
       case TOOL_IDS.GET_PARISH_OFFICE_INFO:
-        return this.getParishOfficeInfo({ parishId: mergedParams.parishId });
+        return this.getParishOfficeInfo({ parishId: mergedParams.parishId, date: mergedParams.date, endDate: mergedParams.endDate });
       case TOOL_IDS.GET_CALENDAR_SLOT_AVAILABILITY:
         return this.getCalendarSlotAvailability({
           parishId: mergedParams.parishId,

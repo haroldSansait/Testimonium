@@ -208,7 +208,7 @@ export function useChatSession() {
           {
             question: trimmed,
             sessionId: activeSessionId,
-            selectedParishId,
+            selectedParishId: clarificationToSend?.missing === "parishId" ? Number(clarificationToSend.collected?.parishId) || selectedParishId : selectedParishId,
             structuredClarification: clarificationToSend,
             conversationContext,
           },
@@ -244,10 +244,15 @@ export function useChatSession() {
 
         if (response.conversationContext) {
           setConversationContext(response.conversationContext);
+          const parishId = Number(response.conversationContext.lastParishId);
+          if (Number.isInteger(parishId) && parishId > 0) {
+            setSelectedParishId(parishId);
+            if (typeof response.conversationContext.lastParishName === "string") setSelectedParishName(response.conversationContext.lastParishName);
+          }
         }
 
         setStructuredClarification(response.structuredClarification || null);
-        setMessages((prev) => [...prev, caloyMessage]);
+        setMessages((prev) => [...prev.map(m => m.structuredClarification ? { ...m, structuredClarification: undefined } : m), caloyMessage]);
       } catch (err: unknown) {
         // Discard error state updates if cancelled or stale
         if (
@@ -290,12 +295,12 @@ export function useChatSession() {
 
   const selectClarificationOption = useCallback(
     (option: CaloyClarificationOption) => {
-      if (!structuredClarification) return;
+      if (!structuredClarification || inFlightRef.current) return;
 
       const missingParam = structuredClarification.missing || structuredClarification.nextRequired || "choice";
       const updatedCollected = {
         ...(structuredClarification.collected || {}),
-        [missingParam]: option.value,
+        [missingParam]: missingParam === "parishId" ? Number(option.value) : option.value,
         ...(missingParam === "eventType" ? { scheduleEvent: option.value } : {}),
       };
 
