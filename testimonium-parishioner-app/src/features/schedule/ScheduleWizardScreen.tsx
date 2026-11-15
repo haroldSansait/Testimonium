@@ -109,6 +109,31 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
   return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1 };
 };
 
+const AUTOSAVE_DEBOUNCE_MS = 1500;
+type AutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
+
+function buildScheduleDraftSnapshot(
+  parishId: number | null,
+  eventType: ScheduleEventType | null,
+  preferredDateValue: string | null,
+  selectedDateValue: string | null,
+  selectedSlotValue: string | null,
+  priestId: number | null,
+  venueValue: string | null,
+  remarksValue: string,
+): string {
+  return JSON.stringify({
+    parishId: parishId ?? null,
+    eventType: eventType ?? null,
+    preferredDate: preferredDateValue || selectedDateValue || null,
+    date: selectedDateValue || null,
+    timeSlot: selectedSlotValue || null,
+    requestedPriestId: priestId || null,
+    location: venueValue,
+    remarks: remarksValue.trim() || null,
+  });
+}
+
 export interface ScheduleWizardScreenProps {
   initialParishId?: string;
   draftId?: string;
@@ -122,7 +147,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
   const searchParams = useLocalSearchParams<{ parishId?: string; draftId?: string }>();
   const routeParishId = initialParishId ?? searchParams.parishId;
   const routeDraftId = propDraftId ?? searchParams.draftId;
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const feedback = useFeedback();
   const reduceMotion = useReducedMotion();
   const { contentBottomInset, onBottomActionLayout } = useAppLayoutMetrics();
@@ -178,6 +203,51 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
   const draftIdempotencyKeyRef = useRef<string | null>(null);
   const lastRefreshAtRef = useRef(0);
   const inactiveAtRef = useRef<number | null>(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>("idle");
+  const userEditSeqRef = useRef(0);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightAutosaveRef = useRef<Promise<void> | null>(null);
+  const pendingResaveRef = useRef(false);
+  const submittedOrDiscardedRef = useRef(false);
+  const sessionUidRef = useRef<string | null>(null);
+  const isUnmountedRef = useRef(false);
+  const runAutosaveRef = useRef<() => Promise<void>>(async () => {});
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimerRef.current !== null) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+  };
+
+  const markUserEdit = () => {
+    if (submittedOrDiscardedRef.current) return;
+    userEditSeqRef.current += 1;
+  };
+
+  useEffect(() => {
+    const currentUid = user?.uid || null;
+    if (sessionUidRef.current && currentUid !== sessionUidRef.current) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      submittedOrDiscardedRef.current = !currentUid;
+      userEditSeqRef.current = 0;
+      lastSavedSnapshotRef.current = null;
+      setAutosaveStatus("idle");
+    } else if (!sessionUidRef.current && currentUid) {
+      submittedOrDiscardedRef.current = false;
+    }
+    sessionUidRef.current = currentUid;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      clearAutosaveTimer();
+    };
+  }, []);
 
   const existingDraftQuery =
     typeof useScheduleDraftDetail === "function"
@@ -200,6 +270,23 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     setSelectedSlot(existingDraft.timeSlot ?? null);
     setRequestedPriestId(existingDraft.requestedPriestId ?? null);
     setRemarks(existingDraft.remarks ?? "");
+    lastSavedSnapshotRef.current = buildScheduleDraftSnapshot(
+      existingDraft.parishId,
+      existingDraft.eventType,
+      restoredPrefDate,
+      restoredDate,
+      existingDraft.timeSlot ?? null,
+      existingDraft.requestedPriestId ?? null,
+      existingDraft.eventType === "WEDDING"
+        ? (existingDraft.parishName || existingDraft.location || null)
+        : null,
+      existingDraft.remarks ?? "",
+    );
+    userEditSeqRef.current = 0;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
+    submittedOrDiscardedRef.current = false;
+    setAutosaveStatus("saved");
     const calTarget = restoredDate || restoredPrefDate;
     if (calTarget && /^\d{4}-\d{2}-\d{2}$/.test(calTarget)) {
       const [yStr, mStr] = calTarget.split("-");
@@ -412,6 +499,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
   // When parish changes, reset subsequent selections
   const handleSelectParish = (parishId: number) => {
     if (parishId !== selectedParishId) {
+      markUserEdit();
       setSelectedParishId(parishId);
       setSelectedEventType(null);
       setPreferredDate(null);
@@ -428,6 +516,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
   // When service changes, reset date & slot and files
   const handleSelectService = (eventType: ScheduleEventType) => {
     if (eventType !== selectedEventType) {
+      markUserEdit();
       setSelectedEventType(eventType);
       setPreferredDate(null);
       setSelectedDate(null);
@@ -440,51 +529,12 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
   };
 
   const handleSelectDate = (date: string) => {
+    markUserEdit();
     setPreferredDate(date);
     setSelectedDate(date);
     setSelectedSlot(null);
     setErrorMessage(null);
   };
-
-  const handleBack = useCallback(() => {
-    if (submittingRef.current || isSavingDraft) return;
-    if (currentStep > 1) {
-      setCurrentStep((step) => step - 1);
-      setErrorMessage(null);
-      return;
-    }
-    const hasProgress =
-      !activeDraftId &&
-      (Boolean(selectedEventType) ||
-        Boolean(selectedDate) ||
-        Boolean(remarks.trim()) ||
-        (!routeParishId && Boolean(selectedParishId)));
-    if (hasProgress) {
-      Alert.alert(
-        "Discard Schedule Request?",
-        "Your current selections have not been submitted yet.",
-        [
-          { text: "Keep Editing", style: "cancel" },
-          { text: "Discard", style: "destructive", onPress: () => router.back() },
-        ]
-      );
-      return;
-    }
-    router.back();
-  }, [activeDraftId, currentStep, isSavingDraft, remarks, routeParishId, router, selectedDate, selectedEventType, selectedParishId]);
-
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (viewerFile) {
-        setViewerFile(null);
-        return true;
-      }
-      if (submittingRef.current || isSavingDraft) return true;
-      handleBack();
-      return true;
-    });
-    return () => subscription.remove();
-  }, [handleBack, isSavingDraft, viewerFile]);
 
   const getOrCreateDraftIdempotencyKey = () => {
     if (!draftIdempotencyKeyRef.current) {
@@ -493,19 +543,65 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     return draftIdempotencyKeyRef.current;
   };
 
-  const persistDraftAndSelectedFiles = async (
-    stageUpdater: (msg: string) => void
+  const hasDraftHooks =
+    typeof useCreateScheduleDraft === "function" &&
+    typeof useUpdateScheduleDraft === "function";
+
+  const canAutosaveForm = Boolean(
+    hasDraftHooks &&
+      !submittedOrDiscardedRef.current &&
+      !profile?.needsProfileCompletion &&
+      !profile?.needsLegalNameConfirmation &&
+      profile?.isGovernmentIdVerified &&
+      !(createdDraftIdState && existingDraftQuery?.isLoading) &&
+      selectedParishId &&
+      selectedEventType
+  );
+
+  const resolvedVenueForSnapshot =
+    selectedEventType === "WEDDING"
+      ? (selectedParish?.name || existingDraft?.parishName || existingDraft?.location || null)
+      : null;
+
+  const currentFormSnapshot = buildScheduleDraftSnapshot(
+    selectedParishId,
+    selectedEventType,
+    preferredDate,
+    selectedDate,
+    selectedSlot,
+    requestedPriestId,
+    resolvedVenueForSnapshot,
+    remarks,
+  );
+
+  const persistFormDraftOnly = async (
+    stageUpdater?: (msg: string) => void,
+    includeRemovedAttachments = false
   ): Promise<number> => {
     let draftId =
       createdDraftIdRef.current ?? (existingDraft?.status === "DRAFT" ? existingDraft.id : null);
     const venueValue =
       selectedEventType === "WEDDING" && selectedParish?.name ? selectedParish.name : null;
-    const removedIds = Object.keys(removedRequirementIds).filter(
-      (id) => removedRequirementIds[id] && !requirementFiles[id]
+    const removedIds = includeRemovedAttachments
+      ? Object.keys(removedRequirementIds).filter(
+          (id) => removedRequirementIds[id] && !requirementFiles[id]
+        )
+      : [];
+    const inputSnapshot = buildScheduleDraftSnapshot(
+      selectedParishId,
+      selectedEventType,
+      preferredDate,
+      selectedDate,
+      selectedSlot,
+      requestedPriestId,
+      selectedEventType === "WEDDING"
+        ? (selectedParish?.name || existingDraft?.parishName || existingDraft?.location || null)
+        : null,
+      remarks,
     );
 
     if (!draftId) {
-      stageUpdater("Saving schedule draft...");
+      stageUpdater?.("Saving schedule draft...");
       const createdDraft = await createDraftMutation.mutateAsync({
         payload: {
           parishId: selectedParishId!,
@@ -524,7 +620,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
       setCreatedDraftIdState(createdDraft.id);
       setHydratedDraftId(createdDraft.id);
     } else {
-      stageUpdater("Updating schedule draft...");
+      stageUpdater?.("Updating schedule draft...");
       await updateDraftMutation.mutateAsync({
         draftId,
         payload: {
@@ -536,10 +632,216 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
           requestedPriestId: requestedPriestId || null,
           location: venueValue,
           remarks: remarks.trim() || null,
-          removedRequirementIds: removedIds.length > 0 ? removedIds : undefined,
+          ...(removedIds.length > 0 ? { removedRequirementIds: removedIds } : {}),
         },
       });
     }
+
+    lastSavedSnapshotRef.current = inputSnapshot;
+    return draftId;
+  };
+
+  const runAutosave = async () => {
+    if (isUnmountedRef.current || submittedOrDiscardedRef.current || submittingRef.current) {
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      return;
+    }
+    if (!canAutosaveForm) return;
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      setAutosaveStatus(activeDraftId ? "saved" : "idle");
+      return;
+    }
+    let run: Promise<void> | null = null;
+    run = (async () => {
+      pendingResaveRef.current = false;
+      const seqAtStart = userEditSeqRef.current;
+      setAutosaveStatus("saving");
+      try {
+        await persistFormDraftOnly(undefined, false);
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        if (userEditSeqRef.current !== seqAtStart || pendingResaveRef.current) {
+          pendingResaveRef.current = true;
+          setAutosaveStatus("pending");
+        } else {
+          setAutosaveStatus("saved");
+        }
+      } catch {
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        setAutosaveStatus("error");
+      } finally {
+        if (inFlightAutosaveRef.current === run) {
+          inFlightAutosaveRef.current = null;
+        }
+        if (
+          pendingResaveRef.current &&
+          !isUnmountedRef.current &&
+          !submittedOrDiscardedRef.current &&
+          !submittingRef.current
+        ) {
+          pendingResaveRef.current = false;
+          clearAutosaveTimer();
+          autosaveTimerRef.current = setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void runAutosaveRef.current();
+          }, AUTOSAVE_DEBOUNCE_MS);
+        }
+      }
+    })();
+    inFlightAutosaveRef.current = run;
+    await run;
+  };
+
+  runAutosaveRef.current = runAutosave;
+
+  useEffect(() => {
+    if (
+      isUnmountedRef.current ||
+      submittedOrDiscardedRef.current ||
+      userEditSeqRef.current === 0 ||
+      (createdDraftIdState && existingDraftQuery?.isLoading)
+    ) {
+      return;
+    }
+    if (!canAutosaveForm) {
+      clearAutosaveTimer();
+      return;
+    }
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      clearAutosaveTimer();
+      if (!inFlightAutosaveRef.current) {
+        setAutosaveStatus(activeDraftId ? "saved" : "idle");
+      }
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      setAutosaveStatus("pending");
+      return;
+    }
+    setAutosaveStatus((prev) => (prev === "saving" ? prev : "pending"));
+    clearAutosaveTimer();
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void runAutosaveRef.current();
+    }, AUTOSAVE_DEBOUNCE_MS);
+  }, [currentFormSnapshot, canAutosaveForm, createdDraftIdState, existingDraftQuery?.isLoading, activeDraftId]);
+
+  const handleBack = useCallback(async () => {
+    if (submittingRef.current || isSavingDraft) return;
+    if (currentStep > 1) {
+      setCurrentStep((step) => step - 1);
+      setErrorMessage(null);
+      return;
+    }
+
+    const hasPendingValidFormEdits = Boolean(
+      canAutosaveForm &&
+      userEditSeqRef.current > 0 &&
+      currentFormSnapshot !== lastSavedSnapshotRef.current &&
+      !submittedOrDiscardedRef.current
+    );
+    const hasLocalFiles = Object.keys(requirementFiles).length > 0;
+
+    if (activeDraftId && hasPendingValidFormEdits) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
+      try {
+        await persistFormDraftOnly(undefined, false);
+        setAutosaveStatus("saved");
+      } catch {
+        // Proceed with navigation even if an optional exit flush fails.
+      }
+      router.back();
+      return;
+    }
+
+    if (!activeDraftId && hasPendingValidFormEdits && !hasLocalFiles) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
+      try {
+        await persistFormDraftOnly(undefined, false);
+        setAutosaveStatus("saved");
+        router.back();
+        return;
+      } catch {
+        // Fall through to Discard confirmation if initial save failed.
+      }
+    }
+
+    const hasProgress =
+      !activeDraftId &&
+      (Boolean(selectedEventType) ||
+        Boolean(selectedDate) ||
+        Boolean(remarks.trim()) ||
+        (!routeParishId && Boolean(selectedParishId)));
+    if (hasProgress) {
+      Alert.alert(
+        "Discard Schedule Request?",
+        "Your current selections have not been submitted yet.",
+        [
+          { text: "Keep Editing", style: "cancel" },
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => {
+              submittedOrDiscardedRef.current = true;
+              clearAutosaveTimer();
+              pendingResaveRef.current = false;
+              router.back();
+            },
+          },
+        ]
+      );
+      return;
+    }
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
+    if (inFlightAutosaveRef.current) {
+      await inFlightAutosaveRef.current.catch(() => {});
+    }
+    router.back();
+  }, [
+    activeDraftId,
+    canAutosaveForm,
+    currentFormSnapshot,
+    currentStep,
+    isSavingDraft,
+    persistFormDraftOnly,
+    remarks,
+    requirementFiles,
+    routeParishId,
+    router,
+    selectedDate,
+    selectedEventType,
+    selectedParishId,
+  ]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (viewerFile) {
+        setViewerFile(null);
+        return true;
+      }
+      if (submittingRef.current || isSavingDraft) return true;
+      void handleBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [handleBack, isSavingDraft, viewerFile]);
+
+  const persistDraftAndSelectedFiles = async (
+    stageUpdater: (msg: string) => void
+  ): Promise<number> => {
+    const draftId = await persistFormDraftOnly(stageUpdater, true);
 
     const fileEntries = Object.entries(requirementFiles).filter(
       ([reqId]) => requirements.length === 0 || activeRequirementIds.has(reqId)
@@ -573,13 +875,19 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     }
 
     submittingRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setIsSavingDraft(true);
     setErrorMessage(null);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
       submittingRef.current = false;
       setIsSavingDraft(false);
       setSubmissionStage("");
+      setAutosaveStatus("saved");
 
       if (typeof feedback.showConfirm === "function") {
         feedback.showConfirm(
@@ -686,10 +994,16 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     }
 
     submittingRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setIsSubmitting(true);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       const idempotencyKey = await getIdempotencyKey();
-      const created = activeDraftId
+      const effectiveDraftId = createdDraftIdRef.current ?? activeDraftId;
+      const created = effectiveDraftId
         ? await (async () => {
             const draftId = await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
             setSubmissionStage("Finalizing and submitting schedule request...");
@@ -725,6 +1039,10 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
             files: hasRequirements ? requirementFiles : undefined,
             idempotencyKey,
           });
+      submittedOrDiscardedRef.current = true;
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      setAutosaveStatus("idle");
       setSubmissionStage("");
       feedback.showSuccess({
         title: "Schedule Request Submitted",
@@ -1020,6 +1338,27 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
 
   const bottomInset = contentBottomInset("action");
 
+  const renderAutosaveStatus = () =>
+    autosaveStatus !== "idle" ? (
+      <Text
+        style={[
+          styles.autosaveStatusText,
+          autosaveStatus === "saved" && styles.autosaveStatusSaved,
+          autosaveStatus === "error" && styles.autosaveStatusError,
+        ]}
+        accessibilityLiveRegion="polite"
+        allowFontScaling
+      >
+        {autosaveStatus === "saving"
+          ? "Saving..."
+          : autosaveStatus === "saved"
+            ? "All changes saved"
+            : autosaveStatus === "error"
+              ? "Unable to save changes"
+              : "Unsaved changes"}
+      </Text>
+    ) : null;
+
   return (
     <Screen safeArea={true} style={styles.screen}>
       <AppHeader
@@ -1225,7 +1564,10 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
                       accessibilityRole="button"
                       accessibilityLabel="No preference"
                       accessibilityState={{ selected: requestedPriestId === null }}
-                      onPress={() => setRequestedPriestId(null)}
+                      onPress={() => {
+                        if (requestedPriestId !== null) markUserEdit();
+                        setRequestedPriestId(null);
+                      }}
                       style={[
                         styles.priestChip,
                         requestedPriestId === null && styles.priestChipSelected,
@@ -1251,7 +1593,10 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
                           accessibilityRole="button"
                           accessibilityLabel={priestDisplayName}
                           accessibilityState={{ selected: isSelected }}
-                          onPress={() => setRequestedPriestId(priest.id)}
+                          onPress={() => {
+                            if (requestedPriestId !== priest.id) markUserEdit();
+                            setRequestedPriestId(priest.id);
+                          }}
                           style={[
                             styles.priestChip,
                             isSelected && styles.priestChipSelected,
@@ -1312,6 +1657,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
                           rec={rec}
                           isSelected={isSelected}
                           onSelect={() => {
+                            markUserEdit();
                             setSelectedDate(rec.date);
                             setSelectedSlot(rec.timeSlot);
                             setErrorMessage(null);
@@ -1353,6 +1699,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
                       subtitle="Available time slot"
                       selected={selectedSlot === slot}
                       onSelect={() => {
+                        markUserEdit();
                         setSelectedSlot(slot);
                         setErrorMessage(null);
                       }}
@@ -1549,7 +1896,10 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
                 <RNTextInput
                   value={remarks}
                   editable={!isSubmitting && !isSavingDraft}
-                  onChangeText={setRemarks}
+                  onChangeText={(val) => {
+                    markUserEdit();
+                    setRemarks(val);
+                  }}
                   placeholder="e.g., Main Parish Church, or Brgy. San Roque Chapel (near plaza), or Mass Intention names"
                   placeholderTextColor={colors.textMuted}
                   multiline
@@ -1604,6 +1954,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {renderAutosaveStatus()}
           </View>
         ) : currentStep === 3 ? (
           <View style={styles.actionStack}>
@@ -1630,6 +1981,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {renderAutosaveStatus()}
           </View>
         ) : currentStep === 4 ? (
           <View style={styles.actionStack}>
@@ -1656,6 +2008,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {renderAutosaveStatus()}
           </View>
         ) : currentStep === 5 && hasRequirements ? (
           <View style={styles.actionStack}>
@@ -1689,6 +2042,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {renderAutosaveStatus()}
           </View>
         ) : currentStep === confirmationStep ? (
           <View style={styles.actionStack}>
@@ -1718,6 +2072,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {renderAutosaveStatus()}
           </View>
         ) : null}
       </SafeBottomActionBar>
@@ -2079,5 +2434,16 @@ const styles = StyleSheet.create({
     ...fontStyles.bodySmall,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
+  },
+  autosaveStatusText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  autosaveStatusSaved: {
+    color: "#276749",
+  },
+  autosaveStatusError: {
+    color: "#B42318",
   },
 });

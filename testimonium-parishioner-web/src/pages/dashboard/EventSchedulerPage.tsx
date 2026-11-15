@@ -53,6 +53,31 @@ const scheduleSubmissionErrorMessage = (error: unknown) =>
     ? error.message
     : 'Unable to submit your schedule request. Please try again.';
 
+const AUTOSAVE_DEBOUNCE_MS = 1500;
+type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
+
+const buildScheduleDraftSnapshot = (
+  parishId: string,
+  eventType: string,
+  preferredDateValue: string,
+  selectedDateValue: string,
+  timeSlotValue: string,
+  priestId: number | null,
+  locationValue: string | null,
+  remarksValue: string,
+) =>
+  JSON.stringify({
+    parishId: String(parishId || ''),
+    eventType: String(eventType || ''),
+    preferredDate: preferredDateValue || selectedDateValue || null,
+    date: selectedDateValue || null,
+    requestedDate: selectedDateValue || null,
+    timeSlot: timeSlotValue || null,
+    requestedPriestId: priestId || null,
+    location: locationValue,
+    remarks: remarksValue.trim() || null,
+  });
+
 export const EventSchedulerPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -107,6 +132,54 @@ export const EventSchedulerPage: React.FC = () => {
   const loadedDraftIdRef = useRef<string | null>(null);
   const draftIdempotencyKeyRef = useRef<string | null>(null);
   const hydratingDraftRef = useRef<ScheduleDraft | null>(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const userEditSeqRef = useRef(0);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightAutosaveRef = useRef<Promise<void> | null>(null);
+  const pendingResaveRef = useRef(false);
+  const submittedOrDiscardedRef = useRef(false);
+  const sessionUidRef = useRef<string | null>(null);
+  const isUnmountedRef = useRef(false);
+  const runAutosaveRef = useRef<() => Promise<void>>(async () => {});
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimerRef.current !== null) {
+      if (typeof clearTimeout === 'function') {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = null;
+    }
+  };
+
+  const markUserEdit = () => {
+    if (submittedOrDiscardedRef.current) return;
+    userEditSeqRef.current += 1;
+    setSaveError(null);
+  };
+
+  useEffect(() => {
+    const currentUid = user?.uid || appProfile?.id || null;
+    if (sessionUidRef.current && currentUid !== sessionUidRef.current) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      submittedOrDiscardedRef.current = !currentUid;
+      userEditSeqRef.current = 0;
+      lastSavedSnapshotRef.current = null;
+      setAutosaveStatus('idle');
+    } else if (!sessionUidRef.current && currentUid) {
+      submittedOrDiscardedRef.current = false;
+    }
+    sessionUidRef.current = currentUid;
+  }, [user?.uid, appProfile?.id]);
+
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      clearAutosaveTimer();
+    };
+  }, []);
   const [activeProposal, setActiveProposal] = useState<{
     id: string; serviceName: string; proposedDate: string; proposedTime: string; reason: string; version?: number;
   } | null>(null);
@@ -294,6 +367,25 @@ export const EventSchedulerPage: React.FC = () => {
           setVenueAddress(restoredLoc);
         }
         setAdditionalNotes(draft.remarks || '');
+        const restoredLocationSnapshot =
+          draft.rawEventType === 'WEDDING'
+            ? (parishes.find((p) => p.id === draft.parishId)?.name || draft.parishName || draft.location || '')
+            : ((draft.location || '').trim() || null);
+        lastSavedSnapshotRef.current = buildScheduleDraftSnapshot(
+          draft.parishId,
+          draft.rawEventType,
+          restoredPreferredDate,
+          restoredRequestedDate,
+          restoredTimeSlot,
+          draft.requestedPriestId ?? null,
+          restoredLocationSnapshot,
+          draft.remarks || '',
+        );
+        userEditSeqRef.current = 0;
+        clearAutosaveTimer();
+        pendingResaveRef.current = false;
+        submittedOrDiscardedRef.current = false;
+        setAutosaveStatus('saved');
 
         if (!restoredRequestedDate) {
           setCurrentStep(2);
@@ -526,6 +618,7 @@ export const EventSchedulerPage: React.FC = () => {
     if (!selectedParishId || !selectedEventType) {
       throw new Error('Please select a parish and service before saving a draft.');
     }
+    const resolvedLocation = isMarriageCanonical ? (selectedParish?.name || '') : (venueAddress.trim() || null);
     const payload = {
       parishId: selectedParishId,
       eventType: selectedEventType,
@@ -534,10 +627,22 @@ export const EventSchedulerPage: React.FC = () => {
       date: selectedDate || null,
       requestedDate: selectedDate || null,
       timeSlot: selectedTimeSlot || null,
-      location: isMarriageCanonical ? (selectedParish?.name || '') : (venueAddress.trim() || null),
+      location: resolvedLocation,
       remarks: additionalNotes.trim() || null,
       requestedPriestId: requestedPriestId || null,
     };
+    const savedSnapshot = buildScheduleDraftSnapshot(
+      payload.parishId,
+      payload.eventType,
+      payload.preferredDate || '',
+      payload.date || '',
+      payload.timeSlot || '',
+      payload.requestedPriestId,
+      isMarriageCanonical
+        ? (selectedParish?.name || savedDraft?.parishName || savedDraft?.location || '')
+        : resolvedLocation,
+      additionalNotes,
+    );
 
     const storageKey = `schedule-draft-create:${user?.uid || appProfile?.id || 'anon'}`;
     if (!draftIdempotencyKeyRef.current && !draftRef.current) {
@@ -557,6 +662,7 @@ export const EventSchedulerPage: React.FC = () => {
     loadedDraftIdRef.current = draft.id;
     setSavedDraft(draft);
     setSavedDraftAttachments(draft.attachments || []);
+    lastSavedSnapshotRef.current = savedSnapshot;
     sessionStorage.removeItem(storageKey);
     if (draftId !== draft.id) {
       navigate(`/dashboard/scheduler?draftId=${encodeURIComponent(draft.id)}`, { replace: true });
@@ -567,11 +673,17 @@ export const EventSchedulerPage: React.FC = () => {
   const handleSaveDraft = async () => {
     if (submittingRef.current || !canSaveDraft) return;
     submittingRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setSavingDraft(true);
     setSaveError(null);
     setSaveMessage(null);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       await persistDraft();
+      setAutosaveStatus('saved');
       setSaveMessage(
         'Draft details saved. Resume later from Saved Drafts in Track Status. Selected local files stay in this tab and are uploaded only when you submit.'
       );
@@ -596,11 +708,16 @@ export const EventSchedulerPage: React.FC = () => {
       return;
     }
     submittingRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setSubmitting(true);
     setMessage(null);
     setSaveError(null);
     setSaveMessage(null);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       const selectedReqFiles = Object.fromEntries(
         requirements
           .filter((r) => Boolean(requirementFiles[r.id]))
@@ -632,6 +749,10 @@ export const EventSchedulerPage: React.FC = () => {
             requestedPriestId: requestedPriestId || undefined,
             requirementFiles: selectedReqFiles,
           });
+      submittedOrDiscardedRef.current = true;
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      setAutosaveStatus('idle');
       setCreatedBooking(appointment);
       setCurrentStep(confirmationStep);
     } catch (error: any) {
@@ -696,6 +817,165 @@ export const EventSchedulerPage: React.FC = () => {
     } finally {
       setSubmittingProposal(false);
     }
+  };
+
+  const canAutosaveForm = Boolean(
+    !createdBooking &&
+    !submittedOrDiscardedRef.current &&
+    !loading &&
+    !loadingDraft &&
+    !draftError &&
+    !isProfileIncomplete &&
+    isGovIdVerified &&
+    selectedParishId &&
+    selectedEventType
+  );
+  const currentFormSnapshot = buildScheduleDraftSnapshot(
+    selectedParishId,
+    selectedEventType,
+    preferredDate,
+    selectedDate,
+    selectedTimeSlot,
+    requestedPriestId,
+    isMarriageCanonical
+      ? (selectedParish?.name || savedDraft?.parishName || savedDraft?.location || '')
+      : (venueAddress.trim() || null),
+    additionalNotes,
+  );
+  const hasUnsavedFormChanges = Boolean(
+    userEditSeqRef.current > 0 &&
+    currentFormSnapshot !== lastSavedSnapshotRef.current &&
+    !createdBooking &&
+    !submittedOrDiscardedRef.current
+  );
+
+  const runAutosave = async () => {
+    if (isUnmountedRef.current || submittedOrDiscardedRef.current || submittingRef.current) {
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      return;
+    }
+    if (!canAutosaveForm) return;
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      setAutosaveStatus(draftRef.current ? 'saved' : 'idle');
+      return;
+    }
+    let run: Promise<void> | null = null;
+    run = (async () => {
+      pendingResaveRef.current = false;
+      const seqAtStart = userEditSeqRef.current;
+      setAutosaveStatus('saving');
+      try {
+        await persistDraft();
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        if (userEditSeqRef.current !== seqAtStart || pendingResaveRef.current) {
+          pendingResaveRef.current = true;
+          setAutosaveStatus('pending');
+        } else {
+          setAutosaveStatus('saved');
+        }
+      } catch {
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        setAutosaveStatus('error');
+      } finally {
+        if (inFlightAutosaveRef.current === run) {
+          inFlightAutosaveRef.current = null;
+        }
+        if (
+          pendingResaveRef.current &&
+          !isUnmountedRef.current &&
+          !submittedOrDiscardedRef.current &&
+          !submittingRef.current &&
+          typeof setTimeout === 'function'
+        ) {
+          pendingResaveRef.current = false;
+          clearAutosaveTimer();
+          autosaveTimerRef.current = setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void runAutosaveRef.current();
+          }, AUTOSAVE_DEBOUNCE_MS);
+        }
+      }
+    })();
+    inFlightAutosaveRef.current = run;
+    await run;
+  };
+
+  runAutosaveRef.current = runAutosave;
+
+  useEffect(() => {
+    if (
+      isUnmountedRef.current ||
+      submittedOrDiscardedRef.current ||
+      userEditSeqRef.current === 0 ||
+      loading ||
+      loadingDraft ||
+      createdBooking
+    ) {
+      return;
+    }
+    if (!canAutosaveForm) {
+      clearAutosaveTimer();
+      return;
+    }
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      clearAutosaveTimer();
+      if (!inFlightAutosaveRef.current) {
+        setAutosaveStatus(draftRef.current ? 'saved' : 'idle');
+      }
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      setAutosaveStatus('pending');
+      return;
+    }
+    setAutosaveStatus((prev) => (prev === 'saving' ? prev : 'pending'));
+    clearAutosaveTimer();
+    if (typeof setTimeout === 'function') {
+      autosaveTimerRef.current = setTimeout(() => {
+        autosaveTimerRef.current = null;
+        void runAutosaveRef.current();
+      }, AUTOSAVE_DEBOUNCE_MS);
+    }
+  }, [currentFormSnapshot, canAutosaveForm, loading, loadingDraft, createdBooking, savedDraft]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedFormChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedFormChanges]);
+
+  const handleNavigateToSavedDrafts = async () => {
+    if (submittingRef.current) return;
+    clearAutosaveTimer();
+    if (inFlightAutosaveRef.current) {
+      await inFlightAutosaveRef.current.catch(() => {});
+    }
+    if (
+      canAutosaveForm &&
+      userEditSeqRef.current > 0 &&
+      currentFormSnapshot !== lastSavedSnapshotRef.current &&
+      !submittedOrDiscardedRef.current
+    ) {
+      try {
+        await persistDraft();
+        setAutosaveStatus('saved');
+      } catch {
+        // Allow user to navigate even if an optional background flush fails.
+      }
+    }
+    navigate('/dashboard/track?mode=schedules');
   };
 
   if (loading || loadingDraft) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><Card className='p-8'><Skeleton className='h-10 w-full mb-6' /><Skeleton className='h-64 w-full' /></Card></div>;
@@ -814,7 +1094,7 @@ export const EventSchedulerPage: React.FC = () => {
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Target Parish Office</label>
           <CustomSelect
             value={selectedParishId}
-            onChange={setSelectedParishId}
+            onChange={(val) => { markUserEdit(); setSelectedParishId(val); }}
             placeholder="Select parish..."
             options={parishes.map((parish) => ({
               value: parish.id,
@@ -832,7 +1112,7 @@ export const EventSchedulerPage: React.FC = () => {
           {loadingConfiguration ? <Skeleton className='h-32 w-full' /> : null}
           {!loadingConfiguration && !configuration && <Button variant='outline' onClick={() => void reloadConfiguration()}>Retry Configuration</Button>}
           {!loadingConfiguration && !configuration?.schedulingAvailable ? <div className='p-5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900'>This parish is not currently accepting online scheduling requests.</div> : null}
-          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>{configuration?.services.map((service) => <button key={service.eventType} type='button' onClick={() => setSelectedEventType(service.eventType)} className={`p-4 sm:p-5 border rounded-xl text-left text-xs font-medium flex items-center justify-between transition-all focus-ring ${selectedEventType === service.eventType ? 'border-crimson bg-red-50 text-crimson font-bold shadow-xs' : 'border-border text-text-primary hover:bg-app-page'}`}><span className="text-xs sm:text-sm font-semibold">{service.label}</span>{selectedEventType === service.eventType && <Check className='w-4 h-4 shrink-0 text-crimson' />}</button>)}</div>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>{configuration?.services.map((service) => <button key={service.eventType} type='button' onClick={() => { markUserEdit(); setSelectedEventType(service.eventType); }} className={`p-4 sm:p-5 border rounded-xl text-left text-xs font-medium flex items-center justify-between transition-all focus-ring ${selectedEventType === service.eventType ? 'border-crimson bg-red-50 text-crimson font-bold shadow-xs' : 'border-border text-text-primary hover:bg-app-page'}`}><span className="text-xs sm:text-sm font-semibold">{service.label}</span>{selectedEventType === service.eventType && <Check className='w-4 h-4 shrink-0 text-crimson' />}</button>)}</div>
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(0)}>Back</Button><Button onClick={handleNext} disabled={!selectedEventType}>Next Step</Button></div>
         </div>}
         {currentStep === 2 && <div className='space-y-6 w-full max-w-[1000px] mx-auto'>
@@ -843,6 +1123,7 @@ export const EventSchedulerPage: React.FC = () => {
             <DatePickerCalendar
               selectedDate={selectedDate}
               onSelectDate={(date) => {
+                markUserEdit();
                 pendingRecommendationSlotRef.current = null;
                 setSelectedDate(date);
                 setPreferredDate(date);
@@ -864,7 +1145,7 @@ export const EventSchedulerPage: React.FC = () => {
             </p>
             <CustomSelect
               value={requestedPriestId ? String(requestedPriestId) : ''}
-              onChange={(val) => setRequestedPriestId(val ? Number(val) : null)}
+              onChange={(val) => { markUserEdit(); setRequestedPriestId(val ? Number(val) : null); }}
               placeholder="No priest preference"
               options={[
                 { value: '', label: 'No priest preference' },
@@ -926,6 +1207,7 @@ export const EventSchedulerPage: React.FC = () => {
                       key={`${rec.date}-${rec.timeSlot}`}
                       type='button'
                       onClick={() => {
+                        markUserEdit();
                         pendingRecommendationSlotRef.current = rec.timeSlot;
                         setSelectedDate(rec.date);
                         setSelectedTimeSlot(rec.timeSlot);
@@ -986,7 +1268,7 @@ export const EventSchedulerPage: React.FC = () => {
                   <button
                     key={slot}
                     type='button'
-                    onClick={() => setSelectedTimeSlot(slot)}
+                    onClick={() => { markUserEdit(); setSelectedTimeSlot(slot); }}
                     className={`p-3.5 border rounded-xl text-xs font-bold ${
                       selectedTimeSlot === slot
                         ? 'border-crimson bg-crimson text-white'
@@ -1005,6 +1287,7 @@ export const EventSchedulerPage: React.FC = () => {
             value={isMarriageCanonical ? (selectedParish?.name || '') : venueAddress}
             onChange={(event) => {
               if (isMarriageCanonical) return;
+              markUserEdit();
               manualVenueRef.current = event.target.value;
               setVenueAddress(event.target.value);
             }}
@@ -1032,7 +1315,7 @@ export const EventSchedulerPage: React.FC = () => {
             </div>
             <textarea
               value={additionalNotes}
-              onChange={(e) => setAdditionalNotes(e.target.value.slice(0, 500))}
+              onChange={(e) => { markUserEdit(); setAdditionalNotes(e.target.value.slice(0, 500)); }}
               rows={3}
               className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary resize-none'
               placeholder='e.g. Wheelchair accessibility or elderly attendee assistance'
@@ -1164,7 +1447,29 @@ export const EventSchedulerPage: React.FC = () => {
                     {savedDraft ? 'Saved Schedule Draft' : 'Draft Details'}
                   </span>
                 </div>
-                {savedDraft && <Badge variant='neutral'>Draft</Badge>}
+                <div className='flex items-center gap-2'>
+                  {autosaveStatus === 'saving' && (
+                    <span role='status' aria-live='polite' className='text-[11px] font-medium text-text-muted'>
+                      Saving...
+                    </span>
+                  )}
+                  {autosaveStatus === 'saved' && (
+                    <span role='status' aria-live='polite' className='text-[11px] font-medium text-emerald-700'>
+                      All changes saved
+                    </span>
+                  )}
+                  {autosaveStatus === 'error' && (
+                    <span role='status' aria-live='polite' className='text-[11px] font-medium text-red-700'>
+                      Unable to save changes
+                    </span>
+                  )}
+                  {autosaveStatus === 'pending' && (
+                    <span role='status' aria-live='polite' className='text-[11px] font-medium text-text-muted'>
+                      Unsaved changes
+                    </span>
+                  )}
+                  {savedDraft && <Badge variant='neutral'>Draft</Badge>}
+                </div>
               </div>
 
               {savedDraft && (
@@ -1188,7 +1493,7 @@ export const EventSchedulerPage: React.FC = () => {
                   <Button
                     variant='outline'
                     className='font-semibold shadow-2xs hover:bg-white'
-                    onClick={() => navigate('/dashboard/track?mode=schedules')}
+                    onClick={() => void handleNavigateToSavedDrafts()}
                   >
                     Back to Saved Drafts
                   </Button>

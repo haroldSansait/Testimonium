@@ -144,6 +144,38 @@ export function parseSavedApplicantName(savedName?: string | null): {
   return { firstName: '', middleName: '', lastName: '' };
 }
 
+const AUTOSAVE_DEBOUNCE_MS = 1500;
+type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
+
+const buildDocDraftSnapshot = (
+  parishId: string,
+  documentType: string,
+  firstName: string,
+  middleName: string,
+  lastName: string,
+  includeExplicitName: boolean,
+  relationship: string,
+  purpose: string,
+  registryYear: string,
+  isExistingDraft: boolean,
+) => {
+  const trimmedRegYear = registryYear.trim();
+  const trimmedPurpose = purpose.trim();
+  const effectivePurpose =
+    trimmedRegYear && !trimmedPurpose.includes('(Approximate Registry Year:')
+      ? `${trimmedPurpose} (Approximate Registry Year: ${trimmedRegYear})`
+      : trimmedPurpose;
+  return JSON.stringify({
+    parishId: isExistingDraft ? '' : String(parishId || ''),
+    documentType: isExistingDraft ? '' : String(documentType || ''),
+    firstName: includeExplicitName ? firstName.trim() : '__canonical__',
+    middleName: includeExplicitName ? middleName.trim() : '__canonical__',
+    lastName: includeExplicitName ? lastName.trim() : '__canonical__',
+    relationship: relationship.trim(),
+    purpose: effectivePurpose,
+  });
+};
+
 export const SacramentalRequestPage: React.FC = () => {
   usePausePolling(true);
   const [searchParams] = useSearchParams();
@@ -209,6 +241,54 @@ export const SacramentalRequestPage: React.FC = () => {
   const draftRef = useRef<{ id: string } | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
   const uploadedInSessionRef = useRef<Record<string, File>>({});
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const userEditSeqRef = useRef(0);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightAutosaveRef = useRef<Promise<void> | null>(null);
+  const pendingResaveRef = useRef(false);
+  const submittedOrDiscardedRef = useRef(false);
+  const sessionUidRef = useRef<string | null>(null);
+  const isUnmountedRef = useRef(false);
+  const runAutosaveRef = useRef<() => Promise<void>>(async () => {});
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimerRef.current !== null) {
+      if (typeof clearTimeout === 'function') {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = null;
+    }
+  };
+
+  const markUserEdit = () => {
+    if (submittedOrDiscardedRef.current) return;
+    userEditSeqRef.current += 1;
+    setSaveError(null);
+  };
+
+  useEffect(() => {
+    const currentUid = user?.uid || appProfile?.id || null;
+    if (sessionUidRef.current && currentUid !== sessionUidRef.current) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      submittedOrDiscardedRef.current = !currentUid;
+      userEditSeqRef.current = 0;
+      lastSavedSnapshotRef.current = null;
+      setAutosaveStatus('idle');
+    } else if (!sessionUidRef.current && currentUid) {
+      submittedOrDiscardedRef.current = false;
+    }
+    sessionUidRef.current = currentUid;
+  }, [user?.uid, appProfile?.id]);
+
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      clearAutosaveTimer();
+    };
+  }, []);
 
   // Success State
   const [createdRequest, setCreatedRequest] = useState<SacramentalRequest | null>(null);
@@ -251,6 +331,23 @@ export const SacramentalRequestPage: React.FC = () => {
         setRegistrantIdBack(null);
         setRequirementsList(config?.requiredDocuments || []);
         setRelationshipEvidenceList(config?.relationshipEvidence || []);
+        lastSavedSnapshotRef.current = buildDocDraftSnapshot(
+          '',
+          '',
+          '',
+          '',
+          '',
+          false,
+          draft.relationship || 'Self',
+          draft.purpose || '',
+          '',
+          true,
+        );
+        userEditSeqRef.current = 0;
+        clearAutosaveTimer();
+        pendingResaveRef.current = false;
+        submittedOrDiscardedRef.current = false;
+        setAutosaveStatus('saved');
         setCurrentStep(2);
       } catch (err: any) {
         if (active) setDraftError(err?.message || 'Unable to open this saved draft. Please return to tracking and try again.');
@@ -376,6 +473,7 @@ export const SacramentalRequestPage: React.FC = () => {
 
   const handleRelationshipChange = (newRel: string) => {
     if (newRel === relationship) return;
+    markUserEdit();
     const prevRel = relationship;
     setRelationship(newRel);
 
@@ -473,16 +571,34 @@ export const SacramentalRequestPage: React.FC = () => {
 
   const persistDraft = async () => {
     if (!hasValidApplicantName) throw new Error('First name and last name are required when entering or changing the registrant name.');
-    const finalPurpose = !savedDraft && registryYear
-      ? `${purpose} (Approximate Registry Year: ${registryYear})`
-      : purpose;
+    const seqAtStart = userEditSeqRef.current;
+    const trimmedRegistryYear = registryYear.trim();
+    const trimmedPurpose = purpose.trim();
+    const finalPurpose =
+      trimmedRegistryYear && !purpose.includes('(Approximate Registry Year:')
+        ? `${trimmedPurpose || purpose} (Approximate Registry Year: ${trimmedRegistryYear})`
+        : purpose;
     // Send explicit parts to the existing server-side name builder. Omitting all
     // name fields keeps an untouched canonical saved name exactly as persisted.
-    const nameDetails = !savedDraft || nameEdited ? {
+    const includeExplicitName = !savedDraft || nameEdited;
+    const nameDetails = includeExplicitName ? {
       applicantFirstName: applicantFirstName.trim(),
       applicantMiddleName: applicantMiddleName.trim() || undefined,
       applicantLastName: applicantLastName.trim(),
     } : {};
+    const inputSnapshot = buildDocDraftSnapshot(
+      selectedParishId,
+      docType,
+      applicantFirstName,
+      applicantMiddleName,
+      applicantLastName,
+      includeExplicitName,
+      relationship,
+      purpose,
+      registryYear,
+      Boolean(draftRef.current),
+    );
+    const relationshipAtSave = relationship;
     // Keep an unresolved creation key across refreshes, scoped to this account.
     const storageKey = `document-draft-create:${appProfile?.id}`;
     if (!idempotencyKeyRef.current && !draftRef.current) {
@@ -500,11 +616,30 @@ export const SacramentalRequestPage: React.FC = () => {
     draftRef.current = { id: draft.id };
     loadedDraftIdRef.current = draft.id;
     setSavedDraft(draft);
-    setNameEdited(false);
-    setPurpose(draft.purpose || '');
-    setRegistryYear('');
     setSavedAttachments(draft.attachments || []);
     sessionStorage.removeItem(storageKey);
+
+    // Avoid overwriting newer user input if edits happened while this save was in flight.
+    if (userEditSeqRef.current === seqAtStart) {
+      setNameEdited(false);
+      setPurpose(draft.purpose || '');
+      setRegistryYear('');
+      lastSavedSnapshotRef.current = buildDocDraftSnapshot(
+        '',
+        '',
+        '',
+        '',
+        '',
+        false,
+        relationshipAtSave,
+        draft.purpose || '',
+        '',
+        true,
+      );
+    } else {
+      lastSavedSnapshotRef.current = inputSnapshot;
+    }
+
     // A refresh now reopens this exact draft; do not rehydrate over local file selections.
     if (draftId !== draft.id) navigate(`/dashboard/request?draftId=${encodeURIComponent(draft.id)}`, { replace: true });
     return draft;
@@ -513,11 +648,17 @@ export const SacramentalRequestPage: React.FC = () => {
   const handleSaveDraft = async () => {
     if (operationRef.current) return;
     operationRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setSubmitting(true);
     setSaveError(null);
     setSaveMessage(null);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       await persistDraft();
+      setAutosaveStatus('saved');
       setSaveMessage('Draft details saved. Resume later from Saved Drafts in Track Status. Selected local files stay in this tab and are uploaded only when you submit.');
     } catch (err: any) {
       setSaveError(err?.message || 'Unable to save draft. Please try again.');
@@ -534,9 +675,14 @@ export const SacramentalRequestPage: React.FC = () => {
       return;
     }
     operationRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setSubmitting(true);
     setSubmissionError(null);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       // Save corrections to the same draft before authoritative final validation.
       const draft = await persistDraft();
 
@@ -583,6 +729,10 @@ export const SacramentalRequestPage: React.FC = () => {
       // 3. Finalize and submit the request
       const finalized = await services.request.submitDraft(draft.id);
 
+      submittedOrDiscardedRef.current = true;
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      setAutosaveStatus('idle');
       setCreatedRequest(finalized);
       draftRef.current = null;
       idempotencyKeyRef.current = null;
@@ -616,6 +766,171 @@ export const SacramentalRequestPage: React.FC = () => {
     if (createdRequest && createdRequest.trackingNumber) {
       navigator.clipboard.writeText(createdRequest.trackingNumber);
     }
+  };
+
+  const hasValidRegistryYear = !registryYear.trim() || /^\d{4}$/.test(registryYear.trim());
+  const canAutosaveForm = Boolean(
+    currentStep < 4 &&
+    !createdRequest &&
+    !submittedOrDiscardedRef.current &&
+    !loading &&
+    !loadingDraft &&
+    !draftError &&
+    !isProfileIncomplete &&
+    isGovIdVerified &&
+    selectedParishId &&
+    docType &&
+    hasValidApplicantName &&
+    purpose.trim().length > 0 &&
+    hasValidRegistryYear
+  );
+  const currentFormSnapshot = buildDocDraftSnapshot(
+    selectedParishId,
+    docType,
+    applicantFirstName,
+    applicantMiddleName,
+    applicantLastName,
+    !savedDraft || nameEdited,
+    relationship,
+    purpose,
+    registryYear,
+    Boolean(draftRef.current),
+  );
+  const hasUnsavedFormChanges = Boolean(
+    userEditSeqRef.current > 0 &&
+    currentFormSnapshot !== lastSavedSnapshotRef.current &&
+    currentStep < 4 &&
+    !createdRequest &&
+    !submittedOrDiscardedRef.current
+  );
+
+  const runAutosave = async () => {
+    if (isUnmountedRef.current || submittedOrDiscardedRef.current || operationRef.current) {
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      return;
+    }
+    if (!canAutosaveForm) return;
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      setAutosaveStatus(draftRef.current ? 'saved' : 'idle');
+      return;
+    }
+    let run: Promise<void> | null = null;
+    run = (async () => {
+      pendingResaveRef.current = false;
+      const seqAtStart = userEditSeqRef.current;
+      setAutosaveStatus('saving');
+      try {
+        await persistDraft();
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        if (userEditSeqRef.current !== seqAtStart || pendingResaveRef.current) {
+          pendingResaveRef.current = true;
+          setAutosaveStatus('pending');
+        } else {
+          setAutosaveStatus('saved');
+        }
+      } catch {
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        setAutosaveStatus('error');
+      } finally {
+        if (inFlightAutosaveRef.current === run) {
+          inFlightAutosaveRef.current = null;
+        }
+        if (
+          pendingResaveRef.current &&
+          !isUnmountedRef.current &&
+          !submittedOrDiscardedRef.current &&
+          !operationRef.current &&
+          typeof setTimeout === 'function'
+        ) {
+          pendingResaveRef.current = false;
+          clearAutosaveTimer();
+          autosaveTimerRef.current = setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void runAutosaveRef.current();
+          }, AUTOSAVE_DEBOUNCE_MS);
+        }
+      }
+    })();
+    inFlightAutosaveRef.current = run;
+    await run;
+  };
+
+  runAutosaveRef.current = runAutosave;
+
+  useEffect(() => {
+    if (
+      isUnmountedRef.current ||
+      submittedOrDiscardedRef.current ||
+      userEditSeqRef.current === 0 ||
+      loading ||
+      loadingDraft ||
+      currentStep >= 4
+    ) {
+      return;
+    }
+    if (!canAutosaveForm) {
+      clearAutosaveTimer();
+      return;
+    }
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      clearAutosaveTimer();
+      if (!inFlightAutosaveRef.current) {
+        setAutosaveStatus(draftRef.current ? 'saved' : 'idle');
+      }
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      setAutosaveStatus('pending');
+      return;
+    }
+    setAutosaveStatus((prev) => (prev === 'saving' ? prev : 'pending'));
+    clearAutosaveTimer();
+    if (typeof setTimeout === 'function') {
+      autosaveTimerRef.current = setTimeout(() => {
+        autosaveTimerRef.current = null;
+        void runAutosaveRef.current();
+      }, AUTOSAVE_DEBOUNCE_MS);
+    }
+  }, [currentFormSnapshot, canAutosaveForm, loading, loadingDraft, currentStep, savedDraft]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedFormChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedFormChanges]);
+
+  const handleNavigateToSavedDrafts = async () => {
+    if (operationRef.current) return;
+    clearAutosaveTimer();
+    if (inFlightAutosaveRef.current) {
+      await inFlightAutosaveRef.current.catch(() => {});
+    }
+    if (
+      canAutosaveForm &&
+      userEditSeqRef.current > 0 &&
+      currentFormSnapshot !== lastSavedSnapshotRef.current &&
+      !submittedOrDiscardedRef.current
+    ) {
+      try {
+        await persistDraft();
+        setAutosaveStatus('saved');
+      } catch {
+        // Allow user to navigate even if an optional background flush fails.
+      }
+    }
+    navigate('/dashboard/track');
   };
 
   if (draftError) return <ErrorState title="Unable to open saved draft" description={draftError} onRetry={() => navigate('/dashboard/track')} />;
@@ -800,7 +1115,7 @@ export const SacramentalRequestPage: React.FC = () => {
               </div>
               {savedDraft ? <p className="text-sm text-text-primary">{selectedParish?.name || savedDraft.parish?.parishName || `Parish #${selectedParishId}`} — Saved parish (read-only)</p> : <CustomSelect
                 value={selectedParishId}
-                onChange={setSelectedParishId}
+                onChange={(value) => { markUserEdit(); setSelectedParishId(value); }}
                 placeholder="Select parish..."
                 options={parishes.map(parish => ({
                   value: parish.id,
@@ -829,7 +1144,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 {filteredDocTypes.map(doc => (
                   <button
                     key={doc.type}
-                    onClick={() => setDocType(doc.type)}
+                    onClick={() => { markUserEdit(); setDocType(doc.type); }}
                     className={`p-4 sm:p-5 border rounded-button text-left font-serif text-sm transition-all focus-ring ${
                       docType === doc.type 
                         ? 'border-crimson bg-red-50/20 text-crimson font-bold shadow-sm' 
@@ -915,7 +1230,7 @@ export const SacramentalRequestPage: React.FC = () => {
                   label="First Name *"
                   placeholder="e.g. Juan"
                   value={applicantFirstName}
-                  onChange={e => { userEditedNameRef.current = true; setApplicantFirstName(e.target.value); setNameEdited(true); }}
+                  onChange={e => { markUserEdit(); userEditedNameRef.current = true; setApplicantFirstName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                   required
                 />
@@ -923,33 +1238,33 @@ export const SacramentalRequestPage: React.FC = () => {
                   label="Middle Name (Optional)"
                   placeholder="e.g. Santos"
                   value={applicantMiddleName}
-                  onChange={e => { userEditedNameRef.current = true; setApplicantMiddleName(e.target.value); setNameEdited(true); }}
+                  onChange={e => { markUserEdit(); userEditedNameRef.current = true; setApplicantMiddleName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                 />
                 <Input
                   label="Last Name *"
                   placeholder="e.g. Dela Cruz"
                   value={applicantLastName}
-                  onChange={e => { userEditedNameRef.current = true; setApplicantLastName(e.target.value); setNameEdited(true); }}
+                  onChange={e => { markUserEdit(); userEditedNameRef.current = true; setApplicantLastName(e.target.value); setNameEdited(true); }}
                   maxLength={50}
                   required
                 />
               </div>
 
-              <div className={savedDraft ? "pt-0.5" : "grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-0.5"}>
-                {!savedDraft && <Input
+              <div className={savedDraft && !registryYear ? "pt-0.5" : "grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-0.5"}>
+                {(!savedDraft || Boolean(registryYear)) && <Input
                   label="Approx. Registry Year (Optional)"
                   type="number"
                   placeholder="e.g. 1995"
                   value={registryYear}
-                  onChange={e => setRegistryYear(e.target.value)}
+                  onChange={e => { markUserEdit(); setRegistryYear(e.target.value); }}
                   className="h-[42px]"
                 />}
                 <Input
                   label="Purpose of Request *"
                   placeholder="e.g. Marriage requirement, School, Passport"
                   value={purpose}
-                  onChange={e => setPurpose(e.target.value)}
+                  onChange={e => { markUserEdit(); setPurpose(e.target.value); }}
                 />
               </div>
 
@@ -1265,7 +1580,29 @@ export const SacramentalRequestPage: React.FC = () => {
                       )}
                     </span>
                   </div>
-                  {savedDraft && <Badge variant="neutral">Draft</Badge>}
+                  <div className="flex items-center gap-2">
+                    {autosaveStatus === 'saving' && (
+                      <span role="status" aria-live="polite" className="text-[11px] font-medium text-text-muted">
+                        Saving...
+                      </span>
+                    )}
+                    {autosaveStatus === 'saved' && (
+                      <span role="status" aria-live="polite" className="text-[11px] font-medium text-emerald-700">
+                        All changes saved
+                      </span>
+                    )}
+                    {autosaveStatus === 'error' && (
+                      <span role="status" aria-live="polite" className="text-[11px] font-medium text-red-700">
+                        Unable to save changes
+                      </span>
+                    )}
+                    {autosaveStatus === 'pending' && (
+                      <span role="status" aria-live="polite" className="text-[11px] font-medium text-text-muted">
+                        Unsaved changes
+                      </span>
+                    )}
+                    {savedDraft && <Badge variant="neutral">Draft</Badge>}
+                  </div>
                 </div>
 
                 {savedDraft && (
@@ -1277,7 +1614,7 @@ export const SacramentalRequestPage: React.FC = () => {
                 {saveMessage && <p role="status" className="text-sm text-emerald-800">{saveMessage}</p>}
                 <div className="flex flex-wrap gap-2.5 pt-0.5">
                   <Button variant="outline" className="font-semibold shadow-2xs hover:bg-white" onClick={handleSaveDraft} disabled={!canSaveDraft} loading={submitting}>Save Draft</Button>
-                  {savedDraft && <Button variant="outline" className="font-semibold shadow-2xs hover:bg-white" onClick={() => navigate('/dashboard/track')}>Back to Saved Drafts</Button>}
+                  {savedDraft && <Button variant="outline" className="font-semibold shadow-2xs hover:bg-white" onClick={() => void handleNavigateToSavedDrafts()}>Back to Saved Drafts</Button>}
                 </div>
                 <p className="text-xs text-text-muted">Save Draft saves details without submitting. Files selected in this tab are uploaded when you submit; keep this tab open to retain them.</p>
               </div>

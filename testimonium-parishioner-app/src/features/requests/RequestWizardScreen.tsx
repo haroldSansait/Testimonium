@@ -76,6 +76,31 @@ export interface RequestWizardScreenProps {
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 
+const AUTOSAVE_DEBOUNCE_MS = 1500;
+type AutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
+
+function buildRequestDraftSnapshot(
+  parishId: string,
+  documentType: string,
+  firstName: string,
+  middleName: string,
+  lastName: string,
+  relationship: string,
+  purpose: string,
+  approximateYear: string,
+  isExistingDraft: boolean,
+): string {
+  return JSON.stringify({
+    parishId: isExistingDraft ? "" : parishId,
+    documentType: isExistingDraft ? "" : documentType,
+    firstName: firstName.trim(),
+    middleName: middleName.trim(),
+    lastName: lastName.trim(),
+    relationship: relationship.trim(),
+    purpose: formatPurposeWithRegistryYear(purpose, approximateYear),
+  });
+}
+
 export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   initialParishId,
   draftId,
@@ -136,6 +161,51 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     lastName: string;
   } | null>(null);
   const [prevSelfSyncKey, setPrevSelfSyncKey] = useState<string>("");
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>("idle");
+  const userEditSeqRef = useRef(0);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightAutosaveRef = useRef<Promise<void> | null>(null);
+  const pendingResaveRef = useRef(false);
+  const submittedOrDiscardedRef = useRef(false);
+  const sessionUidRef = useRef<string | null>(null);
+  const isUnmountedRef = useRef(false);
+  const runAutosaveRef = useRef<() => Promise<void>>(async () => {});
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimerRef.current !== null) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+  };
+
+  const markUserEdit = () => {
+    if (submittedOrDiscardedRef.current) return;
+    userEditSeqRef.current += 1;
+  };
+
+  useEffect(() => {
+    const currentUid = user?.uid || null;
+    if (sessionUidRef.current && currentUid !== sessionUidRef.current) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      submittedOrDiscardedRef.current = !currentUid;
+      userEditSeqRef.current = 0;
+      lastSavedSnapshotRef.current = null;
+      setAutosaveStatus("idle");
+    } else if (!sessionUidRef.current && currentUid) {
+      submittedOrDiscardedRef.current = false;
+    }
+    sessionUidRef.current = currentUid;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      clearAutosaveTimer();
+    };
+  }, []);
 
   const validDraftId = draftId && /^[1-9]\d*$/.test(String(draftId).trim()) ? String(draftId).trim() : null;
   const { data: existingDraftData, isLoading: loadingExistingDraft } = useRequestDetail(validDraftId);
@@ -185,27 +255,32 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
 
     const savedName = (existingDraft.applicantName || "").trim();
     const parsedName = parseSavedApplicantName(savedName);
+    let hydratedFirst = "";
+    let hydratedMiddle = "";
+    let hydratedLast = "";
     if (parsedName.firstName && parsedName.lastName) {
-      setApplicantFirstName(parsedName.firstName);
-      setApplicantMiddleName(parsedName.middleName);
-      setApplicantLastName(parsedName.lastName);
+      hydratedFirst = parsedName.firstName;
+      hydratedMiddle = parsedName.middleName;
+      hydratedLast = parsedName.lastName;
     } else if (draftRel === "Self" && profile?.firebaseUid === user?.uid) {
       const selfName = resolveSelfProfileName(profile);
       if (selfName) {
-        setApplicantFirstName(selfName.firstName);
-        setApplicantMiddleName(selfName.middleName);
-        setApplicantLastName(selfName.lastName);
+        hydratedFirst = selfName.firstName;
+        hydratedMiddle = selfName.middleName;
+        hydratedLast = selfName.lastName;
       }
     } else if (savedName) {
       const tokens = savedName.split(/\s+/).filter(Boolean);
       if (tokens.length >= 2) {
-        setApplicantFirstName(tokens.slice(0, -1).join(" "));
-        setApplicantMiddleName("");
-        setApplicantLastName(tokens[tokens.length - 1]);
+        hydratedFirst = tokens.slice(0, -1).join(" ");
+        hydratedLast = tokens[tokens.length - 1];
       } else {
-        setApplicantFirstName(savedName);
+        hydratedFirst = savedName;
       }
     }
+    setApplicantFirstName(hydratedFirst);
+    setApplicantMiddleName(hydratedMiddle);
+    setApplicantLastName(hydratedLast);
     if (draftRel !== "Self" || savedName) {
       setHasManualNameEdit(true);
     }
@@ -214,6 +289,22 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     if (matchingParish) {
       setSelectedParishOverride(matchingParish);
     }
+    lastSavedSnapshotRef.current = buildRequestDraftSnapshot(
+      "",
+      "",
+      hydratedFirst,
+      hydratedMiddle,
+      hydratedLast,
+      draftRel,
+      parsedPurpose.purpose,
+      parsedPurpose.approximateYear,
+      true,
+    );
+    userEditSeqRef.current = 0;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
+    submittedOrDiscardedRef.current = false;
+    setAutosaveStatus("saved");
     if (step < 3) {
       setStep(3);
     }
@@ -297,15 +388,247 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     return getEffectiveOfferedDocuments(selectedParish?.availableDocuments);
   }, [selectedParish]);
 
-  const handleBack = useCallback(() => {
+  // Generate or retrieve persistent UUID for this submission session
+  const getOrCreateIdempotencyKey = () => {
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = `req_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`}`;
+    }
+    return idempotencyKeyRef.current;
+  };
+
+  const trimmedApproxYear = approximateYear.trim();
+  const maxAllowedYear = new Date().getFullYear();
+  const isApproxYearValid =
+    !trimmedApproxYear ||
+    (/^\d{4}$/.test(trimmedApproxYear) &&
+      Number(trimmedApproxYear) >= 1900 &&
+      Number(trimmedApproxYear) <= maxAllowedYear);
+
+  const canAutosaveForm = Boolean(
+    !submittedOrDiscardedRef.current &&
+      !profile?.needsProfileCompletion &&
+      !profile?.needsLegalNameConfirmation &&
+      profile?.isGovernmentIdVerified &&
+      !(validDraftId && loadingExistingDraft) &&
+      selectedParish &&
+      selectedDocType &&
+      applicantFirstName.trim().length > 0 &&
+      applicantLastName.trim().length > 0 &&
+      purpose.trim().length > 0 &&
+      isApproxYearValid &&
+      typeof createDraftMutation?.mutateAsync === "function" &&
+      typeof updateDraftMutation?.mutateAsync === "function"
+  );
+
+  const currentFormSnapshot = buildRequestDraftSnapshot(
+    selectedParish ? String(selectedParish.id) : "",
+    selectedDocType || "",
+    applicantFirstName,
+    applicantMiddleName,
+    applicantLastName,
+    relationship,
+    purpose,
+    approximateYear,
+    Boolean(activeDraftId),
+  );
+
+  const persistFormDraftOnly = async (stageUpdater?: (msg: string) => void): Promise<number> => {
+    const finalPurpose = formatPurposeWithRegistryYear(purpose, approximateYear);
+    let currentDraftId = createdDraftIdRef.current ?? (existingDraft?.isDraft ? existingDraft.id : null);
+    const savedSnapshot = buildRequestDraftSnapshot(
+      "",
+      "",
+      applicantFirstName,
+      applicantMiddleName,
+      applicantLastName,
+      relationship,
+      purpose,
+      approximateYear,
+      true,
+    );
+
+    if (!currentDraftId) {
+      stageUpdater?.("Initializing server draft...");
+      const draft = await createDraftMutation.mutateAsync({
+        payload: {
+          parishId: Number(selectedParish!.id),
+          documentType: selectedDocType!,
+          applicantFirstName: applicantFirstName.trim(),
+          applicantMiddleName: applicantMiddleName.trim() || undefined,
+          applicantLastName: applicantLastName.trim(),
+          relationship: relationship.trim(),
+          purpose: finalPurpose,
+        },
+        idempotencyKey: getOrCreateIdempotencyKey(),
+      });
+      currentDraftId = draft.id;
+      createdDraftIdRef.current = draft.id;
+      setCreatedDraftIdState(draft.id);
+    } else {
+      stageUpdater?.("Saving draft changes...");
+      await updateDraftMutation.mutateAsync({
+        requestId: currentDraftId,
+        payload: {
+          applicantFirstName: applicantFirstName.trim(),
+          applicantMiddleName: applicantMiddleName.trim(),
+          applicantLastName: applicantLastName.trim(),
+          relationship: relationship.trim(),
+          purpose: finalPurpose,
+        },
+      });
+    }
+
+    lastSavedSnapshotRef.current = savedSnapshot;
+    return currentDraftId;
+  };
+
+  const runAutosave = async () => {
+    if (isUnmountedRef.current || submittedOrDiscardedRef.current || inFlightGuard.current) {
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      return;
+    }
+    if (!canAutosaveForm) return;
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      setAutosaveStatus(activeDraftId ? "saved" : "idle");
+      return;
+    }
+    let run: Promise<void> | null = null;
+    run = (async () => {
+      pendingResaveRef.current = false;
+      const seqAtStart = userEditSeqRef.current;
+      setAutosaveStatus("saving");
+      try {
+        await persistFormDraftOnly();
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        if (userEditSeqRef.current !== seqAtStart || pendingResaveRef.current) {
+          pendingResaveRef.current = true;
+          setAutosaveStatus("pending");
+        } else {
+          setAutosaveStatus("saved");
+        }
+      } catch {
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        setAutosaveStatus("error");
+      } finally {
+        if (inFlightAutosaveRef.current === run) {
+          inFlightAutosaveRef.current = null;
+        }
+        if (
+          pendingResaveRef.current &&
+          !isUnmountedRef.current &&
+          !submittedOrDiscardedRef.current &&
+          !inFlightGuard.current
+        ) {
+          pendingResaveRef.current = false;
+          clearAutosaveTimer();
+          autosaveTimerRef.current = setTimeout(() => {
+            autosaveTimerRef.current = null;
+            void runAutosaveRef.current();
+          }, AUTOSAVE_DEBOUNCE_MS);
+        }
+      }
+    })();
+    inFlightAutosaveRef.current = run;
+    await run;
+  };
+
+  runAutosaveRef.current = runAutosave;
+
+  useEffect(() => {
+    if (
+      isUnmountedRef.current ||
+      submittedOrDiscardedRef.current ||
+      userEditSeqRef.current === 0 ||
+      (validDraftId && loadingExistingDraft)
+    ) {
+      return;
+    }
+    if (!canAutosaveForm) {
+      clearAutosaveTimer();
+      return;
+    }
+    if (currentFormSnapshot === lastSavedSnapshotRef.current) {
+      clearAutosaveTimer();
+      if (!inFlightAutosaveRef.current) {
+        setAutosaveStatus(activeDraftId ? "saved" : "idle");
+      }
+      return;
+    }
+    if (inFlightAutosaveRef.current) {
+      pendingResaveRef.current = true;
+      setAutosaveStatus("pending");
+      return;
+    }
+    setAutosaveStatus((prev) => (prev === "saving" ? prev : "pending"));
+    clearAutosaveTimer();
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void runAutosaveRef.current();
+    }, AUTOSAVE_DEBOUNCE_MS);
+  }, [currentFormSnapshot, canAutosaveForm, validDraftId, loadingExistingDraft, activeDraftId]);
+
+  const handleBack = useCallback(async () => {
     if (isSubmitting || isSavingDraft) return;
     if (step > 1 && (!activeDraftId || step > 3)) {
       setStep((prev) => (prev - 1) as WizardStep);
       return;
     }
 
+    const hasPendingValidFormEdits = Boolean(
+      canAutosaveForm &&
+      userEditSeqRef.current > 0 &&
+      currentFormSnapshot !== lastSavedSnapshotRef.current &&
+      !submittedOrDiscardedRef.current
+    );
+    const hasLocalFiles = Boolean(
+      Object.keys(selectedFiles).length > 0 || registrantIdFront || registrantIdBack
+    );
+
+    if (activeDraftId && hasPendingValidFormEdits) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
+      try {
+        await persistFormDraftOnly();
+        setAutosaveStatus("saved");
+      } catch {
+        // Proceed with navigation even if an optional exit flush fails.
+      }
+      navigateBackOrReplace(
+        () => router.canGoBack(),
+        () => router.back(),
+        () => router.replace("/(app)/(tabs)/(requests)" as any)
+      );
+      return;
+    }
+
+    if (!activeDraftId && hasPendingValidFormEdits && !hasLocalFiles) {
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
+      try {
+        await persistFormDraftOnly();
+        setAutosaveStatus("saved");
+        navigateBackOrReplace(
+          () => router.canGoBack(),
+          () => router.back(),
+          () => router.replace("/(app)/(tabs)/(requests)" as any)
+        );
+        return;
+      } catch {
+        // Fall through to Discard confirmation if initial draft save failed.
+      }
+    }
+
     const hasUnsavedChanges = Boolean(
-      !activeDraftId && (applicantName.trim() || purpose.trim() || Object.keys(selectedFiles).length > 0 || registrantIdFront || registrantIdBack)
+      !activeDraftId && (applicantName.trim() || purpose.trim() || hasLocalFiles)
     );
 
     if (hasUnsavedChanges) {
@@ -313,6 +636,9 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
         "Discard Request?",
         "You have unsaved information. Are you sure you want to leave this wizard?",
         () => {
+          submittedOrDiscardedRef.current = true;
+          clearAutosaveTimer();
+          pendingResaveRef.current = false;
           navigateBackOrReplace(
             () => router.canGoBack(),
             () => router.back(),
@@ -328,6 +654,11 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
 
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
+    if (inFlightAutosaveRef.current) {
+      await inFlightAutosaveRef.current.catch(() => {});
+    }
     navigateBackOrReplace(
       () => router.canGoBack(),
       () => router.back(),
@@ -336,9 +667,12 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   }, [
     activeDraftId,
     applicantName,
+    canAutosaveForm,
+    currentFormSnapshot,
     feedback,
     isSavingDraft,
     isSubmitting,
+    persistFormDraftOnly,
     purpose,
     registrantIdBack,
     registrantIdFront,
@@ -444,6 +778,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   // Step 1 -> Step 2
   const handleSelectParish = (parish: ParishDto) => {
     if (selectedParish?.id !== parish.id) {
+      markUserEdit();
       setSelectedParish(parish);
       setSelectedDocType(null);
       setSelectedFiles({});
@@ -453,6 +788,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
   // Step 2 -> Step 3
   const handleSelectDocType = (docType: CanonicalDocumentType) => {
     if (selectedDocType !== docType) {
+      markUserEdit();
       setSelectedDocType(docType);
       setSelectedFiles({});
     }
@@ -464,6 +800,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       return;
     }
 
+    markUserEdit();
     const prevRel = relationship;
     draftFingerprintRef.current = null;
     setRelationship(opt);
@@ -634,48 +971,8 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     setStep(5);
   };
 
-  // Generate or retrieve persistent UUID for this submission session
-  const getOrCreateIdempotencyKey = () => {
-    if (!idempotencyKeyRef.current) {
-      idempotencyKeyRef.current = `req_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`}`;
-    }
-    return idempotencyKeyRef.current;
-  };
-
   const persistDraftAndSelectedFiles = async (stageUpdater: (msg: string) => void): Promise<number> => {
-    const finalPurpose = formatPurposeWithRegistryYear(purpose, approximateYear);
-    let draftId = createdDraftIdRef.current ?? (existingDraft?.isDraft ? existingDraft.id : null);
-
-    if (!draftId) {
-      stageUpdater("Initializing server draft...");
-      const draft = await createDraftMutation.mutateAsync({
-        payload: {
-          parishId: Number(selectedParish!.id),
-          documentType: selectedDocType!,
-          applicantFirstName: applicantFirstName.trim(),
-          applicantMiddleName: applicantMiddleName.trim() || undefined,
-          applicantLastName: applicantLastName.trim(),
-          relationship: relationship.trim(),
-          purpose: finalPurpose,
-        },
-        idempotencyKey: getOrCreateIdempotencyKey(),
-      });
-      draftId = draft.id;
-      createdDraftIdRef.current = draft.id;
-      setCreatedDraftIdState(draft.id);
-    } else {
-      stageUpdater("Saving draft changes...");
-      await updateDraftMutation.mutateAsync({
-        requestId: draftId,
-        payload: {
-          applicantFirstName: applicantFirstName.trim(),
-          applicantMiddleName: applicantMiddleName.trim(),
-          applicantLastName: applicantLastName.trim(),
-          relationship: relationship.trim(),
-          purpose: finalPurpose,
-        },
-      });
-    }
+    const draftId = await persistFormDraftOnly(stageUpdater);
 
     const activeIds = new Set(
       (requirements?.requiredDocuments || [])
@@ -718,12 +1015,18 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
 
     inFlightGuard.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setIsSavingDraft(true);
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       const savedId = await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
       inFlightGuard.current = false;
       setIsSavingDraft(false);
       setSubmissionStage("");
+      setAutosaveStatus("saved");
       setSelectedFiles({});
       setRegistrantIdFront(null);
       setRegistrantIdBack(null);
@@ -790,10 +1093,15 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
     }
 
     inFlightGuard.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
     setIsSubmitting(true);
     let createdDraftId: number | null = createdDraftIdRef.current ?? (existingDraft?.isDraft ? existingDraft.id : null);
 
     try {
+      if (inFlightAutosaveRef.current) {
+        await inFlightAutosaveRef.current.catch(() => {});
+      }
       const draftId = await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
       createdDraftId = draftId;
 
@@ -802,6 +1110,10 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
       const submitted = await submitDraftMutation.mutateAsync(draftId);
 
       // Clean local wizard state
+      submittedOrDiscardedRef.current = true;
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
+      setAutosaveStatus("idle");
       idempotencyKeyRef.current = null;
       createdDraftIdRef.current = null;
       setCreatedDraftIdState(null);
@@ -1080,6 +1392,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="First Name *"
                 value={applicantFirstName}
                 onChangeText={(val) => {
+                  markUserEdit();
                   setHasManualNameEdit(true);
                   setApplicantFirstName(val);
                   if (fieldErrors.firstName) {
@@ -1097,6 +1410,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="Middle Name (Optional)"
                 value={applicantMiddleName}
                 onChangeText={(val) => {
+                  markUserEdit();
                   setHasManualNameEdit(true);
                   setApplicantMiddleName(val);
                 }}
@@ -1110,6 +1424,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="Last Name *"
                 value={applicantLastName}
                 onChangeText={(val) => {
+                  markUserEdit();
                   setHasManualNameEdit(true);
                   setApplicantLastName(val);
                   if (fieldErrors.lastName) {
@@ -1138,6 +1453,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="Purpose / Reason for Request *"
                 value={purpose}
                 onChangeText={(val) => {
+                  markUserEdit();
                   setPurpose(val);
                   if (fieldErrors.purpose) {
                     setFieldErrors((prev) => ({ ...prev, purpose: undefined }));
@@ -1155,6 +1471,7 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
                 label="Approximate Registry Year (Optional)"
                 value={approximateYear}
                 onChangeText={(val) => {
+                  markUserEdit();
                   setApproximateYear(val.replace(/[^0-9]/g, "").slice(0, 4));
                   if (fieldErrors.approximateYear) {
                     setFieldErrors((prev) => ({ ...prev, approximateYear: undefined }));
@@ -1655,6 +1972,25 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {autosaveStatus !== "idle" ? (
+              <Text
+                style={[
+                  styles.autosaveStatusText,
+                  autosaveStatus === "saved" && styles.autosaveStatusSaved,
+                  autosaveStatus === "error" && styles.autosaveStatusError,
+                ]}
+                accessibilityLiveRegion="polite"
+                allowFontScaling
+              >
+                {autosaveStatus === "saving"
+                  ? "Saving..."
+                  : autosaveStatus === "saved"
+                    ? "All changes saved"
+                    : autosaveStatus === "error"
+                      ? "Unable to save changes"
+                      : "Unsaved changes"}
+              </Text>
+            ) : null}
           </View>
         ) : step === 4 ? (
           <View style={styles.actionStack}>
@@ -1678,6 +2014,25 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {autosaveStatus !== "idle" ? (
+              <Text
+                style={[
+                  styles.autosaveStatusText,
+                  autosaveStatus === "saved" && styles.autosaveStatusSaved,
+                  autosaveStatus === "error" && styles.autosaveStatusError,
+                ]}
+                accessibilityLiveRegion="polite"
+                allowFontScaling
+              >
+                {autosaveStatus === "saving"
+                  ? "Saving..."
+                  : autosaveStatus === "saved"
+                    ? "All changes saved"
+                    : autosaveStatus === "error"
+                      ? "Unable to save changes"
+                      : "Unsaved changes"}
+              </Text>
+            ) : null}
           </View>
         ) : step === 5 ? (
           <View style={styles.actionStack}>
@@ -1705,6 +2060,25 @@ export const RequestWizardScreen: React.FC<RequestWizardScreenProps> = ({
               }}
               style={styles.fullWidthAction}
             />
+            {autosaveStatus !== "idle" ? (
+              <Text
+                style={[
+                  styles.autosaveStatusText,
+                  autosaveStatus === "saved" && styles.autosaveStatusSaved,
+                  autosaveStatus === "error" && styles.autosaveStatusError,
+                ]}
+                accessibilityLiveRegion="polite"
+                allowFontScaling
+              >
+                {autosaveStatus === "saving"
+                  ? "Saving..."
+                  : autosaveStatus === "saved"
+                    ? "All changes saved"
+                    : autosaveStatus === "error"
+                      ? "Unable to save changes"
+                      : "Unsaved changes"}
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </SafeBottomActionBar>
@@ -2079,5 +2453,16 @@ const styles = StyleSheet.create({
   actionStack: {
     width: "100%",
     gap: spacing.xs,
+  },
+  autosaveStatusText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  autosaveStatusSaved: {
+    color: "#276749",
+  },
+  autosaveStatusError: {
+    color: "#B42318",
   },
 });
