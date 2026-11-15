@@ -62,6 +62,7 @@ function harness({ page = 'SacramentalRequestPage', draft, requests = [], search
     'react-dom': { createPortal: child => child },
     'react-router-dom': { useSearchParams: () => [params()], useNavigate: () => navigate },
     '../../providers/factory': { default: { request }, __esModule: true },
+    '../../hooks/useDraftNavigationGuard': { useDraftNavigationGuard: () => ({ navigationSaveRef: { current: false }, navigationDialog: null }) },
     '../../hooks/useService': { useParishes: () => ({ data: parishes, loading: false, refetch() {} }), usePausePolling() {}, useRequests: () => ({ data: currentRequests, loading: false, refetch() {} }) },
     '../../hooks/useProfileRequirement': { useProfileRequirement: () => ({ isProfileIncomplete: false, openProfileModal() {}, requireCompleteProfile: fn => fn() }) },
     '../../contexts/AuthContext': { useAuth: () => ({ appProfile: { id: '12', fullName: 'Juan Dela Cruz', isGovernmentIdVerified: true } }) },
@@ -221,7 +222,8 @@ test('opening and refreshing restore the canonical saved draft into first, middl
     assert.equal(h.input('First Name *').props.value, 'Juan');
     assert.equal(h.input('Middle Name (Optional)').props.value, 'Santos');
     assert.equal(h.input('Last Name *').props.value, 'Cruz');
-    assert.equal(h.input('Purpose of Request *').props.value, 'School (Approximate Registry Year: 1995)');
+    assert.equal(h.input('Purpose of Request *').props.value, 'School');
+    assert.equal(h.input('Approx. Registry Year (Optional)').props.value, '1995');
     assert.equal(h.button('Next Step').props.disabled, false);
 
     // Clearing First Name disables Next Step using original behavior, without error messages
@@ -278,7 +280,7 @@ test('legacy combined names with ambiguous boundaries preserve the stored value 
   await h.flush();
   const updates = h.calls.filter(c => c[0] === 'update');
   assert.equal(updates.length, 1);
-  assert.equal(updates[0][2].purpose, 'Passport');
+  assert.equal(updates[0][2].purpose, 'Passport (Approximate Registry Year: 1995)');
   assert.ok(!Object.hasOwn(updates[0][2], 'applicantName'));
   assert.ok(!Object.hasOwn(updates[0][2], 'applicantFirstName'));
   assert.equal((await h.request.getRequestById('446')).applicantName, 'Dela Cruz, Juan Miguel Jr.');
@@ -332,7 +334,7 @@ test('purpose-only and relationship-only edits omit all name fields and retain t
   await standardDraft.flush();
   const standardUpdates = standardDraft.calls.filter(c => c[0] === 'update');
   assert.equal(standardUpdates.length, 1);
-  assert.equal(standardUpdates[0][2].purpose, 'Personal Copy');
+  assert.equal(standardUpdates[0][2].purpose, 'Personal Copy (Approximate Registry Year: 1995)');
   for (const field of ['applicantName', 'applicantFirstName', 'applicantMiddleName', 'applicantLastName']) {
     assert.equal(Object.hasOwn(standardUpdates[0][2], field), false);
   }

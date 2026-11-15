@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
+import { createMemoryRouter } from 'react-router-dom';
 import { buildApplicantName } from '../../testimonium-backend/utils/nameUtils.js';
 import { CANONICAL_DOCUMENT_TYPES, DEFAULT_OFFERED_DOCUMENTS } from '../src/config/documents.ts';
 
@@ -47,6 +48,14 @@ function harness({ page = 'SacramentalRequestPage', draft = null, search = '', a
   const timers = createTimerController();
   const location = { search };
   const params = () => new URLSearchParams(location.search);
+  const initialPath = page === 'SacramentalRequestPage' ? '/dashboard/request' : '/dashboard/scheduler';
+  const router = createMemoryRouter([{ path: '*', element: null }], {
+    initialEntries: ['/dashboard/home', `${initialPath}${search}`], initialIndex: 1,
+  });
+  router.subscribe(() => {
+    location.search = router.state.location.search;
+    dirty = true;
+  });
   const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const memo = (callback, deps) => {
     const index = cursor++;
@@ -205,16 +214,16 @@ function harness({ page = 'SacramentalRequestPage', draft = null, search = '', a
   const parishes = [{ id: '3', name: 'San Roque Parish', availableDocuments: DEFAULT_OFFERED_DOCUMENTS }];
   const navigate = (url, options) => {
     calls.push(['navigate', url, options]);
-    if (url.startsWith('/dashboard/request?') || url.startsWith('/dashboard/scheduler?')) {
-      location.search = url.slice(url.indexOf('?'));
-      dirty = true;
-    }
+    return router.navigate(url, options);
   };
   const modules = {
     react: { ...React, default: React, __esModule: true },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: 'Fragment' },
     'react-dom': { createPortal: child => child },
-    'react-router-dom': { useSearchParams: () => [params()], useNavigate: () => navigate },
+    'react-router-dom': {
+      useSearchParams: () => [params()], useNavigate: () => navigate,
+      useBlocker: predicate => router.getBlocker('draft', predicate),
+    },
     '../../providers/factory': { default: { request, scheduler }, __esModule: true },
     '../../hooks/useService': { useParishes: () => ({ data: parishes, loading: false, refetch() {} }), usePausePolling() {} },
     '../../hooks/useProfileRequirement': { useProfileRequirement: () => ({ isProfileIncomplete: false, openProfileModal() {} }) },
@@ -231,6 +240,12 @@ function harness({ page = 'SacramentalRequestPage', draft = null, search = '', a
   const require = name =>
     modules[name] ||
     new Proxy({ __esModule: true }, { get: (_, prop) => (prop === '__esModule' ? true : prop === 'default' ? name.split('/').at(-1) : String(prop)) });
+
+  const guardModule = { exports: {} };
+  vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/hooks/useDraftNavigationGuard.tsx', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  }).outputText, { require, module: guardModule, exports: guardModule.exports });
+  modules['../../hooks/useDraftNavigationGuard'] = guardModule.exports;
 
   const module = { exports: {} };
   vm.runInNewContext(
@@ -295,6 +310,10 @@ function harness({ page = 'SacramentalRequestPage', draft = null, search = '', a
   return {
     calls,
     timers,
+    navigate,
+    path: () => router.state.location.pathname,
+    search: () => router.state.location.search,
+    dialog: () => walk(tree, n => n.props?.confirmLabel === 'Leave Anyway')[0],
     async flush() {
       for (let i = 0; i < 16; i++) {
         if (dirty) {
@@ -517,3 +536,226 @@ test('Web EventSchedulerPage: requires parish + service, preserves WEDDING venue
   const navCall = uiResumed.calls.find(c => c[0] === 'navigate' && String(c[1]).includes('mode=schedules'));
   assert.ok(navCall);
 });
+
+const documentDraft = (purpose = 'School (Approximate Registry Year: 1995)') => ({
+  id: '446', trackingNumber: 'TRK-446', isDraft: true, parishId: '3',
+  documentType: 'BAPTISMAL_CERTIFICATE', rawDocumentType: 'BAPTISMAL_CERTIFICATE',
+  applicantName: 'Juan Dela Cruz', relationship: 'Self', purpose, attachments: [],
+});
+const scheduleDraft = () => ({
+  id: '701', parishId: '3', parishName: 'San Roque Parish', rawEventType: 'WEDDING',
+  serviceName: 'Marriage (Canonical Interview)', displayTitle: 'Marriage (Canonical Interview)',
+  preferredDate: '2026-12-01', date: '2026-12-01', requestedDate: '2026-12-01',
+  timeSlot: '09:00 AM - 10:00 AM', location: 'San Roque Parish', remarks: 'Initial note',
+  requestedPriestId: null, attachments: [],
+});
+const workflows = [
+  { page: 'SacramentalRequestPage', id: '446', draft: documentDraft, apiKey: 'api', prefix: 'req',
+    edit: (ui, value) => ui.input('Purpose of Request').props.onChange({ target: { value } }),
+    value: ui => ui.input('Purpose of Request').props.value },
+  { page: 'EventSchedulerPage', id: '701', draft: scheduleDraft, apiKey: 'schedulerApi', prefix: 'sched',
+    edit: (ui, value) => ui.textarea().props.onChange({ target: { value } }),
+    value: ui => ui.textarea().props.value },
+];
+
+test('registry year is restored separately, remains accessible, and can be replaced or cleared without obsolete suffixes', async () => {
+  const ui = harness({ draft: documentDraft(), search: '?draftId=446' });
+  await ui.flush();
+  assert.equal(ui.input('Purpose of Request').props.value, 'School');
+  assert.equal(ui.input('Approx. Registry Year').props.value, '1995');
+  assert.equal(ui.dispatchBeforeUnload(), false);
+  for (const year of ['2001', '', '1999']) {
+    ui.input('Approx. Registry Year').props.onChange({ target: { value: year } });
+    await ui.flush();
+    await ui.timers.runLatest();
+    await ui.flush();
+    const expected = year ? `School (Approximate Registry Year: ${year})` : 'School';
+    assert.equal(ui.calls.filter(c => c[0] === 'req:update').at(-1)[2].purpose, expected);
+    assert.equal(ui.input('Approx. Registry Year').props.value, year);
+    assert.equal(ui.input('Purpose of Request').props.value, 'School');
+    assert.equal(ui.dispatchBeforeUnload(), false);
+  }
+});
+
+test('new document registry year remains accessible after draft creation, including an initially empty year', async () => {
+  const ui = harness();
+  await ui.flush();
+  ui.button('Next Step').props.onClick(); await ui.flush();
+  ui.button('Next Step').props.onClick(); await ui.flush();
+  ui.input('Purpose of Request').props.onChange({ target: { value: 'School' } });
+  await ui.flush();
+  await ui.timers.runLatest(); await ui.flush();
+  assert.equal(ui.input('Approx. Registry Year').props.value, '');
+  ui.input('Approx. Registry Year').props.onChange({ target: { value: '2000' } });
+  await ui.flush();
+  await ui.timers.runLatest(); await ui.flush();
+  assert.equal(ui.input('Approx. Registry Year').props.value, '2000');
+  assert.equal(ui.calls.filter(c => c[0] === 'req:update').at(-1)[2].purpose, 'School (Approximate Registry Year: 2000)');
+});
+
+test('a stale document response preserves newer purpose and registry year edits', async () => {
+  let resolveSave;
+  const ui = harness({ draft: documentDraft(), search: '?draftId=446', api: {
+    updateDraft: (id, details) => new Promise(resolve => {
+      resolveSave = () => resolve({ ...documentDraft(), purpose: details.purpose });
+    }),
+  } });
+  await ui.flush();
+  ui.input('Approx. Registry Year').props.onChange({ target: { value: '2001' } });
+  await ui.flush();
+  const pending = ui.timers.runLatest(); await ui.flush();
+  ui.input('Approx. Registry Year').props.onChange({ target: { value: '' } });
+  ui.input('Purpose of Request').props.onChange({ target: { value: 'Newer purpose' } });
+  await ui.flush();
+  resolveSave(); await pending; await ui.flush();
+  assert.equal(ui.input('Purpose of Request').props.value, 'Newer purpose');
+  assert.equal(ui.input('Approx. Registry Year').props.value, '');
+  assert.equal(ui.dispatchBeforeUnload(), true);
+});
+
+test('a new document navigation flush creates exactly once and preserves the requested destination', async () => {
+  const ui = harness();
+  await ui.flush();
+  ui.button('Next Step').props.onClick(); await ui.flush();
+  ui.button('Next Step').props.onClick(); await ui.flush();
+  ui.input('Purpose of Request').props.onChange({ target: { value: 'School' } });
+  await ui.flush();
+  await ui.navigate('/dashboard/home'); await ui.flush();
+  assert.equal(ui.calls.filter(c => c[0] === 'req:create').length, 1);
+  assert.equal(ui.path(), '/dashboard/home');
+  assert.equal(ui.search(), '');
+  assert.equal(ui.timers.count(), 0);
+  assert.equal(ui.calls.some(c => c[0].includes('upload')), false);
+});
+
+test('document manual Save Draft and successful submission preserve the registry year and allow navigation', async () => {
+  const ui = harness({ draft: { ...documentDraft(), attachments: [{ id: '1', category: 'certificate' }] }, search: '?draftId=446' });
+  await ui.flush();
+  ui.input('Approx. Registry Year').props.onChange({ target: { value: '2000' } }); await ui.flush();
+  await ui.button('Save Draft').props.onClick(); await ui.flush();
+  assert.equal(ui.input('Approx. Registry Year').props.value, '2000');
+  assert.equal(ui.calls.filter(c => c[0] === 'req:update').at(-1)[2].purpose, 'School (Approximate Registry Year: 2000)');
+  ui.button('Next Step').props.onClick(); await ui.flush();
+  await ui.button('Submit Request').props.onClick(); await ui.flush();
+  assert.equal(ui.calls.filter(c => c[0] === 'req:submit').length, 1);
+  await ui.navigate('/dashboard/home'); await ui.flush();
+  assert.equal(ui.path(), '/dashboard/home');
+  assert.equal(ui.dialog().props.isOpen, false);
+});
+
+for (const flow of workflows) {
+  const setup = extras => harness({ page: flow.page, draft: flow.draft(), search: `?draftId=${flow.id}`, ...extras });
+  test(`${flow.page}: React Router PUSH, REPLACE, and POP save first and clean drafts leave without prompts`, async () => {
+    for (const [destination, options, expectedPath] of [
+      ['/dashboard/profile', undefined, '/dashboard/profile'],
+      ['/dashboard/track', { replace: true }, '/dashboard/track'],
+      [-1, undefined, '/dashboard/home'],
+    ]) {
+      const ui = setup();
+      await ui.flush();
+      flow.edit(ui, 'Pending navigation edit'); await ui.flush();
+      await ui.navigate(destination, options);
+      assert.notEqual(ui.path(), expectedPath);
+      await ui.flush();
+      assert.equal(ui.path(), expectedPath);
+      assert.equal(ui.calls.filter(c => c[0] === `${flow.prefix}:update`).length, 1);
+      assert.equal(ui.dialog().props.isOpen, false);
+      assert.equal(ui.calls.some(c => c[0].includes('upload')), false);
+    }
+    const clean = setup(); await clean.flush();
+    await clean.navigate('/dashboard/home'); await clean.flush();
+    assert.equal(clean.path(), '/dashboard/home');
+    assert.equal(clean.calls.filter(c => c[0] === `${flow.prefix}:update`).length, 0);
+  });
+
+  test(`${flow.page}: failed exit offers Stay and Retry, preserves inputs, and Leave Anyway resumes destination`, async () => {
+    let fail = true;
+    const ui = setup({ [flow.apiKey]: { updateDraft: async (id, details) => {
+      ui.calls.push([`${flow.prefix}:update`, id, details]);
+      if (fail) throw new Error('Offline');
+      return { ...flow.draft(), ...details };
+    } } });
+    await ui.flush();
+    flow.edit(ui, 'Do not lose this'); await ui.flush();
+    await ui.navigate('/dashboard/profile'); await ui.flush();
+    assert.notEqual(ui.path(), '/dashboard/profile');
+    assert.equal(ui.dialog().props.isOpen, true);
+    assert.equal(ui.dialog().props.cancelLabel, 'Stay and Retry');
+    assert.equal(flow.value(ui), 'Do not lose this');
+    ui.dialog().props.onClose(); await ui.flush();
+    assert.notEqual(ui.path(), '/dashboard/profile');
+    assert.equal(flow.value(ui), 'Do not lose this');
+    assert.equal(ui.dispatchBeforeUnload(), true);
+    fail = false;
+    await ui.navigate('/dashboard/profile'); await ui.flush();
+    assert.equal(ui.path(), '/dashboard/profile');
+
+    const offline = setup({ [flow.apiKey]: { updateDraft: async () => { throw new Error('Offline'); } } });
+    await offline.flush();
+    flow.edit(offline, 'Leave acknowledged'); await offline.flush();
+    await offline.navigate('/dashboard/track'); await offline.flush();
+    offline.dialog().props.onConfirm(); await offline.flush();
+    assert.equal(offline.path(), '/dashboard/track');
+    assert.equal(offline.calls.some(c => c[0].includes('upload')), false);
+  });
+
+  test(`${flow.page}: navigation waits for autosave and saves newer edits without overlapping requests`, async () => {
+    let resolveSave;
+    let count = 0;
+    const ui = setup({ [flow.apiKey]: { updateDraft: async (id, details) => {
+      ui.calls.push([`${flow.prefix}:update`, id, details]);
+      if (++count === 1) await new Promise(resolve => { resolveSave = resolve; });
+      return { ...flow.draft(), ...details };
+    } } });
+    await ui.flush();
+    flow.edit(ui, 'First edit'); await ui.flush();
+    const pending = ui.timers.runLatest(); await ui.flush();
+    await ui.navigate('/dashboard/profile'); await ui.flush();
+    flow.edit(ui, 'Newest edit'); await ui.flush();
+    assert.equal(count, 1);
+    assert.notEqual(ui.path(), '/dashboard/profile');
+    resolveSave(); await pending; await ui.flush();
+    assert.equal(count, 2);
+    assert.equal(flow.value(ui), 'Newest edit');
+    assert.equal(ui.path(), '/dashboard/profile');
+    assert.equal(ui.timers.count(), 0);
+  });
+
+  test(`${flow.page}: navigation waits for manual Save Draft without duplicate saves or failure prompts`, async () => {
+    let resolveSave;
+    const ui = setup({ [flow.apiKey]: { updateDraft: async (id, details) => {
+      ui.calls.push([`${flow.prefix}:update`, id, details]);
+      await new Promise(resolve => { resolveSave = resolve; });
+      return { ...flow.draft(), ...details };
+    } } });
+    await ui.flush();
+    flow.edit(ui, 'Manual save before navigation'); await ui.flush();
+    const manualSave = ui.button('Save Draft').props.onClick(); await ui.flush();
+    await ui.navigate('/dashboard/profile'); await ui.flush();
+    assert.notEqual(ui.path(), '/dashboard/profile');
+    assert.equal(ui.dialog().props.isOpen, false);
+    resolveSave(); await manualSave; await ui.flush();
+    assert.equal(ui.path(), '/dashboard/profile');
+    assert.equal(ui.calls.filter(c => c[0] === `${flow.prefix}:update`).length, 1);
+    assert.equal(ui.dialog().props.isOpen, false);
+  });
+
+  test(`${flow.page}: authentication navigation bypasses unsaved-form guard`, async () => {
+    const ui = setup(); await ui.flush();
+    flow.edit(ui, 'Unsaved edit'); await ui.flush();
+    await ui.navigate('/login'); await ui.flush();
+    assert.equal(ui.path(), '/login');
+    assert.equal(ui.calls.filter(c => c[0] === `${flow.prefix}:update`).length, 0);
+  });
+
+  test(`${flow.page}: Back to Saved Drafts also requires acknowledgement when the final save fails`, async () => {
+    const ui = setup({ [flow.apiKey]: { updateDraft: async () => { throw new Error('Offline'); } } });
+    await ui.flush();
+    flow.edit(ui, 'Unsaved edit'); await ui.flush();
+    await ui.button('Back to Saved Drafts').props.onClick(); await ui.flush();
+    assert.equal(ui.dialog().props.isOpen, true);
+    assert.notEqual(ui.path(), '/dashboard/track');
+    ui.dialog().props.onConfirm(); await ui.flush();
+    assert.equal(ui.path(), '/dashboard/track');
+  });
+}

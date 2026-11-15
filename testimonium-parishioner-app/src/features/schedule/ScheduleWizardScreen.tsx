@@ -206,6 +206,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>("idle");
   const userEditSeqRef = useRef(0);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const lastSavedEditSeqRef = useRef(0);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightAutosaveRef = useRef<Promise<void> | null>(null);
   const pendingResaveRef = useRef(false);
@@ -234,6 +235,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
       submittedOrDiscardedRef.current = !currentUid;
       userEditSeqRef.current = 0;
       lastSavedSnapshotRef.current = null;
+      lastSavedEditSeqRef.current = 0;
       setAutosaveStatus("idle");
     } else if (!sessionUidRef.current && currentUid) {
       submittedOrDiscardedRef.current = false;
@@ -283,6 +285,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
       existingDraft.remarks ?? "",
     );
     userEditSeqRef.current = 0;
+    lastSavedEditSeqRef.current = 0;
     clearAutosaveTimer();
     pendingResaveRef.current = false;
     submittedOrDiscardedRef.current = false;
@@ -578,6 +581,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     stageUpdater?: (msg: string) => void,
     includeRemovedAttachments = false
   ): Promise<number> => {
+    const seqAtStart = userEditSeqRef.current;
     let draftId =
       createdDraftIdRef.current ?? (existingDraft?.status === "DRAFT" ? existingDraft.id : null);
     const venueValue =
@@ -638,6 +642,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     }
 
     lastSavedSnapshotRef.current = inputSnapshot;
+    lastSavedEditSeqRef.current = seqAtStart;
     return draftId;
   };
 
@@ -729,6 +734,34 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [currentFormSnapshot, canAutosaveForm, createdDraftIdState, existingDraftQuery?.isLoading, activeDraftId]);
 
+  // Read current inputs after awaiting any older autosave.
+  const latestExitFormRef = useRef({ canAutosaveForm, currentFormSnapshot, persistFormDraftOnly });
+  latestExitFormRef.current = { canAutosaveForm, currentFormSnapshot, persistFormDraftOnly };
+  const saveFormBeforeExit = async () => {
+    if (submittingRef.current) throw new Error("A save is already in progress. Please retry.");
+    submittingRef.current = true;
+    clearAutosaveTimer();
+    pendingResaveRef.current = false;
+    try {
+      if (inFlightAutosaveRef.current) await inFlightAutosaveRef.current;
+      while (!submittedOrDiscardedRef.current && userEditSeqRef.current > lastSavedEditSeqRef.current &&
+        latestExitFormRef.current.currentFormSnapshot !== lastSavedSnapshotRef.current) {
+        if (!latestExitFormRef.current.canAutosaveForm) throw new Error("Complete the required form fields before saving.");
+        const seq = userEditSeqRef.current;
+        await latestExitFormRef.current.persistFormDraftOnly(undefined, false);
+        if (seq === userEditSeqRef.current) break;
+      }
+      setAutosaveStatus("saved");
+    } catch (err) {
+      setAutosaveStatus("error");
+      throw err;
+    } finally {
+      submittingRef.current = false;
+      pendingResaveRef.current = false;
+      clearAutosaveTimer();
+    }
+  };
+
   const handleBack = useCallback(async () => {
     if (submittingRef.current || isSavingDraft) return;
     if (currentStep > 1) {
@@ -737,44 +770,38 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
       return;
     }
 
-    const hasPendingValidFormEdits = Boolean(
-      canAutosaveForm &&
+    const hasPendingFormEdits = Boolean(
+      (canAutosaveForm || activeDraftId) &&
       userEditSeqRef.current > 0 &&
       currentFormSnapshot !== lastSavedSnapshotRef.current &&
       !submittedOrDiscardedRef.current
     );
-    const hasLocalFiles = Object.keys(requirementFiles).length > 0;
-
-    if (activeDraftId && hasPendingValidFormEdits) {
-      clearAutosaveTimer();
-      pendingResaveRef.current = false;
-      if (inFlightAutosaveRef.current) {
-        await inFlightAutosaveRef.current.catch(() => {});
-      }
+    if (hasPendingFormEdits) {
       try {
-        await persistFormDraftOnly(undefined, false);
-        setAutosaveStatus("saved");
+        await saveFormBeforeExit();
       } catch {
-        // Proceed with navigation even if an optional exit flush fails.
+        if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
+        feedback.showConfirm(
+          "Unable to save changes",
+          "Your latest form changes could not be saved. Stay to retry, or leave knowing your newest unsaved changes may be lost.",
+          () => {
+            submittedOrDiscardedRef.current = true;
+            clearAutosaveTimer();
+            pendingResaveRef.current = false;
+            router.back();
+          },
+          {
+            confirmText: "Leave Anyway",
+            cancelText: "Stay and Retry",
+            isDestructive: true,
+            onCancel: () => { void saveFormBeforeExit().catch(() => {}); },
+          }
+        );
+        return;
       }
+      if (isUnmountedRef.current || submittedOrDiscardedRef.current) return;
       router.back();
       return;
-    }
-
-    if (!activeDraftId && hasPendingValidFormEdits && !hasLocalFiles) {
-      clearAutosaveTimer();
-      pendingResaveRef.current = false;
-      if (inFlightAutosaveRef.current) {
-        await inFlightAutosaveRef.current.catch(() => {});
-      }
-      try {
-        await persistFormDraftOnly(undefined, false);
-        setAutosaveStatus("saved");
-        router.back();
-        return;
-      } catch {
-        // Fall through to Discard confirmation if initial save failed.
-      }
     }
 
     const hasProgress =
@@ -814,8 +841,9 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
     canAutosaveForm,
     currentFormSnapshot,
     currentStep,
+    feedback,
     isSavingDraft,
-    persistFormDraftOnly,
+    saveFormBeforeExit,
     remarks,
     requirementFiles,
     routeParishId,

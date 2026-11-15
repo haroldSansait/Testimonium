@@ -4,6 +4,7 @@ import { Check, CheckCircle, Users, AlertCircle, ShieldCheck, FileEdit } from 'l
 import services from '../../providers/factory';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDraftNavigationGuard } from '../../hooks/useDraftNavigationGuard';
 import type {
   AvailabilityDates,
   EligiblePriest,
@@ -84,7 +85,7 @@ export const EventSchedulerPage: React.FC = () => {
   const draftId = searchParams.get('draftId')?.trim() || '';
   const parishesQuery = useParishes();
   const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
-  const { user, appProfile } = useAuth();
+  const { user, appProfile, sessionState } = useAuth();
   const isGovIdVerified = Boolean(appProfile?.isGovernmentIdVerified);
 
   useEffect(() => {
@@ -135,6 +136,9 @@ export const EventSchedulerPage: React.FC = () => {
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
   const userEditSeqRef = useRef(0);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const lastSavedEditSeqRef = useRef(0);
+  const operationCompletionRef = useRef<Promise<void> | null>(null);
+  const internalDraftUpdateRef = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightAutosaveRef = useRef<Promise<void> | null>(null);
   const pendingResaveRef = useRef(false);
@@ -159,13 +163,14 @@ export const EventSchedulerPage: React.FC = () => {
   };
 
   useEffect(() => {
-    const currentUid = user?.uid || appProfile?.id || null;
+    const currentUid = user?.uid || (appProfile?.id != null ? String(appProfile.id) : null);
     if (sessionUidRef.current && currentUid !== sessionUidRef.current) {
       clearAutosaveTimer();
       pendingResaveRef.current = false;
       submittedOrDiscardedRef.current = !currentUid;
       userEditSeqRef.current = 0;
       lastSavedSnapshotRef.current = null;
+      lastSavedEditSeqRef.current = 0;
       setAutosaveStatus('idle');
     } else if (!sessionUidRef.current && currentUid) {
       submittedOrDiscardedRef.current = false;
@@ -382,6 +387,7 @@ export const EventSchedulerPage: React.FC = () => {
           draft.remarks || '',
         );
         userEditSeqRef.current = 0;
+        lastSavedEditSeqRef.current = 0;
         clearAutosaveTimer();
         pendingResaveRef.current = false;
         submittedOrDiscardedRef.current = false;
@@ -615,6 +621,7 @@ export const EventSchedulerPage: React.FC = () => {
   };
 
   const persistDraft = async (): Promise<ScheduleDraft> => {
+    const seqAtStart = userEditSeqRef.current;
     if (!selectedParishId || !selectedEventType) {
       throw new Error('Please select a parish and service before saving a draft.');
     }
@@ -663,9 +670,15 @@ export const EventSchedulerPage: React.FC = () => {
     setSavedDraft(draft);
     setSavedDraftAttachments(draft.attachments || []);
     lastSavedSnapshotRef.current = savedSnapshot;
+    lastSavedEditSeqRef.current = seqAtStart;
     sessionStorage.removeItem(storageKey);
-    if (draftId !== draft.id) {
-      navigate(`/dashboard/scheduler?draftId=${encodeURIComponent(draft.id)}`, { replace: true });
+    if (draftId !== draft.id && !navigationSaveRef.current) {
+      internalDraftUpdateRef.current = true;
+      try {
+        navigate(`/dashboard/scheduler?draftId=${encodeURIComponent(draft.id)}`, { replace: true });
+      } finally {
+        internalDraftUpdateRef.current = false;
+      }
     }
     return draft;
   };
@@ -673,6 +686,8 @@ export const EventSchedulerPage: React.FC = () => {
   const handleSaveDraft = async () => {
     if (submittingRef.current || !canSaveDraft) return;
     submittingRef.current = true;
+    let completeOperation!: () => void;
+    operationCompletionRef.current = new Promise<void>(resolve => { completeOperation = resolve; });
     clearAutosaveTimer();
     pendingResaveRef.current = false;
     setSavingDraft(true);
@@ -691,6 +706,8 @@ export const EventSchedulerPage: React.FC = () => {
       setSaveError(err?.message || 'Unable to save schedule draft. Please try again.');
     } finally {
       submittingRef.current = false;
+      operationCompletionRef.current = null;
+      completeOperation();
       setSavingDraft(false);
     }
   };
@@ -708,6 +725,8 @@ export const EventSchedulerPage: React.FC = () => {
       return;
     }
     submittingRef.current = true;
+    let completeOperation!: () => void;
+    operationCompletionRef.current = new Promise<void>(resolve => { completeOperation = resolve; });
     clearAutosaveTimer();
     pendingResaveRef.current = false;
     setSubmitting(true);
@@ -795,6 +814,8 @@ export const EventSchedulerPage: React.FC = () => {
       }
     } finally {
       submittingRef.current = false;
+      operationCompletionRef.current = null;
+      completeOperation();
       setSubmitting(false);
     }
   };
@@ -956,27 +977,41 @@ export const EventSchedulerPage: React.FC = () => {
     };
   }, [hasUnsavedFormChanges]);
 
-  const handleNavigateToSavedDrafts = async () => {
-    if (submittingRef.current) return;
-    clearAutosaveTimer();
-    if (inFlightAutosaveRef.current) {
-      await inFlightAutosaveRef.current.catch(() => {});
-    }
-    if (
-      canAutosaveForm &&
-      userEditSeqRef.current > 0 &&
-      currentFormSnapshot !== lastSavedSnapshotRef.current &&
-      !submittedOrDiscardedRef.current
-    ) {
+  const latestNavigationFormRef = useRef({ canAutosaveForm, currentFormSnapshot, persistDraft });
+  latestNavigationFormRef.current = { canAutosaveForm, currentFormSnapshot, persistDraft };
+  const { navigationSaveRef, navigationDialog } = useDraftNavigationGuard({
+    enabled: Boolean(user && !isProfileIncomplete && isGovIdVerified && !['LOGGING_OUT', 'LOGGED_OUT'].includes(sessionState) && !createdBooking && !submittedOrDiscardedRef.current),
+    hasUnsavedChanges: hasUnsavedFormChanges,
+    isInternalDraftUpdate: () => internalDraftUpdateRef.current,
+    saveBeforeLeave: async () => {
+      if (operationCompletionRef.current) await operationCompletionRef.current;
+      if (submittingRef.current) throw new Error('A save is already in progress. Please retry.');
+      submittingRef.current = true;
+      clearAutosaveTimer();
+      pendingResaveRef.current = false;
       try {
-        await persistDraft();
+        if (inFlightAutosaveRef.current) await inFlightAutosaveRef.current;
+        setSaveError(null);
+        while (!submittedOrDiscardedRef.current && userEditSeqRef.current > lastSavedEditSeqRef.current &&
+          latestNavigationFormRef.current.currentFormSnapshot !== lastSavedSnapshotRef.current) {
+          if (!latestNavigationFormRef.current.canAutosaveForm) throw new Error('Select a parish and service before saving.');
+          const seq = userEditSeqRef.current;
+          await latestNavigationFormRef.current.persistDraft();
+          if (seq === userEditSeqRef.current) break;
+        }
         setAutosaveStatus('saved');
-      } catch {
-        // Allow user to navigate even if an optional background flush fails.
+      } catch (err) {
+        setAutosaveStatus('error');
+        setSaveError(err instanceof Error ? err.message : 'Unable to save changes. Please try again.');
+        throw err;
+      } finally {
+        submittingRef.current = false;
+        pendingResaveRef.current = false;
+        clearAutosaveTimer();
       }
-    }
-    navigate('/dashboard/track?mode=schedules');
-  };
+    },
+  });
+  const handleNavigateToSavedDrafts = () => navigate('/dashboard/track?mode=schedules');
 
   if (loading || loadingDraft) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><Card className='p-8'><Skeleton className='h-10 w-full mb-6' /><Skeleton className='h-64 w-full' /></Card></div>;
   if (error) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><ErrorState description='Failed to load parishes for scheduling.' onRetry={() => void refetch()} /></div>;
@@ -1527,8 +1562,7 @@ export const EventSchedulerPage: React.FC = () => {
         </div>}
         </fieldset>
       </CardContent></Card>
-
-
+      {navigationDialog}
     </div>
   );
 };

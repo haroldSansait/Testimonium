@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SubmissionProtectionProvider } from './contexts/SubmissionProtectionContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -102,18 +102,21 @@ const AppWithSessionModal: React.FC = () => {
   );
 };
 
-export const App: React.FC = () => {
-  return (
-    <BrowserRouter>
-      <ToastProvider>
-        <SubmissionProtectionProvider>
-          <AuthProvider>
-            <AppWithSessionModal />
-          </AuthProvider>
-        </SubmissionProtectionProvider>
-      </ToastProvider>
-    </BrowserRouter>
-  );
-};
+// Use React Router's data provider so form pages can block in-app navigation.
+// The existing route tree and providers stay together under the same router.
+const router = createBrowserRouter([{
+  path: '*',
+  element: (
+    <ToastProvider>
+      <SubmissionProtectionProvider>
+        <AuthProvider>
+          <AppWithSessionModal />
+        </AuthProvider>
+      </SubmissionProtectionProvider>
+    </ToastProvider>
+  ),
+}]);
+
+export const App: React.FC = () => <RouterProvider router={router} />;
 
 export default App;
