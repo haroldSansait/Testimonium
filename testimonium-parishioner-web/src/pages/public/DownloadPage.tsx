@@ -15,12 +15,12 @@ import DownloadQRCode from '../../components/common/DownloadQRCode';
 import mtKanlaonImage from '../../assets/Mt_Kanlaon.png';
 
 const APK_DOWNLOAD_URL = '/download/android';
-const APK_FILENAME = 'TESTIMONIUM-v1.0.0-build5.apk';
+const APK_FILENAME = 'TESTIMONIUM-v1.0.0-build6.apk';
 const APP_VERSION = '1.0.0';
-const APP_BUILD = '5';
+const APP_BUILD = '6';
 const APP_PACKAGE_ID = 'com.testimonium.app';
 const APP_MIN_ANDROID = 'Android 8.0 (API level 26) or newer';
-const APP_FILE_SIZE = '281.33 MB';
+const APP_FILE_SIZE = '287.16 MB';
 
 export const DownloadPage: React.FC = () => {
   useEffect(() => {

@@ -6,8 +6,8 @@
  * using the configured APK_BUCKET binding without buffering into memory.
  */
 
-const APK_FILENAME = 'TESTIMONIUM-v1.0.0-build5.apk';
-const APK_OBJECT_KEY = 'TESTIMONIUM-v1.0.0-build5.apk';
+const APK_FILENAME = 'TESTIMONIUM-v1.0.0-build6.apk';
+const APK_OBJECT_KEY = 'TESTIMONIUM-v1.0.0-build6.apk';
 const APK_CONTENT_TYPE = 'application/vnd.android.package-archive';
 
 export async function onRequest(context) {

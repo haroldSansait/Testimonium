@@ -15,7 +15,7 @@ describe('Android v1.0.0 Release, Download Page, and R2 APK Delivery Integration
     assert.ok(fs.existsSync(fnPath), 'functions/download/android.js must exist');
     const content = fs.readFileSync(fnPath, 'utf-8');
 
-    assert.match(content, /TESTIMONIUM-v1\.0\.0-build5\.apk/, 'Must reference exact APK filename');
+    assert.match(content, /TESTIMONIUM-v1\.0\.0-build6\.apk/, 'Must reference exact APK filename');
     assert.match(content, /APK_BUCKET/, 'Must use context.env.APK_BUCKET binding');
     assert.match(content, /application\/vnd\.android\.package-archive/, 'Must use official APK MIME type');
     assert.match(content, /attachment;\s*filename=/, 'Must set attachment Content-Disposition');
@@ -52,7 +52,7 @@ describe('Android v1.0.0 Release, Download Page, and R2 APK Delivery Integration
 
     const mockR2Bucket = {
       async head(key) {
-        if (key !== 'TESTIMONIUM-v1.0.0-build5.apk') return null;
+        if (key !== 'TESTIMONIUM-v1.0.0-build6.apk') return null;
         return {
           key,
           size: 295000000,
@@ -63,7 +63,7 @@ describe('Android v1.0.0 Release, Download Page, and R2 APK Delivery Integration
         };
       },
       async get(key, options) {
-        if (key !== 'TESTIMONIUM-v1.0.0-build5.apk') return null;
+        if (key !== 'TESTIMONIUM-v1.0.0-build6.apk') return null;
         const rangeHeader = options?.range?.get ? options.range.get('range') : null;
         if (rangeHeader) {
           return {
@@ -109,7 +109,7 @@ describe('Android v1.0.0 Release, Download Page, and R2 APK Delivery Integration
     });
     assert.equal(getRes.status, 200);
     assert.equal(getRes.headers.get('Content-Type'), 'application/vnd.android.package-archive');
-    assert.equal(getRes.headers.get('Content-Disposition'), 'attachment; filename="TESTIMONIUM-v1.0.0-build5.apk"');
+    assert.equal(getRes.headers.get('Content-Disposition'), 'attachment; filename="TESTIMONIUM-v1.0.0-build6.apk"');
     assert.equal(getRes.headers.get('Content-Length'), '295000000');
     assert.equal(getRes.headers.get('ETag'), '"mock-etag-12345"');
     assert.ok(getRes.body, 'GET response must contain stream body');
@@ -133,7 +133,7 @@ describe('Android v1.0.0 Release, Download Page, and R2 APK Delivery Integration
     });
     assert.equal(headRes.status, 200);
     assert.equal(headRes.headers.get('Content-Type'), 'application/vnd.android.package-archive');
-    assert.equal(headRes.headers.get('Content-Disposition'), 'attachment; filename="TESTIMONIUM-v1.0.0-build5.apk"');
+    assert.equal(headRes.headers.get('Content-Disposition'), 'attachment; filename="TESTIMONIUM-v1.0.0-build6.apk"');
     assert.equal(headRes.headers.get('Content-Length'), '295000000');
     assert.equal(headRes.body, null, 'HEAD response must have null body');
   });
@@ -178,11 +178,12 @@ describe('Android v1.0.0 Release, Download Page, and R2 APK Delivery Integration
 
     // Real download link to /download/android
     assert.match(content, /href=\{APK_DOWNLOAD_URL\}|href="\/download\/android"/, 'Must link to /download/android');
-    assert.match(content, /download=\{APK_FILENAME\}|download="TESTIMONIUM-v1\.0\.0-build5\.apk"/, 'Must trigger browser download of official APK');
+    assert.match(content, /download=\{APK_FILENAME\}|download="TESTIMONIUM-v1\.0\.0-build6\.apk"/, 'Must trigger browser download of official APK');
 
     // Release details
     assert.match(content, /1\.0\.0/, 'Must mention version 1.0.0');
-    assert.match(content, /Build 5|APP_BUILD = '5'/, 'Must mention build 5');
+    assert.match(content, /Build 6|APP_BUILD = '6'/, 'Must mention build 6');
+    assert.match(content, /287\.16 MB/, 'Must mention 287.16 MB file size');
     assert.match(content, /com\.testimonium\.app/, 'Must mention package name');
     assert.match(content, /Android 8\.0/, 'Must mention Android 8.0 compatibility');
 
