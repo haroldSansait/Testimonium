@@ -137,7 +137,7 @@ function ExportMenu({
         <span className="ml-0.5 text-gray-400">▾</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
           <button
             onClick={handleDownloadIcs}
             className="w-full flex items-center gap-3 px-4 py-3 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"

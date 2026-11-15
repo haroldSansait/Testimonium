@@ -175,8 +175,8 @@ export function CustomSelect({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
-  const updateMenuPosition = useCallback(() => {
-    if (!triggerRef.current || typeof window === 'undefined') return;
+  const computeMenuStyle = useCallback((): React.CSSProperties | null => {
+    if (!triggerRef.current || typeof window === 'undefined') return null;
     const triggerRect = triggerRef.current.getBoundingClientRect();
     const containerRect = findBoundingContainerRect(triggerRef.current);
     const pos = computeDropdownPosition({
@@ -185,21 +185,36 @@ export function CustomSelect({
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
     });
-    setMenuStyle({
+    return {
       position: 'fixed',
       left: pos.left,
       width: pos.width,
       maxHeight: pos.maxHeight,
       ...(pos.top !== undefined ? { top: pos.top } : {}),
       ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
-    });
+    };
   }, []);
+
+  const openMenu = useCallback(() => {
+    const nextStyle = computeMenuStyle();
+    if (nextStyle) {
+      setMenuStyle(nextStyle);
+    }
+    setIsOpen(true);
+  }, [computeMenuStyle]);
 
   useLayoutEffect(() => {
     if (!isOpen) {
       setMenuStyle(null);
       return;
     }
+
+    const updateMenuPosition = () => {
+      const nextStyle = computeMenuStyle();
+      if (nextStyle) {
+        setMenuStyle(nextStyle);
+      }
+    };
 
     updateMenuPosition();
 
@@ -217,7 +232,7 @@ export function CustomSelect({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [isOpen, updateMenuPosition]);
+  }, [isOpen, computeMenuStyle]);
 
   // Focus search input or initialize active index on open
   useEffect(() => {
@@ -229,7 +244,7 @@ export function CustomSelect({
 
       if (shouldEnableSearch) {
         setTimeout(() => {
-          searchInputRef.current?.focus();
+          searchInputRef.current?.focus({ preventScroll: true });
         }, 40);
       }
     } else {
@@ -266,7 +281,7 @@ export function CustomSelect({
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        setIsOpen(true);
+        openMenu();
       }
       return;
     }
@@ -369,7 +384,7 @@ export function CustomSelect({
           id={id}
           type="button"
           disabled={isDropdownDisabled}
-          onClick={() => setIsOpen((prev) => !prev)}
+          onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
           onKeyDown={handleKeyDown}
           className={cn(
             'w-full text-left rounded-lg border transition-all bg-white flex items-center justify-between select-none shadow-xs font-sans',
@@ -443,15 +458,22 @@ export function CustomSelect({
 
       {/* Popover Menu - Viewport/container-clamped portal */}
       {isOpen && (() => {
+        const resolvedStyle: React.CSSProperties = menuStyle ?? {
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          visibility: 'hidden',
+          pointerEvents: 'none',
+        };
+
         const menuNode = (
           <div
             ref={dropdownRef}
             role="listbox"
             aria-label={ariaLabel || label || placeholder}
-            style={menuStyle ?? undefined}
+            style={resolvedStyle}
             className={cn(
-              'bg-white border border-gray-200 rounded-xl shadow-xl z-[10000] overflow-hidden flex flex-col animate-in fade-in-50 duration-150',
-              !menuStyle && 'absolute left-0 right-0 mt-1.5',
+              'bg-white border border-gray-200 rounded-xl shadow-xl z-[10000] overflow-hidden flex flex-col',
               dropdownClassName
             )}
           >

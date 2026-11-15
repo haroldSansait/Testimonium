@@ -226,7 +226,7 @@ function ServiceOverridePicker({
 
       {/* Popover Dropdown Panel */}
       {isOpen && (
-        <div className="absolute left-0 top-full mt-1.5 w-full sm:w-[380px] max-w-[95vw] bg-white border border-gray-200 rounded-xl shadow-xl z-40 p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute left-0 top-full mt-1.5 w-full sm:w-[380px] max-w-[95vw] bg-white border border-gray-200 rounded-xl shadow-xl z-40 p-3 space-y-2.5">
           {/* Mini Search Bar */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />

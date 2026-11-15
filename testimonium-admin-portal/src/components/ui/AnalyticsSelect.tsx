@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X, Layers } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { computeDropdownPosition } from '@/utils/dropdownPosition';
 
 export interface SelectOptionItem {
   value: string;
@@ -45,13 +47,78 @@ export function AnalyticsSelect({
 }: AnalyticsSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const computeMenuStyle = useCallback((): React.CSSProperties | null => {
+    if (!triggerRef.current || typeof window === 'undefined') return null;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const pos = computeDropdownPosition({
+      triggerRect,
+      containerRect: null,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      minWidth: 240,
+    });
+    return {
+      position: 'fixed',
+      left: pos.left,
+      width: pos.width,
+      maxHeight: pos.maxHeight,
+      ...(pos.top !== undefined ? { top: pos.top } : {}),
+      ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
+    };
+  }, []);
+
+  const openMenu = useCallback(() => {
+    const nextStyle = computeMenuStyle();
+    if (nextStyle) {
+      setMenuStyle(nextStyle);
+    }
+    setIsOpen(true);
+  }, [computeMenuStyle]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuStyle(null);
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const nextStyle = computeMenuStyle();
+      if (nextStyle) {
+        setMenuStyle(nextStyle);
+      }
+    };
+
+    updateMenuPosition();
+
+    const handleScroll = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && dropdownRef.current?.contains(target)) {
+        return;
+      }
+      updateMenuPosition();
+    };
+
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen, computeMenuStyle]);
 
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const insideTrigger = containerRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideTrigger && !insideDropdown) {
         setIsOpen(false);
       }
     }
@@ -74,7 +141,7 @@ export function AnalyticsSelect({
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => {
-        searchInputRef.current?.focus();
+        searchInputRef.current?.focus({ preventScroll: true });
       }, 50);
     } else {
       setSearch('');
@@ -152,10 +219,11 @@ export function AnalyticsSelect({
       {/* Dropdown Trigger Button */}
       <div className="relative">
         <button
+          ref={triggerRef}
           id={id}
           type="button"
           disabled={isDropdownDisabled}
-          onClick={() => setIsOpen((prev) => !prev)}
+          onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
           className={cn(
             'w-full text-left pl-3.5 pr-11 py-2 rounded-lg border text-sm transition-all bg-white flex items-center justify-between select-none shadow-xs',
             isOpen
@@ -207,8 +275,21 @@ export function AnalyticsSelect({
       </div>
 
       {/* Popover Menu */}
-      {isOpen && (
-        <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in-50 slide-in-from-top-1 duration-150 min-w-[240px]">
+      {isOpen && (() => {
+        const resolvedStyle: React.CSSProperties = menuStyle ?? {
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          visibility: 'hidden',
+          pointerEvents: 'none',
+        };
+
+        const menuNode = (
+          <div
+            ref={dropdownRef}
+            style={resolvedStyle}
+            className="bg-white border border-gray-200 rounded-xl shadow-xl z-[10000] overflow-hidden flex flex-col"
+          >
           {/* In-dropdown Search Bar */}
           {shouldEnableSearch && (
             <div className="p-2 border-b border-gray-100 bg-gray-50/70">
@@ -237,7 +318,7 @@ export function AnalyticsSelect({
           )}
 
           {/* Options List */}
-          <div className="max-h-64 overflow-y-auto overscroll-contain focus:outline-none [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]">
+          <div className="flex-1 min-h-0 max-h-64 overflow-y-auto overscroll-contain focus:outline-none [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]">
             {/* "All" default selection pinned at top */}
             {!search && (
               <div className="p-1 border-b border-gray-100 bg-white">
@@ -314,7 +395,12 @@ export function AnalyticsSelect({
             )}
           </div>
         </div>
-      )}
+        );
+
+        return typeof document !== 'undefined'
+          ? createPortal(menuNode, document.body)
+          : menuNode;
+      })()}
     </div>
   );
 }

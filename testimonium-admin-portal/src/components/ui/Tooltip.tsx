@@ -37,9 +37,8 @@ export function Tooltip({
           sideOffset={sideOffset}
           className={cn(
             'z-[1050] overflow-hidden rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-md border border-white/10 select-none max-w-xs text-center leading-tight',
-            'data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
-            'data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1',
+            'data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
             'motion-reduce:animate-none motion-reduce:transition-none',
             className
           )}
