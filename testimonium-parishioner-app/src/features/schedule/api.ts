@@ -782,7 +782,7 @@ export const uploadScheduleDraftAttachment = async ({
   const createBody = () => {
     const formData = new FormData();
     formData.append("requirementId", requirementId);
-    formData.append("file", {
+    formData.append("files", {
       uri: normalized.uri,
       name: normalized.name,
       type: normalized.mimeType,
