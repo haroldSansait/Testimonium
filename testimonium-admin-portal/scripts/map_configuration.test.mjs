@@ -183,3 +183,105 @@ test('directory provider uses its own route while general settings keep the esta
   }
   assert.deepEqual(routes, ['/parishes/1/directory-settings', '/parishes/1/settings']);
 });
+
+test('image upload updates saved parish state without creating unsaved drafts and preserves genuine edits', async () => {
+  const uploadHandler = nodeText(page, (node) => ts.isVariableDeclaration(node) && node.name.getText() === 'handleUploadParishImage');
+  const fieldHandler = nodeText(page, (node) => ts.isVariableDeclaration(node) && node.name.getText() === 'handleFieldChange');
+  const panelSource = readFileSync(new URL('../src/components/map-configuration/ParishSettingsPanel.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(panelSource, /onFieldChange\(['"](?:coverImage|logoImage)['"]/);
+
+  const initialParishes = baseline().map((p) => ({ ...p, logoImage: 'https://cdn.example/old-logo.jpg', coverImage: 'https://cdn.example/old-cover.jpg' }));
+  const api = fixture();
+  const context = {
+    selectedId: '1',
+    parishes: structuredClone(initialParishes),
+    drafts: {},
+    isSaving: false,
+    useCallback: (fn) => fn,
+    setTimeout() {},
+    console,
+    DIOCESE_CENTER: center,
+    saveMapConfiguration,
+    reconcileMapDrafts,
+    setIsSaving(value) { context.isSaving = value; },
+    setSaveSuccessIds() {},
+    setParishes(fn) { context.parishes = fn(context.parishes); },
+    setDrafts(fn) { context.drafts = fn(context.drafts); },
+    showToast(message, type) { context.toasts.push({ message, type }); },
+    showConfirm() {},
+    loadParishes() {},
+    toasts: [],
+    ParishManagementService: {
+      ...api.api,
+      async uploadParishImage(id, type) {
+        if (context.failUpload) throw new Error('Upload failed');
+        return { url: `https://cdn.example/${id}-${type}-new.jpg` };
+      },
+    },
+    failUpload: false,
+  };
+
+  const runUpload = (type) => compile(`(() => { const ${uploadHandler}; return handleUploadParishImage; })()`, context)(type, {});
+  const runFieldChange = (field, value) => compile(`(() => { const ${fieldHandler}; return handleFieldChange; })()`, context)(field, value);
+  const runSaveAll = () => compile(`(() => { const hasUnsavedChanges = Object.keys(drafts).length > 0; const ${saveHandler}; return handleSaveAll; })()`, context)();
+
+  // 1 & 2. Upload logo and cover image -> persisted in parishes, zero unsaved changes
+  await runUpload('logo');
+  assert.equal(context.parishes[0].logoImage, 'https://cdn.example/1-logo-new.jpg');
+  assert.deepEqual(plain(context.drafts), {});
+
+  await runUpload('cover');
+  assert.equal(context.parishes[0].coverImage, 'https://cdn.example/1-cover-new.jpg');
+  assert.deepEqual(plain(context.drafts), {});
+
+  // 3 & 4. Change description, upload logo -> description stays unsaved until Save All clears it
+  runFieldChange('directoryDescription', 'Updated description');
+  assert.deepEqual(plain(context.drafts), { '1': { directoryDescription: 'Updated description' } });
+  await runUpload('logo');
+  assert.deepEqual(plain(context.drafts), { '1': { directoryDescription: 'Updated description' } });
+  await runSaveAll();
+  assert.deepEqual(plain(context.drafts), {});
+  assert.equal(context.parishes[0].directoryDescription, 'Updated description');
+
+  // 5. Upload logo, then modify description -> only description is pending
+  await runUpload('logo');
+  assert.deepEqual(plain(context.drafts), {});
+  runFieldChange('directoryDescription', 'Second description');
+  assert.deepEqual(plain(context.drafts), { '1': { directoryDescription: 'Second description' } });
+
+  // 6. Upload failure -> saved image remains unchanged and existing drafts stay intact
+  context.failUpload = true;
+  await assert.rejects(() => runUpload('cover'), /Upload failed/);
+  assert.equal(context.parishes[0].coverImage, 'https://cdn.example/1-cover-new.jpg');
+  assert.deepEqual(plain(context.drafts), { '1': { directoryDescription: 'Second description' } });
+  context.failUpload = false;
+
+  // 7. Switching parishes after upload retains persisted image and zero false drafts
+  context.selectedId = '2';
+  assert.equal(context.parishes[0].logoImage, 'https://cdn.example/1-logo-new.jpg');
+  context.selectedId = '1';
+  assert.equal(context.parishes[0].logoImage, 'https://cdn.example/1-logo-new.jpg');
+
+  // 8. Configuration save failure -> genuine unsaved edits remain
+  const failingApi = fixture({ failDirectory: '1' });
+  context.ParishManagementService.updateDirectorySettings = failingApi.api.updateDirectorySettings;
+  await runSaveAll();
+  assert.deepEqual(plain(context.drafts), { '1': { directoryDescription: 'Second description' } });
+});
+
+test('reconcileMapDrafts safely clears obsolete image-only or mixed image drafts without dropping real unsaved fields', () => {
+  const parishes = baseline();
+  assert.deepEqual(
+    reconcileMapDrafts({ '1': { logoImage: 'https://cdn.example/logo.jpg' } }, { '1': { logoImage: 'https://cdn.example/logo.jpg' } }, parishes, {}),
+    {},
+  );
+  assert.deepEqual(
+    reconcileMapDrafts(
+      { '1': { coverImage: 'https://cdn.example/cover.jpg', directoryDescription: 'Keep me on failure' } },
+      { '1': { coverImage: 'https://cdn.example/cover.jpg', directoryDescription: 'Keep me on failure' } },
+      parishes,
+      {},
+    ),
+    { '1': { directoryDescription: 'Keep me on failure' } },
+  );
+});

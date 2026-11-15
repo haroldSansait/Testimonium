@@ -2,6 +2,7 @@ import type { Parish } from '@/types';
 
 const MAP_FIELDS = ['latitude', 'longitude', 'mapZoom', 'pinColor', 'showLabel'] as const;
 const DIRECTORY_FIELDS = ['directoryDescription', 'contactNumber', 'email'] as const;
+const IMAGE_FIELDS = new Set<keyof Parish>(['coverImage', 'logoImage']);
 type Drafts = Record<string, Partial<Parish>>;
 type MapUpdate = Pick<Parish, 'id' | 'locationUpdatedAt' | typeof MAP_FIELDS[number]> & {
   latitude: number;
@@ -84,6 +85,11 @@ export function reconcileMapDrafts(current: Drafts, submitted: Drafts, baseline:
     const draft = { ...current[id] };
     const original = baseline.find((parish) => parish.id === id)!;
     for (const field of Object.keys(snapshot) as (keyof Parish)[]) {
+      if (IMAGE_FIELDS.has(field)) {
+        // Parish images are persisted on upload; clear any obsolete image-only draft.
+        delete draft[field];
+        continue;
+      }
       if (!Object.hasOwn(saved[id] ?? {}, field)) continue;
       if (JSON.stringify(draft[field]) === JSON.stringify(snapshot[field])) {
         delete draft[field];

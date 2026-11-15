@@ -251,20 +251,25 @@ export function MapConfigurationPage() {
   // Image Upload wrapper (no full reload, in-place update)
   const handleUploadParishImage = useCallback(async (type: 'cover' | 'logo', file: File) => {
     if (!selectedId) throw new Error('No parish selected');
-    
-    // Add upload success toast via ImageUploader, but here we save it in state
-    const result = await ParishManagementService.uploadParishImage(selectedId, type, file);
-    
-    setParishes((prev) => {
-      return prev.map((p) => {
-        if (p.id === selectedId) {
-          return {
-            ...p,
-            [type === 'cover' ? 'coverImage' : 'logoImage']: result.url
-          };
-        }
-        return p;
-      });
+    const targetId = selectedId;
+    const imageField = type === 'cover' ? 'coverImage' : 'logoImage';
+
+    // Persist image immediately and update saved parish state without creating a draft
+    const result = await ParishManagementService.uploadParishImage(targetId, type, file);
+
+    setParishes((prev) =>
+      prev.map((p) => (p.id === targetId ? { ...p, [imageField]: result.url } : p))
+    );
+
+    setDrafts((prev) => {
+      const existingDraft = prev[targetId];
+      if (!existingDraft || !(imageField in existingDraft)) return prev;
+      const { [imageField]: _removed, ...rest } = existingDraft;
+      if (Object.keys(rest).length === 0) {
+        const { [targetId]: _dropped, ...otherDrafts } = prev;
+        return otherDrafts;
+      }
+      return { ...prev, [targetId]: rest };
     });
 
     showToast(`${type === 'cover' ? 'Cover' : 'Logo'} image uploaded successfully.`, 'success');

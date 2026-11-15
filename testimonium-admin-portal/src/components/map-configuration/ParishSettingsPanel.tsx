@@ -152,14 +152,12 @@ export function ParishSettingsPanel({
                 label="Parish Cover Image (16:9)"
                 currentUrl={parish.coverImage}
                 aspectRatio="cover"
-                onUploadSuccess={(url) => onFieldChange('coverImage', url)}
                 uploadFn={(file) => uploadImageFn('cover', file)}
               />
               <ImageUploader
                 label="Parish Logo Image (1:1)"
                 currentUrl={parish.logoImage}
                 aspectRatio="logo"
-                onUploadSuccess={(url) => onFieldChange('logoImage', url)}
                 uploadFn={(file) => uploadImageFn('logo', file)}
               />
             </div>

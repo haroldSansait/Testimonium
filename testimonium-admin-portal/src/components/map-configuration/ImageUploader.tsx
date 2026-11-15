@@ -5,7 +5,7 @@ interface ImageUploaderProps {
   label: string;
   currentUrl?: string;
   aspectRatio: 'cover' | 'logo'; // cover = 16:9, logo = 1:1
-  onUploadSuccess: (url: string) => void;
+  onUploadSuccess?: (url: string) => void;
   onUploadStart?: () => void;
   onUploadError?: (err: string) => void;
   uploadFn: (file: File) => Promise<{ url: string }>;
@@ -111,7 +111,7 @@ export function ImageUploader({
       const result = await uploadFn(compressedFile);
       setPreviewUrl(result.url);
       setSuccess(true);
-      onUploadSuccess(result.url);
+      onUploadSuccess?.(result.url);
     } catch (err: any) {
       console.error(err);
       const msg = err.response?.data?.message || err.message || 'Upload failed.';
