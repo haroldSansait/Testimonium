@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -7,6 +7,7 @@ import {
   View,
 } from "react-native";
 import { Text, TextInput } from "@/components/Typography";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import {
@@ -28,6 +29,13 @@ import { ParishInfoSheet } from "./components/ParishInfoSheet";
 type DirectoryViewMode = "map" | "list";
 
 export const ParishDirectoryScreen: React.FC = () => {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ parishId?: string | string[] }>();
+  const requestedParishId = Array.isArray(params.parishId)
+    ? params.parishId[0]
+    : params.parishId;
+  const lastAppliedParishIdRef = useRef<string | null>(null);
+
   const [selectedParishId, setSelectedParishId] = useState<string | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,6 +121,28 @@ export const ParishDirectoryScreen: React.FC = () => {
   const handleCloseSheet = useCallback(() => {
     setSelectedParishId(null);
   }, []);
+
+  // Auto-select parish requested via route params (e.g., from Event Details)
+  useEffect(() => {
+    if (!requestedParishId) {
+      lastAppliedParishIdRef.current = null;
+      return;
+    }
+
+    const normalizedRequest = String(requestedParishId);
+    if (lastAppliedParishIdRef.current === normalizedRequest) {
+      return;
+    }
+
+    const matchingParish = parishes.find(
+      (p) => String(p.id) === normalizedRequest
+    );
+    if (matchingParish) {
+      lastAppliedParishIdRef.current = normalizedRequest;
+      setSelectedParishId(String(matchingParish.id));
+      (router as any).setParams?.({ parishId: undefined });
+    }
+  }, [requestedParishId, parishes, router]);
 
   const handleResetOverview = useCallback(() => {
     setResetSignal((prev) => prev + 1);

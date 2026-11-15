@@ -12,7 +12,6 @@ import { Screen } from "@/components/Screen";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import {
   AppHeader,
-  Button,
   EmptyState,
   PageSection,
   RecordSection,
@@ -21,11 +20,6 @@ import {
 } from "@/components/ui";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import { useParishDetail } from "@/features/parishes/api";
-import {
-  buildEmailUrl,
-  buildPhoneUrl,
-  openExternalUrl,
-} from "@/features/parishes/utils";
 import { useCurrentMonthEvents } from "./api";
 import {
   formatEventDate,
@@ -69,7 +63,10 @@ export const EventDetailScreen: React.FC = () => {
 
   const handleParishPress = () => {
     if (event?.parishId) {
-      router.push(`/(app)/parishes/${event.parishId}` as any);
+      router.push({
+        pathname: "/(app)/(tabs)/(parishes)",
+        params: { parishId: String(event.parishId) },
+      } as any);
     }
   };
 
@@ -113,8 +110,6 @@ export const EventDetailScreen: React.FC = () => {
   ]
     .filter(Boolean)
     .join(", ");
-  const phoneUrl = buildPhoneUrl(parish?.contactNumber);
-  const emailUrl = buildEmailUrl(parish?.email);
 
   const scheduleFields = [
     {
@@ -220,7 +215,7 @@ export const EventDetailScreen: React.FC = () => {
                   </Text>
                 ) : null}
                 <Text style={styles.parishTapHint} allowFontScaling>
-                  Tap to view full parish profile →
+                  Tap to view parish in directory →
                 </Text>
               </View>
               <Ionicons
@@ -229,31 +224,6 @@ export const EventDetailScreen: React.FC = () => {
                 color={colors.primary}
               />
             </Pressable>
-
-            {phoneUrl || emailUrl ? (
-              <View style={styles.contactActionsRow}>
-                {phoneUrl ? (
-                  <Button
-                    title="Call Parish"
-                    variant="secondary"
-                    size="sm"
-                    icon="call-outline"
-                    onPress={() => void openExternalUrl(phoneUrl)}
-                    style={styles.calendarBtn}
-                  />
-                ) : null}
-                {emailUrl ? (
-                  <Button
-                    title="Email"
-                    variant="secondary"
-                    size="sm"
-                    icon="mail-outline"
-                    onPress={() => void openExternalUrl(emailUrl)}
-                    style={styles.calendarBtn}
-                  />
-                ) : null}
-              </View>
-            ) : null}
           </PageSection>
         ) : null}
 
@@ -339,19 +309,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 22,
   },
-  calendarBtn: {
-    flex: 1,
-  },
   parishTapHint: {
     ...fontStyles.caption,
     color: colors.primary,
     fontWeight: "600",
     marginTop: 4,
-  },
-  contactActionsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
   },
 });
