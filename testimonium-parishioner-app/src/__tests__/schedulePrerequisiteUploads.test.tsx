@@ -366,6 +366,7 @@ describe("Schedule Prerequisite Uploads: 4. API Client & Multipart Transport", (
         date: "2026-11-20",
         timeSlot: "10:00 AM",
         remarks: "Wedding interview",
+        location: "Test Parish",
         requestedPriestId: 7,
       },
       idempotencyKey: "web-idemp-456",
@@ -398,6 +399,7 @@ describe("Schedule Prerequisite Uploads: 4. API Client & Multipart Transport", (
       date: "2026-11-20",
       timeSlot: "10:00 AM",
       remarks: "Wedding interview",
+      location: "Test Parish",
       requestedPriestId: 7,
     });
 

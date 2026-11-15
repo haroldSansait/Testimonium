@@ -97,7 +97,8 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
   const [rejectionNote, setRejectionNote] = useState('');
   const [rejectionModalError, setRejectionModalError] = useState<string | null>(null);
   const [applicableRequirements, setApplicableRequirements] = useState<ScheduleRequirementOption[]>([]);
-  const [loadingRejectionReqs, setLoadingRejectionReqs] = useState(false);
+  const [loadingRejectionReqs, setLoadingRejectionReqs] = useState(true);
+  const [rejectionReqsError, setRejectionReqsError] = useState<string | null>(null);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showEmergencyRescheduleModal, setShowEmergencyRescheduleModal] = useState(false);
   const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
@@ -258,55 +259,65 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
       });
   }, [proposedDate, request.parishId, request.eventType, request.appointmentTitle, request.rawEventType]);
 
-  useEffect(() => {
-    if (!showRejectModal) return;
-    let active = true;
-    setLoadingRejectionReqs(true);
-
+  const loadRejectionRequirements = useCallback(async () => {
     const rawEventType =
       request.rawEventType ||
       resolveEventType(request.appointmentTitle || request.eventType || '') ||
       '';
 
-    Promise.all([
+    const [configRes, attachRes] = await Promise.all([
       request.parishId
-        ? api.get<{ data?: { services?: Array<{ eventType: string; requirements?: ScheduleRequirementOption[] }> } }>(
+        ? api.get<{ data?: {
+            services?: Array<{ eventType: string; requirements?: ScheduleRequirementOption[] }>;
+            requirementsByEventType?: Record<string, ScheduleRequirementOption[]>;
+          } }>(
             '/schedule-requests/configuration',
             { params: { parishId: request.parishId } }
-          ).catch(() => null)
+          )
         : Promise.resolve(null),
       api.get<{ data?: Array<{ requirementId?: string; requirementLabel?: string }> }>(
         `/schedule-requests/${request.id}/attachments`
-      ).catch(() => null),
-    ])
-      .then(([configRes, attachRes]) => {
-        if (!active) return;
-        const reqMap = new Map<string, ScheduleRequirementOption>();
-        const services = configRes?.data?.data?.services || [];
-        const matchedService = services.find((svc) => svc.eventType === rawEventType);
-        if (matchedService && Array.isArray(matchedService.requirements)) {
-          for (const req of matchedService.requirements) {
-            if (req?.id) {
-              reqMap.set(req.id, {
-                id: req.id,
-                label: req.label || req.id,
-                ...(req.description ? { description: req.description } : {}),
-              });
-            }
-          }
-        }
-        const attachments = attachRes?.data?.data || [];
-        if (Array.isArray(attachments)) {
-          for (const att of attachments) {
-            if (att?.requirementId && !reqMap.has(att.requirementId)) {
-              reqMap.set(att.requirementId, {
-                id: att.requirementId,
-                label: att.requirementLabel || att.requirementId,
-              });
-            }
-          }
-        }
-        setApplicableRequirements(Array.from(reqMap.values()));
+      ),
+    ]);
+    const reqMap = new Map<string, ScheduleRequirementOption>();
+    const config = configRes?.data?.data;
+    const requirements = config?.requirementsByEventType?.[rawEventType] ??
+      config?.services?.find((svc) => svc.eventType === rawEventType)?.requirements;
+    const attachments = attachRes?.data?.data;
+    if (!Array.isArray(requirements) || !Array.isArray(attachments)) {
+      throw new Error('Unable to determine the applicable requirements. Close this dialog and try again.');
+    }
+    for (const req of requirements) {
+      if (req?.id) {
+        reqMap.set(req.id, {
+          id: req.id,
+          label: req.label || req.id,
+          ...(req.description ? { description: req.description } : {}),
+        });
+      }
+    }
+    for (const att of attachments) {
+      if (att?.requirementId && !reqMap.has(att.requirementId)) {
+        reqMap.set(att.requirementId, {
+          id: att.requirementId,
+          label: att.requirementLabel || att.requirementId,
+        });
+      }
+    }
+    return Array.from(reqMap.values());
+  }, [request.id, request.parishId, request.rawEventType, request.appointmentTitle, request.eventType]);
+
+  useEffect(() => {
+    if (!showRejectModal) return;
+    let active = true;
+    setLoadingRejectionReqs(true);
+    setRejectionReqsError(null);
+    loadRejectionRequirements()
+      .then((requirements) => {
+        if (active) setApplicableRequirements(requirements);
+      })
+      .catch(() => {
+        if (active) setRejectionReqsError('Unable to load applicable requirements. Close this dialog and try again.');
       })
       .finally(() => {
         if (active) setLoadingRejectionReqs(false);
@@ -315,7 +326,17 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
     return () => {
       active = false;
     };
-  }, [showRejectModal, request.id, request.parishId, request.rawEventType, request.appointmentTitle, request.eventType]);
+  }, [showRejectModal, loadRejectionRequirements]);
+
+  useEffect(() => {
+    if (loadingRejectionReqs || rejectionReqsError) return;
+    if (applicableRequirements.length === 0) {
+      setRejectionReasonCode((code) => DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(code) ? '' : code);
+    }
+    setSelectedRejectionReqs((previous) => Object.fromEntries(
+      Object.entries(previous).filter(([id]) => applicableRequirements.some((req) => req.id === id))
+    ));
+  }, [applicableRequirements, loadingRejectionReqs, rejectionReqsError]);
 
   const openRejectModal = () => {
     if (!canManage || isUpdating) return;
@@ -324,15 +345,21 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
     setRejectionNote('');
     setRejectionModalError(null);
     setApplicableRequirements([]);
+    setLoadingRejectionReqs(true);
+    setRejectionReqsError(null);
     setShowRejectModal(true);
   };
 
   const selectedAffectedIds = Object.keys(selectedRejectionReqs).filter((id) => selectedRejectionReqs[id]);
   const requiresAffectedRequirement =
     applicableRequirements.length > 0 && DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(rejectionReasonCode);
+  const availableRejectionReasons = CANONICAL_SCHEDULE_REJECTION_REASONS.filter((reason) =>
+    loadingRejectionReqs || rejectionReqsError || applicableRequirements.length > 0 ||
+    !DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(reason.code)
+  );
 
   const handleSubmitRejection = async () => {
-    if (!canManage || isUpdating) return;
+    if (!canManage || isUpdating || loadingRejectionReqs || rejectionReqsError) return;
     if (!rejectionReasonCode) {
       setRejectionModalError('Please select a rejection reason.');
       return;
@@ -345,6 +372,19 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
     setIsUpdating(true);
     setRejectionModalError(null);
     try {
+      // Recheck the authoritative configuration in case it changed while the dialog was open.
+      const requirements = await loadRejectionRequirements();
+      setApplicableRequirements(requirements);
+      if (DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(rejectionReasonCode) && requirements.length === 0) {
+        setRejectionReasonCode('');
+        throw new Error('Document-related rejection reasons no longer apply. Please select another reason.');
+      }
+      if (selectedAffectedIds.some((id) => !requirements.some((req) => req.id === id))) {
+        throw new Error('The applicable requirements changed. Please review the affected requirements.');
+      }
+      if (DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(rejectionReasonCode) && selectedAffectedIds.length === 0) {
+        throw new Error('Please select at least one affected requirement.');
+      }
       await onStatusChange('Rejected', {
         rejectionReasonCode,
         ...(selectedAffectedIds.length > 0 ? { affectedRequirementIds: selectedAffectedIds } : {}),
@@ -1452,18 +1492,19 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                     setRejectionReasonCode(val ? String(val) : '');
                     setRejectionModalError(null);
                   }}
-                  options={CANONICAL_SCHEDULE_REJECTION_REASONS.map((r) => ({
+                  options={availableRejectionReasons.map((r) => ({
                     value: r.code,
                     label: r.label,
                   }))}
                   placeholder="-- Select a reason --"
-                  disabled={isUpdating}
+                  disabled={isUpdating || loadingRejectionReqs || !!rejectionReqsError}
                   searchable={false}
                   aria-label="Rejection Reason"
                 />
               </div>
 
               {/* Affected Requirements (When Applicable) */}
+              {rejectionReqsError && <p role="alert" className="text-xs text-red-700">{rejectionReqsError}</p>}
               {(loadingRejectionReqs || applicableRequirements.length > 0) && (
                 <div className="space-y-2">
                   <span className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
@@ -1533,6 +1574,7 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                 disabled={
                   isUpdating ||
                   loadingRejectionReqs ||
+                  !!rejectionReqsError ||
                   !rejectionReasonCode ||
                   (requiresAffectedRequirement && selectedAffectedIds.length === 0)
                 }

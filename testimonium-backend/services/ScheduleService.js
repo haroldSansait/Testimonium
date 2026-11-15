@@ -811,6 +811,10 @@ export class ScheduleService {
       parishId: parish.id,
       schedulingAvailable,
       configurationUnavailable: !config.isConfigured,
+      // Existing requests still need their requirements when a service is disabled.
+      requirementsByEventType: Object.fromEntries(EventTypeCatalog.map(({ enum: eventType }) => [
+        eventType, getScheduleRequirements(parish, eventType),
+      ])),
       services: schedulingAvailable
         ? config.enabledServices.map((eventType) => ({
             eventType,
@@ -1960,6 +1964,13 @@ export class ScheduleService {
                 label: att.requirementLabel || att.requirementId,
               });
             }
+          }
+
+          if (DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(rejectionReasonCode) && requirementMap.size === 0) {
+            const err = new Error("Document-related rejection reasons do not apply to schedules without document requirements.");
+            err.statusCode = 400;
+            err.code = "INVALID_REJECTION_REASON";
+            throw err;
           }
 
           const uniqueIds = Array.isArray(affectedRequirementIds)

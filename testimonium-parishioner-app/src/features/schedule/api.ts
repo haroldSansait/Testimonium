@@ -448,6 +448,9 @@ export const createScheduleRequest = async (
   if (input.payload.remarks?.trim()) {
     bookingPayload.remarks = input.payload.remarks.trim();
   }
+  if (input.payload.location?.trim()) {
+    bookingPayload.location = input.payload.location.trim();
+  }
   if (input.payload.requestedPriestId !== undefined && input.payload.requestedPriestId !== null) {
     bookingPayload.requestedPriestId = input.payload.requestedPriestId;
   }

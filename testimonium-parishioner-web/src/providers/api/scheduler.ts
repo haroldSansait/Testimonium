@@ -208,9 +208,6 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     requirementFiles?: Record<string, File>;
   }): Promise<Appointment> {
     const rawRemarks = appointment.remarks?.trim() || "";
-    const isMarriageCanonical = appointment.eventType === "WEDDING";
-    const venueInfo = !isMarriageCanonical && appointment.location ? `Venue: ${appointment.location}.` : "";
-    const combinedRemarks = [rawRemarks, venueInfo].filter(Boolean).join(" ") || "Parishioner Portal Request";
 
     const payload: any = {
       parishId: parseInt(appointment.parishId, 10),
@@ -219,7 +216,7 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       date: appointment.date,
       timeSlot: appointment.timeSlot,
       ...(appointment.location?.trim() ? { location: appointment.location.trim() } : {}),
-      remarks: combinedRemarks,
+      remarks: rawRemarks || "Parishioner Portal Request",
     };
 
     if (appointment.requestedPriestId !== undefined && appointment.requestedPriestId !== null) {
