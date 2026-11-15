@@ -28,13 +28,13 @@ describe('Lay Minister fallback Web integration', () => {
     assert.match(scheduler, /\{ expectedRevision \}/);
   });
 
-  test('shows Lay Minister designation and alternative-date controls in detail and tracking views', () => {
-    const detail = read('pages/dashboard/ScheduleDetailPage.tsx');
+  test('shows Lay Minister designation and alternative-date controls in Track Status view', () => {
     const tracking = read('pages/dashboard/RequestTrackingPage.tsx');
 
-    assert.match(detail, /Lay Minister assignment/);
-    assert.match(detail, /proposeAlternativeDate/);
-    assert.match(detail, /withdrawAlternativeDate/);
+    assert.equal(fs.existsSync(path.join(webSrc, 'pages/dashboard/ScheduleDetailPage.tsx')), false);
+    assert.match(tracking, /Lay Minister assignment/);
+    assert.match(tracking, /proposeAlternativeDate/);
+    assert.match(tracking, /withdrawAlternativeDate/);
     assert.match(tracking, /Lay Minister fallback/);
     assert.match(tracking, /Service Leader Assigned/);
     assert.match(tracking, /no priest acceptance is required/);

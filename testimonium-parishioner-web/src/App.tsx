@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { createBrowserRouter, RouterProvider, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SubmissionProtectionProvider } from './contexts/SubmissionProtectionContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -24,7 +24,6 @@ const ParishDirectoryPage = React.lazy(() => import('./pages/dashboard/ParishDir
 const SacramentalRequestPage = React.lazy(() => import('./pages/dashboard/SacramentalRequestPage'));
 const RequestTrackingPage = React.lazy(() => import('./pages/dashboard/RequestTrackingPage'));
 const EventSchedulerPage = React.lazy(() => import('./pages/dashboard/EventSchedulerPage'));
-const ScheduleDetailPage = React.lazy(() => import('./pages/dashboard/ScheduleDetailPage'));
 const NotificationsPage = React.lazy(() => import('./pages/dashboard/NotificationsPage'));
 const ProfilePage = React.lazy(() => import('./pages/dashboard/ProfilePage'));
 const HelpPage = React.lazy(() => import('./pages/dashboard/HelpPage'));
@@ -48,6 +47,14 @@ const DashboardRoute: React.FC<{ element: React.ReactNode }> = ({ element }) => 
       </Suspense>
     </DashboardLayout>
   );
+};
+
+const LegacyScheduleRedirect: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const target = id
+    ? `/dashboard/track?mode=schedules&scheduleId=${encodeURIComponent(id)}`
+    : '/dashboard/track?mode=schedules';
+  return <Navigate to={target} replace />;
 };
 
 const AppWithSessionModal: React.FC = () => {
@@ -74,7 +81,7 @@ const AppWithSessionModal: React.FC = () => {
           <Route path="/dashboard/request" element={<DashboardRoute element={<SacramentalRequestPage />} />} />
           <Route path="/dashboard/track" element={<DashboardRoute element={<RequestTrackingPage />} />} />
           <Route path="/dashboard/scheduler" element={<DashboardRoute element={<EventSchedulerPage />} />} />
-          <Route path="/dashboard/schedule/:id" element={<DashboardRoute element={<ScheduleDetailPage />} />} />
+          <Route path="/dashboard/schedule/:id" element={<LegacyScheduleRedirect />} />
           <Route path="/dashboard/notifications" element={<DashboardRoute element={<NotificationsPage />} />} />
           <Route path="/dashboard/profile" element={<DashboardRoute element={<ProfilePage />} />} />
           <Route path="/dashboard/help" element={<DashboardRoute element={<HelpPage />} />} />

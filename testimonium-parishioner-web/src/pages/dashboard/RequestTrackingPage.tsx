@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download, AlertTriangle, FileEdit } from 'lucide-react';
+import { CheckCircle, CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, RotateCcw, X, XCircle, Eye, Download, AlertTriangle, FileEdit } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
@@ -20,6 +20,8 @@ import PaymentInstructionsCard from '../../features/payments/components/PaymentI
 import ReceiptUploadCard from '../../features/payments/components/ReceiptUploadCard';
 import { ErrorState } from '../../components/ui/ErrorState';
 import ScheduleRescheduleHistory from '../../features/scheduler/components/ScheduleRescheduleHistory';
+import { ScheduleAttachments } from '../../features/scheduler/components/ScheduleAttachments';
+import { DatePickerCalendar } from '../../features/scheduler/components/DatePickerCalendar';
 import { UPLOAD_POLICIES, validateUploadFile } from '../../utils/uploadPolicy';
 import SecureFileActions from '../../components/files/SecureFileActions';
 import { Modal } from '../../components/ui/Modal';
@@ -219,7 +221,7 @@ export const RequestTrackingPage: React.FC = () => {
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  const location = typeof useLocation === 'function' ? useLocation() : null;
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const deepLinkRequestId = searchParams.get('requestId');
   const deepLinkScheduleId =
@@ -245,6 +247,8 @@ export const RequestTrackingPage: React.FC = () => {
     if (deepLinkScheduleId) {
       setActiveMode('schedules');
       setSelectedScheduleId(String(deepLinkScheduleId));
+      setScheduleSearchError(null);
+      setDeepLinkScheduleError(null);
       if (isMobile) {
         setMobileScheduleView('details');
       }
@@ -307,16 +311,31 @@ export const RequestTrackingPage: React.FC = () => {
   const [deleteScheduleDraftError, setDeleteScheduleDraftError] = useState<string | null>(null);
   const deleteScheduleDraftInProgressRef = useRef(false);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [schedulesLoaded, setSchedulesLoaded] = useState(false);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(() =>
     deepLinkScheduleId ? String(deepLinkScheduleId) : null
   );
   const [searchedSchedule, setSearchedSchedule] = useState<Appointment | null>(null);
+  const [loadingDeepLinkSchedule, setLoadingDeepLinkSchedule] = useState(false);
+  const [deepLinkScheduleError, setDeepLinkScheduleError] = useState<string | null>(null);
   const [scheduleSearchQuery, setScheduleSearchQuery] = useState('');
   const [scheduleSearching, setScheduleSearching] = useState(false);
   const [scheduleSearchError, setScheduleSearchError] = useState<string | null>(null);
   const [mobileScheduleView, setMobileScheduleView] = useState<'schedules' | 'details'>('schedules');
+  const [respondingReschedule, setRespondingReschedule] = useState(false);
+  const [rescheduleResponseError, setRescheduleResponseError] = useState<string | null>(null);
+  const [rescheduleResponseSuccess, setRescheduleResponseSuccess] = useState<string | null>(null);
   const [alternativeBusy, setAlternativeBusy] = useState(false);
   const [alternativeError, setAlternativeError] = useState<string | null>(null);
+  const [alternativeDate, setAlternativeDate] = useState('');
+  const [alternativeSlot, setAlternativeSlot] = useState('');
+  const [alternativeNote, setAlternativeNote] = useState('');
+  const [alternativeSlots, setAlternativeSlots] = useState<string[]>([]);
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [loadingDates, setLoadingDates] = useState(false);
+  const [datesError, setDatesError] = useState<string | null>(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true);
@@ -328,33 +347,71 @@ export const RequestTrackingPage: React.FC = () => {
       const safeAppts = appts || [];
       setSchedules(safeAppts);
       setScheduleDrafts(drafts || []);
-      if (deepLinkScheduleId) {
-        const targetId = String(deepLinkScheduleId);
-        setSelectedScheduleId(targetId);
-        const inList = safeAppts.some((s) => String(s.id) === targetId);
-        if (!inList) {
-          void services.scheduler
-            .getAppointmentById(targetId)
-            .then((res) => {
-              if (res) setSearchedSchedule(res);
-            })
-            .catch(() => {});
-        }
-      } else if (safeAppts.length > 0 && !selectedScheduleId) {
-        setSelectedScheduleId(String(safeAppts[0].id));
-      }
+      setSelectedScheduleId((prev) => {
+        if (prev) return prev;
+        return safeAppts.length > 0 ? String(safeAppts[0].id) : null;
+      });
     } catch (err) {
       console.error('Failed to load schedules:', err);
     } finally {
       setLoadingSchedules(false);
+      setSchedulesLoaded(true);
     }
-  }, [selectedScheduleId, deepLinkScheduleId]);
+  }, []);
 
   useEffect(() => {
     if (activeMode === 'schedules') {
       void loadSchedules();
     }
   }, [activeMode, loadSchedules]);
+
+  useEffect(() => {
+    if (!deepLinkScheduleId || !schedulesLoaded || loadingSchedules) return;
+    const targetId = String(deepLinkScheduleId);
+    if (String(selectedScheduleId) !== targetId) return;
+
+    if (schedules.some((s) => String(s.id) === targetId)) {
+      setLoadingDeepLinkSchedule(false);
+      setDeepLinkScheduleError(null);
+      return;
+    }
+
+    if (searchedSchedule && String(searchedSchedule.id) === targetId) {
+      setLoadingDeepLinkSchedule(false);
+      setDeepLinkScheduleError(null);
+      return;
+    }
+
+    let active = true;
+    setLoadingDeepLinkSchedule(true);
+    setDeepLinkScheduleError(null);
+    void services.scheduler
+      .getAppointmentById(targetId)
+      .then((res) => {
+        if (!active) return;
+        if (res) {
+          setSearchedSchedule(res);
+        } else {
+          setDeepLinkScheduleError('This schedule could not be found. It may have been removed or the link is invalid.');
+        }
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        const code = err?.status ?? err?.statusCode;
+        setDeepLinkScheduleError(
+          code === 404
+            ? 'This schedule could not be found. It may have been removed or the link is invalid.'
+            : code === 403
+            ? 'You do not have access to this schedule.'
+            : 'Failed to load schedule details. Please check your connection and try again.'
+        );
+      })
+      .finally(() => {
+        if (active) setLoadingDeepLinkSchedule(false);
+      });
+
+    return () => { active = false; };
+  }, [deepLinkScheduleId, schedulesLoaded, loadingSchedules, schedules, searchedSchedule, selectedScheduleId]);
 
   const selectedSchedule = useMemo(() => {
     if (searchedSchedule && String(searchedSchedule.id) === String(selectedScheduleId)) {
@@ -370,11 +427,187 @@ export const RequestTrackingPage: React.FC = () => {
     return searchedSchedule || (schedules.length > 0 ? schedules[0] : null);
   }, [schedules, selectedScheduleId, searchedSchedule, deepLinkScheduleId]);
 
+  const syncUpdatedSchedule = useCallback((updated: Appointment) => {
+    setSchedules((items) => {
+      const exists = items.some((item) => String(item.id) === String(updated.id));
+      return exists
+        ? items.map((item) => (String(item.id) === String(updated.id) ? updated : item))
+        : items;
+    });
+    setSearchedSchedule((prev) =>
+      prev && String(prev.id) === String(updated.id) ? updated : prev
+    );
+  }, []);
+
+  useEffect(() => {
+    setRescheduleResponseError(null);
+    setRescheduleResponseSuccess(null);
+    setAlternativeError(null);
+    setAlternativeDate('');
+    setAlternativeSlot('');
+    setAlternativeNote('');
+    setAlternativeSlots([]);
+    setDatesError(null);
+    setSlotsError(null);
+  }, [selectedSchedule?.id]);
+
+  const fetchAvailableDates = useCallback(async () => {
+    if (
+      !selectedSchedule ||
+      !selectedSchedule.parishId ||
+      !selectedSchedule.rawEventType ||
+      !selectedSchedule.layMinisterAssigned ||
+      !selectedSchedule.canProposeAlternativeDate ||
+      (selectedSchedule.alternativeProposal &&
+        ['SUBMITTED', 'PRIEST_PENDING'].includes(selectedSchedule.alternativeProposal.status))
+    ) {
+      setAvailableDates([]);
+      return;
+    }
+    setLoadingDates(true);
+    setDatesError(null);
+    try {
+      const res = await services.scheduler.getAvailabilityDates(
+        String(selectedSchedule.parishId),
+        selectedSchedule.rawEventType
+      );
+      setAvailableDates(res?.dates || []);
+    } catch (err: any) {
+      console.error('Failed to load available dates:', err);
+      setDatesError(err?.message || 'Unable to load available dates. Please check your connection.');
+      setAvailableDates([]);
+    } finally {
+      setLoadingDates(false);
+    }
+  }, [selectedSchedule]);
+
+  useEffect(() => {
+    if (
+      activeMode === 'schedules' &&
+      selectedSchedule?.layMinisterAssigned &&
+      selectedSchedule.canProposeAlternativeDate &&
+      !(selectedSchedule.alternativeProposal &&
+        ['SUBMITTED', 'PRIEST_PENDING'].includes(selectedSchedule.alternativeProposal.status))
+    ) {
+      void fetchAvailableDates();
+    } else {
+      setAvailableDates([]);
+    }
+  }, [
+    activeMode,
+    selectedSchedule?.id,
+    selectedSchedule?.layMinisterAssigned,
+    selectedSchedule?.canProposeAlternativeDate,
+    selectedSchedule?.alternativeProposal,
+    fetchAvailableDates,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSchedule || !alternativeDate || !selectedSchedule.rawEventType) {
+      setAlternativeSlots([]);
+      setAlternativeSlot('');
+      setSlotsError(null);
+      return;
+    }
+    let active = true;
+    setLoadingSlots(true);
+    setSlotsError(null);
+    services.scheduler.getAvailableSlots(selectedSchedule.parishId, alternativeDate, selectedSchedule.rawEventType)
+      .then((slots) => {
+        if (!active) return;
+        setAlternativeSlots(slots);
+        setAlternativeSlot((current) => slots.includes(current) ? current : '');
+      })
+      .catch((err: any) => {
+        if (active) {
+          console.error('Failed to load slots:', err);
+          setSlotsError(err?.message || 'Unable to load time slots for this date.');
+          setAlternativeSlots([]);
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingSlots(false);
+      });
+    return () => { active = false; };
+  }, [selectedSchedule, alternativeDate]);
+
+  const handleRespondReschedule = async (accept: boolean) => {
+    if (!selectedSchedule) return;
+    if (typeof selectedSchedule.version !== 'number') {
+      setRescheduleResponseError('The schedule version is unavailable. Refreshing the latest details.');
+      try {
+        const latest = await services.scheduler.getAppointmentById(selectedSchedule.id);
+        syncUpdatedSchedule(latest);
+      } catch {
+        void loadSchedules();
+      }
+      return;
+    }
+    setRespondingReschedule(true);
+    setRescheduleResponseError(null);
+    setRescheduleResponseSuccess(null);
+    try {
+      const updated = await services.scheduler.respondReschedule(
+        selectedSchedule.id,
+        accept,
+        selectedSchedule.version
+      );
+      syncUpdatedSchedule(updated);
+      setRescheduleResponseSuccess(
+        accept
+          ? 'You have accepted the proposed reschedule. Your appointment is now confirmed.'
+          : 'You have declined the proposed reschedule. Please contact your parish for further assistance.'
+      );
+    } catch (err: any) {
+      if (err?.code === 'PRIEST_ASSIGNMENT_REQUIRED' || err?.message?.includes('priest must be assigned')) {
+        setRescheduleResponseError('A priest must be assigned to this schedule before it can be confirmed. Please check back once the parish assigns a priest.');
+      } else if (err?.code === 'PRIEST_ASSIGNMENT_PENDING' || err?.message?.includes('not yet accepted')) {
+        setRescheduleResponseError('The assigned priest has not yet accepted this schedule. Final confirmation will become available once the priest accepts.');
+      } else {
+        setRescheduleResponseError(err?.message || 'Failed to submit your response. Please try again.');
+      }
+      try {
+        const latest = await services.scheduler.getAppointmentById(selectedSchedule.id);
+        syncUpdatedSchedule(latest);
+      } catch {
+        void loadSchedules();
+      }
+    } finally {
+      setRespondingReschedule(false);
+    }
+  };
+
+  const handleAlternativeSubmit = async () => {
+    if (!selectedSchedule || !alternativeDate || !alternativeSlot) return;
+    setAlternativeBusy(true);
+    setAlternativeError(null);
+    setRescheduleResponseSuccess(null);
+    try {
+      await services.scheduler.proposeAlternativeDate(
+        selectedSchedule.id,
+        alternativeDate,
+        alternativeSlot,
+        alternativeNote
+      );
+      const refreshed = await services.scheduler.getAppointmentById(selectedSchedule.id);
+      syncUpdatedSchedule(refreshed);
+      setAlternativeDate('');
+      setAlternativeSlot('');
+      setAlternativeNote('');
+      setRescheduleResponseSuccess('Your alternative-date request was submitted without changing the original appointment.');
+    } catch (err: any) {
+      setAlternativeError(err?.message || 'Unable to submit the alternative date.');
+    } finally {
+      setAlternativeBusy(false);
+    }
+  };
+
   const handleWithdrawAlternative = async () => {
     const proposal = selectedSchedule?.alternativeProposal;
     if (!selectedSchedule || !proposal) return;
     setAlternativeBusy(true);
     setAlternativeError(null);
+    setRescheduleResponseSuccess(null);
     try {
       await services.scheduler.withdrawAlternativeDate(
         selectedSchedule.id,
@@ -382,10 +615,8 @@ export const RequestTrackingPage: React.FC = () => {
         proposal.nominationRevision
       );
       const refreshed = await services.scheduler.getAppointmentById(selectedSchedule.id);
-      setSchedules((items) => items.map((item) => String(item.id) === String(refreshed.id) ? refreshed : item));
-      if (searchedSchedule && String(searchedSchedule.id) === String(refreshed.id)) {
-        setSearchedSchedule(refreshed);
-      }
+      syncUpdatedSchedule(refreshed);
+      setRescheduleResponseSuccess('Your alternative-date request was withdrawn. The original appointment remains unchanged.');
     } catch (err: any) {
       setAlternativeError(err?.message || 'Unable to withdraw the alternative-date request.');
     } finally {
@@ -429,6 +660,7 @@ export const RequestTrackingPage: React.FC = () => {
     setSearchedSchedule(null);
     setScheduleSearchQuery('');
     setScheduleSearchError(null);
+    setDeepLinkScheduleError(null);
     setMobileScheduleView('details');
   };
 
@@ -2050,7 +2282,7 @@ export const RequestTrackingPage: React.FC = () => {
                   <span>Back to My Schedules</span>
                 </button>
               </div>
-              {scheduleSearching ? (
+              {scheduleSearching || loadingDeepLinkSchedule || (loadingSchedules && !selectedSchedule) ? (
                 <Card className="p-8 text-center text-text-muted flex flex-col items-center gap-3">
                   <Loader2 className="w-8 h-8 animate-spin text-crimson" />
                   <p className="text-sm font-semibold">Checking schedule status...</p>
@@ -2119,8 +2351,8 @@ export const RequestTrackingPage: React.FC = () => {
                   </Card>
 
                   {/* Schedule Details Card */}
-                  <Card className="p-5 sm:p-6 shadow-xs border-border">
-                    <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider border-b border-border pb-3 mb-4">
+                  <Card className="p-5 sm:p-6 shadow-xs border-border space-y-5">
+                    <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider border-b border-border pb-3">
                       Schedule Details
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -2150,6 +2382,13 @@ export const RequestTrackingPage: React.FC = () => {
                         <p className="font-semibold text-text-primary">{selectedSchedule.timeSlot}</p>
                       </div>
 
+                      {selectedSchedule.location && (
+                        <div className="space-y-1 sm:col-span-2">
+                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Venue / Location</span>
+                          <p className="font-semibold text-text-primary">{selectedSchedule.location}</p>
+                        </div>
+                      )}
+
                       <div className="space-y-1 sm:col-span-2">
                         <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Service Leader</span>
                         <p className="font-semibold text-text-primary flex items-center gap-1.5">
@@ -2167,14 +2406,165 @@ export const RequestTrackingPage: React.FC = () => {
                         )}
                       </div>
 
+                      {selectedSchedule.proposedDate && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Proposed Date</span>
+                          <p className="font-semibold text-blue-700">{selectedSchedule.proposedDate}</p>
+                        </div>
+                      )}
+
+                      {selectedSchedule.proposedTime && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Proposed Time</span>
+                          <p className="font-semibold text-blue-700">{selectedSchedule.proposedTime}</p>
+                        </div>
+                      )}
+
+                      {selectedSchedule.rescheduleReason && (
+                        <div className="space-y-1 sm:col-span-2">
+                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Reschedule Reason</span>
+                          <p className="text-text-primary bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 text-xs leading-relaxed">
+                            {selectedSchedule.rescheduleReason}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Confirmation No.</span>
                         <p className="font-mono text-xs font-bold text-text-primary">{selectedSchedule.confirmationNumber}</p>
                       </div>
                     </div>
 
+                    {selectedSchedule.status === 'rejected' && (
+                      <div className="p-4 rounded-xl border border-red-200 bg-red-50/70 space-y-2.5 text-sm">
+                        <div className="text-xs font-bold uppercase tracking-wider text-red-800">
+                          Rejection Details
+                        </div>
+                        <div className="space-y-1.5 text-xs text-red-900">
+                          <div>
+                            <span className="font-semibold">Status: </span>
+                            <span>Rejected</span>
+                          </div>
+                          {(selectedSchedule.rejectionReasonLabel || selectedSchedule.rejectionReasonCode) && (
+                            <div>
+                              <span className="font-semibold">Rejection Reason: </span>
+                              <span>{selectedSchedule.rejectionReasonLabel || selectedSchedule.rejectionReasonCode}</span>
+                            </div>
+                          )}
+                          {selectedSchedule.rejectionAffectedRequirements && selectedSchedule.rejectionAffectedRequirements.length > 0 && (
+                            <div>
+                              <span className="font-semibold">Affected Requirements: </span>
+                              <span>{selectedSchedule.rejectionAffectedRequirements.map((r) => r.label).join(', ')}</span>
+                            </div>
+                          )}
+                          {selectedSchedule.rejectionNote && (
+                            <div>
+                              <span className="font-semibold">Additional Note: </span>
+                              <span>{selectedSchedule.rejectionNote}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reschedule proposal response */}
+                    {selectedSchedule.status === 'proposed' && !rescheduleResponseSuccess && (() => {
+                      const hasPriestAssigned = Boolean(selectedSchedule.assignedPriestId);
+                      const isPriestAccepted = hasPriestAssigned && selectedSchedule.priestResponseStatus === 'ACCEPTED';
+                      const canAcceptReschedule = isPriestAccepted;
+                      return (
+                        <div className="border border-blue-200 rounded-xl p-4 bg-blue-50 space-y-3">
+                          <p className="text-sm font-semibold text-blue-900 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            Your parish has proposed a new date and time.
+                          </p>
+                          {selectedSchedule.proposedDate && selectedSchedule.proposedTime && (
+                            <p className="text-sm text-blue-800">
+                              Proposed: <strong>{selectedSchedule.proposedDate}</strong> at{' '}
+                              <strong>{selectedSchedule.proposedTime}</strong>
+                            </p>
+                          )}
+                          {selectedSchedule.rescheduleReason && (
+                            <p className="text-xs text-blue-700 italic">&ldquo;{selectedSchedule.rescheduleReason}&rdquo;</p>
+                          )}
+
+                          {!hasPriestAssigned ? (
+                            <div className="flex items-start gap-2.5 p-3 bg-amber-50/90 border border-amber-200 rounded-lg text-xs text-amber-900">
+                              <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                              <div className="space-y-0.5">
+                                <p className="font-semibold">Waiting for priest assignment</p>
+                                <p className="text-amber-800">
+                                  You can review the proposed date and time, but acceptance will become available once the parish assigns a priest and the priest accepts.
+                                </p>
+                              </div>
+                            </div>
+                          ) : !isPriestAccepted ? (
+                            <div className="flex items-start gap-2.5 p-3 bg-blue-100/70 border border-blue-200 rounded-lg text-xs text-blue-900">
+                              <Clock className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                              <div className="space-y-0.5">
+                                <p className="font-semibold">Waiting for priest acceptance</p>
+                                <p className="text-blue-800">
+                                  You can review the proposed date and time, but final acceptance will become available once the assigned priest accepts the schedule.
+                                </p>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="flex gap-3 flex-wrap">
+                            <Button
+                              size="sm"
+                              onClick={() => void handleRespondReschedule(true)}
+                              disabled={respondingReschedule || !canAcceptReschedule}
+                              title={
+                                !hasPriestAssigned
+                                  ? 'Waiting for priest assignment and acceptance'
+                                  : !isPriestAccepted
+                                  ? 'Waiting for assigned priest to accept this schedule'
+                                  : undefined
+                              }
+                            >
+                              {respondingReschedule ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-3.5 h-3.5" />
+                              )}
+                              Accept Reschedule
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleRespondReschedule(false)}
+                              disabled={respondingReschedule}
+                            >
+                              {respondingReschedule ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <XCircle className="w-3.5 h-3.5" />
+                              )}
+                              Decline
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {rescheduleResponseSuccess && (
+                      <div className="flex items-start gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>{rescheduleResponseSuccess}</span>
+                      </div>
+                    )}
+                    {rescheduleResponseError && (
+                      <div role="alert" className="flex items-start gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>{rescheduleResponseError}</span>
+                      </div>
+                    )}
+
+                    <ScheduleAttachments key={selectedSchedule.id} scheduleId={selectedSchedule.id} />
+
                     {selectedSchedule.layMinisterAssigned && (
-                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-xs text-amber-900 space-y-3">
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-xs text-amber-900 space-y-4">
                         <div className="flex items-center gap-2 font-bold text-amber-950">
                           <AlertTriangle className="w-4 h-4 text-amber-700" />
                           <span>Lay Minister fallback</span>
@@ -2194,12 +2584,28 @@ export const RequestTrackingPage: React.FC = () => {
                                 {selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING' ? 'Awaiting Nominated Priest' : 'Awaiting Parish Review'}
                               </span>
                             </div>
-                            <p className="text-[11px] text-gray-600">
-                              {selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING'
-                                ? `Parish office nominated Rev. Fr. ${selectedSchedule.alternativeProposal.nominatedPriest?.fullName || 'the celebrant'}. Confirmation pending.`
-                                : 'Parish office is reviewing priest availability to nominate a celebrant for your requested date.'}
-                            </p>
-                            <div className="pt-1">
+                            <div className="text-xs text-gray-700 space-y-1">
+                              <p>
+                                Requested alternative: <strong className="text-gray-900">{new Date(selectedSchedule.alternativeProposal.proposedDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>
+                                {selectedSchedule.alternativeProposal.proposedStartDatetime && (
+                                  <span> at <strong className="text-gray-900">{new Date(selectedSchedule.alternativeProposal.proposedStartDatetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                                )}
+                              </p>
+                              <p className="text-[11px] text-gray-600">
+                                {selectedSchedule.alternativeProposal.status === 'PRIEST_PENDING'
+                                  ? `Parish office nominated Rev. Fr. ${selectedSchedule.alternativeProposal.nominatedPriest?.fullName || 'the celebrant'}. Confirmation pending.`
+                                  : 'Parish office is reviewing priest availability to nominate a celebrant for your requested date.'}
+                              </p>
+                              {selectedSchedule.alternativeProposal.note && (
+                                <p className="text-[11px] text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 mt-1 italic">
+                                  Note: &ldquo;{selectedSchedule.alternativeProposal.note}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                            <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-gray-100">
+                              <span className="text-[10px] text-gray-500">
+                                Your original appointment remains active until this alternative is confirmed.
+                              </span>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -2207,40 +2613,153 @@ export const RequestTrackingPage: React.FC = () => {
                                 onClick={() => void handleWithdrawAlternative()}
                                 className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                               >
+                                {alternativeBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                                 {alternativeBusy ? 'Withdrawing…' : 'Withdraw alternative request'}
                               </Button>
                             </div>
                           </div>
                         ) : selectedSchedule.canProposeAlternativeDate ? (
-                          <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <span className="text-[11px] text-amber-800">
-                              Prefer a priest-led service? You may request an alternative date.
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => navigate(`/dashboard/schedule/${selectedSchedule.id}`)}
-                              className="text-xs shrink-0"
-                            >
-                              Request Alternative Date
-                            </Button>
+                          <div className="bg-white rounded-2xl border border-amber-200/90 p-5 space-y-4">
+                            <div className="border-b border-gray-100 pb-3">
+                              <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                <User className="w-4 h-4 text-crimson" />
+                                Prefer a Priest-Led Service? (Optional)
+                              </h5>
+                              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                                If your sacrament or rite requires a priest, you may propose an alternative date and time below. Your original appointment will remain scheduled unless the alternative is confirmed.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                                1. Select an Available Date <span className="text-red-500">*</span>
+                              </label>
+
+                              {loadingDates ? (
+                                <div className="flex flex-col items-center justify-center p-8 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                                  <Loader2 className="w-6 h-6 animate-spin text-crimson" />
+                                  <span className="mt-2 text-xs text-text-muted">Loading available parish calendar dates…</span>
+                                </div>
+                              ) : datesError ? (
+                                <div className="flex items-center justify-between p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+                                  <span>{datesError}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void fetchAvailableDates()}
+                                    className="font-bold text-crimson hover:underline shrink-0 ml-2"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              ) : availableDates.length === 0 ? (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                                  No online alternative dates are currently open for this service. You may contact the parish office directly.
+                                </div>
+                              ) : (
+                                <DatePickerCalendar
+                                  selectedDate={alternativeDate}
+                                  onSelectDate={(date) => {
+                                    setAlternativeDate(date);
+                                    setAlternativeSlot('');
+                                  }}
+                                  availableDates={availableDates}
+                                />
+                              )}
+                            </div>
+
+                            {alternativeDate && (
+                              <div className="space-y-2 pt-2 border-t border-gray-100">
+                                <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                                  2. Select Time Slot on {alternativeDate} <span className="text-red-500">*</span>
+                                </label>
+
+                                {loadingSlots ? (
+                                  <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs text-text-muted">
+                                    <Loader2 className="w-4 h-4 animate-spin text-crimson" />
+                                    <span>Checking slot availability for {alternativeDate}…</span>
+                                  </div>
+                                ) : slotsError ? (
+                                  <div className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+                                    <span>{slotsError}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const d = alternativeDate;
+                                        setAlternativeDate('');
+                                        setTimeout(() => setAlternativeDate(d), 50);
+                                      }}
+                                      className="font-bold text-crimson hover:underline"
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                ) : alternativeSlots.length === 0 ? (
+                                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                                    No available time slots on this date. Please select another date on the calendar above.
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                    {alternativeSlots.map((slot) => (
+                                      <button
+                                        key={slot}
+                                        type="button"
+                                        onClick={() => setAlternativeSlot(slot)}
+                                        className={`p-2.5 text-xs font-semibold rounded-xl border text-center transition-all cursor-pointer ${
+                                          alternativeSlot === slot
+                                            ? 'bg-crimson text-white border-crimson shadow-sm'
+                                            : 'bg-white text-text-primary border-border hover:border-crimson/50 hover:bg-red-50/40'
+                                        }`}
+                                      >
+                                        {slot}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-xs font-bold text-text-primary uppercase tracking-wider">
+                                  3. Note to Parish Staff (Optional)
+                                </label>
+                                <span className="text-[11px] text-text-muted">{alternativeNote.length}/1000</span>
+                              </div>
+                              <textarea
+                                value={alternativeNote}
+                                onChange={(event) => setAlternativeNote(event.target.value)}
+                                maxLength={1000}
+                                rows={2}
+                                placeholder="Share any special circumstances or pastoral reasons for parish staff..."
+                                className="w-full border border-border rounded-xl p-3 text-xs bg-white outline-none focus:border-crimson transition-colors"
+                              />
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+                              <div className="text-[11px] text-text-muted">
+                                {alternativeDate && alternativeSlot ? (
+                                  <span>
+                                    Selected: <strong className="text-text-primary">{alternativeDate}</strong> at <strong className="text-text-primary">{alternativeSlot}</strong>
+                                  </span>
+                                ) : (
+                                  <span>Please select a date and an available time slot above.</span>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                disabled={alternativeBusy || !alternativeDate || !alternativeSlot}
+                                onClick={() => void handleAlternativeSubmit()}
+                                className="cursor-pointer"
+                              >
+                                {alternativeBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                                {alternativeBusy ? 'Submitting...' : 'Request Priest-Led Alternative Date'}
+                              </Button>
+                            </div>
                           </div>
                         ) : null}
                         {alternativeError && <p className="mt-2 text-red-700" role="alert">{alternativeError}</p>}
                       </div>
                     )}
-
-                    <div className="pt-4 mt-4 border-t border-border flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => navigate(`/dashboard/schedule/${selectedSchedule.id}`)}
-                        className="gap-1.5"
-                      >
-                        <span>Open Full Schedule Details</span>
-                        <ArrowRight size={14} />
-                      </Button>
-                    </div>
                   </Card>
 
                   {/* Reschedule History (Reusing shared component!) */}
@@ -2248,6 +2767,24 @@ export const RequestTrackingPage: React.FC = () => {
                     <ScheduleRescheduleHistory history={selectedSchedule.rescheduleHistory} />
                   )}
                 </div>
+              ) : deepLinkScheduleError ? (
+                <EmptyState
+                  title="Unable to open schedule"
+                  description={deepLinkScheduleError}
+                  icon={<AlertCircle size={40} className="text-text-muted/40" />}
+                  action={
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setDeepLinkScheduleError(null);
+                        setSelectedScheduleId(schedules[0] ? String(schedules[0].id) : null);
+                        navigate('/dashboard/track?mode=schedules', { replace: true });
+                      }}
+                    >
+                      View My Schedules
+                    </Button>
+                  }
+                />
               ) : (
                 <Card className="flex items-center justify-center p-12 text-center text-text-muted h-96">
                   Select a schedule request from the list or enter a confirmation number above to view status.

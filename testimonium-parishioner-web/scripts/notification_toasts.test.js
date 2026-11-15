@@ -237,7 +237,7 @@ describe('Notification toast reducer and navigation regressions', () => {
   });
 
   // 10. Clicking a schedule notification navigates to the correct schedule
-  it('10. Schedule-related notification URL targets /dashboard/schedule/<id>', () => {
+  it('10. Schedule-related notification URL targets /dashboard/track?mode=schedules&scheduleId=<id>', () => {
     const schedNotif = createNotification('sched-notif-1', {
       type: 'appointment-confirmed',
       referenceType: 'SCHEDULE_REQUEST',
@@ -245,7 +245,7 @@ describe('Notification toast reducer and navigation regressions', () => {
     });
 
     const url = getNotificationUrl(schedNotif);
-    assert.equal(url, '/dashboard/schedule/789');
+    assert.equal(url, '/dashboard/track?mode=schedules&scheduleId=789');
   });
 
   // 11. Clicking a general notification locates it in Notification Center

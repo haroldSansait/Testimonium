@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { User, Bell, Shield, LogOut, Info, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../../firebaseConfig';
+import { User, Bell, LogOut, Info, CheckCircle2, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useProfile } from '../../hooks/useService';
@@ -31,8 +29,6 @@ export const ProfilePage: React.FC = () => {
   const [address, setAddress] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [resetSending, setResetSending] = useState(false);
-  const [resetMessage, setResetMessage] = useState<string | null>(null);
 
   // Google legal-name confirmation state (new Google parishioners only)
   const [confirmationChoice, setConfirmationChoice] = useState<'confirm' | 'correct' | null>(null);
@@ -68,25 +64,6 @@ export const ProfilePage: React.FC = () => {
   const storedLastName = appProfile?.lastName ?? profile?.lastName ?? '';
   const storedSuffix = appProfile?.suffix ?? profile?.suffix ?? '';
   const hasStructuredName = Boolean(storedFirstName?.trim() && storedLastName?.trim());
-
-  const handlePasswordReset = async () => {
-    if (!user?.email) {
-      setResetMessage('Error: Email address not found.');
-      return;
-    }
-    setResetSending(true);
-    setResetMessage(null);
-    try {
-      await sendPasswordResetEmail(auth, user.email);
-      setResetMessage('Verification email dispatched! Please check your inbox.');
-      toast.success('Verification email dispatched! Please check your inbox.');
-    } catch (err: any) {
-      setResetMessage(err.message || 'Failed to dispatch verification email.');
-      toast.error(err.message || 'Failed to dispatch verification email.');
-    } finally {
-      setResetSending(false);
-    }
-  };
 
   // Sync profile data to local state
   useEffect(() => {
@@ -758,35 +735,6 @@ export const ProfilePage: React.FC = () => {
 
             {/* Government ID Verification Section */}
             <GovernmentIdSection />
-
-            {/* Security Preferences */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center space-x-2">
-                  <Shield size={16} className="text-crimson" />
-                  <span>Security settings</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-xs">
-                <p className="text-text-muted">
-                  Passwords are managed through secure Firebase parameters. Click below to request a security verification email.
-                </p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  type="button" 
-                  loading={resetSending} 
-                  onClick={() => void handlePasswordReset()}
-                >
-                  Send Password Reset Email
-                </Button>
-                {resetMessage && (
-                  <p className={`mt-2 font-medium ${resetMessage.startsWith('Error') ? 'text-status-rejected' : 'text-green-600'}`}>
-                    {resetMessage}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
 
             {/* Save Status Bar */}
             <div className="flex items-center justify-end">

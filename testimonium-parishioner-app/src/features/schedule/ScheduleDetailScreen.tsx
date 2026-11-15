@@ -21,10 +21,6 @@ import { Divider } from "@/components/ui/Divider";
 import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { SecureFileViewerModal } from "@/components/files/SecureFileViewerModal";
-import {
-  exportIcsCalendarFile,
-  openGoogleCalendarExport,
-} from "@/services/calendar/calendarExport";
 import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
   useAvailabilityDates,
@@ -59,7 +55,6 @@ export const ScheduleDetailScreen: React.FC = () => {
   const [alternativeSlot, setAlternativeSlot] = useState("");
   const [alternativeNote, setAlternativeNote] = useState("");
   const [viewerAttachment, setViewerAttachment] = useState<ScheduleAttachment | null>(null);
-  const [calendarBusy, setCalendarBusy] = useState(false);
 
   const {
     data: schedule,
@@ -240,82 +235,7 @@ export const ScheduleDetailScreen: React.FC = () => {
   const milestones = getScheduleMilestones(schedule);
   const rescheduleHistory = schedule.rescheduleHistory ?? [];
   const attachments = attachmentsQuery.data ?? [];
-  const canExportCalendar = schedule.status !== "CANCELLED" && schedule.status !== "REJECTED";
-  const calendarLocation = [
-    schedule.location || schedule.parish?.parishName,
-    schedule.parish?.address,
-    schedule.parish?.municipalityCity,
-    schedule.parish?.province,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  const calendarDescription = [
-    confirmationRef ? `Confirmation Reference: ${confirmationRef}` : null,
-    schedule.parish?.parishName ? `Parish: ${schedule.parish.parishName}` : null,
-    schedule.remarks ? `Remarks: ${schedule.remarks}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
   const bottomInset = contentBottomInset("none");
-
-  const handleOpenGoogleCalendar = async () => {
-    setCalendarBusy(true);
-    try {
-      const opened = await openGoogleCalendarExport({
-        uidPrefix: "testimonium-schedule",
-        id: schedule.id,
-        title: `${getScheduleDisplayTitle(schedule)} — ${schedule.parish?.parishName || "Parish"}`,
-        date: schedule.requestedDate,
-        startTime: timeSlot,
-        startDatetime: schedule.startDatetime,
-        endDatetime: schedule.endDatetime,
-        location: calendarLocation,
-        description: calendarDescription,
-      });
-      if (!opened) {
-        Alert.alert("Unavailable", "This schedule does not have a valid date to export yet.");
-      }
-    } catch (err: unknown) {
-      Alert.alert(
-        "Calendar Export Failed",
-        err instanceof Error ? err.message : "Unable to open Google Calendar."
-      );
-    } finally {
-      setCalendarBusy(false);
-    }
-  };
-
-  const handleExportIcs = async () => {
-    setCalendarBusy(true);
-    try {
-      const result = await exportIcsCalendarFile({
-        uidPrefix: "testimonium-schedule",
-        id: schedule.id,
-        title: `${getScheduleDisplayTitle(schedule)} — ${schedule.parish?.parishName || "Parish"}`,
-        date: schedule.requestedDate,
-        startTime: timeSlot,
-        startDatetime: schedule.startDatetime,
-        endDatetime: schedule.endDatetime,
-        location: calendarLocation,
-        description: calendarDescription,
-      });
-      if (result.method === "saved") {
-        Alert.alert(
-          "Calendar File Saved",
-          "The .ics calendar invitation was saved to your selected folder."
-        );
-      } else if (result.method === "failed") {
-        Alert.alert("Export Failed", "Unable to export .ics calendar file.");
-      }
-    } catch (err: unknown) {
-      Alert.alert(
-        "Export Failed",
-        err instanceof Error ? err.message : "Unable to export .ics calendar file."
-      );
-    } finally {
-      setCalendarBusy(false);
-    }
-  };
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -752,40 +672,6 @@ export const ScheduleDetailScreen: React.FC = () => {
                   : []),
               ]}
             />
-          ) : null}
-
-          {canExportCalendar ? (
-            <View style={styles.calendarExportCard}>
-              <View style={styles.calendarExportHeader}>
-                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                <Text style={styles.calendarExportTitle} allowFontScaling>
-                  Save to Your Calendar
-                </Text>
-              </View>
-              <Text style={styles.calendarExportHint} allowFontScaling>
-                Uses Philippine Standard Time (Asia/Manila) for scheduled appointment hours.
-              </Text>
-              <View style={styles.calendarExportActions}>
-                <Button
-                  title="Google Calendar"
-                  size="sm"
-                  variant="outline"
-                  icon="logo-google"
-                  onPress={() => void handleOpenGoogleCalendar()}
-                  disabled={calendarBusy}
-                  style={styles.calendarBtn}
-                />
-                <Button
-                  title="Export .ICS"
-                  size="sm"
-                  variant="secondary"
-                  icon="download-outline"
-                  onPress={() => void handleExportIcs()}
-                  disabled={calendarBusy}
-                  style={styles.calendarBtn}
-                />
-              </View>
-            </View>
           ) : null}
 
           <Divider />
@@ -1393,36 +1279,6 @@ const styles = StyleSheet.create({
   alternativeNote: {
     minHeight: 72,
     textAlignVertical: "top",
-  },
-  calendarExportCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  calendarExportHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  calendarExportTitle: {
-    ...fontStyles.bodySmall,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  calendarExportHint: {
-    ...fontStyles.caption,
-    color: colors.textSecondary,
-  },
-  calendarExportActions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  calendarBtn: {
-    flex: 1,
   },
   timelineSection: {
     gap: spacing.sm,

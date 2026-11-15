@@ -423,19 +423,25 @@ const styles = StyleSheet.create({
   },
   contentCol: {
     flex: 1,
+    minWidth: 0,
     marginLeft: spacing.xs,
   },
   titleRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 2,
+    columnGap: spacing.sm,
+    rowGap: spacing.xxs,
+    marginBottom: spacing.xs,
   },
   titleTextContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: spacing.xs,
+    alignItems: "flex-start",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: "100%",
   },
   unreadDot: {
     width: 7,
@@ -443,12 +449,16 @@ const styles = StyleSheet.create({
     borderRadius: 3.5,
     backgroundColor: colors.primary,
     marginRight: spacing.xs,
+    marginTop: 6,
+    flexShrink: 0,
   },
   title: {
     ...fontStyles.bodyMedium,
     color: colors.textPrimary,
     fontWeight: "500",
     fontSize: 14,
+    lineHeight: 20,
+    flexShrink: 1,
   },
   unreadTitle: {
     fontWeight: "700",
@@ -457,7 +467,9 @@ const styles = StyleSheet.create({
   timestamp: {
     ...fontStyles.caption,
     fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
+    flexShrink: 0,
   },
   message: {
     ...fontStyles.bodySmall,

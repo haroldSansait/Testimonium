@@ -192,8 +192,8 @@ test("Post-Phase 4 Suite — Source Contracts for UI Pages & Components", async 
     );
 
     assert.ok(
-      trackPageSource.includes("const [activeMode, setActiveMode] = useState<'documents' | 'schedules'>('documents');"),
-      "Default mode must be 'documents'"
+      trackPageSource.includes("deepLinkScheduleId || deepLinkMode === 'schedules' ? 'schedules' : 'documents'"),
+      "Default mode must be 'documents' when no schedule deep link is present"
     );
 
     assert.ok(
@@ -222,27 +222,82 @@ test("Post-Phase 4 Suite — Source Contracts for UI Pages & Components", async 
     );
   });
 
-  await t.test("7. ScheduleDetailPage source contract: preserves current details and embeds ScheduleRescheduleHistory", () => {
-    const detailPageSource = fs.readFileSync(
-      path.join(__dirname, "../src/pages/dashboard/ScheduleDetailPage.tsx"),
+  await t.test("7. Track Status consolidated schedule details contract: preserves details, actions, attachments, history, and legacy redirect", () => {
+    const trackPageSource = fs.readFileSync(
+      path.join(__dirname, "../src/pages/dashboard/RequestTrackingPage.tsx"),
+      "utf8"
+    );
+    const appSource = fs.readFileSync(
+      path.join(__dirname, "../src/App.tsx"),
       "utf8"
     );
 
+    assert.equal(
+      fs.existsSync(path.join(__dirname, "../src/pages/dashboard/ScheduleDetailPage.tsx")),
+      false,
+      "Redundant ScheduleDetailPage.tsx must be removed"
+    );
     assert.ok(
-      detailPageSource.includes("import ScheduleRescheduleHistory"),
-      "ScheduleDetailPage must import ScheduleRescheduleHistory"
+      appSource.includes("/dashboard/schedule/:id") &&
+        appSource.includes("/dashboard/track?mode=schedules&scheduleId="),
+      "Legacy /dashboard/schedule/:id route must redirect to Track Status"
+    );
+    assert.ok(
+      trackPageSource.includes("import { ScheduleAttachments }"),
+      "RequestTrackingPage must import ScheduleAttachments"
+    );
+    assert.ok(
+      trackPageSource.includes("<ScheduleAttachments"),
+      "RequestTrackingPage must render ScheduleAttachments for selected schedule"
+    );
+    assert.ok(
+      trackPageSource.includes("<ScheduleRescheduleHistory"),
+      "RequestTrackingPage must embed ScheduleRescheduleHistory"
+    );
+    assert.ok(trackPageSource.includes("Confirmation No."), "Existing Confirmation No. must remain");
+    assert.ok(trackPageSource.includes("Scheduled Date"), "Existing Scheduled Date must remain");
+    assert.ok(trackPageSource.includes("Time Slot"), "Existing Time Slot must remain");
+    assert.ok(trackPageSource.includes("Service Leader"), "Existing Service Leader details must remain");
+    assert.ok(trackPageSource.includes("respondReschedule"), "Accept/decline reschedule must remain accessible");
+    assert.ok(trackPageSource.includes("getAppointmentById"), "Deep-linked schedule fallback lookup must remain accessible");
+    assert.ok(trackPageSource.includes("Venue / Location"), "Venue / Location details must remain visible");
+    assert.ok(trackPageSource.includes("Rejection Reason"), "Rejection details must remain visible");
+    assert.ok(
+      !trackPageSource.includes("Open Full Schedule Details"),
+      "Removed Open Full Schedule Details button must not be present"
     );
 
+    const homeSource = fs.readFileSync(
+      path.join(__dirname, "../src/pages/dashboard/HomePage.tsx"),
+      "utf8"
+    );
     assert.ok(
-      detailPageSource.includes("<ScheduleRescheduleHistory history={appointment.rescheduleHistory} />"),
-      "ScheduleDetailPage must embed ScheduleRescheduleHistory with appointment.rescheduleHistory"
+      homeSource.includes("/dashboard/track?mode=schedules&scheduleId="),
+      "Home appointment cards must navigate directly to Track Status schedule view"
+    );
+    assert.ok(
+      !homeSource.includes("/dashboard/schedule/"),
+      "Home appointment cards must not link to legacy /dashboard/schedule route"
     );
 
-    assert.ok(detailPageSource.includes("Confirmation No."), "Existing Confirmation No. must remain");
-    assert.ok(detailPageSource.includes("Scheduled Date"), "Existing Scheduled Date must remain");
-    assert.ok(detailPageSource.includes("Time Slot"), "Existing Time Slot must remain");
-    assert.ok(detailPageSource.includes("Assigned Priest"), "Existing Assigned Priest must remain");
-    assert.ok(!detailPageSource.includes("Back to Home"), "Redundant Back to Home button must be removed");
+    const notificationsSource = fs.readFileSync(
+      path.join(__dirname, "../src/pages/dashboard/NotificationsPage.tsx"),
+      "utf8"
+    );
+    assert.ok(
+      notificationsSource.includes("getNotificationUrl(notif)"),
+      "NotificationsPage must route clicks via getNotificationUrl"
+    );
+
+    const profileSource = fs.readFileSync(
+      path.join(__dirname, "../src/pages/dashboard/ProfilePage.tsx"),
+      "utf8"
+    );
+    assert.ok(
+      !profileSource.includes("Send Password Reset Email") &&
+        !profileSource.includes("sendPasswordResetEmail"),
+      "Web ProfilePage must not render Send Password Reset Email"
+    );
   });
 
   await t.test("8. ISchedulerProvider and ApiSchedulerProvider implement getAppointmentByTracking", () => {

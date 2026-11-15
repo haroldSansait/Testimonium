@@ -201,7 +201,7 @@ describe('Real notification provider → query → rendered dashboard toast (Chr
     await waitFor('location.pathname + location.search === "/dashboard/track?requestId=301" && window.fixture.reads.includes("login-document")');
     assert.equal(await evaluate('window.fixture.notifications.notifications.find(n => n.id === "login-schedule").read'), false);
     await click('[aria-label="Notification: Notification login-schedule. Click to view details."] h4');
-    await waitFor('location.pathname === "/dashboard/schedule/302" && window.fixture.reads.includes("login-schedule")');
+    await waitFor('location.pathname + location.search === "/dashboard/track?mode=schedules&scheduleId=302" && window.fixture.reads.includes("login-schedule")');
     assert.equal(await evaluate('window.fixture.notifications.unreadCount'), 0);
   });
 
@@ -238,7 +238,7 @@ describe('Real notification provider → query → rendered dashboard toast (Chr
       await waitFor(`document.querySelectorAll('${cards}').length === 1`);
       if (action === 'click') await click(`${cards} h4`);
       else { await evaluate(`document.querySelector('${cards}').focus()`); await key(action); }
-      const path = index === 3 ? '/dashboard/notifications?notificationId=open-3' : index === 1 ? `/dashboard/schedule/${101 + index}` : `/dashboard/track?requestId=${101 + index}`;
+      const path = index === 3 ? '/dashboard/notifications?notificationId=open-3' : index === 1 ? `/dashboard/track?mode=schedules&scheduleId=${101 + index}` : `/dashboard/track?requestId=${101 + index}`;
       await waitFor(`location.pathname + location.search === ${JSON.stringify(path)}`);
       await waitFor(`window.fixture.reads.includes(${JSON.stringify(item.id)})`);
       assert.equal(await evaluate(`document.querySelectorAll('${cards}').length`), 0);

@@ -1,4 +1,5 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { cleanup, render } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -128,5 +129,50 @@ describe("Notification Manila grouping recovery", () => {
 
     expect(view.getByText(longTitle).props.numberOfLines).toBe(2);
     expect(view.getByText(longMessage).props.numberOfLines).toBe(4);
+  });
+
+  it("renders title and timestamp in a non-overlapping wrapping header without fixed height", async () => {
+    const notification = item(
+      5,
+      "Document Ready for Pickup",
+      new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      "Your Baptismal Certificate is ready for pickup at the parish office."
+    );
+
+    (useNotifications as jest.Mock).mockReturnValue({
+      data: [notification],
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+    (useUnreadNotificationCount as jest.Mock).mockReturnValue(0);
+    (useMarkNotificationRead as jest.Mock).mockReturnValue({ mutate: jest.fn() });
+    (useMarkAllNotificationsRead as jest.Mock).mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+    });
+
+    const view = await render(
+      <SafeAreaProvider initialMetrics={initialMetrics}>
+        <NotificationListScreen />
+      </SafeAreaProvider>
+    );
+
+    const titleNode = view.getByText("Document Ready for Pickup");
+    const titleStyle = StyleSheet.flatten(titleNode.props.style);
+    expect(titleStyle.flexShrink).toBe(1);
+    expect(titleStyle.height).toBeUndefined();
+
+    const timestampNode = view.getByText(/:\d{2}\s(?:AM|PM)/);
+    const timestampStyle = StyleSheet.flatten(timestampNode.props.style);
+    expect(timestampStyle.flexShrink).toBe(0);
+    const headerRowStyle = StyleSheet.flatten(timestampNode.parent?.props.style);
+    expect(headerRowStyle).toEqual(
+      expect.objectContaining({
+        flexDirection: "row",
+        flexWrap: "wrap",
+      })
+    );
   });
 });

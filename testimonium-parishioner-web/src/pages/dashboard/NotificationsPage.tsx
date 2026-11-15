@@ -22,6 +22,7 @@ import type { TabItem } from '../../components/ui/Tabs';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { getNotificationUrl } from '../../utils/notificationNavigation';
 import type { AppNotification } from '../../types';
 
 export const NotificationsPage: React.FC = () => {
@@ -179,10 +180,11 @@ export const NotificationsPage: React.FC = () => {
     }
 
     // Contextual navigation
-    if (notif.referenceType === 'DOCUMENT_REQUEST' && notif.referenceId) {
-      navigate(`/dashboard/track?requestId=${notif.referenceId}`);
-    } else if (notif.referenceType === 'SCHEDULE_REQUEST' && notif.referenceId) {
-      navigate(`/dashboard/schedule/${notif.referenceId}`);
+    if (
+      (notif.referenceType === 'DOCUMENT_REQUEST' || notif.referenceType === 'SCHEDULE_REQUEST') &&
+      notif.referenceId
+    ) {
+      navigate(getNotificationUrl(notif));
     }
   };
 

@@ -198,4 +198,11 @@ describe("Settings recovery regressions", () => {
       body: { emailNotificationsEnabled: true },
     });
   });
+
+  it("omits the removed Send Password Reset Email control and Security section", async () => {
+    const view = await renderSettings();
+
+    expect(view.queryByText("Send Password Reset Email")).toBeNull();
+    expect(view.queryByText("Security")).toBeNull();
+  });
 });

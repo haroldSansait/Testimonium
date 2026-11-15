@@ -693,14 +693,14 @@ export const HomePage: React.FC = () => {
                 appointments.slice(0, 3).map(appt => (
                   <div
                     key={appt.id}
-                    onClick={() => navigate(`/dashboard/schedule/${appt.id}`)}
+                    onClick={() => navigate(`/dashboard/track?mode=schedules&scheduleId=${encodeURIComponent(String(appt.id))}`)}
                     className="p-3 bg-app-page hover:bg-border/30 rounded-button border border-border/70 transition-colors flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 cursor-pointer focus-ring group"
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        navigate(`/dashboard/schedule/${appt.id}`);
+                        navigate(`/dashboard/track?mode=schedules&scheduleId=${encodeURIComponent(String(appt.id))}`);
                       }
                     }}
                   >
