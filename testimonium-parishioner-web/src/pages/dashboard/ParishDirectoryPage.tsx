@@ -2,10 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
-  Compass,
   RefreshCw,
   MapPin,
-  AlertTriangle,
   Map as MapIcon,
   Maximize2,
   Minimize2,
@@ -48,7 +46,6 @@ export const ParishDirectoryPage: React.FC = () => {
   // Map state
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
-  const [geoError, setGeoError] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -111,29 +108,6 @@ export const ParishDirectoryPage: React.FC = () => {
     setSuggestions([]);
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setIsSidebarOpen(false);
-    }
-  };
-
-  const handleLocateMe = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setMapCenter({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-          setMapZoom(14);
-          setGeoError(null);
-        },
-        (error) => {
-          console.error(error);
-          setGeoError("Location permission denied or unavailable.");
-          setTimeout(() => setGeoError(null), 4000);
-        }
-      );
-    } else {
-      setGeoError("Geolocation is not supported by your browser.");
-      setTimeout(() => setGeoError(null), 4000);
     }
   };
 
@@ -358,14 +332,6 @@ export const ParishDirectoryPage: React.FC = () => {
         breadcrumbs={['Home', 'Vicariate Directory']}
       />
 
-      {/* Geolocation friendly error notification */}
-      {geoError && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-3 flex items-center space-x-2 text-red-700 text-xs rounded shadow-sm animate-in fade-in slide-in-from-top duration-200">
-          <AlertTriangle size={16} />
-          <span>{geoError}</span>
-        </div>
-      )}
-
       {/* Search Input Box — preserved exactly in normal page, not inside fullscreen */}
       <div className="relative max-w-md w-full z-20">
         <div className="flex items-center border border-border bg-white rounded-button px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-crimson/20 focus-within:border-crimson transition-all shadow-sm">
@@ -528,14 +494,6 @@ export const ParishDirectoryPage: React.FC = () => {
             ) : (
               <Maximize2 size={16} className="sm:w-[18px] sm:h-[18px]" />
             )}
-          </button>
-          <button
-            onClick={handleLocateMe}
-            className="p-2 sm:p-2.5 bg-white border border-border text-text-muted hover:text-crimson rounded-button shadow-sm hover:shadow transition-all focus-ring"
-            title="Locate Me"
-            aria-label="Locate Me"
-          >
-            <Compass size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
           <button
             onClick={handleResetView}

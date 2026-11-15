@@ -1,4 +1,4 @@
-import { Search, Eye, Save, RefreshCw, Maximize2, Minimize2, MapPin } from 'lucide-react';
+import { Search, Save, RefreshCw, Maximize2, Minimize2, MapPin } from 'lucide-react';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 
@@ -8,7 +8,6 @@ interface SaveToolbarProps {
   selectedVicariate: string;
   onVicariateChange: (vicariate: string) => void;
   onResetView: () => void;
-  onPreviewClick: () => void;
   onSaveAllClick: () => void;
   hasUnsavedChanges: boolean;
   isSaving: boolean;
@@ -24,7 +23,6 @@ export function SaveToolbar({
   selectedVicariate,
   onVicariateChange,
   onResetView,
-  onPreviewClick,
   onSaveAllClick,
   hasUnsavedChanges,
   isSaving,
@@ -88,15 +86,6 @@ export function SaveToolbar({
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Reset View
-        </button>
-
-        {/* Preview */}
-        <button
-          onClick={onPreviewClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          Preview Card
         </button>
 
         {/* Full Screen */}

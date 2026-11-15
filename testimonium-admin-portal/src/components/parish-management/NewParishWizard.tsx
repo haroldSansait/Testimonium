@@ -5,6 +5,7 @@ import { cn } from '@/utils/cn';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { SearchableDropdown, type DropdownOption } from '@/components/ui/SearchableDropdown';
 import { UserManagementService } from '@/services/UserManagementService';
+import { ParishManagementService } from '@/services/ParishManagementService';
 import { useAuth } from '@/hooks/useAuth';
 import type {
   PersonData,
@@ -103,7 +104,7 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label htmlFor={id} className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
         {label} {required && <span className="text-crimson-700">*</span>}
       </label>
@@ -117,14 +118,18 @@ const inputCls =
 
 // ─── Step 1: Parish Details ───────────────────────────────────────────────────
 
+type MotherParishAvailability = 'checking' | 'available' | 'exists' | 'error';
+
 function Step1({
   data,
   onChange,
   isDioceseCoordinator,
+  motherParishAvailability,
 }: {
   data: ParishInfoData;
   onChange: (d: ParishInfoData) => void;
   isDioceseCoordinator?: boolean;
+  motherParishAvailability: MotherParishAvailability;
 }) {
   const set = (field: keyof ParishInfoData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...data, [field]: e.target.value });
@@ -173,7 +178,7 @@ function Step1({
         />
       </FormField>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Parish Type" id="parish-type" required>
           <CustomSelect
             id="parish-type"
@@ -195,7 +200,7 @@ function Step1({
         </FormField>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Municipality / City" id="parish-municipality" required>
           <input
             id="parish-municipality"
@@ -210,6 +215,7 @@ function Step1({
           <div className="grid grid-cols-2 gap-2">
             <CustomSelect
               id="parish-feast-month"
+              className="min-w-0"
               value={selectedMonth}
               onChange={(val) => handleMonthChange({ target: { value: val } } as any)}
               placeholder="Month..."
@@ -218,6 +224,7 @@ function Step1({
             />
             <CustomSelect
               id="parish-feast-day"
+              className="min-w-0"
               value={selectedDay}
               onChange={(val) => handleDayChange({ target: { value: val } } as any)}
               disabled={!selectedMonth}
@@ -249,7 +256,7 @@ function Step1({
         />
       </FormField>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Contact Number" id="parish-contact">
           <input
             id="parish-contact"
@@ -271,22 +278,51 @@ function Step1({
         </FormField>
       </div>
 
-      {isDioceseCoordinator && (
-        <FormField label="Mother Parish" id="parish-is-mother">
-          <label htmlFor="parish-is-mother" className="relative flex items-center gap-2.5 cursor-pointer select-none">
-            <input
-              id="parish-is-mother"
-              type="checkbox"
-              checked={data.isMotherParish}
-              onChange={(event) => onChange({ ...data, isMotherParish: event.target.checked })}
-              className="sr-only peer"
-            />
-            <div className="relative w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-crimson-700/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-crimson-600" />
-            <span className="text-sm font-medium text-slate-700">Set as Mother Parish</span>
-            <span className="text-xs font-bold text-slate-500">{data.isMotherParish ? 'ON' : 'OFF'}</span>
-          </label>
-        </FormField>
-      )}
+      {isDioceseCoordinator && (() => {
+        const isMotherParishDisabled = motherParishAvailability !== 'available';
+        return (
+          <FormField label="Mother Parish" id="parish-is-mother">
+            <label
+              htmlFor="parish-is-mother"
+              className={cn(
+                'relative flex items-center gap-2.5 select-none',
+                isMotherParishDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              )}
+            >
+              <input
+                id="parish-is-mother"
+                type="checkbox"
+                checked={isMotherParishDisabled ? false : data.isMotherParish}
+                disabled={isMotherParishDisabled}
+                aria-disabled={isMotherParishDisabled}
+                onChange={(event) => {
+                  if (isMotherParishDisabled) return;
+                  onChange({ ...data, isMotherParish: event.target.checked });
+                }}
+                className="sr-only peer"
+              />
+              <div className="relative w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-crimson-700/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-crimson-600 peer-disabled:bg-slate-200 peer-disabled:cursor-not-allowed" />
+              <span className="text-sm font-medium text-slate-700">Set as Mother Parish</span>
+              <span className="text-xs font-bold text-slate-500">{data.isMotherParish ? 'ON' : 'OFF'}</span>
+            </label>
+            {motherParishAvailability === 'checking' && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                Checking existing Mother Parish designation...
+              </p>
+            )}
+            {motherParishAvailability === 'exists' && (
+              <p className="mt-1.5 text-xs text-amber-700">
+                A Mother Parish is already designated.
+              </p>
+            )}
+            {motherParishAvailability === 'error' && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                Unable to verify existing Mother Parish designation.
+              </p>
+            )}
+          </FormField>
+        );
+      })()}
     </div>
   );
 }
@@ -646,10 +682,57 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
   const { role } = useAuth();
   const isDioceseCoordinator = role === 'DIOCESE_COORDINATOR';
 
+  const [motherParishAvailability, setMotherParishAvailability] = useState<MotherParishAvailability>(
+    isDioceseCoordinator ? 'checking' : 'available'
+  );
   const [priestOptions, setPriestOptions] = useState<DropdownOption[]>([]);
   const [secretaryOptions, setSecretaryOptions] = useState<DropdownOption[]>([]);
   const [isLoadingStaff, setIsLoadingStaff] = useState(false);
   const [staffError, setStaffError] = useState<string | null>(null);
+
+  // Check globally across all parishes (independent of list filters) whether a Mother Parish already exists
+  useEffect(() => {
+    if (!isDioceseCoordinator) {
+      setMotherParishAvailability('available');
+      return;
+    }
+
+    let active = true;
+    setMotherParishAvailability('checking');
+
+    async function checkExistingMotherParish() {
+      try {
+        const allParishes = await ParishManagementService.getParishes({ status: 'all' });
+        if (!active) return;
+        const alreadyExists = allParishes.some((parish) => parish.isMotherParish === true);
+        if (alreadyExists) {
+          setMotherParishAvailability('exists');
+          setData((prev) =>
+            prev.parishInfo.isMotherParish
+              ? { ...prev, parishInfo: { ...prev.parishInfo, isMotherParish: false } }
+              : prev
+          );
+        } else {
+          setMotherParishAvailability('available');
+        }
+      } catch (err) {
+        console.error('Failed to check existing Mother Parish designation:', err);
+        if (active) {
+          setMotherParishAvailability('error');
+          setData((prev) =>
+            prev.parishInfo.isMotherParish
+              ? { ...prev, parishInfo: { ...prev.parishInfo, isMotherParish: false } }
+              : prev
+          );
+        }
+      }
+    }
+
+    void checkExistingMotherParish();
+    return () => {
+      active = false;
+    };
+  }, [isDioceseCoordinator]);
 
   // Load assignable staff on mount
   useEffect(() => {
@@ -748,7 +831,10 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
           address: data.parishInfo.address.trim(),
           contactNumber: data.parishInfo.contactNumber.trim(),
           email: data.parishInfo.email.trim(),
-          isMotherParish: data.parishInfo.isMotherParish,
+          isMotherParish:
+            isDioceseCoordinator && motherParishAvailability === 'available'
+              ? data.parishInfo.isMotherParish
+              : false,
         },
         priest: {
           mode: data.priest.mode,
@@ -875,6 +961,7 @@ export function NewParishWizard({ onClose, onFinish }: NewParishWizardProps) {
               data={data.parishInfo}
               onChange={(parishInfo) => setData((d) => ({ ...d, parishInfo }))}
               isDioceseCoordinator={isDioceseCoordinator}
+              motherParishAvailability={motherParishAvailability}
             />
           )}
           {step === 2 && (

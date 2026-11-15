@@ -1,6 +1,21 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { computeDropdownPosition } from '@/utils/dropdownPosition';
+
+function findBoundingContainerRect(el: HTMLElement | null): DOMRect | null {
+  let parent = el?.parentElement ?? null;
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    const style = window.getComputedStyle(parent);
+    const overflowValues = [style.overflowX, style.overflowY];
+    if (overflowValues.some((val) => val === 'auto' || val === 'scroll' || val === 'hidden')) {
+      return parent.getBoundingClientRect();
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
 
 export interface CustomSelectOptionItem {
   value: string | number;
@@ -67,9 +82,11 @@ export function CustomSelect({
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [search, setSearch] = useState('');
   const [activeIndex, setActiveIndex] = useState<number>(-1);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -146,7 +163,10 @@ export function CustomSelect({
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const insideTrigger = containerRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideTrigger && !insideDropdown) {
         setIsOpen(false);
         onClose?.();
       }
@@ -154,6 +174,50 @@ export function CustomSelect({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
+
+  const updateMenuPosition = useCallback(() => {
+    if (!triggerRef.current || typeof window === 'undefined') return;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const containerRect = findBoundingContainerRect(triggerRef.current);
+    const pos = computeDropdownPosition({
+      triggerRect,
+      containerRect,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    setMenuStyle({
+      position: 'fixed',
+      left: pos.left,
+      width: pos.width,
+      maxHeight: pos.maxHeight,
+      ...(pos.top !== undefined ? { top: pos.top } : {}),
+      ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuStyle(null);
+      return;
+    }
+
+    updateMenuPosition();
+
+    const handleScroll = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && dropdownRef.current?.contains(target)) {
+        return;
+      }
+      updateMenuPosition();
+    };
+
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen, updateMenuPosition]);
 
   // Focus search input or initialize active index on open
   useEffect(() => {
@@ -377,138 +441,147 @@ export function CustomSelect({
         </div>
       </div>
 
-      {/* Popover Menu - Local relative positioning */}
-      {isOpen && (
-        <div
-          role="listbox"
-          aria-label={ariaLabel || label || placeholder}
-          className={cn(
-            'absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in-50 slide-in-from-top-1 duration-150 min-w-[200px]',
-            dropdownClassName
-          )}
-        >
-          {/* In-dropdown Search Bar */}
-          {shouldEnableSearch && (
-            <div className="p-2 border-b border-gray-100 bg-gray-50/70">
-              <div className="relative flex items-center">
-                <Search className="absolute left-2.5 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={searchPlaceholder}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 outline-none focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={handleKeyDown}
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-2 p-0.5 text-gray-400 hover:text-gray-600 rounded"
-                    aria-label="Clear search"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Options List */}
-          <div className="max-h-60 overflow-y-auto overscroll-contain focus:outline-none [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]">
-            {filteredGroups.map((group, groupIdx) => (
-              <div key={group.groupName || `group-${groupIdx}`} className="w-full">
-                {group.groupName && (
-                  <div className="sticky top-0 z-10 w-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-t border-b border-gray-100/90 select-none first:border-t-0">
-                    {group.groupName}
-                  </div>
-                )}
-                <div className="p-1 space-y-0.5 bg-white">
-                  {group.options.map((opt) => {
-                    const isSelected = String(opt.value) === String(value);
-                    const isDisabled = Boolean(opt.disabled);
-                    const flatIdx = flatFilteredOptions.findIndex(
-                      (item) => String(item.value) === String(opt.value)
-                    );
-                    const isKeyboardActive = flatIdx === activeIndex;
-
-                    return (
-                      <button
-                        key={opt.value}
-                        ref={(el) => {
-                          if (flatIdx >= 0) optionRefs.current[flatIdx] = el;
-                        }}
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        aria-disabled={isDisabled}
-                        disabled={isDisabled}
-                        tabIndex={-1}
-                        onClick={() => {
-                          if (!isDisabled) {
-                            handleSelect(opt.value);
-                          }
-                        }}
-                        onMouseEnter={() => {
-                          if (!isDisabled && flatIdx >= 0) setActiveIndex(flatIdx);
-                        }}
-                        className={cn(
-                          'w-full text-left rounded-lg transition-colors flex items-center justify-between group',
-                          isCompact ? 'min-h-[36px] px-2.5 py-1.5 text-xs' : 'min-h-[38px] px-3 py-2 text-xs',
-                          isDisabled
-                            ? 'opacity-60 bg-gray-50/50 text-gray-400 cursor-not-allowed select-none'
-                            : isSelected
-                            ? 'bg-crimson-50 text-crimson-900 font-semibold cursor-pointer'
-                            : isKeyboardActive
-                            ? 'bg-gray-100 text-gray-900 cursor-pointer'
-                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer'
-                        )}
-                      >
-                        <div className="flex flex-col min-w-0 pr-2">
-                          <span className={cn('truncate', isDisabled && 'text-gray-500 font-normal')}>
-                            {opt.label}
-                          </span>
-                          {opt.secondary && (
-                            <span className="text-[11px] text-gray-400 truncate">
-                              {opt.secondary}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {opt.badge && (
-                            <span
-                              className={cn(
-                                'px-1.5 py-0.5 text-[10px] font-semibold rounded',
-                                isDisabled
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200/70'
-                                  : 'bg-gray-100 text-gray-600'
-                              )}
-                            >
-                              {opt.badge}
-                            </span>
-                          )}
-                          {isSelected && !isDisabled && (
-                            <Check className="h-3.5 w-3.5 text-crimson-700 shrink-0" />
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+      {/* Popover Menu - Viewport/container-clamped portal */}
+      {isOpen && (() => {
+        const menuNode = (
+          <div
+            ref={dropdownRef}
+            role="listbox"
+            aria-label={ariaLabel || label || placeholder}
+            style={menuStyle ?? undefined}
+            className={cn(
+              'bg-white border border-gray-200 rounded-xl shadow-xl z-[10000] overflow-hidden flex flex-col animate-in fade-in-50 duration-150',
+              !menuStyle && 'absolute left-0 right-0 mt-1.5',
+              dropdownClassName
+            )}
+          >
+            {/* In-dropdown Search Bar */}
+            {shouldEnableSearch && (
+              <div className="p-2 border-b border-gray-100 bg-gray-50/70 shrink-0">
+                <div className="relative flex items-center">
+                  <Search className="absolute left-2.5 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 outline-none focus:border-crimson-700 focus:ring-1 focus:ring-crimson-700"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={handleKeyDown}
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch('')}
+                      className="absolute right-2 p-0.5 text-gray-400 hover:text-gray-600 rounded"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
-
-            {!hasFilteredResults && (
-              <div className="px-3 py-6 text-center text-xs text-gray-400">
-                No matching options found
-              </div>
             )}
+
+            {/* Options List */}
+            <div className="flex-1 min-h-0 max-h-60 overflow-y-auto overscroll-contain focus:outline-none [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]">
+              {filteredGroups.map((group, groupIdx) => (
+                <div key={group.groupName || `group-${groupIdx}`} className="w-full">
+                  {group.groupName && (
+                    <div className="sticky top-0 z-10 w-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-t border-b border-gray-100/90 select-none first:border-t-0">
+                      {group.groupName}
+                    </div>
+                  )}
+                  <div className="p-1 space-y-0.5 bg-white">
+                    {group.options.map((opt) => {
+                      const isSelected = String(opt.value) === String(value);
+                      const isDisabled = Boolean(opt.disabled);
+                      const flatIdx = flatFilteredOptions.findIndex(
+                        (item) => String(item.value) === String(opt.value)
+                      );
+                      const isKeyboardActive = flatIdx === activeIndex;
+
+                      return (
+                        <button
+                          key={opt.value}
+                          ref={(el) => {
+                            if (flatIdx >= 0) optionRefs.current[flatIdx] = el;
+                          }}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          aria-disabled={isDisabled}
+                          disabled={isDisabled}
+                          tabIndex={-1}
+                          onClick={() => {
+                            if (!isDisabled) {
+                              handleSelect(opt.value);
+                            }
+                          }}
+                          onMouseEnter={() => {
+                            if (!isDisabled && flatIdx >= 0) setActiveIndex(flatIdx);
+                          }}
+                          className={cn(
+                            'w-full text-left rounded-lg transition-colors flex items-center justify-between group',
+                            isCompact ? 'min-h-[36px] px-2.5 py-1.5 text-xs' : 'min-h-[38px] px-3 py-2 text-xs',
+                            isDisabled
+                              ? 'opacity-60 bg-gray-50/50 text-gray-400 cursor-not-allowed select-none'
+                              : isSelected
+                              ? 'bg-crimson-50 text-crimson-900 font-semibold cursor-pointer'
+                              : isKeyboardActive
+                              ? 'bg-gray-100 text-gray-900 cursor-pointer'
+                              : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer'
+                          )}
+                        >
+                          <div className="flex flex-col min-w-0 pr-2">
+                            <span className={cn('truncate', isDisabled && 'text-gray-500 font-normal')}>
+                              {opt.label}
+                            </span>
+                            {opt.secondary && (
+                              <span className="text-[11px] text-gray-400 truncate">
+                                {opt.secondary}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {opt.badge && (
+                              <span
+                                className={cn(
+                                  'px-1.5 py-0.5 text-[10px] font-semibold rounded',
+                                  isDisabled
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200/70'
+                                    : 'bg-gray-100 text-gray-600'
+                                )}
+                              >
+                                {opt.badge}
+                              </span>
+                            )}
+                            {isSelected && !isDisabled && (
+                              <Check className="h-3.5 w-3.5 text-crimson-700 shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {!hasFilteredResults && (
+                <div className="px-3 py-6 text-center text-xs text-gray-400">
+                  No matching options found
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+
+        return typeof document !== 'undefined'
+          ? createPortal(menuNode, document.body)
+          : menuNode;
+      })()}
     </div>
   );
 }

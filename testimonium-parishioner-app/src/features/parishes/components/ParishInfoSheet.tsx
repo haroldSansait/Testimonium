@@ -28,7 +28,6 @@ import { useParishDetail } from "../api";
 import type { CouncilMember, ParishDto } from "../types";
 import {
   buildEmailUrl,
-  buildMapUrl,
   buildPhoneUrl,
   formatOfficeHours,
   getOfficeOpenStatus,
@@ -245,12 +244,6 @@ export const ParishInfoSheet: React.FC<ParishInfoSheetProps> = ({
 
   const phoneUrl = buildPhoneUrl(p.contactNumber);
   const emailUrl = buildEmailUrl(p.email);
-  const mapUrl = buildMapUrl({
-    latitude: p.latitude,
-    longitude: p.longitude,
-    address: p.address,
-    name: p.name,
-  });
 
   const locationLabel = [p.municipalityCity, p.province].filter(Boolean).join(", ");
   const offeredDocuments = getEffectiveOfferedDocuments(p.availableDocuments);
@@ -890,20 +883,6 @@ export const ParishInfoSheet: React.FC<ParishInfoSheetProps> = ({
             accessibilityLabel={`Schedule rite at ${p.name}`}
             style={styles.footerActionBtn}
           />
-
-          {mapUrl ? (
-            <IconButton
-              size={38}
-              onPress={() => {
-                void openExternalUrl(mapUrl);
-              }}
-              accessibilityLabel={`Directions to ${p.name}`}
-              accessibilityHint="Opens parish location in Google Maps"
-              style={styles.directionsBtn}
-            >
-              <Ionicons name="navigate-outline" size={18} color={colors.primary} />
-            </IconButton>
-          ) : null}
         </View>
       </Animated.View>
     </View>
@@ -1379,15 +1358,5 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: "700",
     letterSpacing: -0.2,
-  },
-  directionsBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surfaceVariant,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

@@ -5,7 +5,6 @@ import { DIOCESE_CENTER } from '@/components/map-configuration/ParishMarker';
 import { ParishSettingsPanel } from '@/components/map-configuration/ParishSettingsPanel';
 import { SaveToolbar } from '@/components/map-configuration/SaveToolbar';
 import { UnsavedChangesBanner } from '@/components/map-configuration/UnsavedChangesBanner';
-import { PreviewDialog } from '@/components/map-configuration/PreviewDialog';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import type { Parish } from '@/types';
 import { cn } from '@/utils/cn';
@@ -27,9 +26,6 @@ export function MapConfigurationPage() {
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVicariate, setSelectedVicariate] = useState('all');
-
-  // Preview Dialog state
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // New states for Phase 3.5 layout refactor & locate trigger
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -355,7 +351,6 @@ export function MapConfigurationPage() {
         selectedVicariate={selectedVicariate}
         onVicariateChange={setSelectedVicariate}
         onResetView={handleResetView}
-        onPreviewClick={() => setIsPreviewOpen(true)}
         onSaveAllClick={handleSaveAll}
         hasUnsavedChanges={hasUnsavedChanges}
         isSaving={isSaving}
@@ -542,16 +537,6 @@ export function MapConfigurationPage() {
         onDiscard={handleDiscardDrafts}
         onSave={handleSaveAll}
       />
-
-      {/* Preview Parish Card Dialog */}
-      {previewParish && (
-        <PreviewDialog
-          isOpen={isPreviewOpen}
-          onClose={() => setIsPreviewOpen(false)}
-          parish={previewParish}
-          draft={selectedParishDraft}
-        />
-      )}
 
       {/* Reusable Premium Toast Component */}
       {toast && (

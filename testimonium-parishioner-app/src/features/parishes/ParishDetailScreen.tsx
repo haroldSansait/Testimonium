@@ -28,7 +28,6 @@ import { useRequireCompleteProfile } from "@/hooks/useRequireCompleteProfile";
 import { useParishDetail } from "./api";
 import {
   buildEmailUrl,
-  buildMapUrl,
   buildPhoneUrl,
   formatOfficeHours,
   openExternalUrl,
@@ -70,12 +69,6 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
 
   const phoneUrl = buildPhoneUrl(parish?.contactNumber);
   const emailUrl = buildEmailUrl(parish?.email);
-  const mapUrl = buildMapUrl({
-    latitude: parish?.latitude,
-    longitude: parish?.longitude,
-    address: parish?.address,
-    name: parish?.name,
-  });
   const safeFacebookUrl =
     parish?.facebookPage && /^https?:\/\//i.test(parish.facebookPage.trim())
       ? parish.facebookPage.trim()
@@ -210,10 +203,10 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
             </View>
 
             {/* Quick Actions Bar */}
-            {phoneUrl || emailUrl || mapUrl || safeFacebookUrl ? (
+            {phoneUrl || emailUrl || safeFacebookUrl ? (
               <View style={styles.actionsBlock}>
                 <Text style={styles.actionsTitle} allowFontScaling>
-                  Contact & Location
+                  Contact
                 </Text>
                 <View style={styles.actionsRow}>
                   {phoneUrl ? (
@@ -240,20 +233,6 @@ export const ParishDetailScreen: React.FC<ParishDetailScreenProps> = ({
                         void openExternalUrl(emailUrl);
                       }}
                       accessibilityLabel={`Email ${parish.name}`}
-                      style={styles.actionBtn}
-                    />
-                  ) : null}
-
-                  {mapUrl ? (
-                    <Button
-                      title="Directions"
-                      variant="secondary"
-                      size="sm"
-                      icon="navigate-outline"
-                      onPress={() => {
-                        void openExternalUrl(mapUrl);
-                      }}
-                      accessibilityLabel={`Get directions to ${parish.name}`}
                       style={styles.actionBtn}
                     />
                   ) : null}

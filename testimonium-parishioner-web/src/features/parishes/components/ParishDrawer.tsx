@@ -7,7 +7,6 @@ import {
   Phone, 
   Mail, 
   Globe, 
-  Compass, 
   X,
   Award,
   MapPin,
@@ -405,15 +404,6 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
           <Calendar size={13} className="mr-1.5" />
           <span>Schedule Rite</span>
         </Button>
-        <a 
-          href={`https://www.google.com/maps?q=${parish.coordinates.lat},${parish.coordinates.lng}`}
-          target="_blank"
-          rel="noreferrer"
-          className="p-2 border border-border bg-white text-text-muted hover:text-crimson hover:border-crimson/30 rounded-lg transition-colors flex items-center justify-center h-9"
-          title="Open in Google Maps"
-        >
-          <Compass size={16} />
-        </a>
       </div>
     </Card>
   );

@@ -18,6 +18,7 @@ import { DOCUMENT_RETURN_REASONS, type DocumentRequest, type DocumentStatus, typ
 import { useAuth } from '@/hooks/useAuth';
 import { canManageDocumentRequests } from '@/permissions/rolePermissions';
 import { cn } from '@/utils/cn';
+import { formatOcrAmount } from '@/utils/ocrAmountFormat';
 import api from '@/api/api';
 import {
   DOCUMENT_TYPE_FILTER_OPTIONS,
@@ -970,6 +971,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onVerifyCash, 
                     : null;
                   const originalSizeMb = ocr?.originalFileSize ? (ocr.originalFileSize / (1024 * 1024)).toFixed(2) : null;
                   const compressedSizeKb = ocr?.compressedFileSize ? (ocr.compressedFileSize / 1024).toFixed(0) : null;
+                  const displayedOcrAmount = formatOcrAmount(ocr?.amount) ?? formatOcrAmount(tx.amount);
 
                   return (
                     <div key={tx.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
@@ -1058,11 +1060,11 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onVerifyCash, 
                                 </span>
                               </div>
                             )}
-                            {(ocr.amount || tx.amount) && (
+                            {displayedOcrAmount && (
                               <div>
                                 <span className="text-[10px] text-gray-400 block uppercase">Amount</span>
                                 <span className="font-semibold text-gray-800">
-                                  ₱{ocr.amount || tx.amount}
+                                  {displayedOcrAmount}
                                 </span>
                               </div>
                             )}
@@ -1162,7 +1164,7 @@ function DocumentDetailsModal({ request, onClose, onStatusChange, onVerifyCash, 
                               {tx.amount && (
                                 <div>
                                   <span className="text-[10px] text-gray-400 block uppercase">Amount</span>
-                                  <span className="font-semibold text-gray-800">₱{tx.amount}</span>
+                                  <span className="font-semibold text-gray-800">{formatOcrAmount(tx.amount) ?? `₱${tx.amount}`}</span>
                                 </div>
                               )}
                             </div>
