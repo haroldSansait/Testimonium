@@ -451,16 +451,50 @@ export const respondReschedule = async (req, res, next) => {
 export const assignPriest = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { priestId, expectedVersion } = req.body;
+    const { priestId, expectedVersion, verbalApproval = false } = req.body;
     const actorId = req.user.id;
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
 
-    const updated = await scheduleService.assignPriest(id, priestId, actorId, actorRole, actorParishId, expectedVersion);
+    const updated = await scheduleService.assignPriest(
+      id,
+      priestId,
+      actorId,
+      actorRole,
+      actorParishId,
+      expectedVersion,
+      { verbalApproval: Boolean(verbalApproval) }
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Priest assigned successfully.",
+      message: verbalApproval
+        ? "Priest assigned and verbal approval recorded successfully."
+        : "Priest assigned successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const requestPriestChange = async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { replacementPriestId, note, expectedVersion } = req.body;
+    const actorId = req.user.id;
+    const actorRole = req.user.role;
+
+    const updated = await scheduleService.requestPriestChange(
+      id,
+      { replacementPriestId, note, expectedVersion },
+      actorId,
+      actorRole
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Priest change request submitted successfully.",
       data: updated,
     });
   } catch (err) {

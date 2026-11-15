@@ -354,6 +354,8 @@ model User {
   processedSchedules            Schedule[]                    @relation("ScheduleProcessor")
   assignedSchedules             Schedule[]                    @relation("SchedulePriestAssignment")
   requestedSchedules            Schedule[]                    @relation("ScheduleRequestedPriest")
+  verbalApprovedSchedules       Schedule[]                    @relation("ScheduleVerbalApprover")
+  priestChangeRequestedSchedules Schedule[]                   @relation("SchedulePriestChangeRequested")
   scheduleDrafts                ScheduleDraft[]               @relation("ScheduleDraftRequester")
   requestedScheduleDrafts       ScheduleDraft[]               @relation("ScheduleDraftRequestedPriest")
   availabilities                ParishAvailability[]
@@ -696,6 +698,14 @@ model Schedule {
   version               Int                           @default(1) @map("version")
   priestResponseStatus         String?                       @map("priest_response_status") @db.VarChar(50)
   priestResponseReason         String?                       @map("priest_response_reason") @db.Text
+  priestVerbalApproval         Boolean                       @default(false) @map("priest_verbal_approval")
+  priestVerbalApprovalById     Int?                          @map("priest_verbal_approval_by")
+  priestVerbalApprovalAt       DateTime?                     @map("priest_verbal_approval_at")
+  priestChangeStatus           String?                       @map("priest_change_status") @db.VarChar(50)
+  priestChangeRequestedPriestId Int?                         @map("priest_change_requested_priest_id")
+  priestChangeNote             String?                       @map("priest_change_note") @db.Text
+  priestChangeRequestedAt      DateTime?                     @map("priest_change_requested_at")
+  priestChangeResolvedAt       DateTime?                     @map("priest_change_resolved_at")
   rejectionReasonCode          String?                       @map("rejection_reason_code") @db.VarChar(64)
   rejectionAffectedRequirements Json?                        @map("rejection_affected_requirements")
   rejectionNote                String?                       @map("rejection_note") @db.Text
@@ -707,6 +717,8 @@ model Schedule {
   processedBy           User?                         @relation("ScheduleProcessor", fields: [processedById], references: [id], onDelete: SetNull)
   assignedPriest        User?                         @relation("SchedulePriestAssignment", fields: [assignedPriestId], references: [id], onDelete: SetNull)
   requestedPriest       User?                         @relation("ScheduleRequestedPriest", fields: [requestedPriestId], references: [id], onDelete: SetNull)
+  priestVerbalApprovalBy User?                        @relation("ScheduleVerbalApprover", fields: [priestVerbalApprovalById], references: [id], onDelete: SetNull)
+  priestChangeRequestedPriest User?                   @relation("SchedulePriestChangeRequested", fields: [priestChangeRequestedPriestId], references: [id], onDelete: SetNull)
   attachments           ScheduleAttachment[]
   history               ScheduleHistory[]
   alternativeProposals  ScheduleAlternativeProposal[]
@@ -715,6 +727,8 @@ model Schedule {
   @@index([parishId])
   @@index([assignedPriestId])
   @@index([requestedPriestId])
+  @@index([priestVerbalApprovalById])
+  @@index([priestChangeRequestedPriestId])
   @@index([processedById])
   @@index([eventType])
   @@index([status])
@@ -736,6 +750,7 @@ model ScheduleHistory {
   status               ScheduleStatus @map("status")
   assignedPriestId     Int?           @map("assigned_priest_id")
   priestResponseStatus String?        @map("priest_response_status") @db.VarChar(50)
+  priestVerbalApproval Boolean        @default(false) @map("priest_verbal_approval")
   layMinisterAssigned  Boolean        @default(false) @map("lay_minister_assigned")
   reason               String         @map("reason") @db.Text
   actorId              Int?           @map("actor_id")

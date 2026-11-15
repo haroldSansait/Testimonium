@@ -541,6 +541,54 @@ export const useRespondReschedule = () => {
   });
 };
 
+export interface RequestPriestChangeInput {
+  scheduleId: number | string;
+  replacementPriestId: number;
+  note?: string | null;
+  expectedVersion: number;
+}
+
+export const requestPriestChange = async (
+  input: RequestPriestChangeInput
+): Promise<ScheduleItem> => {
+  const res = await apiClient.request<ScheduleItem | { data: ScheduleItem }>({
+    path: `/schedule-requests/${input.scheduleId}/request-priest-change`,
+    method: "POST",
+    body: {
+      replacementPriestId: Number(input.replacementPriestId),
+      note: input.note?.trim() || null,
+      expectedVersion: input.expectedVersion,
+    },
+    auth: true,
+  });
+  if (res && typeof res === "object" && "data" in res && (res as { data?: ScheduleItem }).data) {
+    return (res as { data: ScheduleItem }).data;
+  }
+  return res as ScheduleItem;
+};
+
+export const useRequestPriestChange = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: requestPriestChange,
+    retry: false,
+    onSuccess: (updated) => {
+      if (user?.uid && updated?.id) {
+        queryClient.setQueryData(scheduleKeys.detail(user.uid, updated.id), updated);
+        queryClient.invalidateQueries({
+          queryKey: scheduleKeys.detail(user.uid, updated.id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: scheduleKeys.lists(user.uid),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+};
+
 export interface ProposeAlternativeDateInput {
   scheduleId: number | string;
   proposedDate: string;

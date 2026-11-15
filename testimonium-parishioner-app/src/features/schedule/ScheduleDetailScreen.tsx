@@ -1,7 +1,9 @@
 import { useScreenRefresh } from "@/hooks/useAutomaticRefresh";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -25,7 +27,9 @@ import { colors, fontStyles, radii, spacing } from "@/theme/tokens";
 import {
   useAvailabilityDates,
   useAvailableSlots,
+  useEligiblePriests,
   useProposeAlternativeDate,
+  useRequestPriestChange,
   useRespondReschedule,
   useScheduleAttachments,
   useScheduleDetail,
@@ -55,6 +59,13 @@ export const ScheduleDetailScreen: React.FC = () => {
   const [alternativeSlot, setAlternativeSlot] = useState("");
   const [alternativeNote, setAlternativeNote] = useState("");
   const [viewerAttachment, setViewerAttachment] = useState<ScheduleAttachment | null>(null);
+  const [priestChangeFormScheduleId, setPriestChangeFormScheduleId] = useState<number | null>(null);
+  const [replacementPriestId, setReplacementPriestId] = useState<number | null>(null);
+  const [priestChangeNote, setPriestChangeNote] = useState("");
+  const [priestChangeError, setPriestChangeError] = useState<string | null>(null);
+  const [priestChangeSuccessScheduleId, setPriestChangeSuccessScheduleId] = useState<number | null>(null);
+  const [priestChangeSuccess, setPriestChangeSuccess] = useState<string | null>(null);
+  const priestChangeInFlightRef = useRef(false);
 
   const {
     data: schedule,
@@ -69,6 +80,17 @@ export const ScheduleDetailScreen: React.FC = () => {
   const respondMutation = useRespondReschedule();
   const proposeAlternativeMutation = useProposeAlternativeDate();
   const withdrawAlternativeMutation = useWithdrawAlternativeDate();
+  const requestPriestChangeMutation = useRequestPriestChange();
+
+  const showPriestChangeForm = Boolean(
+    schedule?.id && priestChangeFormScheduleId === schedule.id
+  );
+  const visiblePriestChangeSuccess =
+    schedule?.id && priestChangeSuccessScheduleId === schedule.id ? priestChangeSuccess : null;
+
+  const eligiblePriestsQuery = useEligiblePriests(schedule?.parishId, {
+    enabled: Boolean(schedule?.parishId && showPriestChangeForm),
+  });
 
   const datesQuery = useAvailabilityDates(
     schedule?.parishId,
@@ -236,6 +258,85 @@ export const ScheduleDetailScreen: React.FC = () => {
   const rescheduleHistory = schedule.rescheduleHistory ?? [];
   const attachments = attachmentsQuery.data ?? [];
   const bottomInset = contentBottomInset("none");
+  const candidateReplacementPriests = (eligiblePriestsQuery.data ?? []).filter(
+    (p) => Number(p.id) !== Number(schedule.assignedPriestId || 0)
+  );
+  const canRequestPriestChange = Boolean(
+    !schedule.layMinisterAssigned
+      && schedule.assignedPriestId
+      && ["PENDING", "REQUESTED", "CONFIRMED"].includes(schedule.status)
+  );
+  const requestedReplacementName =
+    schedule.priestChangeRequestedPriest?.name
+    || schedule.priestChangeRequestedPriest?.fullName
+    || null;
+
+  const handleOpenPriestChange = () => {
+    if (!schedule?.id) return;
+    setPriestChangeFormScheduleId(schedule.id);
+    setReplacementPriestId(null);
+    setPriestChangeNote("");
+    setPriestChangeError(null);
+    setPriestChangeSuccessScheduleId(null);
+    setPriestChangeSuccess(null);
+  };
+
+  const handleSubmitPriestChange = async () => {
+    if (!schedule || priestChangeInFlightRef.current || requestPriestChangeMutation.isPending) {
+      return;
+    }
+    if (!replacementPriestId) {
+      setPriestChangeError("Please select a preferred replacement priest.");
+      return;
+    }
+    if (typeof schedule.version !== "number") {
+      setPriestChangeError("The schedule version is unavailable. Refreshing the latest details.");
+      void refetch();
+      return;
+    }
+    priestChangeInFlightRef.current = true;
+    setPriestChangeError(null);
+    setPriestChangeSuccessScheduleId(null);
+    setPriestChangeSuccess(null);
+    try {
+      await requestPriestChangeMutation.mutateAsync({
+        scheduleId: schedule.id,
+        replacementPriestId,
+        note: priestChangeNote.trim() || null,
+        expectedVersion: schedule.version,
+      });
+      setPriestChangeFormScheduleId(null);
+      setReplacementPriestId(null);
+      setPriestChangeNote("");
+      setPriestChangeSuccessScheduleId(schedule.id);
+      setPriestChangeSuccess(
+        "Priest change requested. Your parish secretary will review and assign the appropriate priest."
+      );
+      void refetch();
+    } catch (err: any) {
+      const msg =
+        err?.message ||
+        "Unable to submit your priest change request right now.";
+      setPriestChangeError(msg);
+      void refetch();
+    } finally {
+      priestChangeInFlightRef.current = false;
+    }
+  };
+
+  const handleCallSecretary = async (phoneNumber: string) => {
+    const cleaned = phoneNumber.replace(/[^+\d]/g, "");
+    if (!cleaned) return;
+    const url = `tel:${cleaned}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      }
+    } catch {
+      // Ignore dialer errors gracefully; number remains visible on screen.
+    }
+  };
 
   return (
     <Screen safeArea={true} style={styles.screen}>
@@ -852,7 +953,171 @@ export const ScheduleDetailScreen: React.FC = () => {
                   : (schedule.assignedPriest?.fullName || "To be assigned by parish"),
               },
             ]}
-          />
+          >
+            {schedule.priestChangeStatus === "PENDING" ? (
+              <View style={styles.priestChangePendingCard}>
+                <Text style={styles.priestChangePendingTitle} allowFontScaling>
+                  Priest Change Requested
+                </Text>
+                {requestedReplacementName ? (
+                  <Text style={styles.priestChangePendingText} allowFontScaling>
+                    Requested replacement priest: Rev. Fr. {requestedReplacementName}
+                  </Text>
+                ) : null}
+                <Text style={styles.priestChangePendingText} allowFontScaling>
+                  Note: {schedule.priestChangeNote || "No additional note provided"}
+                </Text>
+                <Text style={styles.priestChangeStatusSubtext} allowFontScaling>
+                  Status: Awaiting Secretary Reassignment
+                </Text>
+              </View>
+            ) : null}
+
+            {visiblePriestChangeSuccess ? (
+              <View style={styles.priestChangeSuccessBanner} accessibilityRole="alert">
+                <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                <Text style={styles.priestChangeSuccessText} allowFontScaling>
+                  {visiblePriestChangeSuccess}
+                </Text>
+              </View>
+            ) : null}
+
+            {canRequestPriestChange ? (
+              <View style={styles.priestChangeBox}>
+                <Text style={styles.priestChangeHelper} allowFontScaling>
+                  Wrong priest assigned? Prefer another priest? You can request a change below. Your parish secretary will review and assign the appropriate priest.
+                </Text>
+
+                {!showPriestChangeForm ? (
+                  <Button
+                    title="Request a Different Priest"
+                    variant="outline"
+                    onPress={handleOpenPriestChange}
+                  />
+                ) : (
+                  <View style={styles.priestChangeForm}>
+                    {eligiblePriestsQuery.isLoading ? (
+                      <View style={styles.priestChangeLoadingRow}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={styles.priestChangeHelper} allowFontScaling>
+                          Loading parish priests...
+                        </Text>
+                      </View>
+                    ) : eligiblePriestsQuery.isError ? (
+                      <View style={styles.priestChangeErrorBox}>
+                        <Text style={styles.priestChangeErrorText} allowFontScaling>
+                          Unable to load parish priests right now.
+                        </Text>
+                        <Button
+                          title="Retry"
+                          variant="outline"
+                          onPress={() => {
+                            void eligiblePriestsQuery.refetch();
+                          }}
+                        />
+                      </View>
+                    ) : candidateReplacementPriests.length === 0 ? (
+                      <Text style={styles.priestChangeHelper} allowFontScaling>
+                        No other active priests are currently available to request in this parish. Please contact the parish secretary below.
+                      </Text>
+                    ) : (
+                      <>
+                        <Text style={styles.priestChangeFieldLabel} allowFontScaling>
+                          Preferred Replacement Priest
+                        </Text>
+                        <View style={styles.priestOptionList}>
+                          {candidateReplacementPriests.map((priest) => {
+                            const selected = replacementPriestId === priest.id;
+                            return (
+                              <TouchableOpacity
+                                key={priest.id}
+                                style={[
+                                  styles.priestOptionRow,
+                                  selected ? styles.priestOptionRowSelected : null,
+                                ]}
+                                onPress={() => {
+                                  setReplacementPriestId(priest.id);
+                                  setPriestChangeError(null);
+                                }}
+                                disabled={requestPriestChangeMutation.isPending}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected }}
+                                accessibilityLabel={`Select Rev. Fr. ${priest.name}`}
+                              >
+                                <View style={styles.priestOptionTextWrap}>
+                                  <Text style={styles.priestOptionName} allowFontScaling>
+                                    Rev. Fr. {priest.name}
+                                  </Text>
+                                  <Text style={styles.priestOptionRole} allowFontScaling>
+                                    {priest.isAssistant ? "Assistant Priest" : "Parish Priest"}
+                                  </Text>
+                                </View>
+                                <Ionicons
+                                  name={selected ? "radio-button-on" : "radio-button-off"}
+                                  size={20}
+                                  color={selected ? colors.primary : colors.textMuted}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        <Text style={styles.priestChangeFieldLabel} allowFontScaling>
+                          Optional Note
+                        </Text>
+                        <TextInput
+                          style={styles.priestChangeInput}
+                          value={priestChangeNote}
+                          onChangeText={setPriestChangeNote}
+                          placeholder='e.g. "I originally requested Rev. Fr. Julius Montaño, but another priest was assigned."'
+                          placeholderTextColor={colors.textMuted}
+                          multiline
+                          maxLength={1000}
+                          editable={!requestPriestChangeMutation.isPending}
+                          allowFontScaling
+                          accessibilityLabel="Optional note explaining priest change request"
+                        />
+
+                        {priestChangeError ? (
+                          <View style={styles.priestChangeErrorBox} accessibilityRole="alert">
+                            <Text style={styles.priestChangeErrorText} allowFontScaling>
+                              {priestChangeError}
+                            </Text>
+                          </View>
+                        ) : null}
+
+                        <View style={styles.priestChangeActions}>
+                          <Button
+                            title={
+                              requestPriestChangeMutation.isPending
+                                ? "Submitting..."
+                                : "Confirm Priest Change"
+                            }
+                            loading={requestPriestChangeMutation.isPending}
+                            onPress={() => {
+                              void handleSubmitPriestChange();
+                            }}
+                            disabled={
+                              requestPriestChangeMutation.isPending || !replacementPriestId
+                            }
+                          />
+                          <Button
+                            title="Cancel"
+                            variant="outline"
+                            onPress={() => {
+                              setPriestChangeFormScheduleId(null);
+                              setPriestChangeError(null);
+                            }}
+                            disabled={requestPriestChangeMutation.isPending}
+                          />
+                        </View>
+                      </>
+                    )}
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </RecordSection>
 
           <Divider />
 
@@ -876,6 +1141,51 @@ export const ScheduleDetailScreen: React.FC = () => {
                 : []),
             ]}
           />
+
+          <Divider />
+
+          {/* Record Section 4: Contact Parish Secretary */}
+          <RecordSection
+            title="Contact Parish Secretary"
+            fields={
+              schedule.parishSecretary
+                ? [
+                    {
+                      label: "Parish Secretary",
+                      value: schedule.parishSecretary.fullName || "Not available",
+                    },
+                    {
+                      label: "Contact Number",
+                      value: schedule.parishSecretary.contactNumber ? (
+                        <TouchableOpacity
+                          style={styles.secretaryPhoneTouch}
+                          onPress={() => {
+                            if (schedule.parishSecretary?.contactNumber) {
+                              void handleCallSecretary(schedule.parishSecretary.contactNumber);
+                            }
+                          }}
+                          accessibilityRole="link"
+                          accessibilityLabel={`Call parish secretary ${schedule.parishSecretary.fullName || ""} at ${schedule.parishSecretary.contactNumber}`}
+                        >
+                          <Ionicons name="call-outline" size={16} color={colors.primary} />
+                          <Text style={styles.secretaryPhoneText} allowFontScaling>
+                            {schedule.parishSecretary.contactNumber}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        "Not available"
+                      ),
+                    },
+                  ]
+                : undefined
+            }
+          >
+            {!schedule.parishSecretary ? (
+              <Text style={styles.secretaryUnavailableText} allowFontScaling>
+                Parish secretary contact information is currently unavailable.
+              </Text>
+            ) : null}
+          </RecordSection>
         </ContentColumn>
       </ScrollView>
 
@@ -1426,5 +1736,150 @@ const styles = StyleSheet.create({
   attachmentFile: {
     ...fontStyles.caption,
     color: colors.textSecondary,
+  },
+  priestChangePendingCard: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    gap: 4,
+  },
+  priestChangePendingTitle: {
+    ...fontStyles.bodySmall,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  priestChangePendingText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  priestChangeStatusSubtext: {
+    ...fontStyles.caption,
+    fontWeight: "600",
+    color: colors.warning,
+  },
+  priestChangeSuccessBanner: {
+    marginTop: spacing.sm,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  priestChangeSuccessText: {
+    ...fontStyles.caption,
+    color: colors.success,
+    flex: 1,
+    fontWeight: "600",
+  },
+  priestChangeBox: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  priestChangeHelper: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  priestChangeForm: {
+    gap: spacing.sm,
+  },
+  priestChangeLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  priestChangeFieldLabel: {
+    ...fontStyles.caption,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  priestOptionList: {
+    gap: spacing.xs,
+  },
+  priestOptionRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  priestOptionRowSelected: {
+    borderColor: colors.primary,
+  },
+  priestOptionTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  priestOptionName: {
+    ...fontStyles.bodySmall,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  priestOptionRole: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  priestChangeInput: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: colors.textPrimary,
+    textAlignVertical: "top",
+    ...fontStyles.bodySmall,
+  },
+  priestChangeErrorBox: {
+    gap: spacing.xs,
+    padding: spacing.xs,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    backgroundColor: colors.surface,
+  },
+  priestChangeErrorText: {
+    ...fontStyles.caption,
+    color: colors.danger,
+    fontWeight: "600",
+  },
+  priestChangeActions: {
+    gap: spacing.xs,
+  },
+  secretaryPhoneTouch: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: spacing.xs,
+  },
+  secretaryPhoneText: {
+    ...fontStyles.bodySmall,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  secretaryUnavailableText: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+    paddingVertical: spacing.xs,
   },
 });

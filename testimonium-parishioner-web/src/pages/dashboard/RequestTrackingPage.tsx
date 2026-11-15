@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { CheckCircle, CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, RotateCcw, X, XCircle, Eye, Download, AlertTriangle, FileEdit } from 'lucide-react';
+import { CheckCircle, CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, RotateCcw, X, XCircle, Eye, Download, AlertTriangle, FileEdit, Phone } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
@@ -325,6 +325,15 @@ export const RequestTrackingPage: React.FC = () => {
   const [respondingReschedule, setRespondingReschedule] = useState(false);
   const [rescheduleResponseError, setRescheduleResponseError] = useState<string | null>(null);
   const [rescheduleResponseSuccess, setRescheduleResponseSuccess] = useState<string | null>(null);
+  const [showPriestChangeForm, setShowPriestChangeForm] = useState(false);
+  const [eligibleReplacementPriests, setEligibleReplacementPriests] = useState<Array<{ id: number; name: string; isAssistant: boolean }>>([]);
+  const [loadingEligiblePriests, setLoadingEligiblePriests] = useState(false);
+  const [eligiblePriestsError, setEligiblePriestsError] = useState<string | null>(null);
+  const [replacementPriestId, setReplacementPriestId] = useState('');
+  const [priestChangeNote, setPriestChangeNote] = useState('');
+  const [submittingPriestChange, setSubmittingPriestChange] = useState(false);
+  const [priestChangeError, setPriestChangeError] = useState<string | null>(null);
+  const [priestChangeSuccess, setPriestChangeSuccess] = useState<string | null>(null);
   const [alternativeBusy, setAlternativeBusy] = useState(false);
   const [alternativeError, setAlternativeError] = useState<string | null>(null);
   const [alternativeDate, setAlternativeDate] = useState('');
@@ -442,6 +451,13 @@ export const RequestTrackingPage: React.FC = () => {
   useEffect(() => {
     setRescheduleResponseError(null);
     setRescheduleResponseSuccess(null);
+    setShowPriestChangeForm(false);
+    setEligibleReplacementPriests([]);
+    setEligiblePriestsError(null);
+    setReplacementPriestId('');
+    setPriestChangeNote('');
+    setPriestChangeError(null);
+    setPriestChangeSuccess(null);
     setAlternativeError(null);
     setAlternativeDate('');
     setAlternativeSlot('');
@@ -450,6 +466,75 @@ export const RequestTrackingPage: React.FC = () => {
     setDatesError(null);
     setSlotsError(null);
   }, [selectedSchedule?.id]);
+
+  const loadEligibleReplacementPriests = useCallback(async () => {
+    if (!selectedSchedule?.parishId) return;
+    setLoadingEligiblePriests(true);
+    setEligiblePriestsError(null);
+    try {
+      const list = await services.scheduler.getEligiblePriests(String(selectedSchedule.parishId));
+      setEligibleReplacementPriests(Array.isArray(list) ? list : []);
+    } catch (err: any) {
+      console.error('Failed to load eligible priests:', err);
+      setEligiblePriestsError(err?.message || 'Unable to load parish priests. Please try again.');
+      setEligibleReplacementPriests([]);
+    } finally {
+      setLoadingEligiblePriests(false);
+    }
+  }, [selectedSchedule?.parishId]);
+
+  const handleOpenPriestChangeForm = () => {
+    setShowPriestChangeForm(true);
+    setReplacementPriestId('');
+    setPriestChangeNote('');
+    setPriestChangeError(null);
+    setPriestChangeSuccess(null);
+    void loadEligibleReplacementPriests();
+  };
+
+  const handleSubmitPriestChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSchedule || submittingPriestChange) return;
+    if (!replacementPriestId) {
+      setPriestChangeError('Please select a replacement priest.');
+      return;
+    }
+    if (typeof selectedSchedule.version !== 'number') {
+      setPriestChangeError('Schedule version information is unavailable. Please refresh and try again.');
+      return;
+    }
+
+    setSubmittingPriestChange(true);
+    setPriestChangeError(null);
+    setPriestChangeSuccess(null);
+
+    try {
+      const updated = await services.scheduler.requestPriestChange(selectedSchedule.id, {
+        replacementPriestId: Number(replacementPriestId),
+        note: priestChangeNote.trim() || null,
+        expectedVersion: selectedSchedule.version,
+      });
+      syncUpdatedSchedule(updated);
+      setShowPriestChangeForm(false);
+      setReplacementPriestId('');
+      setPriestChangeNote('');
+      setPriestChangeSuccess(
+        'Your priest change request has been submitted. The current priest assignment was cleared and your parish secretary has been notified.'
+      );
+      void loadSchedules();
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Unable to submit your priest change request right now.';
+      setPriestChangeError(msg);
+      if (err?.status === 409 || err?.response?.status === 409) {
+        void loadSchedules();
+      }
+    } finally {
+      setSubmittingPriestChange(false);
+    }
+  };
 
   const fetchAvailableDates = useCallback(async () => {
     if (
@@ -2389,7 +2474,7 @@ export const RequestTrackingPage: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="space-y-1 sm:col-span-2">
+                      <div className="space-y-2 sm:col-span-2">
                         <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Service Leader</span>
                         <p className="font-semibold text-text-primary flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-crimson flex-shrink-0" />
@@ -2400,8 +2485,227 @@ export const RequestTrackingPage: React.FC = () => {
                             : 'Pending assignment by parish'}
                         </p>
                         {selectedSchedule.assignedPriestName && selectedSchedule.priestResponseStatus === 'PENDING' && (
-                          <p className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-100 inline-block mt-1">
+                          <p className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-100 inline-block">
                             Priest Response: Awaiting Acceptance
+                          </p>
+                        )}
+
+                        {selectedSchedule.priestChangeStatus === 'PENDING' && (
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 space-y-1">
+                            <p className="font-semibold text-amber-900">Priest Change Requested</p>
+                            {selectedSchedule.priestChangeRequestedPriestName && (
+                              <p>
+                                <span className="font-medium">Requested replacement priest:</span>{' '}
+                                Rev. Fr. {selectedSchedule.priestChangeRequestedPriestName}
+                              </p>
+                            )}
+                            <p>
+                              <span className="font-medium">Note:</span>{' '}
+                              {selectedSchedule.priestChangeNote || 'No additional note provided'}
+                            </p>
+                            <p className="text-[11px] text-amber-800">
+                              Status: Awaiting Secretary Reassignment
+                            </p>
+                          </div>
+                        )}
+
+                        {priestChangeSuccess && (
+                          <div className="flex items-start gap-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+                            <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                            <span>{priestChangeSuccess}</span>
+                          </div>
+                        )}
+
+                        {!selectedSchedule.layMinisterAssigned
+                          && Boolean(selectedSchedule.assignedPriestId || selectedSchedule.assignedPriestName)
+                          && (selectedSchedule.status === 'booked' || selectedSchedule.status === 'confirmed')
+                          && !['COMPLETED', 'CANCELLED', 'REJECTED', 'PROPOSED_RESCHEDULE', 'WAITING_PARISHIONER_RESPONSE'].includes(selectedSchedule.rawStatus || '') && (
+                          <div className="pt-1 space-y-2.5">
+                            {!showPriestChangeForm ? (
+                              <div className="p-3 rounded-xl border border-gray-200 bg-gray-50/80 space-y-2">
+                                <p className="text-xs text-text-secondary leading-relaxed">
+                                  Wrong priest assigned? Prefer another priest? You can request a change below. Your parish secretary will review and assign the appropriate priest.
+                                </p>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleOpenPriestChangeForm}
+                                >
+                                  Request a Different Priest
+                                </Button>
+                              </div>
+                            ) : (
+                              <form
+                                onSubmit={(e) => void handleSubmitPriestChange(e)}
+                                className="p-4 rounded-xl border border-amber-200 bg-amber-50/40 space-y-3"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-bold text-gray-900">Request a Different Priest</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setShowPriestChangeForm(false);
+                                      setPriestChangeError(null);
+                                    }}
+                                    className="text-xs text-text-muted hover:text-text-primary"
+                                    disabled={submittingPriestChange}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                <p className="text-xs text-text-secondary leading-relaxed">
+                                  Wrong priest assigned? Prefer another priest? You can request a change below. Your parish secretary will review and assign the appropriate priest.
+                                </p>
+
+                                {loadingEligiblePriests ? (
+                                  <div className="flex items-center gap-2 text-xs text-text-muted py-2">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Loading parish priests...</span>
+                                  </div>
+                                ) : eligiblePriestsError ? (
+                                  <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800 flex items-center justify-between gap-2">
+                                    <span>{eligiblePriestsError}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => void loadEligibleReplacementPriests()}
+                                      className="font-semibold underline shrink-0"
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                ) : (() => {
+                                  const candidatePriests = eligibleReplacementPriests.filter(
+                                    (p) => String(p.id) !== String(selectedSchedule.assignedPriestId || '')
+                                  );
+                                  if (candidatePriests.length === 0) {
+                                    return (
+                                      <p className="text-xs text-text-muted italic py-1">
+                                        No other active priests are currently available to request in this parish. Please contact the parish secretary below.
+                                      </p>
+                                    );
+                                  }
+                                  return (
+                                    <>
+                                      <div className="space-y-1">
+                                        <label
+                                          htmlFor="replacement-priest-select"
+                                          className="block text-[11px] font-semibold text-gray-700"
+                                        >
+                                          Preferred Replacement Priest
+                                        </label>
+                                        <select
+                                          id="replacement-priest-select"
+                                          value={replacementPriestId}
+                                          onChange={(e) => {
+                                            setReplacementPriestId(e.target.value);
+                                            setPriestChangeError(null);
+                                          }}
+                                          disabled={submittingPriestChange}
+                                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 focus:border-crimson focus:outline-none focus:ring-1 focus:ring-crimson"
+                                        >
+                                          <option value="">Select a priest...</option>
+                                          {candidatePriests.map((p) => (
+                                            <option key={p.id} value={String(p.id)}>
+                                              Rev. Fr. {p.name}
+                                              {p.isAssistant ? ' (Assistant Priest)' : ' (Parish Priest)'}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <label
+                                          htmlFor="priest-change-note"
+                                          className="block text-[11px] font-semibold text-gray-700"
+                                        >
+                                          Optional Note for Parish Secretary
+                                        </label>
+                                        <textarea
+                                          id="priest-change-note"
+                                          rows={2}
+                                          maxLength={1000}
+                                          value={priestChangeNote}
+                                          onChange={(e) => setPriestChangeNote(e.target.value)}
+                                          disabled={submittingPriestChange}
+                                          placeholder='Example: "I originally requested Rev. Fr. Julius Montaño, but another priest was assigned. I would like to request him instead."'
+                                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 focus:border-crimson focus:outline-none focus:ring-1 focus:ring-crimson"
+                                        />
+                                      </div>
+
+                                      {priestChangeError && (
+                                        <div role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                          {priestChangeError}
+                                        </div>
+                                      )}
+
+                                      <div className="flex items-center gap-2 pt-1">
+                                        <Button
+                                          type="submit"
+                                          size="sm"
+                                          disabled={submittingPriestChange || !replacementPriestId}
+                                        >
+                                          {submittingPriestChange ? (
+                                            <>
+                                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                              Submitting...
+                                            </>
+                                          ) : (
+                                            'Confirm Priest Change Request'
+                                          )}
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setShowPriestChangeForm(false);
+                                            setPriestChangeError(null);
+                                          }}
+                                          disabled={submittingPriestChange}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </form>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1 sm:col-span-2 p-3 rounded-xl border border-gray-200 bg-gray-50/70">
+                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                          <Phone className="w-3 h-3 text-crimson flex-shrink-0" />
+                          Contact Parish Secretary
+                        </span>
+                        {selectedSchedule.parishSecretary ? (
+                          <div className="grid sm:grid-cols-2 gap-2 pt-1 text-xs">
+                            <div>
+                              <span className="text-text-muted">Name: </span>
+                              <span className="font-semibold text-text-primary">
+                                {selectedSchedule.parishSecretary.fullName || 'Not available'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-text-muted">Contact Number: </span>
+                              {selectedSchedule.parishSecretary.contactNumber ? (
+                                <a
+                                  href={`tel:${selectedSchedule.parishSecretary.contactNumber}`}
+                                  className="font-semibold text-crimson hover:underline"
+                                >
+                                  {selectedSchedule.parishSecretary.contactNumber}
+                                </a>
+                              ) : (
+                                <span className="text-text-muted">Not available</span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-text-muted pt-1">
+                            Parish secretary contact information is currently unavailable.
                           </p>
                         )}
                       </div>

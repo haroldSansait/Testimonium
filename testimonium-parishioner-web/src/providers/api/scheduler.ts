@@ -113,6 +113,10 @@ const mapAppointment = (s: any): Appointment => {
   const requestedPriestId = s.requestedPriestId || s.requestedPriest?.id || null;
   const requestedPriestName = s.requestedPriest?.name || s.requestedPriest?.fullName || null;
   const priestResponseStatus = s.priestResponseStatus || null;
+  const priestChangeRequestedPriestId =
+    s.priestChangeRequestedPriestId || s.priestChangeRequestedPriest?.id || null;
+  const priestChangeRequestedPriestName =
+    s.priestChangeRequestedPriest?.name || s.priestChangeRequestedPriest?.fullName || null;
   const parishName = s.parish?.parishName || s.parishName || undefined;
 
   const rescheduleHistory = Array.isArray(s.rescheduleHistory)
@@ -135,6 +139,7 @@ const mapAppointment = (s: any): Appointment => {
     date: s.requestedDate ? new Date(s.requestedDate).toISOString().split("T")[0] : "",
     timeSlot,
     status,
+    rawStatus: s.status || undefined,
     confirmationNumber: `CONF-${new Date(s.createdAt || Date.now()).getFullYear()}-${String(
       s.id
     ).padStart(4, "0")}`,
@@ -155,6 +160,19 @@ const mapAppointment = (s: any): Appointment => {
     requestedPriestId,
     requestedPriestName,
     priestResponseStatus,
+    priestVerbalApproval: Boolean(s.priestVerbalApproval),
+    priestChangeStatus: s.priestChangeStatus || null,
+    priestChangeRequestedPriestId,
+    priestChangeRequestedPriestName,
+    priestChangeNote: s.priestChangeNote || null,
+    priestChangeRequestedAt: s.priestChangeRequestedAt || null,
+    parishSecretary: s.parishSecretary
+      ? {
+          id: s.parishSecretary.id,
+          fullName: s.parishSecretary.fullName ?? null,
+          contactNumber: s.parishSecretary.contactNumber ?? null,
+        }
+      : null,
     version: typeof s.version === 'number' ? s.version : undefined,
     rescheduleHistory,
     layMinisterAssigned: Boolean(s.layMinisterAssigned),
@@ -434,6 +452,19 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       payload.expectedVersion = expectedVersion;
     }
     const response = await client.post<any>(`/schedule-requests/${id}/respond-reschedule`, payload);
+    const item = response?.data !== undefined ? response.data : response;
+    return mapAppointment(item);
+  }
+
+  async requestPriestChange(
+    id: string,
+    payload: { replacementPriestId: number; note?: string | null; expectedVersion: number }
+  ): Promise<Appointment> {
+    const response = await client.post<any>(`/schedule-requests/${id}/request-priest-change`, {
+      replacementPriestId: Number(payload.replacementPriestId),
+      note: payload.note?.trim() || null,
+      expectedVersion: payload.expectedVersion,
+    });
     const item = response?.data !== undefined ? response.data : response;
     return mapAppointment(item);
   }

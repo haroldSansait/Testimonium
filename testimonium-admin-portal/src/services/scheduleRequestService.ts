@@ -41,8 +41,13 @@ export async function respondReschedule(id: string, accept: boolean, expectedVer
   return providerFactory.getScheduleProvider().respondReschedule(id, accept, expectedVersion);
 }
 
-export async function assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest> {
-  return providerFactory.getScheduleProvider().assignPriest(id, priestId, expectedVersion);
+export async function assignPriest(
+  id: string,
+  priestId: string,
+  expectedVersion: number,
+  verbalApproval?: boolean
+): Promise<ScheduleRequest> {
+  return providerFactory.getScheduleProvider().assignPriest(id, priestId, expectedVersion, verbalApproval);
 }
 
 export async function assignLayMinister(id: string, reason: string, expectedVersion: number): Promise<ScheduleRequest> {

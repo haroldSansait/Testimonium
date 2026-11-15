@@ -17,6 +17,7 @@ import {
   proposeReschedule,
   respondReschedule,
   assignPriest,
+  requestPriestChange,
   assignLayMinister,
   respondPriestAssignment,
   emergencyReschedule,
@@ -41,6 +42,7 @@ import {
   proposeRescheduleSchema,
   respondRescheduleSchema,
   assignPriestSchema,
+  requestPriestChangeSchema,
   assignLayMinisterSchema,
   priestAssignmentResponseSchema,
   emergencyRescheduleSchema,
@@ -102,6 +104,7 @@ router.patch("/:id/status", checkRole(managingStaffRoles), validateBody(updateSc
 router.post("/:id/propose-reschedule", checkRole(managingStaffRoles), validateBody(proposeRescheduleSchema), proposeReschedule);
 router.post("/:id/respond-reschedule", checkRole(["PARISHIONER"]), validateBody(respondRescheduleSchema), respondReschedule);
 router.post("/:id/assign-priest", checkRole(managingStaffRoles), validateBody(assignPriestSchema), assignPriest);
+router.post("/:id/request-priest-change", checkRole(["PARISHIONER"]), validateBody(requestPriestChangeSchema), requestPriestChange);
 router.post("/:id/assign-lay-minister", checkRole(managingStaffRoles), validateBody(assignLayMinisterSchema), assignLayMinister);
 router.get("/:id/alternative-proposals", listAlternativeProposals);
 router.post("/:id/alternative-proposals", checkRole(["PARISHIONER"]), validateBody(submitAlternativeProposalSchema), submitAlternativeProposal);

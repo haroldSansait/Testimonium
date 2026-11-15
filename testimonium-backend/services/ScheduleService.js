@@ -161,6 +161,7 @@ export async function appendScheduleHistory(tx, schedule, { reason, actorId, act
       status: schedule.status,
       assignedPriestId: schedule.assignedPriestId,
       priestResponseStatus: schedule.priestResponseStatus,
+      priestVerbalApproval: Boolean(schedule.priestVerbalApproval),
       layMinisterAssigned: Boolean(schedule.layMinisterAssigned),
       reason,
       actorId: Number.isInteger(Number(actorId)) ? Number(actorId) : null,
@@ -359,6 +360,22 @@ export function sanitizeSchedulePriest(sched) {
     result.alternativeProposal = result.alternativeProposals[0] || null;
     delete result.alternativeProposals;
   }
+  if (result.priestChangeRequestedPriest) {
+    const requestedName =
+      result.priestChangeRequestedPriest.fullName ?? result.priestChangeRequestedPriest.name ?? null;
+    result.priestChangeRequestedPriest = {
+      id: result.priestChangeRequestedPriest.id,
+      name: requestedName,
+      fullName: requestedName,
+    };
+  }
+  if (result.priestVerbalApprovalBy) {
+    result.priestVerbalApprovalBy = {
+      id: result.priestVerbalApprovalBy.id,
+      fullName:
+        result.priestVerbalApprovalBy.fullName ?? result.priestVerbalApprovalBy.name ?? null,
+    };
+  }
   if (!result.requestedPriest) {
     return decorateScheduleForDisplay({
       ...result,
@@ -370,6 +387,86 @@ export function sanitizeSchedulePriest(sched) {
     name: result.requestedPriest.fullName ?? result.requestedPriest.name ?? null,
   };
   return decorateScheduleForDisplay(result);
+}
+
+function buildParishSecretaryDto(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    fullName: user.fullName || null,
+    contactNumber: user.contactNumber || null,
+  };
+}
+
+function isValidParishSecretaryForParish(user, parishId) {
+  if (!user || !parishId) return false;
+  const roleName = user.role?.roleName;
+  return (
+    user.status === "ACTIVE"
+    && roleName === "SECRETARY"
+    && Number(user.parishId) === Number(parishId)
+  );
+}
+
+export async function attachParishSecretaries(schedules, client = prisma) {
+  if (!Array.isArray(schedules) || schedules.length === 0) return schedules;
+
+  const resolvedByParish = new Map();
+  const missingParishIds = new Set();
+
+  for (const sched of schedules) {
+    if (!sched) continue;
+    if (isValidParishSecretaryForParish(sched.processedBy, sched.parishId)) {
+      resolvedByParish.set(sched.id, buildParishSecretaryDto(sched.processedBy));
+    } else if (sched.parishId) {
+      missingParishIds.add(Number(sched.parishId));
+    }
+  }
+
+  const fallbackByParish = new Map();
+  if (missingParishIds.size > 0 && typeof client?.user?.findMany === "function") {
+    const secretaries = await client.user.findMany({
+      where: {
+        parishId: { in: Array.from(missingParishIds) },
+        status: "ACTIVE",
+        role: { roleName: "SECRETARY" },
+      },
+      orderBy: { id: "asc" },
+      select: {
+        id: true,
+        parishId: true,
+        fullName: true,
+        contactNumber: true,
+      },
+    });
+
+    if (Array.isArray(secretaries)) {
+      for (const sec of secretaries) {
+        const key = Number(sec.parishId);
+        if (!fallbackByParish.has(key)) {
+          fallbackByParish.set(key, buildParishSecretaryDto(sec));
+        }
+      }
+    }
+  }
+
+  return schedules.map((sched) => {
+    if (!sched) return sched;
+    const direct = resolvedByParish.get(sched.id);
+    const fallback = sched.parishId ? fallbackByParish.get(Number(sched.parishId)) || null : null;
+    const sanitizedProcessedBy = sched.processedBy
+      ? {
+          id: sched.processedBy.id,
+          fullName: sched.processedBy.fullName,
+          ...(sched.processedBy.email !== undefined ? { email: sched.processedBy.email } : {}),
+        }
+      : sched.processedBy;
+    return {
+      ...sched,
+      processedBy: sanitizedProcessedBy,
+      parishSecretary: direct || fallback || null,
+    };
+  });
 }
 
 async function expireStaleAlternativeProposal(schedule) {
@@ -591,17 +688,29 @@ export class ScheduleService {
         include: {
           user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
           parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
-          processedBy: { select: { id: true, fullName: true } },
+          processedBy: {
+            select: {
+              id: true,
+              fullName: true,
+              contactNumber: true,
+              status: true,
+              parishId: true,
+              role: { select: { roleName: true } },
+            },
+          },
           assignedPriest: { select: { id: true, fullName: true } },
           requestedPriest: { select: { id: true, fullName: true } },
+          priestChangeRequestedPriest: { select: { id: true, fullName: true } },
+          priestVerbalApprovalBy: { select: { id: true, fullName: true } },
           ...ALTERNATIVE_PROPOSAL_INCLUDE,
         },
       }),
       prisma.schedule.count({ where }),
     ]);
     await Promise.all(data.map(expireStaleAlternativeProposal));
+    const enrichedData = await attachParishSecretaries(data);
 
-    return { data: data.map(sanitizeSchedulePriest), total };
+    return { data: enrichedData.map(sanitizeSchedulePriest), total };
   }
 
   /**
@@ -624,9 +733,21 @@ export class ScheduleService {
             address: true,
           },
         },
-        processedBy: { select: { id: true, fullName: true, email: true } },
+        processedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            contactNumber: true,
+            status: true,
+            parishId: true,
+            role: { select: { roleName: true } },
+          },
+        },
         assignedPriest: { select: { id: true, fullName: true, email: true } },
         requestedPriest: { select: { id: true, fullName: true } },
+        priestChangeRequestedPriest: { select: { id: true, fullName: true } },
+        priestVerbalApprovalBy: { select: { id: true, fullName: true } },
         ...ALTERNATIVE_PROPOSAL_INCLUDE,
         history: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -671,7 +792,8 @@ export class ScheduleService {
     delete schedule.history;
     schedule.rescheduleHistory = deriveRescheduleHistory(schedule, rawHistory);
 
-    return sanitizeSchedulePriest(schedule);
+    const [enriched] = await attachParishSecretaries([schedule]);
+    return sanitizeSchedulePriest(enriched);
   }
 
   /**
@@ -719,8 +841,20 @@ export class ScheduleService {
             province: true,
           },
         },
+        processedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            contactNumber: true,
+            status: true,
+            parishId: true,
+            role: { select: { roleName: true } },
+          },
+        },
         assignedPriest: { select: { id: true, fullName: true, email: true } },
         requestedPriest: { select: { id: true, fullName: true } },
+        priestChangeRequestedPriest: { select: { id: true, fullName: true } },
+        priestVerbalApprovalBy: { select: { id: true, fullName: true } },
         ...ALTERNATIVE_PROPOSAL_INCLUDE,
         history: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -765,7 +899,8 @@ export class ScheduleService {
     delete schedule.history;
     schedule.rescheduleHistory = deriveRescheduleHistory(schedule, rawHistory);
 
-    return sanitizeSchedulePriest(schedule);
+    const [enriched] = await attachParishSecretaries([schedule]);
+    return sanitizeSchedulePriest(enriched);
   }
 
   /**
@@ -2323,6 +2458,15 @@ export class ScheduleService {
           assignedPriestId: null,
           priestResponseStatus: null,
           priestResponseReason: null,
+          priestVerbalApproval: false,
+          priestVerbalApprovalById: null,
+          priestVerbalApprovalAt: null,
+          ...(current.priestChangeStatus === "PENDING"
+            ? {
+                priestChangeStatus: "RESOLVED",
+                priestChangeResolvedAt: new Date(),
+              }
+            : {}),
           layMinisterAssigned: true,
           processedById: Number(actorId),
         });
@@ -2372,9 +2516,10 @@ export class ScheduleService {
   /**
    * Assigns a priest to a schedule request.
    */
-  async assignPriest(id, priestId, actorId, actorRole, actorParishId, expectedVersion) {
+  async assignPriest(id, priestId, actorId, actorRole, actorParishId, expectedVersion, options = {}) {
     const parsedId = parseInt(id, 10);
     const parsedPriestId = normalizePriestId(priestId);
+    const verbalApproval = Boolean(options?.verbalApproval);
     if (isNaN(parsedId)) {
       const err = new Error("Invalid schedule ID.");
       err.statusCode = 400;
@@ -2391,6 +2536,15 @@ export class ScheduleService {
       throw err;
     }
     authorizeStaffScheduleMutation(actorRole, actorParishId, schedule.parishId, "assign priests for");
+    if (
+      verbalApproval
+      && (actorRole !== "SECRETARY" || !actorParishId || Number(schedule.parishId) !== Number(actorParishId))
+    ) {
+      const err = new Error("Only an authorized parish secretary managing their own parish may record verbal priest approval.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN_VERBAL_APPROVAL";
+      throw err;
+    }
     if (schedule.version !== version) {
       throwScheduleConcurrencyConflict();
     }
@@ -2410,6 +2564,15 @@ export class ScheduleService {
             throw err;
           }
           authorizeStaffScheduleMutation(actorRole, actorParishId, current.parishId, "assign priests for");
+          if (
+            verbalApproval
+            && (actorRole !== "SECRETARY" || !actorParishId || Number(current.parishId) !== Number(actorParishId))
+          ) {
+            const err = new Error("Only an authorized parish secretary managing their own parish may record verbal priest approval.");
+            err.statusCode = 403;
+            err.code = "FORBIDDEN_VERBAL_APPROVAL";
+            throw err;
+          }
           if (current.version !== version) {
             throwScheduleConcurrencyConflict();
           }
@@ -2444,15 +2607,23 @@ export class ScheduleService {
             throw err;
           }
 
-          if (current.assignedPriestId === parsedPriestId && !current.layMinisterAssigned) {
-            return tx.schedule.findUnique({
+          if (
+            current.assignedPriestId === parsedPriestId
+            && !current.layMinisterAssigned
+            && !(verbalApproval && current.priestResponseStatus !== "ACCEPTED")
+            && current.priestChangeStatus !== "PENDING"
+          ) {
+            const existing = await tx.schedule.findUnique({
               where: { id: parsedId },
               include: {
                 user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
                 parish: { select: { id: true, parishName: true } },
                 assignedPriest: { select: { id: true, fullName: true } },
+                priestChangeRequestedPriest: { select: { id: true, fullName: true } },
+                priestVerbalApprovalBy: { select: { id: true, fullName: true } },
               },
             });
+            return sanitizeSchedulePriest(existing);
           }
 
           await ConflictHelper.checkPriestConflict(
@@ -2466,19 +2637,32 @@ export class ScheduleService {
           const nextStatus = current.status === ScheduleStatus.CONFIRMED
             ? ScheduleStatus.PENDING
             : current.status;
+          const now = new Date();
+          const resolveChangeFields = current.priestChangeStatus === "PENDING"
+            ? {
+                priestChangeStatus: "RESOLVED",
+                priestChangeResolvedAt: now,
+              }
+            : {};
 
           await appendScheduleHistory(tx, current, {
-            reason: "Priest assignment changed",
+            reason: verbalApproval
+              ? "Priest assigned with secretary-recorded verbal approval"
+              : "Priest assignment changed",
             actorId,
             actorRole,
           });
           await updateScheduleAtVersion(tx, parsedId, version, {
             assignedPriestId: parsedPriestId,
-            priestResponseStatus: "PENDING",
+            priestResponseStatus: verbalApproval ? "ACCEPTED" : "PENDING",
             priestResponseReason: null,
+            priestVerbalApproval: verbalApproval,
+            priestVerbalApprovalById: verbalApproval ? parseInt(actorId, 10) : null,
+            priestVerbalApprovalAt: verbalApproval ? now : null,
             layMinisterAssigned: false,
             status: nextStatus,
             processedById: parseInt(actorId, 10),
+            ...resolveChangeFields,
           });
           await supersedeOpenAlternativeProposals(tx, parsedId, actorId);
 
@@ -2488,8 +2672,43 @@ export class ScheduleService {
               user: { select: { id: true, fullName: true, email: true, emailNotificationsEnabled: true } },
               parish: { select: { id: true, parishName: true } },
               assignedPriest: { select: { id: true, fullName: true } },
+              priestChangeRequestedPriest: { select: { id: true, fullName: true } },
+              priestVerbalApprovalBy: { select: { id: true, fullName: true } },
             },
           });
+
+          await AuditLogService.log(
+            actorId,
+            verbalApproval ? "Priest Assigned (Verbal Approval)" : "Priest Assigned",
+            tx,
+            false,
+            {
+              role: actorRole,
+              affectedTable: "schedules",
+              affectedRecordId: parsedId,
+              parishId: updated.parishId,
+              previousValues: {
+                status: current.status,
+                assignedPriestId: current.assignedPriestId,
+                priestResponseStatus: current.priestResponseStatus,
+                priestVerbalApproval: Boolean(current.priestVerbalApproval),
+                priestChangeStatus: current.priestChangeStatus || null,
+              },
+              newValues: {
+                status: updated.status,
+                assignedPriestId: updated.assignedPriestId,
+                priestResponseStatus: updated.priestResponseStatus,
+                priestVerbalApproval: Boolean(updated.priestVerbalApproval),
+                priestVerbalApprovalById: updated.priestVerbalApprovalById,
+                priestChangeStatus: updated.priestChangeStatus || null,
+              },
+              metadata: {
+                verbalApproval,
+                recordedBySecretaryId: verbalApproval ? Number(actorId) : null,
+                priestId: parsedPriestId,
+              },
+            }
+          );
 
           await NotificationDispatcher.notifyPriestAssigned({
             parishionerId: updated.userId,
@@ -2498,9 +2717,10 @@ export class ScheduleService {
             displayTitle: resolveScheduleDisplayTitle(updated),
             priestId: parsedPriestId,
             priestName: updated.assignedPriest?.fullName || "Assigned Priest",
+            verbalApproval,
           }, tx);
 
-          return updated;
+          return sanitizeSchedulePriest(updated);
         },
         {
           isolationLevel: "Serializable",
@@ -2744,6 +2964,9 @@ export class ScheduleService {
                 assignedPriestId: null,
                 priestResponseStatus: "REJECTED",
                 priestResponseReason: reason || null,
+                priestVerbalApproval: false,
+                priestVerbalApprovalById: null,
+                priestVerbalApprovalAt: null,
                 status: nextStatus,
               });
 
@@ -4067,6 +4290,221 @@ export class ScheduleService {
         throw conflictErr;
       }
 
+      throw err;
+    }
+  }
+
+  /**
+   * Parishioner requests a different assigned priest, resetting the current
+   * assignment and returning the request to PENDING for secretary reassignment.
+   */
+  async requestPriestChange(id, { replacementPriestId, note, expectedVersion }, actorId, actorRole) {
+    const parsedId = parseInt(id, 10);
+    if (isNaN(parsedId)) {
+      const err = new Error("Invalid schedule ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    if (actorRole !== "PARISHIONER") {
+      const err = new Error("Only the owning parishioner can request a priest change.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
+    let parsedReplacementId;
+    try {
+      parsedReplacementId = normalizePriestId(replacementPriestId);
+    } catch {
+      const err = new Error("Please select a valid replacement priest.");
+      err.statusCode = 400;
+      err.code = "INVALID_REQUESTED_PRIEST";
+      throw err;
+    }
+
+    const version = requireExpectedVersion(expectedVersion, "request a priest change");
+    const trimmedNote = typeof note === "string" && note.trim().length > 0 ? note.trim() : null;
+
+    const schedule = await prisma.schedule.findUnique({ where: { id: parsedId } });
+    if (!schedule) {
+      const err = new Error("Schedule request not found.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_NOT_FOUND";
+      throw err;
+    }
+    if (Number(schedule.userId) !== Number(actorId)) {
+      const err = new Error("You do not have permission to modify this schedule request.");
+      err.statusCode = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+    if (schedule.version !== version) {
+      throwScheduleConcurrencyConflict();
+    }
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const priestsToLock = [schedule.assignedPriestId, parsedReplacementId].filter(
+            (pId) => pId !== null && pId !== undefined
+          );
+          await lockPriestsForScheduling(tx, priestsToLock);
+
+          const current = await tx.schedule.findUnique({
+            where: { id: parsedId },
+            include: {
+              user: { select: { id: true, fullName: true } },
+              parish: { select: { id: true, parishName: true } },
+              assignedPriest: { select: { id: true, fullName: true } },
+            },
+          });
+
+          if (!current) {
+            const err = new Error("Schedule request not found.");
+            err.statusCode = 404;
+            err.code = "SCHEDULE_NOT_FOUND";
+            throw err;
+          }
+          if (Number(current.userId) !== Number(actorId)) {
+            const err = new Error("You do not have permission to modify this schedule request.");
+            err.statusCode = 403;
+            err.code = "FORBIDDEN";
+            throw err;
+          }
+          assertScheduleMutable(current);
+          validateScheduleTransition(current, ScheduleStatus.PENDING, {
+            allowReversionToPending: true,
+          });
+          if (!current.assignedPriestId || current.layMinisterAssigned) {
+            const err = new Error("A priest must currently be assigned before requesting a change.");
+            err.statusCode = 400;
+            err.code = "NO_ASSIGNED_PRIEST";
+            throw err;
+          }
+          if (current.version !== version) {
+            throwScheduleConcurrencyConflict();
+          }
+          if (Number(parsedReplacementId) === Number(current.assignedPriestId)) {
+            const err = new Error("Please choose a different priest from the one currently assigned.");
+            err.statusCode = 400;
+            err.code = "SAME_PRIEST_SELECTED";
+            throw err;
+          }
+
+          const replacementPriest = await validateRequestedPriestEligibility(
+            parsedReplacementId,
+            current.parishId,
+            tx
+          );
+
+          const now = new Date();
+          const historyReason = trimmedNote
+            ? `Parishioner requested priest change to ${replacementPriest.name || "another priest"}: ${trimmedNote}`
+            : `Parishioner requested priest change to ${replacementPriest.name || "another priest"}`;
+
+          await appendScheduleHistory(tx, current, {
+            reason: historyReason,
+            actorId,
+            actorRole: "PARISHIONER",
+          });
+
+          await updateScheduleAtVersion(tx, parsedId, version, {
+            assignedPriestId: null,
+            priestResponseStatus: null,
+            priestResponseReason: null,
+            priestVerbalApproval: false,
+            priestVerbalApprovalById: null,
+            priestVerbalApprovalAt: null,
+            priestChangeStatus: "PENDING",
+            priestChangeRequestedPriestId: parsedReplacementId,
+            priestChangeNote: trimmedNote,
+            priestChangeRequestedAt: now,
+            priestChangeResolvedAt: null,
+            status: ScheduleStatus.PENDING,
+          });
+
+          const updated = await tx.schedule.findUnique({
+            where: { id: parsedId },
+            include: {
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true } },
+              parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+              processedBy: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  contactNumber: true,
+                  status: true,
+                  parishId: true,
+                  role: { select: { roleName: true } },
+                },
+              },
+              assignedPriest: { select: { id: true, fullName: true } },
+              requestedPriest: { select: { id: true, fullName: true } },
+              priestChangeRequestedPriest: { select: { id: true, fullName: true } },
+              priestVerbalApprovalBy: { select: { id: true, fullName: true } },
+              ...ALTERNATIVE_PROPOSAL_INCLUDE,
+            },
+          });
+
+          await AuditLogService.log(actorId, "Priest Change Requested", tx, false, {
+            role: "PARISHIONER",
+            affectedTable: "schedules",
+            affectedRecordId: parsedId,
+            parishId: current.parishId,
+            previousValues: {
+              status: current.status,
+              assignedPriestId: current.assignedPriestId,
+              priestResponseStatus: current.priestResponseStatus,
+              priestVerbalApproval: Boolean(current.priestVerbalApproval),
+            },
+            newValues: {
+              status: updated.status,
+              assignedPriestId: null,
+              priestResponseStatus: null,
+              priestVerbalApproval: false,
+              priestChangeStatus: "PENDING",
+              priestChangeRequestedPriestId: parsedReplacementId,
+            },
+            metadata: {
+              previousPriestId: current.assignedPriestId,
+              previousPriestName: current.assignedPriest?.fullName || null,
+              replacementPriestId: parsedReplacementId,
+              replacementPriestName: replacementPriest.name || null,
+              note: trimmedNote,
+            },
+          });
+
+          await NotificationDispatcher.notifyPriestChangeRequested(
+            {
+              parishId: updated.parishId,
+              scheduleId: updated.id,
+              displayTitle: resolveScheduleDisplayTitle(updated),
+              requestedPriestName: replacementPriest.name || "another priest",
+              previousPriestName: current.assignedPriest?.fullName || null,
+              note: trimmedNote,
+            },
+            tx
+          );
+
+          const [enriched] = await attachParishSecretaries([updated], tx);
+          return sanitizeSchedulePriest(enriched);
+        },
+        {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 15000,
+        }
+      );
+    } catch (err) {
+      if (
+        err?.code === "P2034" ||
+        err?.message?.includes("Serialization") ||
+        err?.message?.includes("could not serialize")
+      ) {
+        throwScheduleConcurrencyConflict();
+      }
       throw err;
     }
   }

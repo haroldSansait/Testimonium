@@ -48,6 +48,7 @@ export class PriestAssignmentHandler {
             status: schedule.status,
             assignedPriestId: schedule.assignedPriestId,
             priestResponseStatus: schedule.priestResponseStatus,
+            priestVerbalApproval: Boolean(schedule.priestVerbalApproval),
             reason: newParishName
               ? "Priest transferred to " + newParishName
               : "Priest removed from parish assignment",
@@ -71,6 +72,9 @@ export class PriestAssignmentHandler {
               assignedPriestId: null,
               priestResponseStatus: null,
               priestResponseReason: null,
+              priestVerbalApproval: false,
+              priestVerbalApprovalById: null,
+              priestVerbalApprovalAt: null,
               version: { increment: 1 },
             },
           });
@@ -83,6 +87,9 @@ export class PriestAssignmentHandler {
               assignedPriestId: null,
               priestResponseStatus: null,
               priestResponseReason: null,
+              priestVerbalApproval: false,
+              priestVerbalApprovalById: null,
+              priestVerbalApprovalAt: null,
               version: { increment: 1 },
             },
           });

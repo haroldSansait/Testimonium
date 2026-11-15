@@ -218,6 +218,7 @@ export interface Appointment {
   date: string;
   timeSlot: string;
   status: 'booked' | 'confirmed' | 'cancelled' | 'rejected' | 'proposed' | 'tentative';
+  rawStatus?: string;
   confirmationNumber: string;
   location?: string | null;
   rejectionReasonCode?: string | null;
@@ -232,6 +233,17 @@ export interface Appointment {
   requestedPriestId?: string | number | null;
   requestedPriestName?: string | null;
   priestResponseStatus?: 'ACCEPTED' | 'REJECTED' | 'PENDING' | null;
+  priestVerbalApproval?: boolean;
+  priestChangeStatus?: 'PENDING' | 'RESOLVED' | string | null;
+  priestChangeRequestedPriestId?: string | number | null;
+  priestChangeRequestedPriestName?: string | null;
+  priestChangeNote?: string | null;
+  priestChangeRequestedAt?: string | null;
+  parishSecretary?: {
+    id: number;
+    fullName: string | null;
+    contactNumber: string | null;
+  } | null;
   remarks?: string | null;
   notes?: string | null;
   version?: number;

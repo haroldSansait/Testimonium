@@ -221,6 +221,15 @@ export interface ScheduleRequest {
   rescheduleReason?: string;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  priestVerbalApproval?: boolean;
+  priestVerbalApprovalAt?: string | null;
+  priestVerbalApprovalBy?: { id: number; fullName: string | null } | null;
+  priestChangeStatus?: 'PENDING' | 'RESOLVED' | string | null;
+  priestChangeRequestedPriestId?: string | null;
+  priestChangeRequestedPriest?: string | null;
+  priestChangeNote?: string | null;
+  priestChangeRequestedAt?: string | null;
+  priestChangeResolvedAt?: string | null;
   layMinisterAssigned?: boolean;
   effectiveDisplayTitle?: string;
   canProposeAlternativeDate?: boolean;

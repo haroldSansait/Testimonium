@@ -660,7 +660,7 @@ export class NotificationDispatcher {
   }
 
   static async notifyPriestAssigned(
-    { parishionerId, parishId, scheduleId, displayTitle, priestId, priestName },
+    { parishionerId, parishId, scheduleId, displayTitle, priestId, priestName, verbalApproval = false },
     tx = null
   ) {
     const client = tx || prisma;
@@ -681,12 +681,42 @@ export class NotificationDispatcher {
     // -- Priest notification --
     payloads.push({
       userId: priestId,
-      title: "New Pastoral Assignment",
-      message: `You have been assigned to lead the "${displayTitle}" event.`,
+      title: verbalApproval
+        ? "Pastoral Assignment Confirmed (Verbal Approval)"
+        : "New Pastoral Assignment",
+      message: verbalApproval
+        ? `You have been assigned to lead the "${displayTitle}" event. Your verbal approval was recorded by the parish secretary; no action is required.`
+        : `You have been assigned to lead the "${displayTitle}" event.`,
       type: "IN_APP",
       referenceType: "SCHEDULE_REQUEST",
       referenceId: scheduleId,
     });
+
+    await NotificationDispatcher._persist(payloads, client);
+  }
+
+  static async notifyPriestChangeRequested(
+    { parishId, scheduleId, displayTitle, requestedPriestName, previousPriestName = null, note = null },
+    tx = null
+  ) {
+    const client = tx || prisma;
+    const adminIds = await RecipientResolver.getAdminRecipients(parishId, tx);
+    if (!adminIds.length) {
+      return;
+    }
+
+    const previousText = previousPriestName ? ` (previously assigned: ${previousPriestName})` : "";
+    const noteText = note ? ` Note: ${note}` : "";
+    const message = `The parishioner requested ${requestedPriestName} for "${displayTitle}"${previousText}.${noteText}`;
+
+    const payloads = adminIds.map((adminId) => ({
+      userId: adminId,
+      title: "Priest Change Requested",
+      message,
+      type: "IN_APP",
+      referenceType: "SCHEDULE_REQUEST",
+      referenceId: scheduleId,
+    }));
 
     await NotificationDispatcher._persist(payloads, client);
   }

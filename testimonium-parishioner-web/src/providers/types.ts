@@ -149,6 +149,10 @@ export interface ISchedulerProvider {
     requirementFiles?: Record<string, File>;
   }): Promise<Appointment>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<Appointment>;
+  requestPriestChange(
+    id: string,
+    payload: { replacementPriestId: number; note?: string | null; expectedVersion: number }
+  ): Promise<Appointment>;
   proposeAlternativeDate(id: string, proposedDate: string, timeSlot: string, note?: string): Promise<Appointment['alternativeProposal']>;
   withdrawAlternativeDate(id: string, proposalId: number, expectedRevision: number): Promise<Appointment['alternativeProposal']>;
   getAppointmentById(id: string): Promise<Appointment>;

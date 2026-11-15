@@ -146,6 +146,13 @@ export const respondRescheduleSchema = z.object({
 export const assignPriestSchema = z.object({
   priestId: z.coerce.number().int().positive(),
   expectedVersion,
+  verbalApproval: z.boolean().optional().default(false),
+});
+
+export const requestPriestChangeSchema = z.object({
+  replacementPriestId: strictPositiveIntSchema,
+  note: z.string().trim().max(1000).optional().nullable(),
+  expectedVersion,
 });
 
 export const assignLayMinisterSchema = z.object({

@@ -62,6 +62,22 @@ interface BackendScheduleRequestDTO {
   } | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  priestVerbalApproval?: boolean;
+  priestVerbalApprovalAt?: string | null;
+  priestVerbalApprovalBy?: {
+    id: number;
+    fullName?: string | null;
+  } | null;
+  priestChangeStatus?: string | null;
+  priestChangeRequestedPriestId?: number | null;
+  priestChangeRequestedPriest?: {
+    id: number;
+    fullName?: string | null;
+    name?: string | null;
+  } | null;
+  priestChangeNote?: string | null;
+  priestChangeRequestedAt?: string | null;
+  priestChangeResolvedAt?: string | null;
   layMinisterAssigned?: boolean;
   effectiveDisplayTitle?: string;
   canProposeAlternativeDate?: boolean;
@@ -219,6 +235,24 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     rescheduleReason: dbItem.rescheduleReason || undefined,
     priestResponseStatus: dbItem.priestResponseStatus || undefined,
     priestResponseReason: dbItem.priestResponseReason || undefined,
+    priestVerbalApproval: Boolean(dbItem.priestVerbalApproval),
+    priestVerbalApprovalAt: dbItem.priestVerbalApprovalAt || null,
+    priestVerbalApprovalBy: dbItem.priestVerbalApprovalBy
+      ? {
+          id: dbItem.priestVerbalApprovalBy.id,
+          fullName: dbItem.priestVerbalApprovalBy.fullName ?? null,
+        }
+      : null,
+    priestChangeStatus: dbItem.priestChangeStatus || null,
+    priestChangeRequestedPriestId: dbItem.priestChangeRequestedPriestId
+      ? String(dbItem.priestChangeRequestedPriestId)
+      : null,
+    priestChangeRequestedPriest: dbItem.priestChangeRequestedPriest
+      ? (dbItem.priestChangeRequestedPriest.name || dbItem.priestChangeRequestedPriest.fullName || null)
+      : null,
+    priestChangeNote: dbItem.priestChangeNote || null,
+    priestChangeRequestedAt: dbItem.priestChangeRequestedAt || null,
+    priestChangeResolvedAt: dbItem.priestChangeResolvedAt || null,
     layMinisterAssigned: Boolean(dbItem.layMinisterAssigned),
     effectiveDisplayTitle: dbItem.effectiveDisplayTitle || undefined,
     canProposeAlternativeDate: Boolean(dbItem.canProposeAlternativeDate),
@@ -467,12 +501,13 @@ export const ApiScheduleProvider: ScheduleProvider = {
     }
   },
 
-  async assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest> {
+  async assignPriest(id: string, priestId: string, expectedVersion: number, verbalApproval = false): Promise<ScheduleRequest> {
     optimisticSchedulePriests[id] = 'Assigning...';
     try {
       const response = await api.post<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/assign-priest`, {
         priestId,
         expectedVersion,
+        ...(verbalApproval ? { verbalApproval: true } : {}),
       });
       const updated = mapToFrontend(response.data.data);
       if (updated.assignedPriest) {

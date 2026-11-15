@@ -81,7 +81,7 @@ interface DetailsModalProps {
   onClose: () => void;
   onStatusChange: (status: ScheduleStatus, rejectionDetails?: ScheduleRejectionDetails) => Promise<void>;
   onProposeReschedule: (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => Promise<void>;
-  onAssignPriest: (priestId: string, priestName: string) => Promise<void>;
+  onAssignPriest: (priestId: string, priestName: string, verbalApproval?: boolean) => Promise<void>;
   onAssignLayMinister: (reason: string) => Promise<void>;
   onNominateAlternative: (priestId: string) => Promise<void>;
   onDeclineAlternative: (reason: string) => Promise<void>;
@@ -102,6 +102,7 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showEmergencyRescheduleModal, setShowEmergencyRescheduleModal] = useState(false);
   const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
+  const [verbalApprovalConfirmed, setVerbalApprovalConfirmed] = useState(false);
   const [showLayMinisterModal, setShowLayMinisterModal] = useState(false);
   const [layMinisterReason, setLayMinisterReason] = useState('');
   const [layMinisterError, setLayMinisterError] = useState<string | null>(null);
@@ -163,6 +164,15 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
       }
     }
   }, [request.id]);
+
+  useEffect(() => {
+    setVerbalApprovalConfirmed(false);
+    setConfirmPriestModal(null);
+  }, [request.id]);
+
+  useEffect(() => {
+    setVerbalApprovalConfirmed(false);
+  }, [confirmPriestModal?.priestId]);
 
   useEffect(() => {
     void fetchAvailability();
@@ -401,6 +411,11 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
     }
   };
 
+  const closeConfirmPriestModal = () => {
+    setConfirmPriestModal(null);
+    setVerbalApprovalConfirmed(false);
+  };
+
   const handlePriestSelectChange = (newPriestId: string) => {
     if (!canManage) return;
     if (!newPriestId) {
@@ -414,6 +429,7 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
     const priest = priests.find((p: any) => String(p.id) === String(newPriestId));
     const priestName = priest?.name || 'Selected Priest';
     setPriestValidationError(false);
+    setVerbalApprovalConfirmed(false);
     setConfirmPriestModal({ priestId: newPriestId, priestName });
   };
 
@@ -474,18 +490,22 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
   };
 
   const handleConfirmPriestAssignment = async () => {
-    if (!canManage || !confirmPriestModal) return;
+    if (!canManage || !confirmPriestModal || isUpdating) return;
     setIsUpdating(true);
     try {
-      await onAssignPriest(confirmPriestModal.priestId, confirmPriestModal.priestName);
+      await onAssignPriest(
+        confirmPriestModal.priestId,
+        confirmPriestModal.priestName,
+        verbalApprovalConfirmed
+      );
       setSelectedPriestId(confirmPriestModal.priestId);
-      setConfirmPriestModal(null);
+      closeConfirmPriestModal();
     } catch (err) {
       console.error(err);
       // Stale availability handling: refresh availability, mark priest unavailable, clear selected
       await fetchAvailability();
       setSelectedPriestId('');
-      setConfirmPriestModal(null);
+      closeConfirmPriestModal();
     } finally {
       setIsUpdating(false);
     }
@@ -669,7 +689,7 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                 </div>
                 <button
                   type="button"
-                  onClick={() => setConfirmPriestModal(null)}
+                  onClick={closeConfirmPriestModal}
                   disabled={isUpdating}
                   className="p-1 hover:bg-gray-100 rounded text-gray-500"
                 >
@@ -705,23 +725,50 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                   <p>
-                    Reassigning the priest for a Confirmed appointment will return this schedule to Pending. The new priest must accept the assignment before the schedule can be confirmed again.
+                    Reassigning the priest for a Confirmed appointment will return this schedule to Pending. {verbalApprovalConfirmed ? 'The schedule will still require final confirmation via Approve & Confirm.' : 'The new priest must accept the assignment before the schedule can be confirmed again.'}
                   </p>
                 </div>
               )}
 
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start gap-2">
-                <Clock className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                <p>
-                  A notification will be dispatched to the priest&apos;s account. Confirmation will remain awaiting priest acceptance until the priest reviews and accepts the schedule.
-                </p>
-              </div>
+              <label className="flex items-start gap-2.5 p-3 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100/70 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={verbalApprovalConfirmed}
+                  onChange={(e) => setVerbalApprovalConfirmed(e.target.checked)}
+                  disabled={isUpdating}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-crimson-700 focus:ring-crimson-700"
+                />
+                <span className="text-xs space-y-1">
+                  <span className="font-semibold text-gray-900 block">
+                    The selected priest has verbally approved this assignment.
+                  </span>
+                  <span className="text-gray-600 block leading-relaxed">
+                    Check this only if you have personally confirmed the priest&apos;s approval. This will record the approval on the priest&apos;s behalf without requiring the priest to accept it through their account.
+                  </span>
+                </span>
+              </label>
+
+              {verbalApprovalConfirmed ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-start gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <p>
+                    The priest&apos;s acceptance will be recorded immediately on their behalf under your secretary account, and an informational notification will be sent to the priest. You will still need to click <strong>Approve &amp; Confirm</strong> to finalize the appointment.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                  <p>
+                    A notification will be dispatched to the priest&apos;s account. Confirmation will remain awaiting priest acceptance until the priest reviews and accepts the schedule.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setConfirmPriestModal(null)}
+                onClick={closeConfirmPriestModal}
                 disabled={isUpdating}
                 className="px-4 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
               >
@@ -907,15 +954,22 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                       <span>{request.assignedPriest}</span>
                     </div>
                     {request.priestResponseStatus && (
-                      <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded mt-0.5 inline-block ${
-                        request.priestResponseStatus === 'ACCEPTED'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : request.priestResponseStatus === 'REJECTED'
-                          ? 'bg-rose-50 text-rose-700'
-                          : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {request.priestResponseStatus}
-                      </span>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded inline-block ${
+                          request.priestResponseStatus === 'ACCEPTED'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : request.priestResponseStatus === 'REJECTED'
+                            ? 'bg-rose-50 text-rose-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {request.priestResponseStatus}
+                        </span>
+                        {request.priestResponseStatus === 'ACCEPTED' && request.priestVerbalApproval && (
+                          <span className="text-[10px] text-emerald-700 font-medium">
+                            Verbal approval recorded by secretary
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -924,6 +978,44 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
               </div>
             </div>
           </div>
+
+          {request.priestChangeStatus === 'PENDING' && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-xs">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Priest Change Requested</span>
+              </div>
+              <div className="text-amber-900 space-y-0.5 pl-5">
+                <p>
+                  <span className="font-semibold">Requested replacement priest:</span>{' '}
+                  {request.priestChangeRequestedPriest || 'Selected Priest'}
+                </p>
+                <p>
+                  <span className="font-semibold">Parishioner&apos;s note:</span>{' '}
+                  {request.priestChangeNote || 'No additional note provided'}
+                </p>
+                <p>
+                  <span className="font-semibold">Status:</span> Awaiting Priest Reassignment
+                </p>
+              </div>
+            </div>
+          )}
+
+          {request.priestChangeStatus === 'RESOLVED' && (request.priestChangeRequestedPriest || request.priestChangeNote) && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-1 text-xs text-gray-700">
+              <p className="font-semibold text-gray-800">Previous Priest Change Request (Resolved)</p>
+              {request.priestChangeRequestedPriest && (
+                <p>
+                  <span className="font-medium text-gray-600">Requested replacement priest:</span>{' '}
+                  {request.priestChangeRequestedPriest}
+                </p>
+              )}
+              <p>
+                <span className="font-medium text-gray-600">Parishioner&apos;s note:</span>{' '}
+                {request.priestChangeNote || 'No additional note provided'}
+              </p>
+            </div>
+          )}
 
           {/* Conservative Availability Error State */}
           {availabilityError && (
@@ -1816,7 +1908,7 @@ export function ScheduleRequestsPage() {
     }
   };
 
-  const handleAssignPriest = async (priestId: string, priestName: string) => {
+  const handleAssignPriest = async (priestId: string, priestName: string, verbalApproval = false) => {
     if (!canManage || !selectedRequest) return;
     if (typeof selectedRequest.version !== 'number') {
       setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
@@ -1826,26 +1918,33 @@ export function ScheduleRequestsPage() {
     setIsMutating(true);
     const originalRequest = { ...selectedRequest };
     const originalRequests = [...requests];
+    const optimisticPriestResponseStatus = verbalApproval ? 'ACCEPTED' : 'PENDING';
 
     // Optimistic UI update
     setRequests(prev => prev.map(r => r.id === selectedRequest.id ? {
       ...r,
       assignedPriest: priestName,
       assignedPriestId: priestId,
-      priestResponseStatus: 'PENDING'
+      priestResponseStatus: optimisticPriestResponseStatus,
+      priestVerbalApproval: verbalApproval,
     } : r));
     setSelectedRequest(prev => prev ? {
       ...prev,
       assignedPriest: priestName,
       assignedPriestId: priestId,
-      priestResponseStatus: 'PENDING'
+      priestResponseStatus: optimisticPriestResponseStatus,
+      priestVerbalApproval: verbalApproval,
     } : null);
 
     try {
-      const updated = await assignPriest(selectedRequest.id, priestId, selectedRequest.version);
+      const updated = await assignPriest(selectedRequest.id, priestId, selectedRequest.version, verbalApproval);
       setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
       setSelectedRequest(updated);
-      setToastMessage(`Priest ${priestName} assigned successfully. Notification dispatched.`);
+      setToastMessage(
+        verbalApproval
+          ? `Priest ${priestName} assigned with verbal approval recorded. Ready for final confirmation.`
+          : `Priest ${priestName} assigned successfully. Notification dispatched.`
+      );
     } catch (err: any) {
       console.error('Failed to assign priest:', err);
       setRequests(originalRequests);

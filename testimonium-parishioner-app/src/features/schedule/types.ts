@@ -135,6 +135,17 @@ export interface ScheduleItem {
   processedById?: number | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  priestVerbalApproval?: boolean;
+  priestChangeStatus?: string | null;
+  priestChangeRequestedPriestId?: number | null;
+  priestChangeRequestedPriest?: { id: number; name?: string | null; fullName?: string | null } | null;
+  priestChangeNote?: string | null;
+  priestChangeRequestedAt?: string | null;
+  parishSecretary?: {
+    id: number;
+    fullName: string | null;
+    contactNumber: string | null;
+  } | null;
   rejectionReasonCode?: string | null;
   rejectionAffectedRequirements?: Array<{ id: string; label: string }> | null;
   rejectionNote?: string | null;

@@ -171,7 +171,7 @@ export interface ScheduleProvider {
   ): Promise<ScheduleRequest>;
   proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<ScheduleRequest>;
-  assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest>;
+  assignPriest(id: string, priestId: string, expectedVersion: number, verbalApproval?: boolean): Promise<ScheduleRequest>;
   assignLayMinister(id: string, reason: string, expectedVersion: number): Promise<ScheduleRequest>;
   nominateAlternativeProposal(id: string, proposalId: number, priestId: string, expectedRevision: number, expectedVersion: number): Promise<NonNullable<ScheduleRequest['alternativeProposal']>>;
   declineAlternativeProposal(id: string, proposalId: number, reason: string, expectedRevision: number): Promise<NonNullable<ScheduleRequest['alternativeProposal']>>;
