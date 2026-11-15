@@ -217,8 +217,13 @@ export interface Appointment {
   rawEventType?: string;
   date: string;
   timeSlot: string;
-  status: 'booked' | 'confirmed' | 'cancelled' | 'proposed' | 'tentative';
+  status: 'booked' | 'confirmed' | 'cancelled' | 'rejected' | 'proposed' | 'tentative';
   confirmationNumber: string;
+  location?: string | null;
+  rejectionReasonCode?: string | null;
+  rejectionReasonLabel?: string | null;
+  rejectionAffectedRequirements?: Array<{ id: string; label: string }> | null;
+  rejectionNote?: string | null;
   proposedDate?: string;
   proposedTime?: string;
   rescheduleReason?: string;

@@ -135,6 +135,9 @@ export interface ScheduleItem {
   processedById?: number | null;
   priestResponseStatus?: string | null;
   priestResponseReason?: string | null;
+  rejectionReasonCode?: string | null;
+  rejectionAffectedRequirements?: Array<{ id: string; label: string }> | null;
+  rejectionNote?: string | null;
   version?: number;
   rescheduleHistory?: ScheduleRescheduleHistoryEntry[];
   createdAt: string;
@@ -253,6 +256,7 @@ export interface CreateSchedulePayload {
   eventType: ScheduleEventType;
   date: string;
   timeSlot: string;
+  location?: string;
   remarks?: string;
   requestedPriestId?: number | null;
 }

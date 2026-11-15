@@ -421,6 +421,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
           eventType: selectedEventType,
           date: selectedDate,
           timeSlot: selectedSlot,
+          location: selectedEventType === "WEDDING" && selectedParish?.name ? selectedParish.name : undefined,
           remarks: remarks.trim() || undefined,
           requestedPriestId: requestedPriestId || undefined,
         },
@@ -1044,6 +1045,23 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
                   ))}
                 </View>
               )}
+
+              {selectedEventType === "WEDDING" && selectedParish?.name ? (
+                <View style={{ marginTop: spacing.md }}>
+                  <RecordSection
+                    title="Venue / Location"
+                    fields={[
+                      {
+                        label: "Assigned Parish Venue",
+                        value: selectedParish.name,
+                      },
+                    ]}
+                  />
+                  <Text style={styles.disclaimerText} allowFontScaling>
+                    Automatically set to the selected parish for Marriage (Canonical Interview).
+                  </Text>
+                </View>
+              ) : null}
             </View>
           )}
 

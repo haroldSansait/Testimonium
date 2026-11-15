@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { resolveEventType } from "../shared/EventTypeCatalog.js";
+import { SCHEDULE_REJECTION_REASON_CODES } from "../shared/ScheduleRejectionReasons.js";
 
 const expectedVersion = z.coerce.number().int().positive();
 const isoInstant = z.string().refine(
@@ -42,6 +43,7 @@ export const createScheduleSchema = z.object({
     required_error: "Time slot is required"
   }).min(1, "Time slot cannot be empty"),
   displayTitle: z.string().optional().nullable(),
+  location: z.string().trim().max(150, "Location cannot exceed 150 characters").optional().nullable(),
   remarks: z.string().max(1000, "Additional notes cannot exceed 1000 characters").optional().nullable(),
   requestedPriestId: strictPositiveIntSchema.optional().nullable(),
 });
@@ -49,6 +51,17 @@ export const createScheduleSchema = z.object({
 export const updateScheduleStatusSchema = z.object({
   status: z.string().trim().min(1, "Status is required"),
   expectedVersion,
+  rejectionReasonCode: z.enum(SCHEDULE_REJECTION_REASON_CODES).optional().nullable(),
+  affectedRequirementIds: z.array(z.string().trim().min(1)).optional(),
+  rejectionNote: z.string().trim().max(1000, "Parishioner-visible note cannot exceed 1000 characters").optional().nullable(),
+}).superRefine((payload, ctx) => {
+  if (payload.status.trim().toUpperCase() === "REJECTED" && !payload.rejectionReasonCode) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["rejectionReasonCode"],
+      message: "A valid rejection reason is required.",
+    });
+  }
 });
 
 export const proposeRescheduleSchema = z.object({

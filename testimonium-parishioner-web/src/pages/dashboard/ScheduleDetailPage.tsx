@@ -16,7 +16,8 @@ import { DatePickerCalendar } from '../../features/scheduler/components/DatePick
 const STATUS_LABELS: Record<string, string> = {
   booked: 'Booked / Under Review',
   confirmed: 'Confirmed',
-  cancelled: 'Cancelled / Rejected',
+  cancelled: 'Cancelled',
+  rejected: 'Rejected',
   proposed: 'Reschedule Proposed',
 };
 
@@ -24,6 +25,7 @@ const STATUS_STYLES: Record<string, string> = {
   booked: 'bg-amber-50 text-amber-800 border-amber-200',
   confirmed: 'bg-green-50 text-green-800 border-green-200',
   cancelled: 'bg-red-50 text-red-800 border-red-200',
+  rejected: 'bg-red-50 text-red-800 border-red-200',
   proposed: 'bg-blue-50 text-blue-800 border-blue-200',
 };
 
@@ -243,7 +245,7 @@ export const ScheduleDetailPage: React.FC = () => {
           {/* Status banner */}
           <div className={`flex items-center gap-2 px-4 py-3 rounded-lg border text-sm font-semibold ${statusStyle}`}>
             {appointment.status === 'confirmed' && <CheckCircle className="w-4 h-4" />}
-            {appointment.status === 'cancelled' && <XCircle className="w-4 h-4" />}
+            {(appointment.status === 'cancelled' || appointment.status === 'rejected') && <XCircle className="w-4 h-4" />}
             {appointment.status === 'proposed' && <AlertCircle className="w-4 h-4" />}
             {appointment.status === 'booked' && <Clock className="w-4 h-4" />}
             {statusLabel}
@@ -276,6 +278,13 @@ export const ScheduleDetailPage: React.FC = () => {
               <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Time Slot</span>
               <p className="font-semibold text-text-primary">{appointment.timeSlot}</p>
             </div>
+
+            {appointment.location && (
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Venue / Location</span>
+                <p className="font-semibold text-text-primary">{appointment.location}</p>
+              </div>
+            )}
 
             {appointment.assignedPriestName && (
               <div className="space-y-1">
@@ -315,6 +324,38 @@ export const ScheduleDetailPage: React.FC = () => {
               <p className="font-mono text-xs font-bold text-text-primary">{appointment.confirmationNumber}</p>
             </div>
           </div>
+
+          {appointment.status === 'rejected' && (
+            <div className="p-4 rounded-xl border border-red-200 bg-red-50/70 space-y-2.5 text-sm">
+              <div className="text-xs font-bold uppercase tracking-wider text-red-800">
+                Rejection Details
+              </div>
+              <div className="space-y-1.5 text-xs text-red-900">
+                <div>
+                  <span className="font-semibold">Status: </span>
+                  <span>Rejected</span>
+                </div>
+                {(appointment.rejectionReasonLabel || appointment.rejectionReasonCode) && (
+                  <div>
+                    <span className="font-semibold">Rejection Reason: </span>
+                    <span>{appointment.rejectionReasonLabel || appointment.rejectionReasonCode}</span>
+                  </div>
+                )}
+                {appointment.rejectionAffectedRequirements && appointment.rejectionAffectedRequirements.length > 0 && (
+                  <div>
+                    <span className="font-semibold">Affected Requirements: </span>
+                    <span>{appointment.rejectionAffectedRequirements.map((r) => r.label).join(', ')}</span>
+                  </div>
+                )}
+                {appointment.rejectionNote && (
+                  <div>
+                    <span className="font-semibold">Additional Note: </span>
+                    <span>{appointment.rejectionNote}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Reschedule history & changes */}
           {appointment.rescheduleHistory && appointment.rescheduleHistory.length > 0 && (

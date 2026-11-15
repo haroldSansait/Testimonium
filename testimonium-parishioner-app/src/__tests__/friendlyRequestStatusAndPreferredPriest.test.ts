@@ -65,7 +65,7 @@ describe("Friendly Request Statuses and Preferred Priest UI", () => {
       { status: "CONFIRMED", label: "Confirmed" },
       { status: "COMPLETED", label: "Completed" },
       { status: "CANCELLED", label: "Cancelled" },
-      { status: "REJECTED", label: "Declined" },
+      { status: "REJECTED", label: "Rejected" },
     ];
 
     it("verifies getScheduleStatusBadge matches the established schedule presentation labels", () => {

@@ -66,7 +66,7 @@ const formatScheduleStatusDisplay = (status: string, priestStatus?: string | nul
   if (norm === 'CONFIRMED') return 'Confirmed';
   if (norm === 'COMPLETED') return 'Completed';
   if (norm === 'CANCELLED') return 'Cancelled';
-  if (norm === 'REJECTED') return 'Declined';
+  if (norm === 'REJECTED') return 'Rejected';
   if (norm === 'PROPOSED_RESCHEDULE' || norm === 'PROPOSED' || norm === 'WAITING_PARISHIONER_RESPONSE') {
     return 'Reschedule Proposed';
   }

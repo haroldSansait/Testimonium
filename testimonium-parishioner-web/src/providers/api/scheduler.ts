@@ -49,6 +49,15 @@ function getOrGenerateWebIdempotencyKey(payload: {
   return newKey;
 }
 
+const SCHEDULE_REJECTION_REASON_LABELS: Record<string, string> = {
+  MISSING_REQUIREMENTS: "Missing or incomplete requirements",
+  INVALID_DOCUMENTS: "Invalid, incorrect, or unreadable supporting documents",
+  INCORRECT_BOOKING_INFO: "Incorrect or inconsistent booking information",
+  UNAVAILABLE_DATE_TIME: "Requested date or time cannot be accommodated",
+  SERVICE_UNAVAILABLE: "Selected service is unavailable",
+  OTHER: "Other reason",
+};
+
 const mapAppointment = (s: any): Appointment => {
   if (!s) return s;
 
@@ -64,7 +73,9 @@ const mapAppointment = (s: any): Appointment => {
 
   if (s.status === "CONFIRMED") {
     status = "confirmed";
-  } else if (s.status === "REJECTED" || s.status === "CANCELLED") {
+  } else if (s.status === "REJECTED") {
+    status = "rejected";
+  } else if (s.status === "CANCELLED") {
     status = "cancelled";
   } else if (s.status === "PROPOSED_RESCHEDULE" || s.status === "WAITING_PARISHIONER_RESPONSE") {
     status = "proposed";
@@ -126,6 +137,15 @@ const mapAppointment = (s: any): Appointment => {
     confirmationNumber: `CONF-${new Date(s.createdAt || Date.now()).getFullYear()}-${String(
       s.id
     ).padStart(4, "0")}`,
+    location: s.location || undefined,
+    rejectionReasonCode: s.rejectionReasonCode || null,
+    rejectionReasonLabel: s.rejectionReasonCode
+      ? (SCHEDULE_REJECTION_REASON_LABELS[s.rejectionReasonCode] || s.rejectionReasonCode)
+      : null,
+    rejectionAffectedRequirements: Array.isArray(s.rejectionAffectedRequirements)
+      ? s.rejectionAffectedRequirements
+      : null,
+    rejectionNote: s.rejectionNote || null,
     proposedDate: proposedDateStr,
     proposedTime: proposedTimeStr,
     rescheduleReason: s.rescheduleReason || undefined,
@@ -188,7 +208,8 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
     requirementFiles?: Record<string, File>;
   }): Promise<Appointment> {
     const rawRemarks = appointment.remarks?.trim() || "";
-    const venueInfo = appointment.location ? `Venue: ${appointment.location}.` : "";
+    const isMarriageCanonical = appointment.eventType === "WEDDING";
+    const venueInfo = !isMarriageCanonical && appointment.location ? `Venue: ${appointment.location}.` : "";
     const combinedRemarks = [rawRemarks, venueInfo].filter(Boolean).join(" ") || "Parishioner Portal Request";
 
     const payload: any = {
@@ -197,6 +218,7 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       displayTitle: appointment.displayTitle,
       date: appointment.date,
       timeSlot: appointment.timeSlot,
+      ...(appointment.location?.trim() ? { location: appointment.location.trim() } : {}),
       remarks: combinedRemarks,
     };
 

@@ -100,6 +100,22 @@ export const EventSchedulerPage: React.FC = () => {
 
   const selectedParish = parishes.find((parish) => parish.id === selectedParishId);
   const selectedService = configuration?.services.find((service) => service.eventType === selectedEventType);
+  const isMarriageCanonical = selectedEventType === 'WEDDING';
+  const manualVenueRef = useRef('');
+  const prevEventTypeRef = useRef('');
+
+  useEffect(() => {
+    const wasWedding = prevEventTypeRef.current === 'WEDDING';
+    if (isMarriageCanonical) {
+      if (!wasWedding) {
+        manualVenueRef.current = venueAddress;
+      }
+      setVenueAddress(selectedParish?.name || '');
+    } else if (wasWedding) {
+      setVenueAddress(manualVenueRef.current);
+    }
+    prevEventTypeRef.current = selectedEventType;
+  }, [isMarriageCanonical, selectedEventType, selectedParish?.name]);
   const requirements = selectedService?.requirements || [];
   const requirementsSignature = requirements.map((r) => r.id).join('|');
   const hasRequirements = requirements.length > 0;
@@ -418,7 +434,7 @@ export const EventSchedulerPage: React.FC = () => {
         displayTitle: selectedService.label,
         date: selectedDate,
         timeSlot: selectedTimeSlot,
-        location: venueAddress,
+        location: isMarriageCanonical ? (selectedParish?.name || '') : venueAddress,
         remarks: additionalNotes.trim() || undefined,
         requestedPriestId: requestedPriestId || undefined,
         requirementFiles: Object.fromEntries(requirements.map((r) => [r.id, requirementFiles[r.id]])),
@@ -791,7 +807,25 @@ export const EventSchedulerPage: React.FC = () => {
           </div>
 
           <label className='block text-xs font-semibold text-text-primary uppercase tracking-wider'>Venue or location note (optional)</label>
-          <input value={venueAddress} onChange={(event) => setVenueAddress(event.target.value)} className='w-full px-4 py-2.5 text-sm bg-white border border-border rounded-button focus-ring text-text-primary' placeholder='Add a relevant location detail' />
+          <input
+            value={isMarriageCanonical ? (selectedParish?.name || '') : venueAddress}
+            onChange={(event) => {
+              if (isMarriageCanonical) return;
+              manualVenueRef.current = event.target.value;
+              setVenueAddress(event.target.value);
+            }}
+            readOnly={isMarriageCanonical}
+            aria-readonly={isMarriageCanonical}
+            className={`w-full px-4 py-2.5 text-sm border border-border rounded-button focus-ring text-text-primary ${
+              isMarriageCanonical ? 'bg-gray-50 cursor-default' : 'bg-white'
+            }`}
+            placeholder='Add a relevant location detail'
+          />
+          {isMarriageCanonical && (
+            <p className="text-[11px] text-text-muted italic">
+              Automatically set to the selected parish for Marriage (Canonical Interview).
+            </p>
+          )}
 
           <div className="space-y-1.5 pt-2">
             <div className="flex justify-between items-center">

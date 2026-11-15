@@ -42,6 +42,8 @@ import {
   formatScheduleConfirmationRef,
   formatScheduleDate,
   getScheduleMilestones,
+  getScheduleRejectionReasonLabel,
+  getScheduleStatusBadge,
   isRescheduleProposalPending,
   getScheduleDisplayTitle,
 } from "./presentation";
@@ -340,7 +342,37 @@ export const ScheduleDetailScreen: React.FC = () => {
                   </Text>
                 ) : null}
               </View>
-              <StatusLabel status={schedule.status} />
+              {schedule.status === "REJECTED" ? (
+                (() => {
+                  const badge = getScheduleStatusBadge(schedule.status);
+                  return (
+                    <View
+                      style={{
+                        backgroundColor: badge.bg,
+                        borderColor: badge.border,
+                        borderWidth: 1,
+                        borderRadius: radii.full,
+                        paddingHorizontal: spacing.sm,
+                        paddingVertical: 4,
+                      }}
+                      accessibilityLabel={`Status: ${badge.label}`}
+                    >
+                      <Text
+                        style={{
+                          ...fontStyles.caption,
+                          color: badge.text,
+                          fontWeight: "600",
+                        }}
+                        allowFontScaling
+                      >
+                        {badge.label}
+                      </Text>
+                    </View>
+                  );
+                })()
+              ) : (
+                <StatusLabel status={schedule.status} />
+              )}
             </View>
           </View>
 
@@ -700,6 +732,27 @@ export const ScheduleDetailScreen: React.FC = () => {
                 : []),
             ]}
           />
+
+          {schedule.status === "REJECTED" ? (
+            <RecordSection
+              title="Rejection Details"
+              fields={[
+                { label: "Status", value: "Rejected" },
+                ...(getScheduleRejectionReasonLabel(schedule.rejectionReasonCode)
+                  ? [{ label: "Rejection Reason", value: getScheduleRejectionReasonLabel(schedule.rejectionReasonCode)! }]
+                  : []),
+                ...(schedule.rejectionAffectedRequirements && schedule.rejectionAffectedRequirements.length > 0
+                  ? [{
+                      label: "Affected Requirements",
+                      value: schedule.rejectionAffectedRequirements.map((r) => r.label).join(", "),
+                    }]
+                  : []),
+                ...(schedule.rejectionNote
+                  ? [{ label: "Additional Note", value: schedule.rejectionNote }]
+                  : []),
+              ]}
+            />
+          ) : null}
 
           {canExportCalendar ? (
             <View style={styles.calendarExportCard}>

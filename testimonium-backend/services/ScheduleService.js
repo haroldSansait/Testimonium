@@ -20,6 +20,11 @@ import {
   normalizeTimeSlotString,
 } from "./BookingValidator.js";
 import { EventTypeCatalog, resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatalog.js";
+import {
+  SCHEDULE_REJECTION_REASONS,
+  DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS,
+  getScheduleRejectionReasonLabel,
+} from "../shared/ScheduleRejectionReasons.js";
 import { getParishSchedulingConfiguration, requireEnabledSchedulingService } from "./SchedulingConfiguration.js";
 import {
   evaluateSchedulingRules,
@@ -1277,7 +1282,7 @@ export class ScheduleService {
    */
   async create(payload, idempotencyKey = null, webAttachments = null) {
     const resourceType = webAttachments === null ? "SCHEDULE_CREATE" : "SCHEDULE_WEB_CREATE";
-    const { userId, parishId, eventType, displayTitle, requestedDate, timeSlot, remarks, requestedPriestId } = payload;
+    const { userId, parishId, eventType, displayTitle, requestedDate, timeSlot, location, remarks, requestedPriestId } = payload;
     const parsedUserId = parseInt(userId, 10);
     const parsedParishId = parseInt(parishId, 10);
 
@@ -1309,6 +1314,7 @@ export class ScheduleService {
       eventType: canonicalEventType,
       requestedDate: horizon.dateStr,
       timeSlot,
+      ...(typeof location === "string" && location.trim() ? { location: location.trim() } : {}),
       remarks,
       requestedPriestId: parsedRequestedPriestId,
     };
@@ -1433,6 +1439,10 @@ export class ScheduleService {
             schedulingConfig.slotCapacity
           );
 
+          const resolvedLocation = canonicalEventType === "WEDDING"
+            ? parish.parishName
+            : (typeof location === "string" && location.trim() ? location.trim().slice(0, 150) : null);
+
           // Create the schedule record
           const created = await tx.schedule.create({
             data: {
@@ -1443,6 +1453,7 @@ export class ScheduleService {
               requestedDate: scheduleDateUtc,
               startDatetime,
               endDatetime,
+              location: resolvedLocation,
               status: "PENDING",
               conflictFlag: false,
               remarks: fullRemarks,
@@ -1856,7 +1867,7 @@ export class ScheduleService {
   /**
    * Updates schedule status (admin/staff workflow).
    */
-  async updateStatus(id, status, processedById, actorRole, actorParishId, expectedVersion) {
+  async updateStatus(id, status, processedById, actorRole, actorParishId, expectedVersion, rejectionDetails = {}) {
     const parsedId = parseInt(id, 10);
     if (isNaN(parsedId)) {
       const err = new Error("Invalid schedule ID.");
@@ -1909,14 +1920,109 @@ export class ScheduleService {
 
         validateScheduleTransition(current, targetStatus, { allowReversionToPending: false });
 
+        let rejectionUpdateData = {};
+        let historyReason = "Status changed to " + targetStatus;
+        let rejectionContext = null;
+
+        if (targetStatus === ScheduleStatus.REJECTED) {
+          const {
+            rejectionReasonCode = null,
+            affectedRequirementIds = [],
+            rejectionNote = null,
+          } = rejectionDetails || {};
+
+          if (!rejectionReasonCode || !SCHEDULE_REJECTION_REASONS[rejectionReasonCode]) {
+            const err = new Error("A valid rejection reason is required.");
+            err.statusCode = 400;
+            err.code = "INVALID_REJECTION_REASON";
+            throw err;
+          }
+
+          const [parish, existingAttachments] = await Promise.all([
+            tx.parish.findUnique({
+              where: { id: current.parishId },
+              select: { id: true, eventSettings: true },
+            }),
+            tx.scheduleAttachment.findMany({
+              where: { scheduleId: parsedId },
+              select: { requirementId: true, requirementLabel: true },
+            }),
+          ]);
+
+          const requirementMap = new Map();
+          for (const req of getScheduleRequirements(parish, current.eventType)) {
+            requirementMap.set(req.id, { id: req.id, label: req.label });
+          }
+          for (const att of existingAttachments) {
+            if (att.requirementId && !requirementMap.has(att.requirementId)) {
+              requirementMap.set(att.requirementId, {
+                id: att.requirementId,
+                label: att.requirementLabel || att.requirementId,
+              });
+            }
+          }
+
+          const uniqueIds = Array.isArray(affectedRequirementIds)
+            ? [...new Set(affectedRequirementIds.map((item) => String(item).trim()).filter(Boolean))]
+            : [];
+
+          const invalidIds = uniqueIds.filter((reqId) => !requirementMap.has(reqId));
+          if (invalidIds.length > 0) {
+            const err = new Error("One or more selected affected requirements do not belong to this schedule.");
+            err.statusCode = 400;
+            err.code = "INVALID_AFFECTED_REQUIREMENTS";
+            throw err;
+          }
+
+          const selectedAffected = uniqueIds.map((reqId) => requirementMap.get(reqId));
+          if (
+            DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(rejectionReasonCode) &&
+            requirementMap.size > 0 &&
+            selectedAffected.length === 0
+          ) {
+            const err = new Error("Please select at least one affected requirement for this rejection reason.");
+            err.statusCode = 400;
+            err.code = "AFFECTED_REQUIREMENTS_REQUIRED";
+            throw err;
+          }
+
+          const normalizedNote =
+            typeof rejectionNote === "string" && rejectionNote.trim()
+              ? rejectionNote.trim().slice(0, 1000)
+              : null;
+
+          const reasonLabel = getScheduleRejectionReasonLabel(rejectionReasonCode);
+          rejectionUpdateData = {
+            rejectionReasonCode,
+            rejectionAffectedRequirements: selectedAffected.length > 0 ? selectedAffected : null,
+            rejectionNote: normalizedNote,
+          };
+
+          const historyParts = [`Rejected: ${reasonLabel}`];
+          if (selectedAffected.length > 0) {
+            historyParts.push(`Affected: ${selectedAffected.map((r) => r.label).join(", ")}`);
+          }
+          if (normalizedNote) {
+            historyParts.push(`Note: ${normalizedNote}`);
+          }
+          historyReason = historyParts.join(" | ");
+
+          rejectionContext = {
+            reasonLabel,
+            affectedRequirements: selectedAffected.map((r) => r.label),
+            note: normalizedNote,
+          };
+        }
+
         await appendScheduleHistory(tx, current, {
-          reason: "Status changed to " + targetStatus,
+          reason: historyReason,
           actorId: processedById,
           actorRole,
         });
         await updateScheduleAtVersion(tx, parsedId, version, {
           status: targetStatus,
           processedById: parseInt(processedById, 10),
+          ...rejectionUpdateData,
         });
         await supersedeOpenAlternativeProposals(tx, parsedId, processedById);
 
@@ -1939,6 +2045,7 @@ export class ScheduleService {
           proposalVersion: updated.proposalVersion,
           transitionVersion: updated.updatedAt.toISOString(),
           schedule: updated,
+          rejectionContext,
         }, tx);
 
         return updated;

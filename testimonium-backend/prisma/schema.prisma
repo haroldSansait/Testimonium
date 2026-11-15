@@ -691,9 +691,12 @@ model Schedule {
   processedById         Int?                          @map("processed_by")
   proposalVersion       Int                           @default(0) @map("proposal_version")
   version               Int                           @default(1) @map("version")
-  priestResponseStatus  String?                       @map("priest_response_status") @db.VarChar(50)
-  priestResponseReason  String?                       @map("priest_response_reason") @db.Text
-  layMinisterAssigned   Boolean                       @default(false) @map("lay_minister_assigned")
+  priestResponseStatus         String?                       @map("priest_response_status") @db.VarChar(50)
+  priestResponseReason         String?                       @map("priest_response_reason") @db.Text
+  rejectionReasonCode          String?                       @map("rejection_reason_code") @db.VarChar(64)
+  rejectionAffectedRequirements Json?                        @map("rejection_affected_requirements")
+  rejectionNote                String?                       @map("rejection_note") @db.Text
+  layMinisterAssigned          Boolean                       @default(false) @map("lay_minister_assigned")
   createdAt             DateTime                      @default(now()) @map("created_at")
   updatedAt             DateTime                      @updatedAt @map("updated_at")
   user                  User                          @relation("ScheduleRequester", fields: [userId], references: [id], onDelete: Restrict)

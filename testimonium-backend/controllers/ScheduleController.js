@@ -110,7 +110,7 @@ export const getByTracking = async (req, res, next) => {
 const createHandler = (web = false) => async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { parishId, eventType, date, timeSlot, remarks, requestedPriestId } = req.body;
+    const { parishId, eventType, date, timeSlot, location, remarks, requestedPriestId } = req.body;
     const idempotencyKey = req.headers["idempotency-key"] || null;
     if (web && !IdempotencyService.isValidKey(idempotencyKey)) {
       return res.status(400).json({ success: false, message: "A valid Idempotency-Key is required." });
@@ -159,6 +159,7 @@ const createHandler = (web = false) => async (req, res, next) => {
       displayTitle: resolvedDisplayTitle,
       requestedDate: date,
       timeSlot,
+      location,
       remarks,
       requestedPriestId,
     }, idempotencyKey, web ? ScheduleAttachmentService.prepare(req.files, req.scheduleRequirementIds) : null);
@@ -356,7 +357,7 @@ export const getEligiblePriests = async (req, res, next) => {
 export const updateStatus = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status, expectedVersion } = req.body;
+    const { status, expectedVersion, rejectionReasonCode, affectedRequirementIds, rejectionNote } = req.body;
     const processedById = req.user.id;
     const actorRole = req.user.role;
     const actorParishId = req.user.parish?.id || req.user.parishId;
@@ -375,7 +376,19 @@ export const updateStatus = async (req, res, next) => {
       });
     }
 
-    const updated = await scheduleService.updateStatus(id, status, processedById, actorRole, actorParishId, expectedVersion);
+    const updated = await scheduleService.updateStatus(
+      id,
+      status,
+      processedById,
+      actorRole,
+      actorParishId,
+      expectedVersion,
+      {
+        rejectionReasonCode,
+        affectedRequirementIds,
+        rejectionNote,
+      }
+    );
 
     return res.status(200).json({
       success: true,

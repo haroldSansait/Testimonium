@@ -344,7 +344,7 @@ export const getScheduleStatusBadge = (status: ScheduleStatus): StatusBadgeInfo 
       };
     case "REJECTED":
       return {
-        label: "Declined",
+        label: "Rejected",
         bg: "#FEF2F2",
         text: "#991B1B",
         border: "#FECACA",
@@ -357,6 +357,20 @@ export const getScheduleStatusBadge = (status: ScheduleStatus): StatusBadgeInfo 
         border: "#E5E7EB",
       };
   }
+};
+
+export const SCHEDULE_REJECTION_REASON_LABELS: Record<string, string> = {
+  MISSING_REQUIREMENTS: "Missing or incomplete requirements",
+  INVALID_DOCUMENTS: "Invalid, incorrect, or unreadable supporting documents",
+  INCORRECT_BOOKING_INFO: "Incorrect or inconsistent booking information",
+  UNAVAILABLE_DATE_TIME: "Requested date or time cannot be accommodated",
+  SERVICE_UNAVAILABLE: "Selected service is unavailable",
+  OTHER: "Other reason",
+};
+
+export const getScheduleRejectionReasonLabel = (code?: string | null): string | null => {
+  if (!code) return null;
+  return SCHEDULE_REJECTION_REASON_LABELS[code] || code;
 };
 
 export const isRescheduleProposalPending = (status: ScheduleStatus): boolean => {

@@ -9,6 +9,7 @@ import type {
   DocumentReturn,
   ScheduleRequest,
   ScheduleStatus,
+  ScheduleRejectionDetails,
   CalendarEvent,
   ActivityLogEntry,
   DioceseStat,
@@ -162,7 +163,12 @@ export interface PriestAvailabilityItem {
 export interface ScheduleProvider {
   getScheduleRequests(filters: ScheduleRequestFilters): Promise<PaginatedResponse<ScheduleRequest>>;
   getScheduleRequest(id: string): Promise<ScheduleRequest>;
-  updateScheduleStatus(id: string, status: ScheduleStatus, expectedVersion: number): Promise<ScheduleRequest>;
+  updateScheduleStatus(
+    id: string,
+    status: ScheduleStatus,
+    expectedVersion: number,
+    rejectionDetails?: ScheduleRejectionDetails
+  ): Promise<ScheduleRequest>;
   proposeReschedule(id: string, payload: ProposeReschedulePayload): Promise<ScheduleRequest>;
   respondReschedule(id: string, accept: boolean, expectedVersion: number): Promise<ScheduleRequest>;
   assignPriest(id: string, priestId: string, expectedVersion: number): Promise<ScheduleRequest>;

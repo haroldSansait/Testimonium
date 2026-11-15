@@ -215,14 +215,14 @@ const ReceiptTemplates = {
 /**
  * Templates for schedule request events.
  */
-const ScheduleTemplates = {
+export const ScheduleTemplates = {
   /**
    * Parishioner-facing message for a schedule status change.
    * @param {string} displayTitle
    * @param {string} newStatus
    * @returns {{ title: string, message: string }}
    */
-  parishioner(displayTitle, newStatus) {
+  parishioner(displayTitle, newStatus, rejectionContext = null) {
     if (newStatus === "PENDING" || newStatus === "REQUESTED") {
       return {
         title: "Appointment Submitted",
@@ -248,6 +248,19 @@ const ScheduleTemplates = {
       };
     }
     if (newStatus === "REJECTED" || newStatus === "DECLINED") {
+      if (rejectionContext?.reasonLabel) {
+        let msg = `Your schedule request for "${displayTitle}" was rejected by the parish. Reason: ${rejectionContext.reasonLabel}.`;
+        if (rejectionContext.affectedRequirements?.length) {
+          msg += ` Affected requirement(s): ${rejectionContext.affectedRequirements.join(", ")}.`;
+        }
+        if (rejectionContext.note) {
+          msg += ` Note: ${rejectionContext.note}`;
+        }
+        return {
+          title: "Schedule Request Rejected",
+          message: msg,
+        };
+      }
       return {
         title: "Appointment Declined",
         message: `Your schedule request for "${displayTitle}" has been declined by the parish.`,
@@ -600,6 +613,7 @@ export class NotificationDispatcher {
       transitionVersion = "initial",
       notifyAdmins = false,
       schedule = null,
+      rejectionContext = null,
     },
     tx = null
   ) {
@@ -607,7 +621,7 @@ export class NotificationDispatcher {
     const payloads = [];
 
     // -- Parishioner --
-    const p = ScheduleTemplates.parishioner(displayTitle, newStatus);
+    const p = ScheduleTemplates.parishioner(displayTitle, newStatus, rejectionContext);
     payloads.push({
       userId: parishionerId,
       pushEvent: `SCHEDULE:${newStatus}`,

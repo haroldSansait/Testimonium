@@ -166,7 +166,19 @@ export type ScheduleStatus =
   | 'Under Review'
   | 'Tentative'
   | 'Confirmed'
+  | 'Rejected'
   | 'Cancelled';
+
+export interface ScheduleRejectionDetails {
+  rejectionReasonCode: string;
+  affectedRequirementIds?: string[];
+  rejectionNote?: string;
+}
+
+export interface ScheduleAffectedRequirement {
+  id: string;
+  label: string;
+}
 
 export type EventType =
   | 'Baptism'
@@ -197,8 +209,13 @@ export interface ScheduleRequest {
   requestedPriestId?: string | number;
   parish?: string;
   parishId?: string;
+  location?: string | null;
   contactInfo?: string;
   notes?: string;
+  rejectionReasonCode?: string | null;
+  rejectionReasonLabel?: string | null;
+  rejectionAffectedRequirements?: ScheduleAffectedRequirement[] | null;
+  rejectionNote?: string | null;
   proposedDate?: string;
   proposedTime?: string;
   rescheduleReason?: string;

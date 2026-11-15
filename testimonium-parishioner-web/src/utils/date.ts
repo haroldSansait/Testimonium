@@ -126,7 +126,7 @@ export function isEventUpcoming(
   },
   referenceDate?: Date
 ): boolean {
-  if (!event || event.status === 'completed' || event.status === 'cancelled') {
+  if (!event || event.status === 'completed' || event.status === 'cancelled' || event.status === 'rejected') {
     return false;
   }
 

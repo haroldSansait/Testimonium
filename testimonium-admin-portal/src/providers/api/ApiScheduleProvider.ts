@@ -1,8 +1,17 @@
 import api from '@/api/api';
 import type { ScheduleProvider, ScheduleRequestFilters, ProposeReschedulePayload, EmergencyReschedulePayload, PriestAvailabilityItem } from '../interfaces';
-import type { ScheduleRequest, ScheduleStatus, EventType } from '@/types';
+import type { ScheduleRequest, ScheduleStatus, EventType, ScheduleRejectionDetails, ScheduleAffectedRequirement } from '@/types';
 import type { PaginatedResponse, BackendPaginatedResponse } from '@/types/api';
 import { resolveDisplayTitle } from '@/shared/EventTypeCatalog';
+
+const SCHEDULE_REJECTION_REASON_LABELS: Record<string, string> = {
+  MISSING_REQUIREMENTS: 'Missing or incomplete requirements',
+  INVALID_DOCUMENTS: 'Invalid, incorrect, or unreadable supporting documents',
+  INCORRECT_BOOKING_INFO: 'Incorrect or inconsistent booking information',
+  UNAVAILABLE_DATE_TIME: 'Requested date or time cannot be accommodated',
+  SERVICE_UNAVAILABLE: 'Selected service is unavailable',
+  OTHER: 'Other reason',
+};
 
 interface BackendScheduleRequestDTO {
   id: number;
@@ -15,7 +24,11 @@ interface BackendScheduleRequestDTO {
   endDatetime: string | null;
   status: string;
   conflictFlag: boolean;
+  location?: string | null;
   remarks: string | null;
+  rejectionReasonCode?: string | null;
+  rejectionAffectedRequirements?: ScheduleAffectedRequirement[] | null;
+  rejectionNote?: string | null;
   processedById: number | null;
   proposedDate: string | null;
   proposedStartDatetime: string | null;
@@ -71,6 +84,7 @@ const mapScheduleStatus = (status: string): ScheduleStatus => {
     case 'COMPLETED':
       return 'Confirmed';
     case 'REJECTED':
+      return 'Rejected';
     case 'CANCELLED':
       return 'Cancelled';
     default:
@@ -189,8 +203,17 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
     requestedPriestId: dbItem.requestedPriestId ? String(dbItem.requestedPriestId) : undefined,
     parish: dbItem.parish?.parishName || 'Main Church',
     parishId: String(dbItem.parishId),
+    location: dbItem.location || null,
     contactInfo: dbItem.user?.email || 'Anonymous',
     notes: dbItem.remarks || 'No notes provided.',
+    rejectionReasonCode: dbItem.rejectionReasonCode || null,
+    rejectionReasonLabel: dbItem.rejectionReasonCode
+      ? (SCHEDULE_REJECTION_REASON_LABELS[dbItem.rejectionReasonCode] || dbItem.rejectionReasonCode)
+      : null,
+    rejectionAffectedRequirements: Array.isArray(dbItem.rejectionAffectedRequirements)
+      ? dbItem.rejectionAffectedRequirements
+      : null,
+    rejectionNote: dbItem.rejectionNote || null,
     proposedDate: proposedDateStr,
     proposedTime: proposedTimeStr,
     rescheduleReason: dbItem.rescheduleReason || undefined,
@@ -206,7 +229,14 @@ const mapToFrontend = (dbItem: BackendScheduleRequestDTO): ScheduleRequest => {
       { status: 'Pending', date: preferredDate, note: 'Schedule request submitted.' },
       ...(dbItem.status === 'PROPOSED_RESCHEDULE' || dbItem.status === 'WAITING_PARISHIONER_RESPONSE' ? [{ status: 'Tentative', date: preferredDate, note: `Alternative date proposed: ${proposedDateStr} (${proposedTimeStr || ''}). Reason: ${dbItem.rescheduleReason || 'None'}` }] : []),
       ...(dbItem.status === 'CONFIRMED' ? [{ status: 'Confirmed', date: preferredDate, note: `Approved and scheduled with priest: ${assignedPriest}.` }] : []),
-      ...(dbItem.status === 'CANCELLED' || dbItem.status === 'REJECTED' ? [{ status: 'Cancelled', date: preferredDate, note: 'Request cancelled.' }] : []),
+      ...(dbItem.status === 'CANCELLED' ? [{ status: 'Cancelled', date: preferredDate, note: 'Request cancelled.' }] : []),
+      ...(dbItem.status === 'REJECTED' ? [{
+        status: 'Rejected',
+        date: preferredDate,
+        note: dbItem.rejectionReasonCode
+          ? `Request rejected: ${SCHEDULE_REJECTION_REASON_LABELS[dbItem.rejectionReasonCode] || dbItem.rejectionReasonCode}`
+          : 'Request rejected.',
+      }] : []),
     ]
   };
 };
@@ -297,8 +327,10 @@ const mapScheduleStatusToBackend = (status?: ScheduleStatus | 'all' | string): s
       return 'PROPOSED_RESCHEDULE,WAITING_PARISHIONER_RESPONSE';
     case 'Confirmed':
       return 'CONFIRMED,COMPLETED';
+    case 'Rejected':
+      return 'REJECTED';
     case 'Cancelled':
-      return 'CANCELLED,REJECTED';
+      return 'CANCELLED';
     default:
       return String(status);
   }
@@ -369,9 +401,15 @@ export const ApiScheduleProvider: ScheduleProvider = {
     return item;
   },
 
-  async updateScheduleStatus(id: string, status: ScheduleStatus, expectedVersion: number): Promise<ScheduleRequest> {
+  async updateScheduleStatus(
+    id: string,
+    status: ScheduleStatus,
+    expectedVersion: number,
+    rejectionDetails?: ScheduleRejectionDetails
+  ): Promise<ScheduleRequest> {
     let backendStatus = 'PENDING';
     if (status === 'Confirmed') backendStatus = 'CONFIRMED';
+    else if (status === 'Rejected') backendStatus = 'REJECTED';
     else if (status === 'Cancelled') backendStatus = 'CANCELLED';
     else if (status === 'Under Review') backendStatus = 'UNDER_REVIEW';
 
@@ -381,6 +419,11 @@ export const ApiScheduleProvider: ScheduleProvider = {
       const response = await api.patch<{ data: BackendScheduleRequestDTO }>(`/schedule-requests/${id}/status`, {
         status: backendStatus,
         expectedVersion,
+        ...(rejectionDetails ? {
+          rejectionReasonCode: rejectionDetails.rejectionReasonCode,
+          ...(rejectionDetails.affectedRequirementIds ? { affectedRequirementIds: rejectionDetails.affectedRequirementIds } : {}),
+          ...(rejectionDetails.rejectionNote !== undefined ? { rejectionNote: rejectionDetails.rejectionNote } : {}),
+        } : {}),
       });
       const updated = mapToFrontend(response.data.data);
       return { ...updated, status };

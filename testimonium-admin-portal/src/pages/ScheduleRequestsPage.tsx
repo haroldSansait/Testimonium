@@ -15,7 +15,8 @@ import { UserManagementService } from '@/services/UserManagementService';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
-import type { ScheduleRequest, ScheduleStatus } from '@/types';
+import type { ScheduleRequest, ScheduleStatus, ScheduleRejectionDetails } from '@/types';
+import api from '@/api/api';
 import { cn } from '@/utils/cn';
 import { EventTypeCatalog, resolveEventType } from '@/shared/EventTypeCatalog';
 import { EmergencyRescheduleModal } from '@/components/schedule-requests/EmergencyRescheduleModal';
@@ -27,8 +28,29 @@ const SCHEDULE_STATUS_OPTIONS: { value: ScheduleStatus | 'all'; label: string }[
   { value: 'Pending', label: 'Pending' },
   { value: 'Tentative', label: 'Tentative' },
   { value: 'Confirmed', label: 'Confirmed' },
+  { value: 'Rejected', label: 'Rejected' },
   { value: 'Cancelled', label: 'Cancelled' },
 ];
+
+const CANONICAL_SCHEDULE_REJECTION_REASONS = [
+  { code: 'MISSING_REQUIREMENTS', label: 'Missing or incomplete requirements' },
+  { code: 'INVALID_DOCUMENTS', label: 'Invalid, incorrect, or unreadable supporting documents' },
+  { code: 'INCORRECT_BOOKING_INFO', label: 'Incorrect or inconsistent booking information' },
+  { code: 'UNAVAILABLE_DATE_TIME', label: 'Requested date or time cannot be accommodated' },
+  { code: 'SERVICE_UNAVAILABLE', label: 'Selected service is unavailable' },
+  { code: 'OTHER', label: 'Other reason' },
+] as const;
+
+const DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS = new Set([
+  'MISSING_REQUIREMENTS',
+  'INVALID_DOCUMENTS',
+]);
+
+interface ScheduleRequirementOption {
+  id: string;
+  label: string;
+  description?: string;
+}
 
 function buildScheduleEventTypeGroups(): CustomSelectOptionGroup[] {
   const catalog = Array.isArray(EventTypeCatalog) ? EventTypeCatalog : [];
@@ -57,7 +79,7 @@ interface DetailsModalProps {
   canManage: boolean;
   request: ScheduleRequest;
   onClose: () => void;
-  onStatusChange: (status: ScheduleStatus) => Promise<void>;
+  onStatusChange: (status: ScheduleStatus, rejectionDetails?: ScheduleRejectionDetails) => Promise<void>;
   onProposeReschedule: (payload: { proposedDate: string; proposedStartDatetime: string; reason: string }) => Promise<void>;
   onAssignPriest: (priestId: string, priestName: string) => Promise<void>;
   onAssignLayMinister: (reason: string) => Promise<void>;
@@ -69,6 +91,13 @@ interface DetailsModalProps {
 
 function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChange, onProposeReschedule, onAssignPriest, onAssignLayMinister, onNominateAlternative, onDeclineAlternative, onRevokeAlternative, onEmergencyRescheduleSuccess }: DetailsModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReasonCode, setRejectionReasonCode] = useState('');
+  const [selectedRejectionReqs, setSelectedRejectionReqs] = useState<Record<string, boolean>>({});
+  const [rejectionNote, setRejectionNote] = useState('');
+  const [rejectionModalError, setRejectionModalError] = useState<string | null>(null);
+  const [applicableRequirements, setApplicableRequirements] = useState<ScheduleRequirementOption[]>([]);
+  const [loadingRejectionReqs, setLoadingRejectionReqs] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showEmergencyRescheduleModal, setShowEmergencyRescheduleModal] = useState(false);
   const [confirmPriestModal, setConfirmPriestModal] = useState<{ priestId: string; priestName: string } | null>(null);
@@ -229,12 +258,104 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
       });
   }, [proposedDate, request.parishId, request.eventType, request.appointmentTitle, request.rawEventType]);
 
-  const handleAction = async (status: ScheduleStatus) => {
-    if (!canManage) return;
+  useEffect(() => {
+    if (!showRejectModal) return;
+    let active = true;
+    setLoadingRejectionReqs(true);
+
+    const rawEventType =
+      request.rawEventType ||
+      resolveEventType(request.appointmentTitle || request.eventType || '') ||
+      '';
+
+    Promise.all([
+      request.parishId
+        ? api.get<{ data?: { services?: Array<{ eventType: string; requirements?: ScheduleRequirementOption[] }> } }>(
+            '/schedule-requests/configuration',
+            { params: { parishId: request.parishId } }
+          ).catch(() => null)
+        : Promise.resolve(null),
+      api.get<{ data?: Array<{ requirementId?: string; requirementLabel?: string }> }>(
+        `/schedule-requests/${request.id}/attachments`
+      ).catch(() => null),
+    ])
+      .then(([configRes, attachRes]) => {
+        if (!active) return;
+        const reqMap = new Map<string, ScheduleRequirementOption>();
+        const services = configRes?.data?.data?.services || [];
+        const matchedService = services.find((svc) => svc.eventType === rawEventType);
+        if (matchedService && Array.isArray(matchedService.requirements)) {
+          for (const req of matchedService.requirements) {
+            if (req?.id) {
+              reqMap.set(req.id, {
+                id: req.id,
+                label: req.label || req.id,
+                ...(req.description ? { description: req.description } : {}),
+              });
+            }
+          }
+        }
+        const attachments = attachRes?.data?.data || [];
+        if (Array.isArray(attachments)) {
+          for (const att of attachments) {
+            if (att?.requirementId && !reqMap.has(att.requirementId)) {
+              reqMap.set(att.requirementId, {
+                id: att.requirementId,
+                label: att.requirementLabel || att.requirementId,
+              });
+            }
+          }
+        }
+        setApplicableRequirements(Array.from(reqMap.values()));
+      })
+      .finally(() => {
+        if (active) setLoadingRejectionReqs(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [showRejectModal, request.id, request.parishId, request.rawEventType, request.appointmentTitle, request.eventType]);
+
+  const openRejectModal = () => {
+    if (!canManage || isUpdating) return;
+    setRejectionReasonCode('');
+    setSelectedRejectionReqs({});
+    setRejectionNote('');
+    setRejectionModalError(null);
+    setApplicableRequirements([]);
+    setShowRejectModal(true);
+  };
+
+  const selectedAffectedIds = Object.keys(selectedRejectionReqs).filter((id) => selectedRejectionReqs[id]);
+  const requiresAffectedRequirement =
+    applicableRequirements.length > 0 && DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS.has(rejectionReasonCode);
+
+  const handleSubmitRejection = async () => {
+    if (!canManage || isUpdating) return;
+    if (!rejectionReasonCode) {
+      setRejectionModalError('Please select a rejection reason.');
+      return;
+    }
+    if (requiresAffectedRequirement && selectedAffectedIds.length === 0) {
+      setRejectionModalError('Please select at least one affected requirement.');
+      return;
+    }
+
     setIsUpdating(true);
+    setRejectionModalError(null);
     try {
-      await onStatusChange(status);
+      await onStatusChange('Rejected', {
+        rejectionReasonCode,
+        ...(selectedAffectedIds.length > 0 ? { affectedRequirementIds: selectedAffectedIds } : {}),
+        ...(rejectionNote.trim() ? { rejectionNote: rejectionNote.trim() } : {}),
+      });
+      setShowRejectModal(false);
       onClose();
+    } catch (err: any) {
+      setRejectionModalError(
+        err?.response?.data?.message || err?.message || 'Failed to reject schedule request. Please try again.'
+      );
     } finally {
       setIsUpdating(false);
     }
@@ -1107,13 +1228,46 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                   request.status === 'Confirmed' && "bg-green-50 text-green-700 border-green-200",
                   (request.status === 'Pending' || request.status === 'Under Review') && "bg-amber-50 text-amber-700 border-amber-200",
                   request.status === 'Tentative' && "bg-purple-50 text-purple-700 border-purple-200",
-                  request.status === 'Cancelled' && "bg-red-50 text-red-700 border-red-200"
+                  (request.status === 'Cancelled' || request.status === 'Rejected') && "bg-red-50 text-red-700 border-red-200"
                 )}>
                   {request.status}
                 </span>
               </p>
             </div>
           </div>
+
+          {request.location && (
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Venue / Location</span>
+              <p className="text-gray-800 mt-1 font-medium text-xs">{request.location}</p>
+            </div>
+          )}
+
+          {request.status === 'Rejected' && (request.rejectionReasonLabel || request.rejectionReasonCode || request.rejectionNote || (request.rejectionAffectedRequirements && request.rejectionAffectedRequirements.length > 0)) && (
+            <div className="p-3.5 bg-red-50/70 border border-red-200 rounded-xl space-y-2 text-xs">
+              <span className="text-[10px] font-bold text-red-700 uppercase tracking-widest block">Rejection Details</span>
+              {(request.rejectionReasonLabel || request.rejectionReasonCode) && (
+                <div>
+                  <span className="font-semibold text-red-900">Rejection Reason: </span>
+                  <span className="text-red-800">{request.rejectionReasonLabel || request.rejectionReasonCode}</span>
+                </div>
+              )}
+              {request.rejectionAffectedRequirements && request.rejectionAffectedRequirements.length > 0 && (
+                <div>
+                  <span className="font-semibold text-red-900">Affected Requirements: </span>
+                  <span className="text-red-800">
+                    {request.rejectionAffectedRequirements.map((r) => r.label).join(', ')}
+                  </span>
+                </div>
+              )}
+              {request.rejectionNote && (
+                <div>
+                  <span className="font-semibold text-red-900">Parishioner-Visible Note: </span>
+                  <span className="text-red-800">{request.rejectionNote}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>
@@ -1216,7 +1370,7 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleAction('Cancelled')}
+                    onClick={openRejectModal}
                     disabled={isUpdating}
                     className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 whitespace-nowrap transition-colors shadow-xs"
                   >
@@ -1255,6 +1409,139 @@ function ScheduleRequestDetailsModal({ canManage, request, onClose, onStatusChan
               onEmergencyRescheduleSuccess?.(updated);
             }}
           />
+        )}
+
+        {/* Reject Schedule Request Sub-Modal */}
+        {canManage && showRejectModal && (
+          <div className="absolute inset-0 bg-white z-20 p-6 flex flex-col justify-between overflow-y-auto animate-in fade-in duration-150">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Reject Schedule Request</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Select a canonical reason and, if applicable, any affected requirements.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !isUpdating && setShowRejectModal(false)}
+                  disabled={isUpdating}
+                  className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {rejectionModalError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-800">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <span>{rejectionModalError}</span>
+                </div>
+              )}
+
+              {/* Rejection Reason (Required) */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                  Rejection Reason <span className="text-red-500">*</span>
+                </label>
+                <CustomSelect
+                  id="schedule-rejection-reason"
+                  value={rejectionReasonCode}
+                  onChange={(val) => {
+                    setRejectionReasonCode(val ? String(val) : '');
+                    setRejectionModalError(null);
+                  }}
+                  options={CANONICAL_SCHEDULE_REJECTION_REASONS.map((r) => ({
+                    value: r.code,
+                    label: r.label,
+                  }))}
+                  placeholder="-- Select a reason --"
+                  disabled={isUpdating}
+                  searchable={false}
+                  aria-label="Rejection Reason"
+                />
+              </div>
+
+              {/* Affected Requirements (When Applicable) */}
+              {(loadingRejectionReqs || applicableRequirements.length > 0) && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                    Affected Requirements {requiresAffectedRequirement && <span className="text-red-500">*</span>}
+                  </span>
+                  {loadingRejectionReqs ? (
+                    <p className="text-xs text-gray-400">Loading requirements...</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-150 rounded-xl p-3 bg-gray-50/50">
+                      {applicableRequirements.map((req) => (
+                        <label key={req.id} className="flex items-start gap-2.5 p-1.5 hover:bg-white rounded-lg cursor-pointer transition-colors text-xs text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={!!selectedRejectionReqs[req.id]}
+                            onChange={(e) => {
+                              setSelectedRejectionReqs((prev) => ({ ...prev, [req.id]: e.target.checked }));
+                              setRejectionModalError(null);
+                            }}
+                            disabled={isUpdating}
+                            className="mt-0.5 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                          />
+                          <div>
+                            <span className="font-semibold block">{req.label}</span>
+                            {req.description && <span className="text-[10px] text-gray-400">{req.description}</span>}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Parishioner-Visible Note (Optional) */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-bold text-gray-700 uppercase tracking-widest block">
+                    Parishioner-Visible Note (Optional)
+                  </label>
+                  <span className="text-[10px] text-gray-400 font-mono">
+                    {rejectionNote.length} / 1000
+                  </span>
+                </div>
+                <textarea
+                  value={rejectionNote}
+                  onChange={(e) => setRejectionNote(e.target.value.slice(0, 1000))}
+                  disabled={isUpdating}
+                  placeholder="Provide additional information explaining why this schedule request was rejected..."
+                  rows={3}
+                  maxLength={1000}
+                  className="w-full p-3 border border-gray-200 rounded-xl text-xs text-gray-800 outline-none focus:border-[#7B1C2A] focus:ring-1 focus:ring-[#7B1C2A]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => !isUpdating && setShowRejectModal(false)}
+                disabled={isUpdating}
+                className="px-4 py-2 text-xs font-semibold border rounded-lg hover:bg-gray-50 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmitRejection()}
+                disabled={
+                  isUpdating ||
+                  loadingRejectionReqs ||
+                  !rejectionReasonCode ||
+                  (requiresAffectedRequirement && selectedAffectedIds.length === 0)
+                }
+                className="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-40 flex items-center gap-1.5"
+              >
+                {isUpdating ? 'Rejecting...' : 'Reject Schedule'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>,
@@ -1386,11 +1673,13 @@ export function ScheduleRequestsPage() {
     setPage(1);
   };
 
-  const handleStatusUpdate = async (status: ScheduleStatus) => {
+  const handleStatusUpdate = async (status: ScheduleStatus, rejectionDetails?: ScheduleRejectionDetails) => {
     if (!canManage || !selectedRequest) return;
     if (typeof selectedRequest.version !== 'number') {
-      setToastMessage('This schedule is missing concurrency metadata. Refresh and try again.');
+      const msg = 'This schedule is missing concurrency metadata. Refresh and try again.';
+      setToastMessage(msg);
       void fetchRequests(true);
+      if (rejectionDetails) throw new Error(msg);
       return;
     }
     setIsMutating(true);
@@ -1402,12 +1691,17 @@ export function ScheduleRequestsPage() {
     setSelectedRequest(prev => prev ? { ...prev, status } : null);
 
     try {
-      await updateScheduleStatus(selectedRequest.id, status, selectedRequest.version);
+      const updated = await updateScheduleStatus(selectedRequest.id, status, selectedRequest.version, rejectionDetails);
+      setRequests(prev => prev.map(r => r.id === selectedRequest.id ? updated : r));
+      setSelectedRequest(updated);
       setToastMessage(`Schedule request status updated to ${status}.`);
     } catch (err: any) {
       console.error('Failed to update status:', err);
       setRequests(originalRequests);
       setSelectedRequest(originalRequest);
+      if (rejectionDetails) {
+        throw err;
+      }
       setToastMessage(`Error updating status: ${err.message || 'Failed.'}`);
     } finally {
       setIsMutating(false);
