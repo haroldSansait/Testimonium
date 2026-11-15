@@ -173,7 +173,11 @@ test("authoritative availability classification fails closed", async () => {
 
 test("individual Lay Minister assignment preserves appointment identity and is idempotent", async () => {
   const state = {
-    schedule: futureSchedule(),
+    schedule: futureSchedule({
+      priestVerbalApproval: true,
+      priestVerbalApprovalById: 901,
+      priestVerbalApprovalAt: new Date("2026-11-15T00:00:00.000Z"),
+    }),
     histories: [],
     notifications: [],
     audits: [],
@@ -238,6 +242,9 @@ test("individual Lay Minister assignment preserves appointment identity and is i
     assert.equal(result.effectiveDisplayTitle, "Rite of Committal");
     assert.equal(state.schedule.assignedPriestId, null);
     assert.equal(state.schedule.priestResponseStatus, null);
+    assert.equal(state.schedule.priestVerbalApproval, false);
+    assert.equal(state.schedule.priestVerbalApprovalById, null);
+    assert.equal(state.schedule.priestVerbalApprovalAt, null);
     assert.equal(state.schedule.status, "CONFIRMED");
     assert.equal(state.schedule.version, 5);
     assert.equal(state.schedule.eventType, before.eventType);

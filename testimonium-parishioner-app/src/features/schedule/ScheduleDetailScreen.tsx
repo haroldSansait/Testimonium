@@ -1,5 +1,5 @@
 import { useScreenRefresh } from "@/hooks/useAutomaticRefresh";
-import React, { useRef, useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -72,6 +72,10 @@ export const ScheduleDetailScreen: React.FC = () => {
     isLoading,
     refetch,
   } = useScheduleDetail(id, { ...refreshOptions, enabled: refreshOptions.enabled && Boolean(id) });
+  const activeScheduleIdRef = useRef(schedule?.id);
+  useLayoutEffect(() => {
+    activeScheduleIdRef.current = schedule?.id;
+  }, [schedule?.id]);
 
   const attachmentsQuery = useScheduleAttachments(id, {
     enabled: Boolean(id && schedule),
@@ -305,6 +309,7 @@ export const ScheduleDetailScreen: React.FC = () => {
         note: priestChangeNote.trim() || null,
         expectedVersion: schedule.version,
       });
+      if (activeScheduleIdRef.current !== schedule.id) return;
       setPriestChangeFormScheduleId(null);
       setReplacementPriestId(null);
       setPriestChangeNote("");
@@ -314,6 +319,7 @@ export const ScheduleDetailScreen: React.FC = () => {
       );
       void refetch();
     } catch (err: any) {
+      if (activeScheduleIdRef.current !== schedule.id) return;
       const msg =
         err?.message ||
         "Unable to submit your priest change request right now.";

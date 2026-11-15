@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { CheckCircle, CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, RotateCcw, X, XCircle, Eye, Download, AlertTriangle, FileEdit, Phone } from 'lucide-react';
@@ -334,6 +334,8 @@ export const RequestTrackingPage: React.FC = () => {
   const [submittingPriestChange, setSubmittingPriestChange] = useState(false);
   const [priestChangeError, setPriestChangeError] = useState<string | null>(null);
   const [priestChangeSuccess, setPriestChangeSuccess] = useState<string | null>(null);
+  const priestChangeInFlightRef = useRef(false);
+  const replacementPriestsGenerationRef = useRef(0);
   const [alternativeBusy, setAlternativeBusy] = useState(false);
   const [alternativeError, setAlternativeError] = useState<string | null>(null);
   const [alternativeDate, setAlternativeDate] = useState('');
@@ -436,6 +438,11 @@ export const RequestTrackingPage: React.FC = () => {
     return searchedSchedule || (schedules.length > 0 ? schedules[0] : null);
   }, [schedules, selectedScheduleId, searchedSchedule, deepLinkScheduleId]);
 
+  const activeScheduleIdRef = useRef(selectedSchedule?.id);
+  useLayoutEffect(() => {
+    activeScheduleIdRef.current = selectedSchedule?.id;
+  }, [selectedSchedule?.id]);
+
   const syncUpdatedSchedule = useCallback((updated: Appointment) => {
     setSchedules((items) => {
       const exists = items.some((item) => String(item.id) === String(updated.id));
@@ -452,6 +459,8 @@ export const RequestTrackingPage: React.FC = () => {
     setRescheduleResponseError(null);
     setRescheduleResponseSuccess(null);
     setShowPriestChangeForm(false);
+    replacementPriestsGenerationRef.current += 1;
+    setLoadingEligiblePriests(false);
     setEligibleReplacementPriests([]);
     setEligiblePriestsError(null);
     setReplacementPriestId('');
@@ -468,20 +477,27 @@ export const RequestTrackingPage: React.FC = () => {
   }, [selectedSchedule?.id]);
 
   const loadEligibleReplacementPriests = useCallback(async () => {
+    const generation = ++replacementPriestsGenerationRef.current;
+    const scheduleId = selectedSchedule?.id;
     if (!selectedSchedule?.parishId) return;
+    const isCurrent = () => generation === replacementPriestsGenerationRef.current
+      && scheduleId === activeScheduleIdRef.current;
     setLoadingEligiblePriests(true);
     setEligiblePriestsError(null);
+    setEligibleReplacementPriests([]);
     try {
       const list = await services.scheduler.getEligiblePriests(String(selectedSchedule.parishId));
+      if (!isCurrent()) return;
       setEligibleReplacementPriests(Array.isArray(list) ? list : []);
     } catch (err: any) {
+      if (!isCurrent()) return;
       console.error('Failed to load eligible priests:', err);
       setEligiblePriestsError(err?.message || 'Unable to load parish priests. Please try again.');
       setEligibleReplacementPriests([]);
     } finally {
-      setLoadingEligiblePriests(false);
+      if (isCurrent()) setLoadingEligiblePriests(false);
     }
-  }, [selectedSchedule?.parishId]);
+  }, [selectedSchedule?.id, selectedSchedule?.parishId]);
 
   const handleOpenPriestChangeForm = () => {
     setShowPriestChangeForm(true);
@@ -494,7 +510,7 @@ export const RequestTrackingPage: React.FC = () => {
 
   const handleSubmitPriestChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSchedule || submittingPriestChange) return;
+    if (!selectedSchedule || priestChangeInFlightRef.current || submittingPriestChange) return;
     if (!replacementPriestId) {
       setPriestChangeError('Please select a replacement priest.');
       return;
@@ -504,6 +520,8 @@ export const RequestTrackingPage: React.FC = () => {
       return;
     }
 
+    priestChangeInFlightRef.current = true;
+    const scheduleId = selectedSchedule.id;
     setSubmittingPriestChange(true);
     setPriestChangeError(null);
     setPriestChangeSuccess(null);
@@ -515,23 +533,33 @@ export const RequestTrackingPage: React.FC = () => {
         expectedVersion: selectedSchedule.version,
       });
       syncUpdatedSchedule(updated);
+      void loadSchedules();
+      if (activeScheduleIdRef.current !== scheduleId) return;
       setShowPriestChangeForm(false);
       setReplacementPriestId('');
       setPriestChangeNote('');
       setPriestChangeSuccess(
         'Your priest change request has been submitted. The current priest assignment was cleared and your parish secretary has been notified.'
       );
-      void loadSchedules();
     } catch (err: any) {
+      if (err?.status === 409 || err?.response?.status === 409) {
+        // A searched schedule takes precedence over the list, so refresh that record too.
+        try {
+          const latest = await services.scheduler.getAppointmentById(scheduleId);
+          if (latest) syncUpdatedSchedule(latest);
+        } catch {
+          // Keep the original mutation error visible if the refresh fails.
+        }
+        void loadSchedules();
+      }
+      if (activeScheduleIdRef.current !== scheduleId) return;
       const msg =
         err?.response?.data?.message ||
         err?.message ||
         'Unable to submit your priest change request right now.';
       setPriestChangeError(msg);
-      if (err?.status === 409 || err?.response?.status === 409) {
-        void loadSchedules();
-      }
     } finally {
+      priestChangeInFlightRef.current = false;
       setSubmittingPriestChange(false);
     }
   };

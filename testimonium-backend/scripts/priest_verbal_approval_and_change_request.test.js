@@ -7,6 +7,7 @@ import { NotificationDispatcher } from "../services/NotificationDispatcher.js";
 import { AuditLogService } from "../services/AuditLogService.js";
 import { assignPriestSchema, requestPriestChangeSchema } from "../validators/scheduleSchemas.js";
 import * as scheduleController from "../controllers/ScheduleController.js";
+import { requirePriestAccepted } from "../services/ScheduleStateMachine.js";
 
 function makeBaseSchedule(overrides = {}) {
   return {
@@ -65,6 +66,8 @@ test("1. Zod schemas validate verbalApproval and requestPriestChange payloads", 
   assert.equal(changeWithNote.note, "Prefer Fr. Julius");
 
   assert.throws(() => requestPriestChangeSchema.parse({ replacementPriestId: -1, expectedVersion: 1 }));
+  assert.throws(() => requestPriestChangeSchema.parse({ replacementPriestId: 22, expectedVersion: 1, note: "x".repeat(1001) }));
+  assert.equal(requestPriestChangeSchema.parse({ replacementPriestId: 22, expectedVersion: 1, note: "x".repeat(1000) }).note.length, 1000);
 });
 
 test("2. assignPriest without verbalApproval preserves PENDING and false verbal approval flags", async () => {
@@ -74,7 +77,10 @@ test("2. assignPriest without verbalApproval preserves PENDING and false verbal 
   const origNotify = NotificationDispatcher.notifyPriestAssigned;
   const origAudit = AuditLogService.log;
 
-  const base = makeBaseSchedule();
+  const base = makeBaseSchedule({
+    assignedPriestId: 21, status: "CONFIRMED", priestResponseStatus: "ACCEPTED",
+    priestVerbalApproval: true, priestVerbalApprovalById: 90, priestVerbalApprovalAt: new Date(),
+  });
   let updatedData = null;
   let notifyArgs = null;
 
@@ -119,6 +125,7 @@ test("2. assignPriest without verbalApproval preserves PENDING and false verbal 
     assert.equal(updatedData.priestVerbalApproval, false);
     assert.equal(updatedData.priestVerbalApprovalById, null);
     assert.equal(updatedData.priestVerbalApprovalAt, null);
+    assert.equal(updatedData.status, "PENDING");
     assert.equal(notifyArgs.verbalApproval, false);
     assert.equal(result.priestResponseStatus, "PENDING");
   } finally {
@@ -220,6 +227,10 @@ test("3. assignPriest with verbalApproval records ACCEPTED on secretary's author
     assert.equal(result.priestResponseStatus, "ACCEPTED");
     assert.equal(result.priestVerbalApproval, true);
     assert.equal(result.status, "PENDING");
+    assert.doesNotThrow(() => requirePriestAccepted({ ...base, ...updatedData }));
+    assert.throws(() => requirePriestAccepted({ ...base, assignedPriestId: 22, priestResponseStatus: "PENDING" }), { code: "PRIEST_ASSIGNMENT_PENDING" });
+    assert.equal(Object.hasOwn(updatedData, "priestChangeNote"), false);
+    assert.equal(Object.hasOwn(updatedData, "priestChangeRequestedPriestId"), false);
   } finally {
     prisma.schedule.findUnique = origFind;
     prisma.$transaction = origTx;
@@ -350,7 +361,8 @@ test("5. requestPriestChange resets assignment & verbal approval, reverts CONFIR
                   },
                 };
           },
-          updateMany: async ({ data }) => {
+          updateMany: async ({ where, data }) => {
+            assert.deepEqual(where, { id: 55, version: 3 });
             updatedData = data;
             return { count: 1 };
           },
@@ -387,6 +399,10 @@ test("5. requestPriestChange resets assignment & verbal approval, reverts CONFIR
     assert.equal(updatedData.priestResponseStatus, null);
     assert.equal(updatedData.priestVerbalApproval, false);
     assert.equal(updatedData.priestVerbalApprovalById, null);
+    assert.equal(updatedData.priestVerbalApprovalAt, null);
+    for (const field of ["requestedPriestId", "requestedDate", "startDatetime", "endDatetime", "location", "remarks", "attachments"]) {
+      assert.equal(Object.hasOwn(updatedData, field), false, `${field} must remain unchanged`);
+    }
     assert.equal(updatedData.priestChangeStatus, "PENDING");
     assert.equal(updatedData.priestChangeRequestedPriestId, 22);
     assert.equal(updatedData.priestChangeNote, "Please assign Fr. Julius instead.");
@@ -455,6 +471,18 @@ test("6. requestPriestChange rejects wrong owner, same priest, inactive/cross-pa
       () => new ScheduleService().requestPriestChange(55, { replacementPriestId: 99, expectedVersion: 3 }, 500, "PARISHIONER"),
       (err) => err.statusCode === 400 && err.code === "INVALID_REQUESTED_PRIEST"
     );
+
+    for (const priest of [null, { id: 22, parishId: 10, status: "INACTIVE", role: { roleName: "PRIEST" } }, { id: 22, parishId: 10, status: "ACTIVE", role: { roleName: "SECRETARY" } }]) {
+      prisma.$transaction = async (cb) => cb({
+        $queryRaw: async () => [{ user_id: 22 }],
+        schedule: { findUnique: async () => makeBaseSchedule({ assignedPriestId: 21 }) },
+        user: { findUnique: async () => priest },
+      });
+      await assert.rejects(
+        () => new ScheduleService().requestPriestChange(55, { replacementPriestId: 22, expectedVersion: 3 }, 500, "PARISHIONER"),
+        { code: "INVALID_REQUESTED_PRIEST" }
+      );
+    }
 
     // Terminal COMPLETED schedule
     prisma.schedule.findUnique = async () => makeBaseSchedule({ userId: 500, status: "COMPLETED", assignedPriestId: 21 });
@@ -663,6 +691,61 @@ test("10. ScheduleController.requestPriestChange delegates to service and return
     assert.equal(capturedArgs.payload.replacementPriestId, 22);
   } finally {
     ScheduleService.prototype.requestPriestChange = origMethod;
+  }
+});
+
+test("secretary selection rejects cross-parish and inactive processors and refreshes saved profile details", async () => {
+  const processor = { id: 90, parishId: 99, status: "ACTIVE", role: { roleName: "SECRETARY" }, fullName: "Other parish secretary", contactNumber: "09999999999" };
+  const schedules = [
+    { id: 1, parishId: 10, processedBy: processor },
+    { id: 2, parishId: 20, processedBy: { ...processor, parishId: 20, status: "INACTIVE" } },
+    { id: 3, parishId: null, processedBy: processor },
+  ];
+  let savedName = "Secretary Clara";
+  let savedPhone = "09171234567";
+  const client = { user: { findMany: async ({ where }) => {
+    assert.deepEqual(where, { parishId: { in: [10, 20] }, status: "ACTIVE", role: { roleName: "SECRETARY" } });
+    return [{ id: 91, parishId: 10, fullName: savedName, contactNumber: savedPhone }];
+  } } };
+  const first = await attachParishSecretaries(schedules, client);
+  assert.equal(first[0].parishSecretary.fullName, "Secretary Clara");
+  assert.equal(first[1].parishSecretary, null);
+  assert.equal(first[2].parishSecretary, null);
+  savedName = "Secretary Clara Updated";
+  savedPhone = "09181112222";
+  const refreshed = await attachParishSecretaries(schedules, client);
+  assert.equal(refreshed[0].parishSecretary.fullName, savedName);
+  assert.equal(refreshed[0].parishSecretary.contactNumber, savedPhone);
+});
+
+test("assignment and change reject a lost atomic version update before audit or notifications", async () => {
+  const originalFind = prisma.schedule.findUnique;
+  const originalTx = prisma.$transaction;
+  const originalConflict = ConflictHelper.checkPriestConflict;
+  const base = makeBaseSchedule({ assignedPriestId: 21, priestResponseStatus: "ACCEPTED" });
+  try {
+    prisma.schedule.findUnique = async () => base;
+    ConflictHelper.checkPriestConflict = async () => {};
+    prisma.$transaction = async (cb) => cb({
+      $queryRaw: async () => [{ user_id: 22 }],
+      schedule: {
+        findUnique: async () => base,
+        updateMany: async ({ where, data }) => {
+          assert.deepEqual(where, { id: 55, version: 3 });
+          assert.deepEqual(data.version, { increment: 1 });
+          return { count: 0 };
+        },
+      },
+      user: { findUnique: async () => ({ id: 22, parishId: 10, fullName: "Replacement Priest", status: "ACTIVE", role: { roleName: "PRIEST" } }) },
+      scheduleHistory: { create: async () => ({}) },
+    });
+    const service = new ScheduleService();
+    await assert.rejects(() => service.assignPriest(55, 22, 90, "SECRETARY", 10, 3, { verbalApproval: true }), { code: "SCHEDULE_CONCURRENCY_CONFLICT" });
+    await assert.rejects(() => service.requestPriestChange(55, { replacementPriestId: 22, expectedVersion: 3 }, 500, "PARISHIONER"), { code: "SCHEDULE_CONCURRENCY_CONFLICT" });
+  } finally {
+    prisma.schedule.findUnique = originalFind;
+    prisma.$transaction = originalTx;
+    ConflictHelper.checkPriestConflict = originalConflict;
   }
 });
 
