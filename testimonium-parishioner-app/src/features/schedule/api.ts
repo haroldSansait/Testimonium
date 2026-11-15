@@ -13,15 +13,20 @@ import type { LocalSelectedFile } from "@/features/requests/types";
 import { scheduleKeys } from "./queryKeys";
 import type {
   AvailabilityDatesResponse,
+  CreateScheduleDraftPayload,
   CreateSchedulePayload,
   EligiblePriest,
   RecommendationRequestPayload,
   ScheduleAttachment,
+  ScheduleDraftAttachment,
+  ScheduleDraftItem,
   ScheduleRecommendationsResponse,
   ScheduleServiceRequirement,
   SchedulingConfiguration,
   ScheduleItem,
   ScheduleListResponse,
+  SubmitScheduleDraftPayload,
+  UpdateScheduleDraftPayload,
 } from "./types";
 
 export interface ScheduleListParams {
@@ -598,4 +603,268 @@ export const useWithdrawAlternativeDate = () => {
     },
   });
 };
+
+// --- Schedule Drafts ---
+
+export const fetchScheduleDrafts = async (
+  signal?: AbortSignal
+): Promise<ScheduleDraftItem[]> => {
+  const res = await apiClient.request<{ data?: ScheduleDraftItem[] } | ScheduleDraftItem[]>({
+    path: "/schedule-requests/drafts",
+    signal,
+    auth: true,
+  });
+  if (Array.isArray(res)) {
+    return res;
+  }
+  if (res && Array.isArray(res.data)) {
+    return res.data;
+  }
+  return [];
+};
+
+export const useScheduleDrafts = (
+  options?: Partial<UseQueryOptions<ScheduleDraftItem[]>>
+) => {
+  const { user } = useAuth();
+  return useQuery<ScheduleDraftItem[]>({
+    queryKey: scheduleKeys.drafts(user?.uid),
+    queryFn: ({ signal }) => fetchScheduleDrafts(signal),
+    enabled: Boolean(user?.uid),
+    staleTime: 30 * 1000,
+    ...options,
+  });
+};
+
+export const fetchScheduleDraftDetail = async (
+  draftId: number | string,
+  signal?: AbortSignal
+): Promise<ScheduleDraftItem> => {
+  return apiClient.request<ScheduleDraftItem>({
+    path: `/schedule-requests/drafts/${draftId}`,
+    signal,
+    auth: true,
+  });
+};
+
+export const useScheduleDraftDetail = (
+  draftId?: number | string | null,
+  options?: Partial<UseQueryOptions<ScheduleDraftItem>>
+) => {
+  const { user } = useAuth();
+  return useQuery<ScheduleDraftItem>({
+    queryKey: scheduleKeys.draftDetail(user?.uid, draftId ?? ""),
+    queryFn: ({ signal }) => fetchScheduleDraftDetail(draftId!, signal),
+    enabled: Boolean(user?.uid && draftId),
+    staleTime: 30 * 1000,
+    ...options,
+  });
+};
+
+export const createScheduleDraft = async ({
+  payload,
+  idempotencyKey,
+}: {
+  payload: CreateScheduleDraftPayload;
+  idempotencyKey?: string | null;
+}): Promise<ScheduleDraftItem> => {
+  const headers: Record<string, string> = {};
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+  return apiClient.request<ScheduleDraftItem>({
+    path: "/schedule-requests/drafts",
+    method: "POST",
+    body: payload,
+    headers,
+    auth: true,
+  });
+};
+
+export const useCreateScheduleDraft = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: createScheduleDraft,
+    retry: false,
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({
+        queryKey: scheduleKeys.drafts(user?.uid),
+      });
+      if (data?.id) {
+        queryClient.setQueryData(
+          scheduleKeys.draftDetail(user?.uid, data.id),
+          data
+        );
+      }
+    },
+  });
+};
+
+export const updateScheduleDraft = async ({
+  draftId,
+  payload,
+}: {
+  draftId: number | string;
+  payload: UpdateScheduleDraftPayload;
+}): Promise<ScheduleDraftItem> => {
+  return apiClient.request<ScheduleDraftItem>({
+    path: `/schedule-requests/drafts/${draftId}`,
+    method: "PATCH",
+    body: payload,
+    auth: true,
+  });
+};
+
+export const useUpdateScheduleDraft = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: updateScheduleDraft,
+    retry: false,
+    onSuccess: (data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: scheduleKeys.drafts(user?.uid),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: scheduleKeys.draftDetail(user?.uid, variables.draftId),
+      });
+      if (data?.id) {
+        queryClient.setQueryData(
+          scheduleKeys.draftDetail(user?.uid, data.id),
+          data
+        );
+      }
+    },
+  });
+};
+
+export const deleteScheduleDraft = async (
+  draftId: number | string
+): Promise<{ deleted?: boolean }> => {
+  return apiClient.request<{ deleted?: boolean }>({
+    path: `/schedule-requests/drafts/${draftId}`,
+    method: "DELETE",
+    auth: true,
+  });
+};
+
+export const useDeleteScheduleDraft = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: deleteScheduleDraft,
+    retry: false,
+    onSuccess: (_data, draftId) => {
+      void queryClient.invalidateQueries({
+        queryKey: scheduleKeys.drafts(user?.uid),
+      });
+      queryClient.removeQueries({
+        queryKey: scheduleKeys.draftDetail(user?.uid, draftId),
+      });
+    },
+  });
+};
+
+export const uploadScheduleDraftAttachment = async ({
+  draftId,
+  requirementId,
+  file,
+}: {
+  draftId: number | string;
+  requirementId: string;
+  file: LocalSelectedFile;
+}): Promise<ScheduleDraftAttachment[]> => {
+  const normalized = normalizeSupportingFile(file);
+  const createBody = () => {
+    const formData = new FormData();
+    formData.append("requirementId", requirementId);
+    formData.append("file", {
+      uri: normalized.uri,
+      name: normalized.name,
+      type: normalized.mimeType,
+    } as unknown as Blob);
+    return formData;
+  };
+
+  return apiClient.request<ScheduleDraftAttachment[]>({
+    path: `/schedule-requests/drafts/${draftId}/attachments`,
+    method: "POST",
+    createBody,
+    isMultipart: true,
+    timeoutMs: 45_000,
+    auth: true,
+  });
+};
+
+export const useUploadScheduleDraftAttachment = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: uploadScheduleDraftAttachment,
+    retry: false,
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: scheduleKeys.draftDetail(user?.uid, variables.draftId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: scheduleKeys.drafts(user?.uid),
+      });
+    },
+  });
+};
+
+export const getScheduleDraftAttachmentDownloadPath = (
+  draftId: number | string,
+  attachmentId: number | string
+): string => `/schedule-requests/drafts/${draftId}/attachments/${attachmentId}/file`;
+
+export interface SubmitScheduleDraftInput {
+  draftId: number | string;
+  payload?: SubmitScheduleDraftPayload;
+  idempotencyKey?: string | null;
+}
+
+export const submitScheduleDraft = async (
+  input: SubmitScheduleDraftInput
+): Promise<ScheduleItem> => {
+  const headers: Record<string, string> = {};
+  if (input.idempotencyKey) {
+    headers["Idempotency-Key"] = input.idempotencyKey;
+  }
+
+  return apiClient.request<ScheduleItem>({
+    path: `/schedule-requests/drafts/${input.draftId}/submit`,
+    method: "POST",
+    body: input.payload ?? {},
+    headers,
+    timeoutMs: 60_000,
+    auth: true,
+  });
+};
+
+export const useSubmitScheduleDraft = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: submitScheduleDraft,
+    retry: false,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+      if (user?.uid) {
+        queryClient.invalidateQueries({ queryKey: scheduleKeys.lists(user.uid) });
+        queryClient.invalidateQueries({ queryKey: scheduleKeys.drafts(user.uid) });
+        queryClient.removeQueries({
+          queryKey: scheduleKeys.draftDetail(user.uid, variables.draftId),
+        });
+      }
+    },
+  });
+};
+
 

@@ -9,6 +9,10 @@ export const scheduleKeys = {
   ) => [...scheduleKeys.all, "infinite-list", userId ?? "anon", scope ?? "all", limit] as const,
   detail: (userId?: number | string | null, scheduleId?: number | string) =>
     [...scheduleKeys.all, "detail", userId ?? "anon", String(scheduleId ?? "")] as const,
+  drafts: (userId?: number | string | null) =>
+    [...scheduleKeys.all, "drafts", userId ?? "anon"] as const,
+  draftDetail: (userId?: number | string | null, draftId?: number | string | null) =>
+    [...scheduleKeys.all, "draft-detail", userId ?? "anon", String(draftId ?? "")] as const,
   attachments: (userId?: number | string | null, scheduleId?: number | string) =>
     [...scheduleKeys.all, "attachments", userId ?? "anon", String(scheduleId ?? "")] as const,
   tracking: (userId?: number | string | null, reference?: string) =>

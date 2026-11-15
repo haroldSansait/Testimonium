@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, FileText, Clock, ArrowLeft, Calendar, Building, User, Loader2, ArrowRight, RotateCcw, X, Eye, Download, AlertTriangle, FileEdit } from 'lucide-react';
 import services from '../../providers/factory';
 import { useRequests } from '../../hooks/useService';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
-import type { SacramentalRequest, RequestStatus, Appointment } from '../../types';
+import type { SacramentalRequest, RequestStatus, Appointment, ScheduleDraft } from '../../types';
 import { DOCUMENT_RETURN_REASONS } from '../../types';
 import { client } from '../../api/client';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -219,8 +219,13 @@ export const RequestTrackingPage: React.FC = () => {
     return () => mql.removeEventListener('change', handler);
   }, []);
 
+  const location = typeof useLocation === 'function' ? useLocation() : null;
   const [searchParams] = useSearchParams();
   const deepLinkRequestId = searchParams.get('requestId');
+  const deepLinkScheduleId =
+    searchParams.get('scheduleId') ||
+    ((location?.state as { scheduleId?: string } | null)?.scheduleId ?? null);
+  const deepLinkMode = searchParams.get('mode');
 
   // Stable source of truth for selection is the ID, not a stale copied object
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
@@ -235,6 +240,18 @@ export const RequestTrackingPage: React.FC = () => {
       }
     }
   }, [deepLinkRequestId, isMobile]);
+
+  useEffect(() => {
+    if (deepLinkScheduleId) {
+      setActiveMode('schedules');
+      setSelectedScheduleId(String(deepLinkScheduleId));
+      if (isMobile) {
+        setMobileScheduleView('details');
+      }
+    } else if (deepLinkMode === 'schedules') {
+      setActiveMode('schedules');
+    }
+  }, [deepLinkScheduleId, deepLinkMode, isMobile]);
 
   useEffect(() => {
     if (!deepLinkRequestId || requestsQuery.loading) return;
@@ -273,12 +290,26 @@ export const RequestTrackingPage: React.FC = () => {
   const [mobileView, setMobileView] = useState<'requests' | 'details'>('requests');
 
   // Mode state: 'documents' or 'schedules'
-  const [activeMode, setActiveMode] = useState<'documents' | 'schedules'>('documents');
+  const [activeMode, setActiveMode] = useState<'documents' | 'schedules'>(() =>
+    deepLinkScheduleId || deepLinkMode === 'schedules' ? 'schedules' : 'documents'
+  );
 
   // Schedules state
   const [schedules, setSchedules] = useState<Appointment[]>([]);
+  const [scheduleDrafts, setScheduleDrafts] = useState<ScheduleDraft[]>([]);
+  const [deletedScheduleDraftIds, setDeletedScheduleDraftIds] = useState<Set<string>>(() => new Set());
+  const visibleScheduleDrafts = useMemo(
+    () => scheduleDrafts.filter((draft) => !deletedScheduleDraftIds.has(String(draft.id))),
+    [scheduleDrafts, deletedScheduleDraftIds]
+  );
+  const [scheduleDraftToDelete, setScheduleDraftToDelete] = useState<ScheduleDraft | null>(null);
+  const [deletingScheduleDraft, setDeletingScheduleDraft] = useState(false);
+  const [deleteScheduleDraftError, setDeleteScheduleDraftError] = useState<string | null>(null);
+  const deleteScheduleDraftInProgressRef = useRef(false);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(() =>
+    deepLinkScheduleId ? String(deepLinkScheduleId) : null
+  );
   const [searchedSchedule, setSearchedSchedule] = useState<Appointment | null>(null);
   const [scheduleSearchQuery, setScheduleSearchQuery] = useState('');
   const [scheduleSearching, setScheduleSearching] = useState(false);
@@ -290,17 +321,34 @@ export const RequestTrackingPage: React.FC = () => {
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true);
     try {
-      const appts = await services.scheduler.getAppointments();
-      setSchedules(appts || []);
-      if (appts && appts.length > 0 && !selectedScheduleId) {
-        setSelectedScheduleId(String(appts[0].id));
+      const [appts, drafts] = await Promise.all([
+        services.scheduler.getAppointments(),
+        services.scheduler.getDrafts ? services.scheduler.getDrafts().catch(() => []) : Promise.resolve([]),
+      ]);
+      const safeAppts = appts || [];
+      setSchedules(safeAppts);
+      setScheduleDrafts(drafts || []);
+      if (deepLinkScheduleId) {
+        const targetId = String(deepLinkScheduleId);
+        setSelectedScheduleId(targetId);
+        const inList = safeAppts.some((s) => String(s.id) === targetId);
+        if (!inList) {
+          void services.scheduler
+            .getAppointmentById(targetId)
+            .then((res) => {
+              if (res) setSearchedSchedule(res);
+            })
+            .catch(() => {});
+        }
+      } else if (safeAppts.length > 0 && !selectedScheduleId) {
+        setSelectedScheduleId(String(safeAppts[0].id));
       }
     } catch (err) {
       console.error('Failed to load schedules:', err);
     } finally {
       setLoadingSchedules(false);
     }
-  }, [selectedScheduleId]);
+  }, [selectedScheduleId, deepLinkScheduleId]);
 
   useEffect(() => {
     if (activeMode === 'schedules') {
@@ -312,10 +360,15 @@ export const RequestTrackingPage: React.FC = () => {
     if (searchedSchedule && String(searchedSchedule.id) === String(selectedScheduleId)) {
       return searchedSchedule;
     }
-    const found = schedules.find(s => String(s.id) === String(selectedScheduleId));
-    if (found) return found;
+    if (selectedScheduleId) {
+      const found = schedules.find(s => String(s.id) === String(selectedScheduleId));
+      if (found) return found;
+      if (deepLinkScheduleId && String(selectedScheduleId) === String(deepLinkScheduleId)) {
+        return null;
+      }
+    }
     return searchedSchedule || (schedules.length > 0 ? schedules[0] : null);
-  }, [schedules, selectedScheduleId, searchedSchedule]);
+  }, [schedules, selectedScheduleId, searchedSchedule, deepLinkScheduleId]);
 
   const handleWithdrawAlternative = async () => {
     const proposal = selectedSchedule?.alternativeProposal;
@@ -637,6 +690,37 @@ export const RequestTrackingPage: React.FC = () => {
     } finally {
       deleteInProgressRef.current = false;
       setDeletingDraft(false);
+    }
+  };
+
+  const openScheduleDraftDeletion = (draft: ScheduleDraft) => {
+    if (deleteScheduleDraftInProgressRef.current) return;
+    setDeleteScheduleDraftError(null);
+    setDeleteMessage(null);
+    setScheduleDraftToDelete(draft);
+  };
+
+  const handleDeleteScheduleDraft = async () => {
+    if (!scheduleDraftToDelete || deleteScheduleDraftInProgressRef.current) return;
+    deleteScheduleDraftInProgressRef.current = true;
+    setDeletingScheduleDraft(true);
+    setDeleteScheduleDraftError(null);
+    try {
+      const result = await services.scheduler.deleteDraft(String(scheduleDraftToDelete.id));
+      const id = String(scheduleDraftToDelete.id);
+      setDeletedScheduleDraftIds((previous) => new Set([...previous, id]));
+      setScheduleDrafts((previous) => previous.filter((item) => String(item.id) !== id));
+      setScheduleDraftToDelete(null);
+      setDeleteMessage(
+        result.cleanupQueued
+          ? 'Schedule draft deleted. Uploaded files are queued for secure cleanup.'
+          : 'Schedule draft deleted successfully.'
+      );
+    } catch (err: any) {
+      setDeleteScheduleDraftError(err?.message || 'Unable to delete this schedule draft. Please try again.');
+    } finally {
+      deleteScheduleDraftInProgressRef.current = false;
+      setDeletingScheduleDraft(false);
     }
   };
 
@@ -1823,6 +1907,78 @@ export const RequestTrackingPage: React.FC = () => {
                 </form>
               </div>
 
+              {/* Saved Schedule Drafts List */}
+              <div className="bg-white rounded-card border border-border p-5 shadow-xs">
+                <div className="mb-3.5 border-b border-border pb-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileEdit size={16} className="text-crimson" />
+                    <h2 className="text-sm font-bold text-text-primary">Saved Drafts</h2>
+                  </div>
+                  {visibleScheduleDrafts.length > 0 && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-crimson/10 text-crimson">
+                      {visibleScheduleDrafts.length}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {visibleScheduleDrafts.length === 0 && (
+                    <p className="text-xs text-text-muted">No saved schedule drafts.</p>
+                  )}
+                  {visibleScheduleDrafts.map((draft) => {
+                    const displayDate = draft.requestedDate || draft.preferredDate || null;
+                    return (
+                      <div
+                        key={draft.id}
+                        className="p-3.5 rounded-button border border-border/80 bg-white hover:border-crimson/30 shadow-2xs transition-all space-y-2.5"
+                      >
+                        <div className="flex justify-between items-center gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Calendar size={14} className="text-crimson shrink-0" />
+                            <span className="text-xs font-bold text-text-primary truncate">
+                              {draft.serviceName}
+                            </span>
+                          </div>
+                          <Badge variant="neutral">Draft</Badge>
+                        </div>
+                        <p className="text-xs text-text-muted">
+                          <span className="text-text-primary font-medium">
+                            {draft.parishName || `Parish #${draft.parishId}`}
+                          </span>
+                          {displayDate ? (
+                            <>
+                              {' · '}
+                              <span>
+                                {displayDate}
+                                {draft.timeSlot ? ` at ${draft.timeSlot}` : ''}
+                              </span>
+                            </>
+                          ) : (
+                            ' · Date not selected yet'
+                          )}
+                        </p>
+                        <div className="flex flex-wrap gap-2 pt-0.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="font-semibold shadow-2xs"
+                            onClick={() => navigate(`/dashboard/scheduler?draftId=${draft.id}`)}
+                          >
+                            Resume Draft
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => openScheduleDraftDeletion(draft)}
+                          >
+                            Discard Draft
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Schedules List */}
               <div className="bg-white rounded-card border border-border p-5 shadow-xs">
                 <div className="mb-3.5 border-b border-border pb-2.5 flex justify-between items-center">
@@ -2110,6 +2266,45 @@ export const RequestTrackingPage: React.FC = () => {
             <div className="flex justify-end gap-3">
               <Button variant="outline" disabled={deletingDraft} onClick={() => setDraftToDelete(null)}>Keep Draft</Button>
               <Button variant="primary" loading={deletingDraft} onClick={handleDeleteDraft}>Discard Draft</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {scheduleDraftToDelete && (
+        <Modal
+          isOpen
+          onClose={() => {
+            if (!deleteScheduleDraftInProgressRef.current) setScheduleDraftToDelete(null);
+          }}
+          title="Discard saved schedule draft?"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">
+              Discard saved schedule draft for <strong>{scheduleDraftToDelete.serviceName}</strong> at{' '}
+              <strong>{scheduleDraftToDelete.parishName || 'the selected parish'}</strong>? Its saved details and any uploaded supporting documents will be permanently removed. This cannot be undone.
+            </p>
+            {deleteScheduleDraftError && (
+              <p role="alert" className="text-sm text-red-700">
+                {deleteScheduleDraftError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                disabled={deletingScheduleDraft}
+                onClick={() => setScheduleDraftToDelete(null)}
+              >
+                Keep Draft
+              </Button>
+              <Button
+                variant="primary"
+                loading={deletingScheduleDraft}
+                onClick={handleDeleteScheduleDraft}
+              >
+                Discard Draft
+              </Button>
             </div>
           </div>
         </Modal>

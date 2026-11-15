@@ -580,3 +580,143 @@ export const emergencyReschedule = async (req, res, next) => {
     return next(err);
   }
 };
+
+export const createDraft = async (req, res, next) => {
+  try {
+    const idempotencyKey = req.headers["idempotency-key"] || null;
+    const result = await scheduleService.createDraft(req.user.id, req.body, idempotencyKey);
+    return res.status(result.isReplay ? 200 : 201).json({
+      success: true,
+      message: result.isReplay ? "Schedule draft replayed from idempotency key." : "Schedule draft saved successfully.",
+      data: result.draft,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const updateDraft = async (req, res, next) => {
+  try {
+    const updated = await scheduleService.updateDraft(req.params.id, req.user.id, req.body);
+    return res.status(200).json({
+      success: true,
+      message: "Schedule draft updated successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const listDrafts = async (req, res, next) => {
+  try {
+    const drafts = await scheduleService.listDrafts(req.user.id);
+    return res.status(200).json({
+      success: true,
+      data: drafts,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getDraftById = async (req, res, next) => {
+  try {
+    const draft = await scheduleService.getDraftById(req.params.id, req.user.id);
+    return res.status(200).json({
+      success: true,
+      data: draft,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const deleteDraft = async (req, res, next) => {
+  try {
+    const result = await scheduleService.deleteDraft(req.params.id, req.user.id);
+    return res.status(200).json({
+      success: true,
+      message: "Schedule draft discarded successfully.",
+      data: result,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const uploadDraftAttachment = async (req, res, next) => {
+  try {
+    const attachments = await scheduleService.uploadDraftAttachment(
+      req.params.id,
+      req.user.id,
+      req.draftRequirementId,
+      req.draftAttachmentFile
+    );
+    return res.status(201).json({
+      success: true,
+      message: "Draft supporting document uploaded successfully.",
+      data: attachments,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const listDraftAttachments = async (req, res, next) => {
+  try {
+    const data = await ScheduleAttachmentService.listForDraft(req.params.id, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const downloadDraftAttachment = async (req, res, next) => {
+  try {
+    const { metadata, stream } = await ScheduleAttachmentService.downloadForDraft(
+      req.params.id,
+      req.params.attachmentId,
+      req.user
+    );
+    const safeName = metadata.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    res.setHeader("Content-Type", metadata.fileType);
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (stream.ContentLength) res.setHeader("Content-Length", stream.ContentLength);
+    await pipeline(stream.Body, res);
+  } catch (error) {
+    if (res.headersSent) return res.destroy(error);
+    return next(error);
+  }
+};
+
+export const submitDraft = async (req, res, next) => {
+  try {
+    const idempotencyKey = req.headers["idempotency-key"] || null;
+    const hasUploadedFiles = Array.isArray(req.files) && req.files.length > 0;
+    const preparedAttachments = hasUploadedFiles
+      ? ScheduleAttachmentService.prepare(req.files, req.scheduleRequirementIds)
+      : null;
+
+    const result = await scheduleService.submitDraft(
+      req.params.id,
+      req.user.id,
+      req.body || {},
+      idempotencyKey,
+      preparedAttachments
+    );
+
+    return res.status(result.isReplay ? 200 : 201).json({
+      success: true,
+      message: result.isReplay
+        ? "Schedule request replayed from idempotency key."
+        : "Schedule request booked successfully.",
+      data: result.schedule,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+

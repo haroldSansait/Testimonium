@@ -19,7 +19,9 @@ import {
   extractScheduleTimeSlot,
   normalizeTimeSlotString,
 } from "./BookingValidator.js";
-import { EventTypeCatalog, resolveEventMetadata, resolveEventType } from "../shared/EventTypeCatalog.js";
+import { EventTypeCatalog, resolveEventMetadata, resolveEventType, resolveDisplayTitle } from "../shared/EventTypeCatalog.js";
+import { isProfileIncomplete } from "../utils/profileCompleteness.js";
+import { isEffectivelyVerified } from "../utils/governmentIdVerificationHelper.js";
 import {
   SCHEDULE_REJECTION_REASONS,
   DOCUMENT_RELATED_SCHEDULE_REJECTION_REASONS,
@@ -3033,4 +3035,1233 @@ export class ScheduleService {
     }
   }
 
+  /**
+   * Creates a persistent schedule draft for the authenticated parishioner.
+   */
+  async createDraft(userId, draftData = {}, idempotencyKey = null) {
+    const parsedUserId = parseInt(userId, 10);
+    const parsedParishId = parseInt(draftData.parishId, 10);
+    if (isNaN(parsedUserId) || isNaN(parsedParishId) || parsedUserId <= 0 || parsedParishId <= 0) {
+      const err = new Error("Valid userId and parishId are required.");
+      err.statusCode = 400;
+      err.code = "INVALID_REQUEST";
+      throw err;
+    }
+
+    await assertParishionerDraftOwner(parsedUserId);
+
+    const canonicalEventType = validateCanonicalEventType(draftData.eventType);
+    const parish = await prisma.parish.findUnique({
+      where: { id: parsedParishId },
+    });
+    if (!parish || !parish.isActive) {
+      const err = new Error("Selected parish is not available for scheduling.");
+      err.statusCode = 400;
+      err.code = "PARISH_INACTIVE";
+      throw err;
+    }
+    requireEnabledSchedulingService(parish, canonicalEventType);
+
+    const resolvedDisplayTitle = resolveDisplayTitle(canonicalEventType, draftData.displayTitle) || canonicalEventType;
+    const preferredDateParsed = parseOptionalDraftDate(draftData.preferredDate, "preferredDate");
+    const rawRequestedDate = draftData.requestedDate !== undefined ? draftData.requestedDate : draftData.date;
+    const requestedDateParsed = parseOptionalDraftDate(rawRequestedDate, "requestedDate");
+    const normalizedSlot = parseOptionalDraftTimeSlot(draftData.timeSlot);
+
+    let parsedRequestedPriestId = null;
+    if (draftData.requestedPriestId !== undefined && draftData.requestedPriestId !== null && draftData.requestedPriestId !== "") {
+      try {
+        parsedRequestedPriestId = normalizePriestId(draftData.requestedPriestId);
+      } catch {
+        const err = new Error(GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE);
+        err.statusCode = 400;
+        err.code = "INVALID_REQUESTED_PRIEST";
+        throw err;
+      }
+      await validateRequestedPriestEligibility(parsedRequestedPriestId, parsedParishId, prisma);
+    }
+
+    const resolvedLocation = canonicalEventType === "WEDDING"
+      ? parish.parishName
+      : normalizeOptionalDraftLocation(draftData.location);
+    const resolvedRemarks = normalizeOptionalDraftRemarks(draftData.remarks);
+
+    const hasValidKey = IdempotencyService.isValidKey(idempotencyKey);
+
+    const payloadHash = computeScheduleDraftPayloadHash({
+      parishId: parsedParishId,
+      eventType: canonicalEventType,
+      displayTitle: resolvedDisplayTitle,
+      preferredDate: preferredDateParsed?.dateStr || null,
+      requestedDate: requestedDateParsed?.dateStr || null,
+      timeSlot: normalizedSlot,
+      requestedPriestId: parsedRequestedPriestId,
+      location: resolvedLocation,
+      remarks: resolvedRemarks,
+    });
+
+    if (hasValidKey) {
+      const existingRecord = await IdempotencyService.findRecord(
+        parsedUserId,
+        idempotencyKey,
+        "SCHEDULE_DRAFT_CREATE",
+        prisma
+      );
+      if (existingRecord) {
+        assertScheduleDraftNotDeleted(existingRecord);
+        if (existingRecord.payloadHash === payloadHash) {
+          const existingDraft = await prisma.scheduleDraft.findFirst({
+            where: { id: existingRecord.resourceId, userId: parsedUserId },
+            include: SCHEDULE_DRAFT_INCLUDE,
+          });
+          if (existingDraft) {
+            return { draft: formatScheduleDraft(existingDraft), isReplay: true };
+          }
+        } else {
+          const conflictErr = new Error(
+            "An idempotency key was reused with a different schedule draft payload. Please generate a new key."
+          );
+          conflictErr.statusCode = 409;
+          conflictErr.code = "IDEMPOTENCY_PAYLOAD_MISMATCH";
+          throw conflictErr;
+        }
+      }
+    }
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        await assertParishionerDraftOwner(parsedUserId, tx);
+        const draft = await tx.scheduleDraft.create({
+          data: {
+            userId: parsedUserId,
+            parishId: parsedParishId,
+            eventType: canonicalEventType,
+            displayTitle: resolvedDisplayTitle,
+            preferredDate: preferredDateParsed?.utcDate || null,
+            requestedDate: requestedDateParsed?.utcDate || null,
+            timeSlot: normalizedSlot,
+            requestedPriestId: parsedRequestedPriestId,
+            location: resolvedLocation,
+            remarks: resolvedRemarks,
+          },
+          include: SCHEDULE_DRAFT_INCLUDE,
+        });
+
+        if (hasValidKey) {
+          await IdempotencyService.recordKey(
+            {
+              userId: parsedUserId,
+              key: idempotencyKey,
+              resourceType: "SCHEDULE_DRAFT_CREATE",
+              resourceId: draft.id,
+              payloadHash,
+            },
+            tx
+          );
+        }
+
+        await AuditLogService.log(
+          parsedUserId,
+          "Schedule Draft Created",
+          tx,
+          false,
+          {
+            affectedTable: "schedule_drafts",
+            affectedRecordId: draft.id,
+            parishId: draft.parishId,
+            metadata: {
+              eventType: draft.eventType,
+            },
+          }
+        );
+
+        return draft;
+      }, { maxWait: 5000, timeout: 10000 });
+
+      return { draft: formatScheduleDraft(created), isReplay: false };
+    } catch (err) {
+      if (hasValidKey && IdempotencyService.isUniqueConstraintError(err)) {
+        const winningRecord = await IdempotencyService.findRecord(
+          parsedUserId,
+          idempotencyKey,
+          "SCHEDULE_DRAFT_CREATE",
+          prisma
+        );
+        if (winningRecord) {
+          assertScheduleDraftNotDeleted(winningRecord);
+          if (winningRecord.payloadHash === payloadHash) {
+            const winningDraft = await prisma.scheduleDraft.findFirst({
+              where: { id: winningRecord.resourceId, userId: parsedUserId },
+              include: SCHEDULE_DRAFT_INCLUDE,
+            });
+            if (winningDraft) {
+              return { draft: formatScheduleDraft(winningDraft), isReplay: true };
+            }
+          } else {
+            const conflictErr = new Error(
+              "An idempotency key was reused with a different schedule draft payload. Please generate a new key."
+            );
+            conflictErr.statusCode = 409;
+            conflictErr.code = "IDEMPOTENCY_PAYLOAD_MISMATCH";
+            throw conflictErr;
+          }
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Updates an existing owned schedule draft.
+   */
+  async updateDraft(draftId, userId, draftData = {}) {
+    const parsedDraftId = parseInt(draftId, 10);
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedDraftId) || isNaN(parsedUserId) || parsedDraftId <= 0 || parsedUserId <= 0) {
+      const err = new Error("Invalid schedule draft ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await assertParishionerDraftOwner(parsedUserId, tx);
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT "draft_id" FROM "schedule_drafts" WHERE "draft_id" = ${parsedDraftId} AND "user_id" = ${parsedUserId} FOR UPDATE`;
+      }
+
+      const existing = await tx.scheduleDraft.findFirst({
+        where: { id: parsedDraftId, userId: parsedUserId },
+        include: {
+          ...SCHEDULE_DRAFT_INCLUDE,
+          attachments: true,
+        },
+      });
+      if (!existing) {
+        const err = new Error("Schedule draft not found or does not belong to this user.");
+        err.statusCode = 404;
+        err.code = "SCHEDULE_DRAFT_NOT_FOUND";
+        throw err;
+      }
+
+      const nextParishId = draftData.parishId !== undefined ? parseInt(draftData.parishId, 10) : existing.parishId;
+      const nextEventType = draftData.eventType !== undefined
+        ? validateCanonicalEventType(draftData.eventType)
+        : existing.eventType;
+
+      const parish = await tx.parish.findUnique({
+        where: { id: nextParishId },
+      });
+      if (!parish || !parish.isActive) {
+        const err = new Error("Selected parish is not available for scheduling.");
+        err.statusCode = 400;
+        err.code = "PARISH_INACTIVE";
+        throw err;
+      }
+      requireEnabledSchedulingService(parish, nextEventType);
+
+      const nextDisplayTitle = draftData.displayTitle !== undefined
+        ? (resolveDisplayTitle(nextEventType, draftData.displayTitle) || nextEventType)
+        : (draftData.eventType !== undefined ? (resolveDisplayTitle(nextEventType, null) || nextEventType) : existing.displayTitle);
+
+      const nextPreferredDate = draftData.preferredDate !== undefined
+        ? (parseOptionalDraftDate(draftData.preferredDate, "preferredDate")?.utcDate || null)
+        : existing.preferredDate;
+
+      const hasRequestedDateUpdate = draftData.requestedDate !== undefined || draftData.date !== undefined;
+      const rawNextRequestedDate = draftData.requestedDate !== undefined ? draftData.requestedDate : draftData.date;
+      const nextRequestedDate = hasRequestedDateUpdate
+        ? (parseOptionalDraftDate(rawNextRequestedDate, "requestedDate")?.utcDate || null)
+        : existing.requestedDate;
+
+      const nextTimeSlot = draftData.timeSlot !== undefined
+        ? parseOptionalDraftTimeSlot(draftData.timeSlot)
+        : existing.timeSlot;
+
+      let nextRequestedPriestId = existing.requestedPriestId;
+      if (draftData.requestedPriestId !== undefined) {
+        if (draftData.requestedPriestId === null || draftData.requestedPriestId === "") {
+          nextRequestedPriestId = null;
+        } else {
+          try {
+            nextRequestedPriestId = normalizePriestId(draftData.requestedPriestId);
+          } catch {
+            const err = new Error(GENERIC_INVALID_REQUESTED_PRIEST_MESSAGE);
+            err.statusCode = 400;
+            err.code = "INVALID_REQUESTED_PRIEST";
+            throw err;
+          }
+          await validateRequestedPriestEligibility(nextRequestedPriestId, nextParishId, tx);
+        }
+      } else if (nextParishId !== existing.parishId && nextRequestedPriestId) {
+        try {
+          await validateRequestedPriestEligibility(nextRequestedPriestId, nextParishId, tx);
+        } catch {
+          nextRequestedPriestId = null;
+        }
+      }
+
+      let nextLocation = existing.location;
+      if (nextEventType === "WEDDING") {
+        nextLocation = parish.parishName;
+      } else if (draftData.location !== undefined) {
+        nextLocation = normalizeOptionalDraftLocation(draftData.location);
+      } else if (existing.eventType === "WEDDING" && existing.location === existing.parish?.parishName) {
+        nextLocation = null;
+      }
+
+      const nextRemarks = draftData.remarks !== undefined
+        ? normalizeOptionalDraftRemarks(draftData.remarks)
+        : existing.remarks;
+
+      const removedReqSet = new Set(
+        Array.isArray(draftData.removedRequirementIds)
+          ? draftData.removedRequirementIds.map((r) => String(r || "").trim()).filter(Boolean)
+          : []
+      );
+
+      // If parish or service changed, or caller requested removal of specific requirementIds, remove matching draft attachments
+      if (nextParishId !== existing.parishId || nextEventType !== existing.eventType || removedReqSet.size > 0) {
+        const validReqIds = new Set(getScheduleRequirements(parish, nextEventType).map((r) => r.id));
+        const obsoleteAttachments = (existing.attachments || []).filter(
+          (att) => !validReqIds.has(att.requirementId) || removedReqSet.has(att.requirementId)
+        );
+        if (obsoleteAttachments.length > 0) {
+          for (const obsolete of obsoleteAttachments) {
+            if (obsolete.r2ObjectKey) {
+              await tx.privateObjectCleanupJob.upsert({
+                where: { objectKey: obsolete.r2ObjectKey },
+                create: { objectKey: obsolete.r2ObjectKey, reasonCode: "SCHEDULE_DRAFT_ATTACHMENT_REMOVED" },
+                update: {
+                  status: "PENDING",
+                  reasonCode: "SCHEDULE_DRAFT_ATTACHMENT_REMOVED",
+                  attemptCount: 0,
+                  nextAttemptAt: new Date(),
+                  processingToken: null,
+                  processingAt: null,
+                  leaseExpiresAt: null,
+                  completedAt: null,
+                  lastErrorCode: null,
+                },
+              });
+            }
+          }
+          await tx.scheduleDraftAttachment.deleteMany({
+            where: { id: { in: obsoleteAttachments.map((a) => a.id) } },
+          });
+        }
+      }
+
+      const updated = await tx.scheduleDraft.update({
+        where: { id: parsedDraftId },
+        data: {
+          parishId: nextParishId,
+          eventType: nextEventType,
+          displayTitle: nextDisplayTitle,
+          preferredDate: nextPreferredDate,
+          requestedDate: nextRequestedDate,
+          timeSlot: nextTimeSlot,
+          requestedPriestId: nextRequestedPriestId,
+          location: nextLocation,
+          remarks: nextRemarks,
+        },
+        include: SCHEDULE_DRAFT_INCLUDE,
+      });
+
+      await AuditLogService.log(
+        parsedUserId,
+        "Schedule Draft Updated",
+        tx,
+        false,
+        {
+          affectedTable: "schedule_drafts",
+          affectedRecordId: updated.id,
+          parishId: updated.parishId,
+          metadata: {
+            eventType: updated.eventType,
+          },
+        }
+      );
+
+      return formatScheduleDraft(updated);
+    }, { maxWait: 5000, timeout: 10000 });
+  }
+
+  /**
+   * Lists all saved schedule drafts owned by the parishioner.
+   */
+  async listDrafts(userId) {
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedUserId) || parsedUserId <= 0) {
+      const err = new Error("Invalid userId.");
+      err.statusCode = 400;
+      err.code = "INVALID_USER_ID";
+      throw err;
+    }
+
+    await assertParishionerDraftOwner(parsedUserId);
+
+    const drafts = await prisma.scheduleDraft.findMany({
+      where: { userId: parsedUserId },
+      include: SCHEDULE_DRAFT_INCLUDE,
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    });
+
+    return drafts.map(formatScheduleDraft);
+  }
+
+  /**
+   * Retrieves a single owned schedule draft by ID.
+   */
+  async getDraftById(draftId, userId) {
+    const parsedDraftId = parseInt(draftId, 10);
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedDraftId) || isNaN(parsedUserId) || parsedDraftId <= 0 || parsedUserId <= 0) {
+      const err = new Error("Invalid schedule draft ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    await assertParishionerDraftOwner(parsedUserId);
+
+    const draft = await prisma.scheduleDraft.findFirst({
+      where: { id: parsedDraftId, userId: parsedUserId },
+      include: SCHEDULE_DRAFT_INCLUDE,
+    });
+
+    if (!draft) {
+      const err = new Error("Schedule draft not found or does not belong to this user.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_DRAFT_NOT_FOUND";
+      throw err;
+    }
+
+    return formatScheduleDraft(draft);
+  }
+
+  /**
+   * Discards (deletes) an owned schedule draft and queues cleanup for any uploaded R2 attachments.
+   */
+  async deleteDraft(draftId, userId) {
+    const parsedDraftId = parseInt(draftId, 10);
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedDraftId) || isNaN(parsedUserId) || parsedDraftId <= 0 || parsedUserId <= 0) {
+      const err = new Error("Invalid schedule draft ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await assertParishionerDraftOwner(parsedUserId, tx);
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw`SELECT "draft_id" FROM "schedule_drafts" WHERE "draft_id" = ${parsedDraftId} AND "user_id" = ${parsedUserId} FOR UPDATE`;
+      }
+
+      const draft = await tx.scheduleDraft.findFirst({
+        where: { id: parsedDraftId, userId: parsedUserId },
+        include: {
+          attachments: { select: { r2ObjectKey: true } },
+        },
+      });
+
+      if (!draft) {
+        const err = new Error("Schedule draft not found or does not belong to this user.");
+        err.statusCode = 404;
+        err.code = "SCHEDULE_DRAFT_NOT_FOUND";
+        throw err;
+      }
+
+      const objectKeys = new Set(
+        (draft.attachments || []).map((a) => a.r2ObjectKey).filter(Boolean)
+      );
+      for (const objectKey of objectKeys) {
+        await tx.privateObjectCleanupJob.upsert({
+          where: { objectKey },
+          create: { objectKey, reasonCode: "SCHEDULE_DRAFT_DELETED" },
+          update: {
+            status: "PENDING",
+            reasonCode: "SCHEDULE_DRAFT_DELETED",
+            attemptCount: 0,
+            nextAttemptAt: new Date(),
+            processingToken: null,
+            processingAt: null,
+            leaseExpiresAt: null,
+            completedAt: null,
+            lastErrorCode: null,
+          },
+        });
+      }
+
+      await tx.idempotencyKey.updateMany({
+        where: {
+          userId: parsedUserId,
+          resourceType: "SCHEDULE_DRAFT_CREATE",
+          resourceId: parsedDraftId,
+        },
+        data: { resourceId: DELETED_SCHEDULE_DRAFT_RESOURCE_ID },
+      });
+
+      await AuditLogService.log(
+        parsedUserId,
+        "Schedule Draft Deleted",
+        tx,
+        false,
+        {
+          affectedTable: "schedule_drafts",
+          affectedRecordId: parsedDraftId,
+          parishId: draft.parishId,
+          metadata: {
+            eventType: draft.eventType,
+            cleanupObjectCount: objectKeys.size,
+          },
+        }
+      );
+
+      await tx.scheduleDraft.delete({ where: { id: parsedDraftId } });
+      return { id: parsedDraftId, deleted: true, cleanupQueued: objectKeys.size > 0 };
+    }, { maxWait: 5000, timeout: 10000 });
+  }
+
+  /**
+   * Uploads or replaces a supporting document attachment on an owned schedule draft.
+   */
+  async uploadDraftAttachment(draftId, userId, requirementId, file) {
+    const parsedDraftId = parseInt(draftId, 10);
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedDraftId) || isNaN(parsedUserId) || parsedDraftId <= 0 || parsedUserId <= 0) {
+      const err = new Error("Invalid schedule draft ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    await assertParishionerDraftOwner(parsedUserId);
+
+    const draft = await prisma.scheduleDraft.findFirst({
+      where: { id: parsedDraftId, userId: parsedUserId },
+      include: { parish: true },
+    });
+    if (!draft) {
+      const err = new Error("Schedule draft not found or does not belong to this user.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_DRAFT_NOT_FOUND";
+      throw err;
+    }
+
+    const requirements = getScheduleRequirements(draft.parish, draft.eventType);
+    const matchedReq = requirements.find((r) => r.id === String(requirementId || "").trim());
+    if (!matchedReq) {
+      const err = new Error("The selected document requirement does not apply to this service.");
+      err.statusCode = 400;
+      err.code = "INVALID_SCHEDULE_ATTACHMENTS";
+      throw err;
+    }
+
+    const prepared = ScheduleAttachmentService.prepareSingle(file, matchedReq.id);
+    await ScheduleAttachmentService.stage([prepared], parsedUserId, draft.parishId);
+
+    try {
+      return await prisma.$transaction(async (tx) => {
+        if (typeof tx.$queryRaw === "function") {
+          await tx.$queryRaw`SELECT "draft_id" FROM "schedule_drafts" WHERE "draft_id" = ${parsedDraftId} AND "user_id" = ${parsedUserId} FOR UPDATE`;
+        }
+        const lockedDraft = await tx.scheduleDraft.findFirst({
+          where: { id: parsedDraftId, userId: parsedUserId },
+        });
+        if (!lockedDraft) {
+          const err = new Error("Schedule draft not found or does not belong to this user.");
+          err.statusCode = 404;
+          err.code = "SCHEDULE_DRAFT_NOT_FOUND";
+          throw err;
+        }
+
+        const existingAttachment = await tx.scheduleDraftAttachment.findUnique({
+          where: {
+            draftId_requirementId: {
+              draftId: parsedDraftId,
+              requirementId: matchedReq.id,
+            },
+          },
+        });
+
+        if (existingAttachment?.r2ObjectKey && existingAttachment.r2ObjectKey !== prepared.r2ObjectKey) {
+          await tx.privateObjectCleanupJob.upsert({
+            where: { objectKey: existingAttachment.r2ObjectKey },
+            create: { objectKey: existingAttachment.r2ObjectKey, reasonCode: "SCHEDULE_DRAFT_ATTACHMENT_REPLACED" },
+            update: {
+              status: "PENDING",
+              reasonCode: "SCHEDULE_DRAFT_ATTACHMENT_REPLACED",
+              attemptCount: 0,
+              nextAttemptAt: new Date(),
+              processingToken: null,
+              processingAt: null,
+              leaseExpiresAt: null,
+              completedAt: null,
+              lastErrorCode: null,
+            },
+          });
+        }
+
+        await tx.scheduleDraftAttachment.upsert({
+          where: {
+            draftId_requirementId: {
+              draftId: parsedDraftId,
+              requirementId: matchedReq.id,
+            },
+          },
+          create: {
+            draftId: parsedDraftId,
+            requirementId: matchedReq.id,
+            requirementLabel: matchedReq.label,
+            fileName: prepared.fileName,
+            r2ObjectKey: prepared.r2ObjectKey,
+            fileType: prepared.fileType,
+            fileSize: prepared.fileSize,
+          },
+          update: {
+            requirementLabel: matchedReq.label,
+            fileName: prepared.fileName,
+            r2ObjectKey: prepared.r2ObjectKey,
+            fileType: prepared.fileType,
+            fileSize: prepared.fileSize,
+            uploadedAt: new Date(),
+          },
+        });
+
+        const recoveryJobs = await tx.privateObjectCleanupJob.updateMany({
+          where: { objectKey: prepared.r2ObjectKey, status: "PENDING" },
+          data: { status: "CANCELLED", completedAt: new Date() },
+        });
+        if (recoveryJobs.count !== 1) {
+          throw Object.assign(new Error("Upload expired. Please retry uploading the document."), {
+            statusCode: 409,
+            code: "SCHEDULE_UPLOAD_EXPIRED",
+          });
+        }
+
+        await tx.scheduleDraft.update({
+          where: { id: parsedDraftId },
+          data: { updatedAt: new Date() },
+        });
+
+        return tx.scheduleDraftAttachment.findMany({
+          where: { draftId: parsedDraftId },
+          select: {
+            id: true,
+            requirementId: true,
+            requirementLabel: true,
+            fileName: true,
+            fileType: true,
+            fileSize: true,
+            uploadedAt: true,
+          },
+          orderBy: { id: "asc" },
+        });
+      }, { maxWait: 5000, timeout: 10000 });
+    } catch (err) {
+      if (prepared.r2ObjectKey) {
+        await prisma.privateObjectCleanupJob.updateMany({
+          where: { objectKey: prepared.r2ObjectKey, status: "PENDING" },
+          data: { reasonCode: "SCHEDULE_ATTACHMENT_ROLLBACK", nextAttemptAt: new Date() },
+        }).catch(() => {});
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Submits a saved schedule draft as an authoritative schedule request.
+   * Revalidates all booking constraints inside a Serializable transaction.
+   * Keeps the draft saved if validation or availability fails.
+   */
+  async submitDraft(draftId, userId, payloadOverrides = {}, idempotencyKey = null, uploadedAttachments = null) {
+    const parsedDraftId = parseInt(draftId, 10);
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedDraftId) || isNaN(parsedUserId) || parsedDraftId <= 0 || parsedUserId <= 0) {
+      const err = new Error("Invalid schedule draft ID.");
+      err.statusCode = 400;
+      err.code = "INVALID_ID";
+      throw err;
+    }
+
+    const user = await assertParishionerDraftOwner(parsedUserId);
+    if (isProfileIncomplete(user)) {
+      const err = new Error(
+        "Please complete your profile details (full name and contact number) before submitting schedule requests."
+      );
+      err.statusCode = 403;
+      err.code = "PROFILE_INCOMPLETE";
+      throw err;
+    }
+    if (!isEffectivelyVerified(user.governmentIdVerification)) {
+      const err = new Error("Please verify your Government ID before submitting schedule requests.");
+      err.statusCode = 403;
+      err.code = "IDENTITY_NOT_VERIFIED";
+      throw err;
+    }
+
+    const resourceType = "SCHEDULE_DRAFT_SUBMIT";
+    const hasValidKey = IdempotencyService.isValidKey(idempotencyKey);
+    if (hasValidKey) {
+      const existingKey = await IdempotencyService.findRecord(parsedUserId, idempotencyKey, resourceType, prisma);
+      if (existingKey) {
+        const existingSchedule = await prisma.schedule.findUnique({
+          where: { id: existingKey.resourceId },
+          include: {
+            user: { select: { id: true, fullName: true, email: true, contactNumber: true, emailNotificationsEnabled: true } },
+            parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+            requestedPriest: { select: { id: true, fullName: true } },
+          },
+        });
+        if (existingSchedule) {
+          return { schedule: sanitizeSchedulePriest(existingSchedule), isReplay: true };
+        }
+      }
+    }
+
+    // If caller passed field overrides when submitting, persist them to the draft first
+    // so the draft keeps the latest user input even if slot/document validation fails.
+    const hasOverrides = payloadOverrides && Object.keys(payloadOverrides).some((k) => payloadOverrides[k] !== undefined);
+    let draft;
+    if (hasOverrides) {
+      await this.updateDraft(parsedDraftId, parsedUserId, payloadOverrides);
+    }
+    draft = await prisma.scheduleDraft.findFirst({
+      where: { id: parsedDraftId, userId: parsedUserId },
+      include: {
+        parish: true,
+        attachments: { orderBy: { id: "asc" } },
+      },
+    });
+
+    if (!draft) {
+      const err = new Error("Schedule draft not found or has already been submitted.");
+      err.statusCode = 404;
+      err.code = "SCHEDULE_DRAFT_NOT_FOUND";
+      throw err;
+    }
+
+    const effectiveParishId = draft.parishId;
+    const canonicalEventType = validateCanonicalEventType(draft.eventType);
+    const effectiveDisplayTitle = resolveDisplayTitle(canonicalEventType, draft.displayTitle) || canonicalEventType;
+    const effectiveDateStr = draft.requestedDate ? getManilaDateString(new Date(draft.requestedDate)) : "";
+    const effectiveTimeSlot = draft.timeSlot ? String(draft.timeSlot).trim() : "";
+
+    if (!effectiveDateStr) {
+      const err = new Error("Please select a booking date before submitting your schedule request.");
+      err.statusCode = 400;
+      err.code = "MISSING_BOOKING_DATE";
+      throw err;
+    }
+    if (!effectiveTimeSlot) {
+      const err = new Error("Please select an available time slot before submitting your schedule request.");
+      err.statusCode = 400;
+      err.code = "MISSING_TIME_SLOT";
+      throw err;
+    }
+
+    const now = new Date();
+    const horizon = validateDateHorizon(effectiveDateStr, effectiveTimeSlot, now);
+
+    let parsedRequestedPriestId = null;
+    if (draft.requestedPriestId !== undefined && draft.requestedPriestId !== null) {
+      parsedRequestedPriestId = normalizePriestId(draft.requestedPriestId);
+      await validateRequestedPriestEligibility(parsedRequestedPriestId, effectiveParishId, prisma);
+    }
+
+    requireEnabledSchedulingService(draft.parish, canonicalEventType);
+
+    // Combine persisted draft attachments with any newly uploaded files from this submit call
+    const newUploadsList = Array.isArray(uploadedAttachments) ? uploadedAttachments : [];
+    const mergedByRequirementId = new Map();
+    for (const existingAtt of draft.attachments || []) {
+      mergedByRequirementId.set(existingAtt.requirementId, {
+        requirementId: existingAtt.requirementId,
+        requirementLabel: existingAtt.requirementLabel,
+        fileName: existingAtt.fileName,
+        fileType: existingAtt.fileType,
+        fileSize: existingAtt.fileSize,
+        r2ObjectKey: existingAtt.r2ObjectKey,
+        isFromDraft: true,
+      });
+    }
+    for (const newUpload of newUploadsList) {
+      mergedByRequirementId.set(newUpload.requirementId, {
+        ...newUpload,
+        isFromDraft: false,
+      });
+    }
+
+    const combinedAttachments = Array.from(mergedByRequirementId.values()).sort((a, b) =>
+      a.requirementId.localeCompare(b.requirementId)
+    );
+
+    validateScheduleRequirements(draft.parish, canonicalEventType, combinedAttachments);
+
+    if (newUploadsList.length > 0) {
+      await ScheduleAttachmentService.stage(newUploadsList, parsedUserId, effectiveParishId);
+      for (const staged of newUploadsList) {
+        const merged = mergedByRequirementId.get(staged.requirementId);
+        if (merged) {
+          merged.r2ObjectKey = staged.r2ObjectKey;
+        }
+      }
+    }
+
+    const cleanRemarks = draft.remarks ? draft.remarks.trim() : "";
+    const fullRemarks = [
+      `Time Slot: ${effectiveTimeSlot}. [Estimated End Time]`,
+      cleanRemarks ? `Notes: ${cleanRemarks}` : "Notes: Parishioner Portal Request",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const scheduleDateUtc = new Date(
+      Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+    );
+    const startDatetime = parseManilaDateTime(horizon.dateStr, effectiveTimeSlot);
+    const endDatetime = startDatetime ? new Date(startDatetime.getTime() + 60 * 60 * 1000) : null;
+
+    const canonicalPayload = {
+      parishId: effectiveParishId,
+      eventType: canonicalEventType,
+      requestedDate: horizon.dateStr,
+      timeSlot: effectiveTimeSlot,
+      ...(typeof draft.location === "string" && draft.location.trim() ? { location: draft.location.trim() } : {}),
+      remarks: cleanRemarks || "Parishioner Portal Request",
+      requestedPriestId: parsedRequestedPriestId,
+    };
+    const payloadHash = computeSchedulePayloadHash(canonicalPayload);
+
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          if (typeof tx.$queryRaw === "function") {
+            await tx.$queryRaw`SELECT "draft_id" FROM "schedule_drafts" WHERE "draft_id" = ${parsedDraftId} AND "user_id" = ${parsedUserId} FOR UPDATE`;
+          }
+          const lockedDraft = await tx.scheduleDraft.findFirst({
+            where: { id: parsedDraftId, userId: parsedUserId },
+            include: { attachments: true },
+          });
+          if (!lockedDraft) {
+            const err = new Error("This schedule draft has already been submitted.");
+            err.statusCode = 409;
+            err.code = "DRAFT_ALREADY_SUBMITTED";
+            throw err;
+          }
+
+          await lockParishSchedulingConfiguration(tx, effectiveParishId);
+          const parish = await tx.parish.findUnique({
+            where: { id: effectiveParishId },
+            include: {
+              availabilities: {
+                where: { type: { in: PARISH_BOOKING_BLOCK_TYPES } },
+              },
+            },
+          });
+          const schedulingConfig = requireEnabledSchedulingService(parish, canonicalEventType);
+          const requirements = validateScheduleRequirements(parish, canonicalEventType, combinedAttachments);
+
+          validateParishAndOffice(parish, horizon.dayName, effectiveTimeSlot);
+          validateParishAvailability(parish.availabilities, horizon.dateStr);
+          const schedulingRules = await loadSchedulingRules(tx, effectiveParishId, horizon.dateStr);
+          evaluateSchedulingRules({
+            eventType: canonicalEventType,
+            dateInput: horizon.dateStr,
+            ...schedulingRules,
+          });
+
+          const dateStartUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 0, 0, 0)
+          );
+          const dateEndUtc = new Date(
+            Date.UTC(horizon.parsed.year, horizon.parsed.month - 1, horizon.parsed.day, 23, 59, 59, 999)
+          );
+
+          const activeBookings = await tx.schedule.findMany({
+            where: {
+              parishId: effectiveParishId,
+              status: { notIn: ["CANCELLED", "REJECTED"] },
+              requestedDate: {
+                gte: dateStartUtc,
+                lte: dateEndUtc,
+              },
+            },
+            select: {
+              id: true,
+              remarks: true,
+            },
+          });
+
+          validateSlotAndCapacity(
+            schedulingConfig.timeSlots,
+            activeBookings,
+            effectiveTimeSlot,
+            schedulingConfig.dailyCapacity,
+            schedulingConfig.slotCapacity
+          );
+
+          const resolvedLocation = canonicalEventType === "WEDDING"
+            ? parish.parishName
+            : (typeof draft.location === "string" && draft.location.trim() ? draft.location.trim().slice(0, 150) : null);
+
+          const transferredKeys = new Set(combinedAttachments.map((a) => a.r2ObjectKey));
+          for (const oldAtt of lockedDraft.attachments || []) {
+            if (oldAtt.r2ObjectKey && !transferredKeys.has(oldAtt.r2ObjectKey)) {
+              await tx.privateObjectCleanupJob.upsert({
+                where: { objectKey: oldAtt.r2ObjectKey },
+                create: { objectKey: oldAtt.r2ObjectKey, reasonCode: "SCHEDULE_DRAFT_ATTACHMENT_REPLACED" },
+                update: {
+                  status: "PENDING",
+                  reasonCode: "SCHEDULE_DRAFT_ATTACHMENT_REPLACED",
+                  attemptCount: 0,
+                  nextAttemptAt: new Date(),
+                  processingToken: null,
+                  processingAt: null,
+                  leaseExpiresAt: null,
+                  completedAt: null,
+                  lastErrorCode: null,
+                },
+              });
+            }
+          }
+
+          await tx.scheduleDraft.delete({ where: { id: parsedDraftId } });
+          await tx.idempotencyKey.updateMany({
+            where: {
+              userId: parsedUserId,
+              resourceType: "SCHEDULE_DRAFT_CREATE",
+              resourceId: parsedDraftId,
+            },
+            data: { resourceId: DELETED_SCHEDULE_DRAFT_RESOURCE_ID },
+          });
+
+          const created = await tx.schedule.create({
+            data: {
+              userId: parsedUserId,
+              parishId: effectiveParishId,
+              eventType: canonicalEventType,
+              displayTitle: effectiveDisplayTitle,
+              requestedDate: scheduleDateUtc,
+              startDatetime,
+              endDatetime,
+              location: resolvedLocation,
+              status: "PENDING",
+              conflictFlag: false,
+              remarks: fullRemarks,
+              requestedPriestId: parsedRequestedPriestId,
+              ...(combinedAttachments.length
+                ? {
+                    attachments: {
+                      create: combinedAttachments.map((attachment) => ({
+                        requirementId: attachment.requirementId,
+                        requirementLabel:
+                          requirements.find((r) => r.id === attachment.requirementId)?.label ||
+                          attachment.requirementLabel ||
+                          attachment.requirementId,
+                        fileName: attachment.fileName,
+                        fileType: attachment.fileType,
+                        fileSize: attachment.fileSize,
+                        r2ObjectKey: attachment.r2ObjectKey,
+                      })),
+                    },
+                  }
+                : {}),
+            },
+            include: {
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true, emailNotificationsEnabled: true } },
+              parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+              requestedPriest: { select: { id: true, fullName: true } },
+            },
+          });
+
+          if (newUploadsList.length > 0) {
+            const recoveryJobs = await tx.privateObjectCleanupJob.updateMany({
+              where: { objectKey: { in: newUploadsList.map((a) => a.r2ObjectKey) }, status: "PENDING" },
+              data: { status: "CANCELLED", completedAt: new Date() },
+            });
+            if (recoveryJobs.count !== newUploadsList.length) {
+              throw Object.assign(new Error("Upload expired. Please retry your booking."), {
+                statusCode: 409,
+                code: "SCHEDULE_UPLOAD_EXPIRED",
+              });
+            }
+          }
+
+          if (hasValidKey) {
+            await tx.idempotencyKey.create({
+              data: {
+                key: idempotencyKey,
+                userId: parsedUserId,
+                resourceType,
+                resourceId: created.id,
+                payloadHash,
+              },
+            });
+          }
+
+          await NotificationDispatcher.notifyScheduleChange(
+            {
+              parishionerId: created.userId,
+              parishId: created.parishId,
+              scheduleId: created.id,
+              displayTitle: created.displayTitle || canonicalEventType,
+              oldStatus: null,
+              newStatus: created.status,
+              proposalVersion: created.proposalVersion,
+              transitionVersion: "submitted",
+              notifyAdmins: true,
+            },
+            tx
+          );
+
+          return created;
+        },
+        {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 10000,
+        }
+      );
+
+      return { schedule: sanitizeSchedulePriest(result), isReplay: false };
+    } catch (err) {
+      if (newUploadsList.length > 0) {
+        const stagedKeys = newUploadsList.map((a) => a.r2ObjectKey).filter(Boolean);
+        if (stagedKeys.length > 0) {
+          await prisma.privateObjectCleanupJob.updateMany({
+            where: { objectKey: { in: stagedKeys }, status: "PENDING" },
+            data: { reasonCode: "SCHEDULE_ATTACHMENT_ROLLBACK", nextAttemptAt: new Date() },
+          }).catch(() => {});
+        }
+      }
+
+      const isSerializationConflict =
+        err?.code === "P2034" ||
+        err?.message?.includes("Serialization") ||
+        err?.message?.includes("could not serialize");
+
+      if (hasValidKey && (IdempotencyService.isUniqueConstraintError(err) || isSerializationConflict)) {
+        const raceWinner = await IdempotencyService.findRecord(parsedUserId, idempotencyKey, resourceType, prisma);
+        if (raceWinner) {
+          const winnerSchedule = await prisma.schedule.findUnique({
+            where: { id: raceWinner.resourceId },
+            include: {
+              user: { select: { id: true, fullName: true, email: true, contactNumber: true, emailNotificationsEnabled: true } },
+              parish: { select: { id: true, parishName: true, type: true, municipalityCity: true } },
+              requestedPriest: { select: { id: true, fullName: true } },
+            },
+          });
+          if (winnerSchedule) {
+            return { schedule: sanitizeSchedulePriest(winnerSchedule), isReplay: true };
+          }
+        }
+      }
+
+      if (isSerializationConflict) {
+        const conflictErr = new Error("Slot booking contention detected. Please retry your request.");
+        conflictErr.statusCode = 409;
+        conflictErr.code = "SCHEDULE_CONCURRENCY_CONFLICT";
+        throw conflictErr;
+      }
+
+      throw err;
+    }
+  }
+
+}
+
+const DELETED_SCHEDULE_DRAFT_RESOURCE_ID = -1;
+
+const SCHEDULE_DRAFT_INCLUDE = {
+  parish: {
+    select: {
+      id: true,
+      parishName: true,
+      type: true,
+      municipalityCity: true,
+      isActive: true,
+      eventSettings: true,
+      officeHours: true,
+    },
+  },
+  requestedPriest: {
+    select: {
+      id: true,
+      fullName: true,
+    },
+  },
+  attachments: {
+    select: {
+      id: true,
+      requirementId: true,
+      requirementLabel: true,
+      fileName: true,
+      fileType: true,
+      fileSize: true,
+      uploadedAt: true,
+    },
+    orderBy: { id: "asc" },
+  },
+};
+
+async function assertParishionerDraftOwner(userId, client = prisma) {
+  const user = await client.user.findUnique({
+    where: { id: Number(userId) },
+    include: { role: true, governmentIdVerification: true },
+  });
+  const isParishioner = Boolean(
+    user &&
+      (!user.status || user.status === "ACTIVE") &&
+      (user.role?.roleName === "PARISHIONER" ||
+        (!user.role && (!user.roleId || user.roleId === 1)))
+  );
+  if (!isParishioner) {
+    const err = new Error("Only authenticated parishioners can manage schedule drafts.");
+    err.statusCode = 403;
+    err.code = "FORBIDDEN";
+    throw err;
+  }
+  return user;
+}
+
+function assertScheduleDraftNotDeleted(record) {
+  if (Number(record?.resourceId) === DELETED_SCHEDULE_DRAFT_RESOURCE_ID) {
+    const err = new Error("This schedule draft was already discarded. Start a new schedule draft to continue.");
+    err.statusCode = 409;
+    err.code = "DRAFT_ALREADY_DELETED";
+    throw err;
+  }
+}
+
+function parseOptionalDraftDate(rawDate, fieldName = "date") {
+  if (rawDate === null || rawDate === undefined || String(rawDate).trim() === "") {
+    return null;
+  }
+  const cleanStr = String(rawDate).trim().split("T")[0];
+  const parsed = parseManilaDateOnly(cleanStr);
+  if (!parsed || !parsed.year || !parsed.month || !parsed.day) {
+    const err = new Error(`Invalid ${fieldName} format. Expected YYYY-MM-DD.`);
+    err.statusCode = 400;
+    err.code = "INVALID_DATE";
+    throw err;
+  }
+  const dateStr = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
+  return {
+    dateStr,
+    utcDate: new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day, 0, 0, 0)),
+  };
+}
+
+function parseOptionalDraftTimeSlot(rawSlot) {
+  if (rawSlot === null || rawSlot === undefined || String(rawSlot).trim() === "") {
+    return null;
+  }
+  const normalized = normalizeTimeSlotString(String(rawSlot).trim());
+  if (!normalized) {
+    const err = new Error("Time slot must be in HH:MM AM/PM format (e.g., 09:00 AM).");
+    err.statusCode = 400;
+    err.code = "INVALID_TIME_SLOT";
+    throw err;
+  }
+  return normalized;
+}
+
+function normalizeOptionalDraftLocation(rawLocation) {
+  if (rawLocation === null || rawLocation === undefined) return null;
+  const trimmed = String(rawLocation).trim();
+  return trimmed ? trimmed.slice(0, 150) : null;
+}
+
+function normalizeOptionalDraftRemarks(rawRemarks) {
+  if (rawRemarks === null || rawRemarks === undefined) return null;
+  let cleaned = String(rawRemarks)
+    .replace(/^Time Slot:\s*[^.]+\.\s*(?:\[Estimated End Time\])?\s*/i, "")
+    .replace(/^Notes:\s*/i, "")
+    .trim();
+  if (!cleaned || cleaned === "Parishioner Portal Request") {
+    return null;
+  }
+  return cleaned.slice(0, 1000);
+}
+
+function computeScheduleDraftPayloadHash(payload) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        parishId: Number(payload.parishId),
+        eventType: String(payload.eventType || ""),
+        displayTitle: payload.displayTitle || null,
+        preferredDate: payload.preferredDate || null,
+        requestedDate: payload.requestedDate || null,
+        timeSlot: payload.timeSlot || null,
+        requestedPriestId: payload.requestedPriestId ? Number(payload.requestedPriestId) : null,
+        location: payload.location || null,
+        remarks: payload.remarks || null,
+      })
+    )
+    .digest("hex");
+}
+
+export function formatScheduleDraft(draft) {
+  if (!draft) return null;
+  const parishName = draft.parish?.parishName || null;
+  const effectiveLocation = draft.eventType === "WEDDING"
+    ? (parishName || draft.location || null)
+    : (draft.location || null);
+  const effectiveDisplayTitle =
+    resolveDisplayTitle(draft.eventType, draft.displayTitle) || draft.displayTitle || draft.eventType;
+  const requirements = draft.parish ? getScheduleRequirements(draft.parish, draft.eventType) : [];
+  const preferredDateStr = draft.preferredDate ? getManilaDateString(new Date(draft.preferredDate)) : null;
+  const requestedDateStr = draft.requestedDate ? getManilaDateString(new Date(draft.requestedDate)) : null;
+
+  return {
+    id: draft.id,
+    userId: draft.userId,
+    parishId: draft.parishId,
+    parishName,
+    parish: draft.parish
+      ? {
+          id: draft.parish.id,
+          parishName: draft.parish.parishName,
+          type: draft.parish.type,
+          municipalityCity: draft.parish.municipalityCity,
+        }
+      : undefined,
+    eventType: draft.eventType,
+    displayTitle: draft.displayTitle || effectiveDisplayTitle,
+    effectiveDisplayTitle,
+    preferredDate: preferredDateStr,
+    requestedDate: requestedDateStr,
+    date: requestedDateStr,
+    timeSlot: draft.timeSlot || null,
+    requestedPriestId: draft.requestedPriestId || null,
+    requestedPriest: draft.requestedPriest
+      ? {
+          id: draft.requestedPriest.id,
+          name: draft.requestedPriest.fullName ?? draft.requestedPriest.name ?? null,
+          fullName: draft.requestedPriest.fullName ?? draft.requestedPriest.name ?? null,
+        }
+      : null,
+    location: effectiveLocation,
+    remarks: draft.remarks || null,
+    isDraft: true,
+    status: "DRAFT",
+    attachments: Array.isArray(draft.attachments)
+      ? draft.attachments.map((att) => ({
+          id: att.id,
+          requirementId: att.requirementId,
+          requirementLabel: att.requirementLabel,
+          fileName: att.fileName,
+          fileType: att.fileType,
+          fileSize: att.fileSize,
+          uploadedAt: att.uploadedAt,
+        }))
+      : [],
+    requirements,
+    createdAt: draft.createdAt,
+    updatedAt: draft.updatedAt,
+  };
 }

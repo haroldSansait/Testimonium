@@ -166,6 +166,70 @@ export interface ScheduleAttachment {
   fileSize?: number;
 }
 
+export interface ScheduleDraftAttachment {
+  id: number;
+  requirementId: string;
+  requirementLabel: string;
+  fileName: string;
+  fileType: string;
+  fileSize?: number;
+  createdAt?: string;
+}
+
+export interface ScheduleDraftItem {
+  id: number;
+  userId: number;
+  parishId: number;
+  eventType: ScheduleEventType;
+  preferredDate?: string | null;
+  date?: string | null;
+  timeSlot?: string | null;
+  requestedPriestId?: number | null;
+  location?: string | null;
+  remarks?: string | null;
+  status: "DRAFT";
+  parishName?: string | null;
+  parish?: ScheduleParish | null;
+  requestedPriest?: ScheduleStaff | null;
+  attachments?: ScheduleDraftAttachment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateScheduleDraftPayload {
+  parishId: number;
+  eventType: ScheduleEventType;
+  preferredDate?: string | null;
+  date?: string | null;
+  timeSlot?: string | null;
+  requestedPriestId?: number | null;
+  location?: string | null;
+  remarks?: string | null;
+}
+
+export interface UpdateScheduleDraftPayload {
+  parishId?: number;
+  eventType?: ScheduleEventType;
+  preferredDate?: string | null;
+  date?: string | null;
+  timeSlot?: string | null;
+  requestedPriestId?: number | null;
+  location?: string | null;
+  remarks?: string | null;
+  removedRequirementIds?: string[];
+}
+
+export interface SubmitScheduleDraftPayload {
+  parishId?: number;
+  eventType?: ScheduleEventType;
+  preferredDate?: string | null;
+  date?: string | null;
+  timeSlot?: string | null;
+  requestedPriestId?: number | null;
+  location?: string | null;
+  remarks?: string | null;
+}
+
 export interface ScheduleListResponse {
   data: ScheduleItem[];
   pagination?: {

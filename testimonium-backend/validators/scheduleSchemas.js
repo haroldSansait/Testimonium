@@ -48,6 +48,72 @@ export const createScheduleSchema = z.object({
   requestedPriestId: strictPositiveIntSchema.optional().nullable(),
 });
 
+const eventTypeStringSchema = z.string({
+  required_error: "Event type is required"
+}).min(1, "Event type cannot be empty").refine(
+  (val) => resolveEventType(val) !== null,
+  {
+    message: "Invalid event type. The provided value cannot be mapped to any canonical schedule event."
+  }
+);
+
+const optionalDraftDateSchema = z
+  .string()
+  .trim()
+  .refine(
+    (val) => val === "" || (/^\d{4}-\d{2}-\d{2}/.test(val) && !Number.isNaN(Date.parse(val))),
+    "Invalid date format. Expected YYYY-MM-DD."
+  )
+  .optional()
+  .nullable();
+
+const optionalDraftTimeSlotSchema = z
+  .string()
+  .trim()
+  .max(20, "Time slot cannot exceed 20 characters")
+  .optional()
+  .nullable();
+
+export const createScheduleDraftSchema = z.object({
+  parishId: strictPositiveIntSchema,
+  eventType: eventTypeStringSchema,
+  displayTitle: z.string().max(150).optional().nullable(),
+  preferredDate: optionalDraftDateSchema,
+  date: optionalDraftDateSchema,
+  requestedDate: optionalDraftDateSchema,
+  timeSlot: optionalDraftTimeSlotSchema,
+  location: z.string().trim().max(150, "Location cannot exceed 150 characters").optional().nullable(),
+  remarks: z.string().max(1000, "Additional notes cannot exceed 1000 characters").optional().nullable(),
+  requestedPriestId: strictPositiveIntSchema.optional().nullable(),
+}).strict();
+
+export const updateScheduleDraftSchema = z.object({
+  parishId: strictPositiveIntSchema.optional(),
+  eventType: eventTypeStringSchema.optional(),
+  displayTitle: z.string().max(150).optional().nullable(),
+  preferredDate: optionalDraftDateSchema,
+  date: optionalDraftDateSchema,
+  requestedDate: optionalDraftDateSchema,
+  timeSlot: optionalDraftTimeSlotSchema,
+  location: z.string().trim().max(150, "Location cannot exceed 150 characters").optional().nullable(),
+  remarks: z.string().max(1000, "Additional notes cannot exceed 1000 characters").optional().nullable(),
+  requestedPriestId: strictPositiveIntSchema.optional().nullable(),
+  removedRequirementIds: z.array(z.string().trim().min(1)).max(10).optional(),
+}).strict();
+
+export const submitScheduleDraftSchema = z.object({
+  parishId: strictPositiveIntSchema.optional(),
+  eventType: eventTypeStringSchema.optional(),
+  displayTitle: z.string().max(150).optional().nullable(),
+  preferredDate: optionalDraftDateSchema,
+  date: optionalDraftDateSchema,
+  requestedDate: optionalDraftDateSchema,
+  timeSlot: optionalDraftTimeSlotSchema,
+  location: z.string().trim().max(150, "Location cannot exceed 150 characters").optional().nullable(),
+  remarks: z.string().max(1000, "Additional notes cannot exceed 1000 characters").optional().nullable(),
+  requestedPriestId: strictPositiveIntSchema.optional().nullable(),
+}).strict();
+
 export const updateScheduleStatusSchema = z.object({
   status: z.string().trim().min(1, "Status is required"),
   expectedVersion,

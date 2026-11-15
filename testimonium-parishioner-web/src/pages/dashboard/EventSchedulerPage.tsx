@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check, CheckCircle, Users, AlertCircle, ShieldCheck } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Check, CheckCircle, Users, AlertCircle, ShieldCheck, FileEdit } from 'lucide-react';
 import services from '../../providers/factory';
 import { useProfileRequirement } from '../../hooks/useProfileRequirement';
 import { useAuth } from '../../contexts/AuthContext';
@@ -11,10 +11,11 @@ import type {
   SchedulingConfiguration,
 } from '../../providers/types';
 import { useParishes } from '../../hooks/useService';
-import type { Appointment } from '../../types';
+import type { Appointment, ScheduleDraft, ScheduleDraftAttachment } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
 import { CustomSelect } from '../../components/ui/CustomSelect';
 import { Stepper } from '../../components/ui/Stepper';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -54,9 +55,11 @@ const scheduleSubmissionErrorMessage = (error: unknown) =>
 
 export const EventSchedulerPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const draftId = searchParams.get('draftId')?.trim() || '';
   const parishesQuery = useParishes();
   const { isProfileIncomplete, openProfileModal } = useProfileRequirement();
-  const { appProfile } = useAuth();
+  const { user, appProfile } = useAuth();
   const isGovIdVerified = Boolean(appProfile?.isGovernmentIdVerified);
 
   useEffect(() => {
@@ -93,6 +96,17 @@ export const EventSchedulerPage: React.FC = () => {
   const submittingRef = useRef(false);
   const [requirementFiles, setRequirementFiles] = useState<Record<string, File>>({});
   const [createdBooking, setCreatedBooking] = useState<Appointment | null>(null);
+  const [savedDraft, setSavedDraft] = useState<ScheduleDraft | null>(null);
+  const [savedDraftAttachments, setSavedDraftAttachments] = useState<ScheduleDraftAttachment[]>([]);
+  const [loadingDraft, setLoadingDraft] = useState(Boolean(draftId));
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const draftRef = useRef<{ id: string } | null>(null);
+  const loadedDraftIdRef = useRef<string | null>(null);
+  const draftIdempotencyKeyRef = useRef<string | null>(null);
+  const hydratingDraftRef = useRef<ScheduleDraft | null>(null);
   const [activeProposal, setActiveProposal] = useState<{
     id: string; serviceName: string; proposedDate: string; proposedTime: string; reason: string; version?: number;
   } | null>(null);
@@ -121,9 +135,16 @@ export const EventSchedulerPage: React.FC = () => {
   const hasRequirements = requirements.length > 0;
   const steps = [...bookingSteps, ...(hasRequirements ? ['Upload Requirements'] : []), 'Confirmation'];
   const confirmationStep = steps.length - 1;
-  const requirementsComplete = requirements.every((r) => requirementFiles[r.id]);
+  const hasSavedDraftAttachment = (reqId: string) =>
+    savedDraftAttachments.some((att) => att.requirementId === reqId);
+  const requirementsComplete = requirements.every(
+    (r) => Boolean(requirementFiles[r.id]) || hasSavedDraftAttachment(r.id)
+  );
+  const canSaveDraft = Boolean(selectedParishId && selectedEventType);
 
-  useEffect(() => { setRequirementFiles({}); }, [selectedParishId, selectedEventType]);
+  useEffect(() => {
+    setRequirementFiles({});
+  }, [selectedParishId, selectedEventType]);
   useEffect(() => {
     const ids = requirementsSignature.split('|');
     setRequirementFiles((files) => Object.fromEntries(Object.entries(files).filter(([id]) => ids.includes(id))));
@@ -235,8 +256,68 @@ export const EventSchedulerPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (parishes.length && !selectedParishId) setSelectedParishId(parishes[0].id);
-  }, [parishes, selectedParishId]);
+    if (!draftId && !savedDraft && parishes.length && !selectedParishId) {
+      setSelectedParishId(parishes[0].id);
+    }
+  }, [parishes, selectedParishId, draftId, savedDraft]);
+
+  useEffect(() => {
+    if (!draftId || loadedDraftIdRef.current === draftId) return;
+    let active = true;
+    const loadDraft = async () => {
+      setLoadingDraft(true);
+      setDraftError(null);
+      try {
+        const draft = await services.scheduler.getDraftById(draftId);
+        if (!active) return;
+        loadedDraftIdRef.current = draftId;
+        draftRef.current = { id: draft.id };
+        hydratingDraftRef.current = draft;
+        setSavedDraft(draft);
+        setSavedDraftAttachments(draft.attachments || []);
+        setRequirementFiles({});
+        setSelectedParishId(draft.parishId);
+        setSelectedEventType(draft.rawEventType);
+        const restoredRequestedDate = draft.requestedDate || draft.date || '';
+        const restoredPreferredDate = draft.preferredDate || restoredRequestedDate || '';
+        setPreferredDate(restoredPreferredDate);
+        setSelectedDate(restoredRequestedDate);
+        const restoredTimeSlot = draft.timeSlot || '';
+        pendingRecommendationSlotRef.current = restoredTimeSlot || null;
+        setSelectedTimeSlot(restoredTimeSlot);
+        setRequestedPriestId(draft.requestedPriestId ?? null);
+        if (draft.rawEventType === 'WEDDING') {
+          setVenueAddress(draft.parishName || draft.location || '');
+        } else {
+          const restoredLoc = draft.location || '';
+          manualVenueRef.current = restoredLoc;
+          setVenueAddress(restoredLoc);
+        }
+        setAdditionalNotes(draft.remarks || '');
+
+        if (!restoredRequestedDate) {
+          setCurrentStep(2);
+        } else if (!restoredTimeSlot) {
+          setCurrentStep(3);
+        } else {
+          const draftReqCount = Array.isArray(draft.requirements) ? draft.requirements.length : 0;
+          setCurrentStep(draftReqCount > 0 ? 4 : 3);
+        }
+      } catch (err: any) {
+        if (active) {
+          setDraftError(
+            err?.message || 'Unable to open this saved schedule draft. Please return to Track Status and try again.'
+          );
+        }
+      } finally {
+        if (active) setLoadingDraft(false);
+      }
+    };
+    void loadDraft();
+    return () => {
+      active = false;
+    };
+  }, [draftId]);
 
   const loadEligiblePriests = useCallback(async () => {
     const currentGen = ++priestsGenRef.current;
@@ -298,12 +379,16 @@ export const EventSchedulerPage: React.FC = () => {
   }, [fetchRecommendations]);
 
   useEffect(() => {
-    setSelectedEventType('');
-    setPreferredDate('');
-    setSelectedDate('');
-    setSelectedTimeSlot('');
-    pendingRecommendationSlotRef.current = null;
-    setRequestedPriestId(null);
+    const isHydrating =
+      hydratingDraftRef.current && String(hydratingDraftRef.current.parishId) === String(selectedParishId);
+    if (!isHydrating) {
+      setSelectedEventType('');
+      setPreferredDate('');
+      setSelectedDate('');
+      setSelectedTimeSlot('');
+      pendingRecommendationSlotRef.current = null;
+      setRequestedPriestId(null);
+    }
     setEligiblePriests([]);
     setPriestsError(null);
     setRecommendations([]);
@@ -348,12 +433,37 @@ export const EventSchedulerPage: React.FC = () => {
       setLoadingDates(false);
       return;
     }
+    const hydratingDraft = hydratingDraftRef.current;
+    const isHydratingThisService =
+      hydratingDraft &&
+      String(hydratingDraft.parishId) === String(selectedParishId) &&
+      hydratingDraft.rawEventType === selectedEventType;
+
     setLoadingDates(true);
-    setSelectedDate('');
-    setSelectedTimeSlot('');
-    pendingRecommendationSlotRef.current = null;
+    if (!isHydratingThisService) {
+      setSelectedDate('');
+      setSelectedTimeSlot('');
+      pendingRecommendationSlotRef.current = null;
+    } else {
+      hydratingDraftRef.current = null;
+    }
     void services.scheduler.getAvailabilityDates(selectedParishId, selectedEventType)
-      .then((result) => { if (currentGen === datesGenRef.current) setAvailability(result); })
+      .then((result) => {
+        if (currentGen === datesGenRef.current) {
+          setAvailability(result);
+          if (isHydratingThisService && hydratingDraft?.requestedDate) {
+            if (!result.dates.includes(hydratingDraft.requestedDate)) {
+              setSelectedDate('');
+              setSelectedTimeSlot('');
+              pendingRecommendationSlotRef.current = null;
+              setCurrentStep(2);
+              setMessage(
+                'Your previously saved booking date is no longer available. Please choose another available date.'
+              );
+            }
+          }
+        }
+      })
       .catch(() => { if (currentGen === datesGenRef.current) { setAvailability(null); setMessage('Could not load available dates. Please try again.'); } })
       .finally(() => { if (currentGen === datesGenRef.current) setLoadingDates(false); });
   }, [selectedEventType, selectedParishId]);
@@ -412,6 +522,67 @@ export const EventSchedulerPage: React.FC = () => {
     setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
   };
 
+  const persistDraft = async (): Promise<ScheduleDraft> => {
+    if (!selectedParishId || !selectedEventType) {
+      throw new Error('Please select a parish and service before saving a draft.');
+    }
+    const payload = {
+      parishId: selectedParishId,
+      eventType: selectedEventType,
+      displayTitle: selectedService?.label || savedDraft?.displayTitle || selectedEventType,
+      preferredDate: preferredDate || selectedDate || null,
+      date: selectedDate || null,
+      requestedDate: selectedDate || null,
+      timeSlot: selectedTimeSlot || null,
+      location: isMarriageCanonical ? (selectedParish?.name || '') : (venueAddress.trim() || null),
+      remarks: additionalNotes.trim() || null,
+      requestedPriestId: requestedPriestId || null,
+    };
+
+    const storageKey = `schedule-draft-create:${user?.uid || appProfile?.id || 'anon'}`;
+    if (!draftIdempotencyKeyRef.current && !draftRef.current) {
+      const generated =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `sched-draft-${Date.now()}`;
+      draftIdempotencyKeyRef.current = sessionStorage.getItem(storageKey) || generated;
+      sessionStorage.setItem(storageKey, draftIdempotencyKeyRef.current);
+    }
+
+    const draft = draftRef.current
+      ? await services.scheduler.updateDraft(draftRef.current.id, payload)
+      : await services.scheduler.createDraft(payload, draftIdempotencyKeyRef.current || undefined);
+
+    draftRef.current = { id: draft.id };
+    loadedDraftIdRef.current = draft.id;
+    setSavedDraft(draft);
+    setSavedDraftAttachments(draft.attachments || []);
+    sessionStorage.removeItem(storageKey);
+    if (draftId !== draft.id) {
+      navigate(`/dashboard/scheduler?draftId=${encodeURIComponent(draft.id)}`, { replace: true });
+    }
+    return draft;
+  };
+
+  const handleSaveDraft = async () => {
+    if (submittingRef.current || !canSaveDraft) return;
+    submittingRef.current = true;
+    setSavingDraft(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      await persistDraft();
+      setSaveMessage(
+        'Draft details saved. Resume later from Saved Drafts in Track Status. Selected local files stay in this tab and are uploaded only when you submit.'
+      );
+    } catch (err: any) {
+      setSaveError(err?.message || 'Unable to save schedule draft. Please try again.');
+    } finally {
+      submittingRef.current = false;
+      setSavingDraft(false);
+    }
+  };
+
   const handleBook = async () => {
     if (submittingRef.current) return;
     if (isProfileIncomplete) {
@@ -427,18 +598,40 @@ export const EventSchedulerPage: React.FC = () => {
     submittingRef.current = true;
     setSubmitting(true);
     setMessage(null);
+    setSaveError(null);
+    setSaveMessage(null);
     try {
-      const appointment = await services.scheduler.bookAppointment({
-        parishId: selectedParishId,
-        eventType: selectedService.eventType,
-        displayTitle: selectedService.label,
-        date: selectedDate,
-        timeSlot: selectedTimeSlot,
-        location: isMarriageCanonical ? (selectedParish?.name || '') : venueAddress,
-        remarks: additionalNotes.trim() || undefined,
-        requestedPriestId: requestedPriestId || undefined,
-        requirementFiles: Object.fromEntries(requirements.map((r) => [r.id, requirementFiles[r.id]])),
-      });
+      const selectedReqFiles = Object.fromEntries(
+        requirements
+          .filter((r) => Boolean(requirementFiles[r.id]))
+          .map((r) => [r.id, requirementFiles[r.id]])
+      );
+      const activeDraftId = draftRef.current?.id || savedDraft?.id || '';
+      const appointment = activeDraftId
+        ? await services.scheduler.submitDraft(activeDraftId, {
+            parishId: selectedParishId,
+            eventType: selectedService.eventType,
+            displayTitle: selectedService.label,
+            preferredDate: preferredDate || selectedDate || null,
+            date: selectedDate,
+            requestedDate: selectedDate,
+            timeSlot: selectedTimeSlot,
+            location: isMarriageCanonical ? (selectedParish?.name || '') : venueAddress,
+            remarks: additionalNotes.trim() || undefined,
+            requestedPriestId: requestedPriestId || null,
+            requirementFiles: selectedReqFiles,
+          })
+        : await services.scheduler.bookAppointment({
+            parishId: selectedParishId,
+            eventType: selectedService.eventType,
+            displayTitle: selectedService.label,
+            date: selectedDate,
+            timeSlot: selectedTimeSlot,
+            location: isMarriageCanonical ? (selectedParish?.name || '') : venueAddress,
+            remarks: additionalNotes.trim() || undefined,
+            requestedPriestId: requestedPriestId || undefined,
+            requirementFiles: selectedReqFiles,
+          });
       setCreatedBooking(appointment);
       setCurrentStep(confirmationStep);
     } catch (error: any) {
@@ -505,8 +698,9 @@ export const EventSchedulerPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><Card className='p-8'><Skeleton className='h-10 w-full mb-6' /><Skeleton className='h-64 w-full' /></Card></div>;
+  if (loading || loadingDraft) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><Card className='p-8'><Skeleton className='h-10 w-full mb-6' /><Skeleton className='h-64 w-full' /></Card></div>;
   if (error) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><ErrorState description='Failed to load parishes for scheduling.' onRetry={() => void refetch()} /></div>;
+  if (draftError) return <div className='space-y-6'><PageHeader title='Event & Appointment Scheduler' description='Book an appointment with a parish office.' /><ErrorState description={draftError} onRetry={() => navigate('/dashboard/track?mode=schedules')} /></div>;
 
   if (isProfileIncomplete) {
     return (
@@ -854,8 +1048,14 @@ export const EventSchedulerPage: React.FC = () => {
           <h3 className='text-xl font-serif font-bold text-text-primary'>Upload Requirements</h3>
           <p className='text-sm text-text-muted'>Please provide the documents required by {selectedParish?.name} for {selectedService?.label}.</p>
           <p className='text-xs text-text-muted'>{UPLOAD_POLICIES.SUPPORTING_DOCUMENT.label}. Files are submitted securely with your booking.</p>
+          {savedDraft && !requirementsComplete && (
+            <div className='p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900'>
+              Local browser files are not stored until final submission. Please select any remaining required supporting document(s) in this tab before submitting.
+            </div>
+          )}
           {requirements.map((requirement) => {
             const file = requirementFiles[requirement.id];
+            const savedAtt = savedDraftAttachments.find((att) => att.requirementId === requirement.id);
             return (
               <div key={`${selectedParishId}-${selectedEventType}-${requirement.id}`} className='p-4 border border-gray-150 rounded-button bg-gray-50/50 space-y-2'>
                 <div className='flex justify-between items-start'>
@@ -898,41 +1098,53 @@ export const EventSchedulerPage: React.FC = () => {
                     />
                   </div>
                 ) : (
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const dropped = e.dataTransfer.files?.[0];
-                      if (!dropped) return;
-                      const result = validateUploadFile(dropped, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
-                      if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
-                      setMessage(null);
-                      setRequirementFiles((files) => ({ ...files, [requirement.id]: dropped }));
-                    }}
-                    className='relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white cursor-pointer'
-                  >
-                    <input
-                      id={`schedule-file-${requirement.id}`}
-                      type='file'
-                      accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute}
-                      className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
-                      onChange={(event) => {
-                        const nextFile = event.target.files?.[0];
-                        event.target.value = '';
-                        if (!nextFile) return;
-                        const result = validateUploadFile(nextFile, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+                  <div className='space-y-2'>
+                    {savedAtt && (
+                      <div className='flex items-center justify-between p-2.5 bg-emerald-50/60 border border-emerald-200 rounded-button text-xs'>
+                        <span className='truncate max-w-md sm:max-w-xl font-mono font-semibold text-emerald-900'>
+                          Saved on draft: {savedAtt.fileName} ({(savedAtt.fileSize / 1024).toFixed(1)} KB)
+                        </span>
+                        <span className='text-[10px] font-bold text-emerald-700 uppercase'>Attached</span>
+                      </div>
+                    )}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const dropped = e.dataTransfer.files?.[0];
+                        if (!dropped) return;
+                        const result = validateUploadFile(dropped, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
                         if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
                         setMessage(null);
-                        setRequirementFiles((files) => ({ ...files, [requirement.id]: nextFile }));
+                        setRequirementFiles((files) => ({ ...files, [requirement.id]: dropped }));
                       }}
-                    />
-                    <span className='text-xs text-text-muted block'>
-                      Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB.
-                    </span>
+                      className='relative border border-dashed border-gray-300 rounded-button p-4 text-center hover:border-crimson transition-colors bg-white cursor-pointer'
+                    >
+                      <input
+                        id={`schedule-file-${requirement.id}`}
+                        type='file'
+                        accept={UPLOAD_POLICIES.SUPPORTING_DOCUMENT.acceptAttribute}
+                        className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0];
+                          event.target.value = '';
+                          if (!nextFile) return;
+                          const result = validateUploadFile(nextFile, UPLOAD_POLICIES.SUPPORTING_DOCUMENT);
+                          if (!result.valid) { setMessage(result.error || 'Invalid document.'); return; }
+                          setMessage(null);
+                          setRequirementFiles((files) => ({ ...files, [requirement.id]: nextFile }));
+                        }}
+                      />
+                      <span className='text-xs text-text-muted block'>
+                        {savedAtt
+                          ? 'Drag and drop or click to replace the saved document. PDF, JPG, PNG, or WebP — up to 5 MB.'
+                          : 'Drag and drop files here, or click to upload. PDF, JPG, PNG, or WebP — up to 5 MB.'}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -940,10 +1152,73 @@ export const EventSchedulerPage: React.FC = () => {
           })}
           <div className='flex justify-between pt-6'><Button variant='outline' onClick={() => setCurrentStep(3)}>Back</Button><Button onClick={handleBook} loading={submitting} disabled={!requirementsComplete || !selectedTimeSlot || loadingConfiguration || !selectedService}>Confirm Booking</Button></div>
         </div>}
+
+        {/* Draft Actions & Status */}
+        {!createdBooking && (
+          <div className='w-full max-w-[1000px] mx-auto pt-6 border-t border-border/80'>
+            <div className='p-4 rounded-card bg-app-page/70 border border-border/90 space-y-3 text-left'>
+              <div className='flex items-center justify-between gap-2'>
+                <div className='flex items-center gap-2'>
+                  <FileEdit className='w-4 h-4 text-crimson' />
+                  <span className='text-xs font-bold text-text-primary'>
+                    {savedDraft ? 'Saved Schedule Draft' : 'Draft Details'}
+                  </span>
+                </div>
+                {savedDraft && <Badge variant='neutral'>Draft</Badge>}
+              </div>
+
+              {savedDraft && (
+                <p className='text-xs text-text-muted'>
+                  Saved schedule draft for {selectedParish?.name || savedDraft.parishName || 'Selected Parish'} — {selectedService?.label || savedDraft.serviceName}.
+                </p>
+              )}
+              {saveError && <p role='alert' className='text-sm text-red-700'>{saveError}</p>}
+              {saveMessage && <p role='status' className='text-sm text-emerald-800'>{saveMessage}</p>}
+              <div className='flex flex-wrap gap-2.5 pt-0.5'>
+                <Button
+                  variant='outline'
+                  className='font-semibold shadow-2xs hover:bg-white'
+                  onClick={handleSaveDraft}
+                  disabled={!canSaveDraft || savingDraft || submitting}
+                  loading={savingDraft}
+                >
+                  Save Draft
+                </Button>
+                {savedDraft && (
+                  <Button
+                    variant='outline'
+                    className='font-semibold shadow-2xs hover:bg-white'
+                    onClick={() => navigate('/dashboard/track?mode=schedules')}
+                  >
+                    Back to Saved Drafts
+                  </Button>
+                )}
+              </div>
+              <p className='text-xs text-text-muted'>
+                Save Draft saves your selected parish, service, and completed booking details without submitting or reserving a slot. Files selected in this tab are uploaded when you submit; keep this tab open to retain them.
+              </p>
+            </div>
+          </div>
+        )}
+
         {createdBooking && <div className='text-center max-w-lg mx-auto space-y-6 py-6'>
           <div className='flex justify-center text-green-600'><CheckCircle size={64} /></div><h3 className='text-xl font-serif font-bold text-text-primary'>Schedule Request Submitted</h3><p className='text-sm text-text-muted'>The parish will review your request.</p>
           <div className='p-5 bg-app-page border border-border rounded-card text-left space-y-3'><p><strong>Parish:</strong> {selectedParish?.name}</p><p><strong>Service:</strong> {createdBooking.serviceName}</p><p><strong>Date and time:</strong> {createdBooking.date} at {createdBooking.timeSlot}</p><p><strong>Reference:</strong> {createdBooking.confirmationNumber}</p></div>
-          <Button className='w-full' onClick={() => navigate('/dashboard/home')}>Return to Dashboard</Button>
+          <div className='flex flex-col sm:flex-row gap-3 pt-4'>
+            <Button variant='outline' className='flex-1' onClick={() => navigate('/dashboard/home')}>
+              Go to Dashboard
+            </Button>
+            <Button
+              className='flex-1'
+              onClick={() =>
+                navigate(`/dashboard/track?scheduleId=${encodeURIComponent(createdBooking.id)}`, {
+                  state: { scheduleId: createdBooking.id },
+                })
+              }
+            >
+              Track Status
+            </Button>
+          </div>
         </div>}
         </fieldset>
       </CardContent></Card>

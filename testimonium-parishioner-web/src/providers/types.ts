@@ -2,6 +2,7 @@ import type {
   Parish, 
   SacramentalRequest, 
   Appointment, 
+  ScheduleDraft,
   UserProfile, 
   AppNotification,
   Event,
@@ -107,8 +108,30 @@ export interface RecommendationRequestPayload {
   requestedPriestId?: number | null;
 }
 
+export interface ScheduleDraftPayload {
+  parishId: string | number;
+  eventType: string;
+  displayTitle?: string | null;
+  preferredDate?: string | null;
+  date?: string | null;
+  requestedDate?: string | null;
+  timeSlot?: string | null;
+  location?: string | null;
+  remarks?: string | null;
+  requestedPriestId?: number | null;
+}
+
 export interface ISchedulerProvider {
   getAppointments(): Promise<Appointment[]>;
+  getDrafts(): Promise<ScheduleDraft[]>;
+  getDraftById(id: string): Promise<ScheduleDraft>;
+  createDraft(draft: ScheduleDraftPayload, idempotencyKey?: string): Promise<ScheduleDraft>;
+  updateDraft(id: string, draft: Partial<ScheduleDraftPayload>): Promise<ScheduleDraft>;
+  deleteDraft(id: string): Promise<{ id: string; deleted: boolean; cleanupQueued: boolean }>;
+  submitDraft(
+    id: string,
+    payload?: Partial<ScheduleDraftPayload> & { requirementFiles?: Record<string, File> }
+  ): Promise<Appointment>;
   getSchedulingConfiguration(parishId: string): Promise<SchedulingConfiguration>;
   getAvailabilityDates(parishId: string, eventType: string): Promise<AvailabilityDates>;
   getAvailableSlots(parishId: string, date: string, eventType: string): Promise<string[]>;

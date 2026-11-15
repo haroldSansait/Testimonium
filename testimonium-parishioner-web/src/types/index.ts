@@ -249,6 +249,39 @@ export interface Appointment {
   } | null;
 }
 
+export interface ScheduleDraftAttachment {
+  id: number;
+  requirementId: string;
+  requirementLabel: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt: string;
+}
+
+export interface ScheduleDraft {
+  id: string;
+  parishId: string;
+  parishName?: string;
+  serviceName: string;
+  rawEventType: string;
+  displayTitle?: string;
+  preferredDate?: string | null;
+  requestedDate?: string | null;
+  date?: string | null;
+  timeSlot?: string | null;
+  requestedPriestId?: number | null;
+  requestedPriestName?: string | null;
+  location?: string | null;
+  remarks?: string | null;
+  isDraft: true;
+  status: 'DRAFT';
+  attachments?: ScheduleDraftAttachment[];
+  requirements?: Array<{ id: string; label: string }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type NotificationType =
   | 'document-submitted'
   | 'document-approved'

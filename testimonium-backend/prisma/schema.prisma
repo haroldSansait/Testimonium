@@ -265,6 +265,7 @@ model Parish {
   users                   User[]
   documentRequests        DocumentRequest[]
   schedules               Schedule[]
+  scheduleDrafts          ScheduleDraft[]
   availabilities          ParishAvailability[]
   massScheduleTemplates   MassScheduleTemplate[]
   parishEvents            ParishEvent[]
@@ -353,6 +354,8 @@ model User {
   processedSchedules            Schedule[]                    @relation("ScheduleProcessor")
   assignedSchedules             Schedule[]                    @relation("SchedulePriestAssignment")
   requestedSchedules            Schedule[]                    @relation("ScheduleRequestedPriest")
+  scheduleDrafts                ScheduleDraft[]               @relation("ScheduleDraftRequester")
+  requestedScheduleDrafts       ScheduleDraft[]               @relation("ScheduleDraftRequestedPriest")
   availabilities                ParishAvailability[]
   pushDevices                   PushDevice[]
   notifications                 Notification[]
@@ -1363,6 +1366,48 @@ model ScheduleAttachment {
 
   @@unique([scheduleId, requirementId])
   @@map("schedule_attachments")
+}
+
+model ScheduleDraft {
+  id                Int                       @id @default(autoincrement()) @map("draft_id")
+  userId            Int                       @map("user_id")
+  parishId          Int                       @map("parish_id")
+  requestedPriestId Int?                      @map("requested_priest_id")
+  eventType         ScheduleEventType         @map("event_type")
+  displayTitle      String?                   @map("display_title") @db.VarChar(150)
+  preferredDate     DateTime?                 @map("preferred_date") @db.Date
+  requestedDate     DateTime?                 @map("requested_date") @db.Date
+  timeSlot          String?                   @map("time_slot") @db.VarChar(20)
+  location          String?                   @db.VarChar(150)
+  remarks           String?                   @db.Text
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  user              User                      @relation("ScheduleDraftRequester", fields: [userId], references: [id], onDelete: Cascade)
+  parish            Parish                    @relation(fields: [parishId], references: [id], onDelete: Restrict)
+  requestedPriest   User?                     @relation("ScheduleDraftRequestedPriest", fields: [requestedPriestId], references: [id], onDelete: SetNull)
+  attachments       ScheduleDraftAttachment[]
+
+  @@index([userId, updatedAt])
+  @@index([parishId])
+  @@index([requestedPriestId])
+  @@map("schedule_drafts")
+}
+
+model ScheduleDraftAttachment {
+  id               Int           @id @default(autoincrement()) @map("draft_attachment_id")
+  draftId          Int           @map("draft_id")
+  requirementId    String        @map("requirement_id") @db.VarChar(50)
+  requirementLabel String        @map("requirement_label") @db.VarChar(150)
+  fileName         String        @map("file_name") @db.VarChar(255)
+  r2ObjectKey      String        @unique @map("r2_object_key") @db.VarChar(255)
+  fileType         String        @map("file_type") @db.VarChar(100)
+  fileSize         Int           @map("file_size")
+  uploadedAt       DateTime      @default(now()) @map("uploaded_at")
+  draft            ScheduleDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, requirementId])
+  @@index([draftId])
+  @@map("schedule_draft_attachments")
 }
 
 model OtpChallenge {

@@ -22,21 +22,31 @@ export class ScheduleAttachmentService {
         ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) {
       throw invalid('Provide one file for each required document.');
     }
-    return files.map((file, index) => {
-      const { signature, normalizedMime } = FileValidator.validateSupportingDocument(file);
-      const extension = path.extname(file.originalname).toLowerCase();
-      const types = { '.pdf': ['pdf', 'application/pdf'], '.jpg': ['jpeg', 'image/jpeg'],
-        '.jpeg': ['jpeg', 'image/jpeg'], '.png': ['png', 'image/png'], '.webp': ['webp', 'image/webp'] };
-      if (!types[extension] || types[extension][0] !== signature || types[extension][1] !== normalizedMime) {
-        throw invalid('Only PDF, JPG, PNG, and WebP documents are allowed.', 415);
-      }
-      file.mimetype = normalizedMime;
-      return {
-        requirementId: ids[index], fileName: path.basename(file.originalname).slice(0, 255),
-        fileType: normalizedMime, fileSize: file.size,
-        contentHash: createHash('sha256').update(file.buffer).digest('hex'), file,
-      };
-    }).sort((a, b) => a.requirementId.localeCompare(b.requirementId));
+    return files.map((file, index) => this.prepareSingle(file, ids[index]))
+      .sort((a, b) => a.requirementId.localeCompare(b.requirementId));
+  }
+
+  static prepareSingle(file, requirementId) {
+    const cleanReqId = typeof requirementId === 'string' ? requirementId.trim() : '';
+    if (!cleanReqId || !file) {
+      throw invalid('Provide a valid requirement ID and document file.');
+    }
+    const { signature, normalizedMime } = FileValidator.validateSupportingDocument(file);
+    const extension = path.extname(file.originalname).toLowerCase();
+    const types = { '.pdf': ['pdf', 'application/pdf'], '.jpg': ['jpeg', 'image/jpeg'],
+      '.jpeg': ['jpeg', 'image/jpeg'], '.png': ['png', 'image/png'], '.webp': ['webp', 'image/webp'] };
+    if (!types[extension] || types[extension][0] !== signature || types[extension][1] !== normalizedMime) {
+      throw invalid('Only PDF, JPG, PNG, and WebP documents are allowed.', 415);
+    }
+    file.mimetype = normalizedMime;
+    return {
+      requirementId: cleanReqId,
+      fileName: path.basename(file.originalname).slice(0, 255),
+      fileType: normalizedMime,
+      fileSize: file.size,
+      contentHash: createHash('sha256').update(file.buffer).digest('hex'),
+      file,
+    };
   }
 
   static async stage(attachments, userId, parishId) {
@@ -76,6 +86,40 @@ export class ScheduleAttachmentService {
     const metadata = attachments.find((attachment) => attachment.id === Number(attachmentId));
     if (!metadata) throw Object.assign(new Error('Attachment not found.'), { statusCode: 404 });
     const record = await prisma.scheduleAttachment.findUnique({ where: { id: metadata.id }, select: { r2ObjectKey: true } });
+    let stream;
+    try {
+      stream = await new R2Service().download(record.r2ObjectKey, { bucketName: RegistrantIdStorageService.bucketName() });
+    } catch (error) {
+      if (isMissingR2ObjectError(error)) throw Object.assign(new Error('Attachment file not found.'), { statusCode: 404 });
+      throw error;
+    }
+    return { metadata, stream };
+  }
+
+  static async listForDraft(draftId, actor) {
+    const id = Number(draftId);
+    if (!Number.isSafeInteger(id) || id <= 0) throw invalid('Invalid schedule draft ID.');
+    const draft = await prisma.scheduleDraft.findUnique({
+      where: { id },
+      select: { userId: true },
+    });
+    const allowed = draft && actor.role === 'PARISHIONER' && Number(actor.id) === draft.userId;
+    if (!allowed) throw Object.assign(new Error('Schedule draft attachments not found.'), { statusCode: 404 });
+    return prisma.scheduleDraftAttachment.findMany({
+      where: { draftId: id },
+      select: SCHEDULE_ATTACHMENT_SELECT,
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  static async downloadForDraft(draftId, attachmentId, actor) {
+    const attachments = await this.listForDraft(draftId, actor);
+    const metadata = attachments.find((attachment) => attachment.id === Number(attachmentId));
+    if (!metadata) throw Object.assign(new Error('Attachment not found.'), { statusCode: 404 });
+    const record = await prisma.scheduleDraftAttachment.findUnique({
+      where: { id: metadata.id },
+      select: { r2ObjectKey: true },
+    });
     let stream;
     try {
       stream = await new R2Service().download(record.r2ObjectKey, { bucketName: RegistrantIdStorageService.bucketName() });

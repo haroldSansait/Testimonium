@@ -4,6 +4,7 @@ import {
   AppState,
   type AppStateStatus,
   BackHandler,
+  Pressable,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -21,6 +22,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { SafeBottomActionBar } from "@/components/ui/SafeBottomActionBar";
 import { SelectionRow } from "@/components/ui/SelectionRow";
 import { RecordSection } from "@/components/ui/RecordSection";
+import { SecureFileViewerModal } from "@/components/files/SecureFileViewerModal";
 import { ContentColumn } from "@/components/layout/ContentColumn";
 import { useAppLayoutMetrics } from "@/components/layout/useAppLayoutMetrics";
 import { useAuth } from "@/providers/AuthProvider";
@@ -31,13 +33,20 @@ import { isAppError } from "@/services/api/errors";
 import { useAllActiveParishes } from "@/features/parishes/api";
 import type { ParishDto } from "@/features/parishes/types";
 import {
+  getScheduleDraftAttachmentDownloadPath,
   useAvailabilityDates,
   useAvailableSlots,
   useCreateSchedule,
+  useCreateScheduleDraft,
   useEligiblePriests,
   useRecommendations,
+  useScheduleDraftDetail,
   useSchedulingConfiguration,
+  useSubmitScheduleDraft,
+  useUpdateScheduleDraft,
+  useUploadScheduleDraftAttachment,
 } from "./api";
+import { scheduleKeys } from "./queryKeys";
 import { SupportingFilePicker } from "@/features/requests/components/SupportingFilePicker";
 import type { LocalSelectedFile } from "@/features/requests/types";
 import {
@@ -50,7 +59,11 @@ import {
   PREFERRED_PRIEST_HELPER_COPY,
   SuggestedTimeCard,
 } from "./components/SuggestedTimeCard";
-import type { ScheduleEventType, ScheduleServiceRequirement } from "./types";
+import type {
+  ScheduleDraftAttachment,
+  ScheduleEventType,
+  ScheduleServiceRequirement,
+} from "./types";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -98,17 +111,43 @@ const moveMonth = (month: { year: number; month: number }, delta: number) => {
 
 export interface ScheduleWizardScreenProps {
   initialParishId?: string;
+  draftId?: string;
 }
 
-export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ initialParishId }) => {
+export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({
+  initialParishId,
+  draftId: propDraftId,
+}) => {
   const router = useRouter();
-  const searchParams = useLocalSearchParams<{ parishId?: string }>();
+  const searchParams = useLocalSearchParams<{ parishId?: string; draftId?: string }>();
   const routeParishId = initialParishId ?? searchParams.parishId;
+  const routeDraftId = propDraftId ?? searchParams.draftId;
   const { profile } = useAuth();
   const feedback = useFeedback();
   const reduceMotion = useReducedMotion();
   const { contentBottomInset, onBottomActionLayout } = useAppLayoutMetrics();
   const today = useMemo(() => getManilaDateParts(), []);
+
+  const [createdDraftIdState, setCreatedDraftIdState] = useState<number | null>(() => {
+    if (!routeDraftId) return null;
+    const parsedId = Number(routeDraftId);
+    return Number.isFinite(parsedId) && parsedId > 0 ? parsedId : null;
+  });
+  const createdDraftIdRef = useRef<number | null>(createdDraftIdState);
+  const [hydratedDraftId, setHydratedDraftId] = useState<number | null>(null);
+  const [prevRouteDraftId, setPrevRouteDraftId] = useState(routeDraftId);
+  if (routeDraftId !== prevRouteDraftId) {
+    setPrevRouteDraftId(routeDraftId);
+    const parsedId = routeDraftId ? Number(routeDraftId) : null;
+    if (parsedId && Number.isFinite(parsedId) && parsedId > 0) {
+      setCreatedDraftIdState(parsedId);
+      createdDraftIdRef.current = parsedId;
+    }
+  }
+
+  useEffect(() => {
+    createdDraftIdRef.current = createdDraftIdState;
+  }, [createdDraftIdState]);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedParishId, setSelectedParishId] = useState<number | null>(() => {
@@ -136,8 +175,56 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   const [calendarMonth, setCalendarMonth] = useState({ year: today.year, month: today.month });
 
   const idempotencyKeysRef = useRef(new Map<string, string>());
+  const draftIdempotencyKeyRef = useRef<string | null>(null);
   const lastRefreshAtRef = useRef(0);
   const inactiveAtRef = useRef<number | null>(null);
+
+  const existingDraftQuery =
+    typeof useScheduleDraftDetail === "function"
+      ? useScheduleDraftDetail(createdDraftIdState)
+      : { data: undefined, isLoading: false, refetch: async () => ({ data: undefined }) };
+  const existingDraft = existingDraftQuery?.data;
+  const activeDraftId =
+    createdDraftIdState ?? (existingDraft?.status === "DRAFT" ? existingDraft.id : null);
+
+  if (existingDraft && existingDraft.status === "DRAFT" && hydratedDraftId !== existingDraft.id) {
+    setHydratedDraftId(existingDraft.id);
+    setCreatedDraftIdState(existingDraft.id);
+    createdDraftIdRef.current = existingDraft.id;
+    setSelectedParishId(existingDraft.parishId);
+    setSelectedEventType(existingDraft.eventType);
+    const restoredDate = existingDraft.date ?? null;
+    const restoredPrefDate = existingDraft.preferredDate ?? restoredDate;
+    setPreferredDate(restoredPrefDate);
+    setSelectedDate(restoredDate);
+    setSelectedSlot(existingDraft.timeSlot ?? null);
+    setRequestedPriestId(existingDraft.requestedPriestId ?? null);
+    setRemarks(existingDraft.remarks ?? "");
+    const calTarget = restoredDate || restoredPrefDate;
+    if (calTarget && /^\d{4}-\d{2}-\d{2}$/.test(calTarget)) {
+      const [yStr, mStr] = calTarget.split("-");
+      const y = Number(yStr);
+      const m = Number(mStr);
+      if (Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12) {
+        setCalendarMonth({ year: y, month: m });
+      }
+    }
+    if (currentStep < 3) {
+      setCurrentStep(!restoredDate ? 3 : !existingDraft.timeSlot ? 4 : 5);
+    }
+  }
+
+  const existingAttachmentsByReqId = useMemo(() => {
+    const map: Record<string, ScheduleDraftAttachment> = {};
+    if (existingDraft?.status === "DRAFT" && Array.isArray(existingDraft.attachments)) {
+      for (const att of existingDraft.attachments) {
+        if (att.requirementId && !map[att.requirementId]) {
+          map[att.requirementId] = att;
+        }
+      }
+    }
+    return map;
+  }, [existingDraft]);
 
   const { data: parishesData, isLoading: isLoadingParishes } = useAllActiveParishes();
   const parishes: ParishDto[] = useMemo(
@@ -179,11 +266,47 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   const { refetch: refetchDates } = datesQuery;
   const { refetch: refetchSlots } = slotsQuery;
   const createMutation = useCreateSchedule();
+  const createDraftMutation =
+    typeof useCreateScheduleDraft === "function"
+      ? useCreateScheduleDraft()
+      : { mutateAsync: async () => { throw new Error("Not supported"); }, isPending: false };
+  const updateDraftMutation =
+    typeof useUpdateScheduleDraft === "function"
+      ? useUpdateScheduleDraft()
+      : { mutateAsync: async () => { throw new Error("Not supported"); }, isPending: false };
+  const uploadDraftAttachmentMutation =
+    typeof useUploadScheduleDraftAttachment === "function"
+      ? useUploadScheduleDraftAttachment()
+      : { mutateAsync: async () => [], isPending: false };
+  const submitDraftMutation =
+    typeof useSubmitScheduleDraft === "function"
+      ? useSubmitScheduleDraft()
+      : { mutateAsync: async () => { throw new Error("Not supported"); }, isPending: false };
 
   const availableDateSet = useMemo(
     () => new Set(datesQuery.data?.dates || []),
     [datesQuery.data?.dates]
   );
+  const firstAvailableDate = datesQuery.data?.dates?.[0] ?? null;
+  const [prevAvailSyncKey, setPrevAvailSyncKey] = useState<string>("");
+  const availSyncKey = `${selectedParishId ?? ""}|${selectedEventType ?? ""}|${firstAvailableDate ?? ""}`;
+  if (availSyncKey !== prevAvailSyncKey) {
+    setPrevAvailSyncKey(availSyncKey);
+    if (firstAvailableDate && !selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(firstAvailableDate)) {
+      const currentMonthPrefix = `${calendarMonth.year}-${String(calendarMonth.month).padStart(2, "0")}-`;
+      const hasCurrentMonthAvailable = (datesQuery.data?.dates || []).some((d) =>
+        d.startsWith(currentMonthPrefix)
+      );
+      if (!hasCurrentMonthAvailable) {
+        const [yStr, mStr] = firstAvailableDate.split("-");
+        const y = Number(yStr);
+        const m = Number(mStr);
+        if (Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12) {
+          setCalendarMonth({ year: y, month: m });
+        }
+      }
+    }
+  }
   const selectedService = configuration?.services.find(
     (service) => service.eventType === selectedEventType
   );
@@ -197,13 +320,27 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   const uploadRequirementsStep = hasRequirements ? 5 : null;
 
   const [requirementFiles, setRequirementFiles] = useState<Record<string, LocalSelectedFile>>({});
+  const [replacingAttachmentIds, setReplacingAttachmentIds] = useState<Record<string, boolean>>({});
+  const [removedRequirementIds, setRemovedRequirementIds] = useState<Record<string, boolean>>({});
+  const [viewerFile, setViewerFile] = useState<{
+    path: string;
+    fileName: string;
+    mimeType?: string;
+    title?: string;
+  } | null>(null);
   const submittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [submissionStage, setSubmissionStage] = useState("");
 
   const requirementsComplete = useMemo(() => {
     if (!hasRequirements) return true;
-    return requirements.every((r) => Boolean(requirementFiles[r.id]));
-  }, [hasRequirements, requirements, requirementFiles]);
+    return requirements.every(
+      (r) =>
+        Boolean(requirementFiles[r.id]) ||
+        (Boolean(existingAttachmentsByReqId[r.id]) && !removedRequirementIds[r.id])
+    );
+  }, [hasRequirements, requirements, requirementFiles, existingAttachmentsByReqId, removedRequirementIds]);
 
   const activeRequirementIds = useMemo(
     () => new Set(requirements.map((r) => r.id)),
@@ -282,6 +419,8 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
       setSelectedSlot(null);
       setRequestedPriestId(null);
       setRequirementFiles({});
+      setReplacingAttachmentIds({});
+      setRemovedRequirementIds({});
       setErrorMessage(null);
     }
   };
@@ -294,6 +433,8 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
       setSelectedDate(null);
       setSelectedSlot(null);
       setRequirementFiles({});
+      setReplacingAttachmentIds({});
+      setRemovedRequirementIds({});
       setErrorMessage(null);
     }
   };
@@ -306,17 +447,18 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   };
 
   const handleBack = useCallback(() => {
-    if (submittingRef.current) return;
+    if (submittingRef.current || isSavingDraft) return;
     if (currentStep > 1) {
       setCurrentStep((step) => step - 1);
       setErrorMessage(null);
       return;
     }
     const hasProgress =
-      Boolean(selectedEventType) ||
-      Boolean(selectedDate) ||
-      Boolean(remarks.trim()) ||
-      (!routeParishId && Boolean(selectedParishId));
+      !activeDraftId &&
+      (Boolean(selectedEventType) ||
+        Boolean(selectedDate) ||
+        Boolean(remarks.trim()) ||
+        (!routeParishId && Boolean(selectedParishId)));
     if (hasProgress) {
       Alert.alert(
         "Discard Schedule Request?",
@@ -329,16 +471,147 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
       return;
     }
     router.back();
-  }, [currentStep, remarks, routeParishId, router, selectedDate, selectedEventType, selectedParishId]);
+  }, [activeDraftId, currentStep, isSavingDraft, remarks, routeParishId, router, selectedDate, selectedEventType, selectedParishId]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (submittingRef.current) return true;
+      if (viewerFile) {
+        setViewerFile(null);
+        return true;
+      }
+      if (submittingRef.current || isSavingDraft) return true;
       handleBack();
       return true;
     });
     return () => subscription.remove();
-  }, [handleBack]);
+  }, [handleBack, isSavingDraft, viewerFile]);
+
+  const getOrCreateDraftIdempotencyKey = () => {
+    if (!draftIdempotencyKeyRef.current) {
+      draftIdempotencyKeyRef.current = `sched-draft-${generateClientUuid()}`;
+    }
+    return draftIdempotencyKeyRef.current;
+  };
+
+  const persistDraftAndSelectedFiles = async (
+    stageUpdater: (msg: string) => void
+  ): Promise<number> => {
+    let draftId =
+      createdDraftIdRef.current ?? (existingDraft?.status === "DRAFT" ? existingDraft.id : null);
+    const venueValue =
+      selectedEventType === "WEDDING" && selectedParish?.name ? selectedParish.name : null;
+    const removedIds = Object.keys(removedRequirementIds).filter(
+      (id) => removedRequirementIds[id] && !requirementFiles[id]
+    );
+
+    if (!draftId) {
+      stageUpdater("Saving schedule draft...");
+      const createdDraft = await createDraftMutation.mutateAsync({
+        payload: {
+          parishId: selectedParishId!,
+          eventType: selectedEventType!,
+          preferredDate: preferredDate || selectedDate || null,
+          date: selectedDate || null,
+          timeSlot: selectedSlot || null,
+          requestedPriestId: requestedPriestId || null,
+          location: venueValue,
+          remarks: remarks.trim() || null,
+        },
+        idempotencyKey: getOrCreateDraftIdempotencyKey(),
+      });
+      draftId = createdDraft.id;
+      createdDraftIdRef.current = createdDraft.id;
+      setCreatedDraftIdState(createdDraft.id);
+      setHydratedDraftId(createdDraft.id);
+    } else {
+      stageUpdater("Updating schedule draft...");
+      await updateDraftMutation.mutateAsync({
+        draftId,
+        payload: {
+          parishId: selectedParishId!,
+          eventType: selectedEventType!,
+          preferredDate: preferredDate || selectedDate || null,
+          date: selectedDate || null,
+          timeSlot: selectedSlot || null,
+          requestedPriestId: requestedPriestId || null,
+          location: venueValue,
+          remarks: remarks.trim() || null,
+          removedRequirementIds: removedIds.length > 0 ? removedIds : undefined,
+        },
+      });
+    }
+
+    const fileEntries = Object.entries(requirementFiles).filter(
+      ([reqId]) => requirements.length === 0 || activeRequirementIds.has(reqId)
+    );
+    if (fileEntries.length > 0) {
+      let count = 0;
+      for (const [requirementId, file] of fileEntries) {
+        count += 1;
+        stageUpdater(`Uploading supporting document (${count} of ${fileEntries.length})...`);
+        await uploadDraftAttachmentMutation.mutateAsync({
+          draftId,
+          requirementId,
+          file,
+        });
+      }
+    }
+
+    setRequirementFiles({});
+    setReplacingAttachmentIds({});
+    setRemovedRequirementIds({});
+    await existingDraftQuery.refetch?.();
+    return draftId;
+  };
+
+  const handleSaveDraft = async () => {
+    if (!selectedParishId || !selectedEventType || submittingRef.current || isSavingDraft) {
+      if (!selectedParishId || !selectedEventType) {
+        setErrorMessage("Please select a parish and service before saving a draft.");
+      }
+      return;
+    }
+
+    submittingRef.current = true;
+    setIsSavingDraft(true);
+    setErrorMessage(null);
+    try {
+      await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
+      submittingRef.current = false;
+      setIsSavingDraft(false);
+      setSubmissionStage("");
+
+      if (typeof feedback.showConfirm === "function") {
+        feedback.showConfirm(
+          "Draft Saved",
+          "Your schedule request draft has been saved. You can resume or submit it anytime from your Schedule tab.",
+          () => {
+            router.replace("/(app)/(tabs)/(schedule)" as any);
+          },
+          {
+            confirmText: "View Drafts",
+            cancelText: "Keep Editing",
+          }
+        );
+      } else {
+        feedback.showSuccess({
+          title: "Draft Saved",
+          message: "Your schedule request draft has been saved.",
+        });
+      }
+    } catch (error: unknown) {
+      submittingRef.current = false;
+      setIsSavingDraft(false);
+      setSubmissionStage("");
+      const appError = isAppError(error) ? error : null;
+      const msg =
+        appError?.message ||
+        (error instanceof Error ? error.message : null) ||
+        "Failed to save your schedule draft. Please check your connection and try again.";
+      setErrorMessage(msg);
+      feedback.showError("Could Not Save Draft", msg);
+    }
+  };
 
   const getIdempotencyKey = async () => {
     const activeFiles = Object.fromEntries(requirements.map((r) => [r.id, requirementFiles[r.id]]));
@@ -360,7 +633,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
   };
 
   const handleSubmit = async () => {
-    if (submittingRef.current || createMutation.isPending) return;
+    if (submittingRef.current || isSavingDraft || createMutation.isPending) return;
 
     if (profile?.needsProfileCompletion) {
       feedback.showWarning({
@@ -415,20 +688,44 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const created = await createMutation.mutateAsync({
-        payload: {
-          parishId: selectedParishId,
-          eventType: selectedEventType,
-          date: selectedDate,
-          timeSlot: selectedSlot,
-          location: selectedEventType === "WEDDING" && selectedParish?.name ? selectedParish.name : undefined,
-          remarks: remarks.trim() || undefined,
-          requestedPriestId: requestedPriestId || undefined,
-        },
-        requirements: hasRequirements ? requirements : undefined,
-        files: hasRequirements ? requirementFiles : undefined,
-        idempotencyKey: await getIdempotencyKey(),
-      });
+      const idempotencyKey = await getIdempotencyKey();
+      const created = activeDraftId
+        ? await (async () => {
+            const draftId = await persistDraftAndSelectedFiles((msg) => setSubmissionStage(msg));
+            setSubmissionStage("Finalizing and submitting schedule request...");
+            return submitDraftMutation.mutateAsync({
+              draftId,
+              payload: {
+                parishId: selectedParishId,
+                eventType: selectedEventType,
+                preferredDate: preferredDate || selectedDate,
+                date: selectedDate,
+                timeSlot: selectedSlot,
+                location:
+                  selectedEventType === "WEDDING" && selectedParish?.name
+                    ? selectedParish.name
+                    : undefined,
+                remarks: remarks.trim() || null,
+                requestedPriestId: requestedPriestId || null,
+              },
+              idempotencyKey,
+            });
+          })()
+        : await createMutation.mutateAsync({
+            payload: {
+              parishId: selectedParishId,
+              eventType: selectedEventType,
+              date: selectedDate,
+              timeSlot: selectedSlot,
+              location: selectedEventType === "WEDDING" && selectedParish?.name ? selectedParish.name : undefined,
+              remarks: remarks.trim() || undefined,
+              requestedPriestId: requestedPriestId || undefined,
+            },
+            requirements: hasRequirements ? requirements : undefined,
+            files: hasRequirements ? requirementFiles : undefined,
+            idempotencyKey,
+          });
+      setSubmissionStage("");
       feedback.showSuccess({
         title: "Schedule Request Submitted",
         message: `Your appointment request has been sent to ${selectedParish?.name || "the parish"} for review.`,
@@ -439,6 +736,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
         },
       });
     } catch (error: unknown) {
+      setSubmissionStage("");
       const appError = isAppError(error) ? error : null;
       const code = appError?.code ?? "";
 
@@ -513,9 +811,27 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
       }
 
       if (code === "SLOT_CONFLICT" || code === "SLOT_UNAVAILABLE") {
-        setErrorMessage("The selected time slot is no longer available. Please choose another slot.");
+        setErrorMessage(
+          activeDraftId
+            ? "The selected time slot is no longer available. Your draft remains saved — please choose another valid slot."
+            : "The selected time slot is no longer available. Please choose another slot."
+        );
         setSelectedSlot(null);
+        if (currentStep > 4) setCurrentStep(4);
         void refetchSlots();
+        return;
+      }
+
+      if (code === "DATE_UNAVAILABLE") {
+        setErrorMessage(
+          activeDraftId
+            ? "The selected date is no longer available. Your draft remains saved — please choose another valid date."
+            : "The selected date is no longer available. Please choose another date."
+        );
+        setSelectedDate(null);
+        setSelectedSlot(null);
+        if (currentStep > 3) setCurrentStep(3);
+        void refetchDates();
         return;
       }
 
@@ -1083,32 +1399,96 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
               </View>
 
               <View style={styles.requirementsList}>
-                {requirements.map((req) => (
-                  <SupportingFilePicker
-                    key={`${selectedParishId}-${selectedEventType}-${req.id}`}
-                    requirement={{
-                      id: req.id,
-                      label: req.label,
-                      category: "schedule_prerequisite",
-                      required: true,
-                      description: "Required prerequisite document for this service.",
-                    }}
-                    selectedFile={requirementFiles[req.id] || null}
-                    onFileSelected={(file) => {
-                      setRequirementFiles((prev) => ({ ...prev, [req.id]: file }));
-                      setErrorMessage(null);
-                    }}
-                    onFileRemoved={(requirementId) => {
-                      setRequirementFiles((prev) => {
-                        const next = { ...prev };
-                        delete next[requirementId];
-                        return next;
-                      });
-                      setErrorMessage(null);
-                    }}
-                    disabled={createMutation.isPending || isSubmitting}
-                  />
-                ))}
+                {requirements.map((req) => {
+                  const savedAtt = !removedRequirementIds[req.id]
+                    ? existingAttachmentsByReqId[req.id]
+                    : undefined;
+                  const isReplacing = Boolean(replacingAttachmentIds[req.id]);
+                  if (savedAtt && activeDraftId && !requirementFiles[req.id] && !isReplacing) {
+                    return (
+                      <View
+                        key={`${selectedParishId}-${selectedEventType}-${req.id}-saved`}
+                        style={styles.savedAttachmentCard}
+                      >
+                        <View style={styles.savedAttachmentHeader}>
+                          <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                          <View style={styles.savedAttachmentInfo}>
+                            <Text style={styles.savedAttachmentTitle} allowFontScaling>
+                              {req.label}
+                            </Text>
+                            <Text style={styles.savedAttachmentName} numberOfLines={1} allowFontScaling>
+                              Saved on draft: {savedAtt.fileName}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.savedAttachmentActions}>
+                          <Pressable
+                            onPress={() =>
+                              setViewerFile({
+                                path: getScheduleDraftAttachmentDownloadPath(
+                                  activeDraftId,
+                                  savedAtt.id
+                                ),
+                                fileName: savedAtt.fileName,
+                                mimeType: savedAtt.fileType,
+                                title: req.label,
+                              })
+                            }
+                            style={styles.savedAttachmentBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`View saved ${req.label}`}
+                          >
+                            <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                            <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                              View
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() =>
+                              setReplacingAttachmentIds((prev) => ({ ...prev, [req.id]: true }))
+                            }
+                            style={styles.savedAttachmentBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Replace saved ${req.label}`}
+                          >
+                            <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+                            <Text style={styles.savedAttachmentBtnText} allowFontScaling>
+                              Replace
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  return (
+                    <SupportingFilePicker
+                      key={`${selectedParishId}-${selectedEventType}-${req.id}`}
+                      requirement={{
+                        id: req.id,
+                        label: req.label,
+                        category: "schedule_prerequisite",
+                        required: true,
+                        description: "Required prerequisite document for this service.",
+                      }}
+                      selectedFile={requirementFiles[req.id] || null}
+                      onFileSelected={(file) => {
+                        setRequirementFiles((prev) => ({ ...prev, [req.id]: file }));
+                        setRemovedRequirementIds((prev) => ({ ...prev, [req.id]: false }));
+                        setErrorMessage(null);
+                      }}
+                      onFileRemoved={(requirementId) => {
+                        setRequirementFiles((prev) => {
+                          const next = { ...prev };
+                          delete next[requirementId];
+                          return next;
+                        });
+                        setErrorMessage(null);
+                      }}
+                      disabled={createMutation.isPending || isSubmitting || isSavingDraft}
+                    />
+                  );
+                })}
               </View>
             </View>
           )}
@@ -1144,9 +1524,16 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
                   title="Uploaded Prerequisite Documents"
                   fields={requirements.map((req) => {
                     const file = requirementFiles[req.id];
+                    const savedAtt = !removedRequirementIds[req.id]
+                      ? existingAttachmentsByReqId[req.id]
+                      : undefined;
                     return {
                       label: req.label,
-                      value: file ? `${file.name} (${formatBytes(file.size)})` : "Missing",
+                      value: file
+                        ? `${file.name} (${formatBytes(file.size)})`
+                        : savedAtt
+                          ? `${savedAtt.fileName} (Saved on draft)`
+                          : "Missing",
                     };
                   })}
                 />
@@ -1161,7 +1548,7 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
                 </Text>
                 <RNTextInput
                   value={remarks}
-                  editable={!isSubmitting}
+                  editable={!isSubmitting && !isSavingDraft}
                   onChangeText={setRemarks}
                   placeholder="e.g., Main Parish Church, or Brgy. San Roque Chapel (near plaza), or Mass Intention names"
                   placeholderTextColor={colors.textMuted}
@@ -1193,72 +1580,158 @@ export const ScheduleWizardScreen: React.FC<ScheduleWizardScreenProps> = ({ init
             style={styles.fullWidthAction}
           />
         ) : currentStep === 2 ? (
-          <Button
-            title="Continue to Date"
-            accessibilityLabel="Continue to Date"
-            variant="primary"
-            size="lg"
-            icon="arrow-forward"
-            disabled={!selectedEventType}
-            onPress={() => setCurrentStep(3)}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title="Continue to Date"
+              accessibilityLabel="Continue to Date"
+              variant="primary"
+              size="lg"
+              icon="arrow-forward"
+              disabled={!selectedEventType || isSavingDraft}
+              onPress={() => setCurrentStep(3)}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              accessibilityLabel="Save Draft"
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={!selectedParishId || !selectedEventType || isSavingDraft || isSubmitting}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : currentStep === 3 ? (
-          <Button
-            title="Continue to Time Slot"
-            accessibilityLabel="Continue to Time Slot"
-            variant="primary"
-            size="lg"
-            icon="arrow-forward"
-            disabled={!selectedDate}
-            onPress={() => setCurrentStep(4)}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title="Continue to Time Slot"
+              accessibilityLabel="Continue to Time Slot"
+              variant="primary"
+              size="lg"
+              icon="arrow-forward"
+              disabled={!selectedDate || isSavingDraft}
+              onPress={() => setCurrentStep(4)}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              accessibilityLabel="Save Draft"
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={!selectedParishId || !selectedEventType || isSavingDraft || isSubmitting}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : currentStep === 4 ? (
-          <Button
-            title={hasRequirements ? "Continue to Upload Requirements" : "Continue to Confirmation"}
-            accessibilityLabel={hasRequirements ? "Continue to Upload Requirements" : "Continue to Confirmation"}
-            variant="primary"
-            size="lg"
-            icon="arrow-forward"
-            disabled={!selectedSlot}
-            onPress={() => setCurrentStep(5)}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title={hasRequirements ? "Continue to Upload Requirements" : "Continue to Confirmation"}
+              accessibilityLabel={hasRequirements ? "Continue to Upload Requirements" : "Continue to Confirmation"}
+              variant="primary"
+              size="lg"
+              icon="arrow-forward"
+              disabled={!selectedSlot || isSavingDraft}
+              onPress={() => setCurrentStep(5)}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              accessibilityLabel="Save Draft"
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={!selectedParishId || !selectedEventType || isSavingDraft || isSubmitting}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : currentStep === 5 && hasRequirements ? (
-          <Button
-            title="Continue to Confirmation"
-            accessibilityLabel="Continue to Confirmation"
-            variant="primary"
-            size="lg"
-            icon="arrow-forward"
-            disabled={!requirementsComplete}
-            onPress={() => {
-              if (!requirementsComplete) {
-                setErrorMessage("Please upload every required document before proceeding.");
-                return;
-              }
-              setErrorMessage(null);
-              setCurrentStep(6);
-            }}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title="Continue to Confirmation"
+              accessibilityLabel="Continue to Confirmation"
+              variant="primary"
+              size="lg"
+              icon="arrow-forward"
+              disabled={!requirementsComplete || isSavingDraft}
+              onPress={() => {
+                if (!requirementsComplete) {
+                  setErrorMessage("Please upload every required document before proceeding.");
+                  return;
+                }
+                setErrorMessage(null);
+                setCurrentStep(6);
+              }}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              accessibilityLabel="Save Draft"
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={!selectedParishId || !selectedEventType || isSavingDraft || isSubmitting}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : currentStep === confirmationStep ? (
-          <Button
-            title="Submit Schedule Request"
-            accessibilityLabel="Submit Schedule Request"
-            variant="primary"
-            size="lg"
-            icon="checkmark-circle-outline"
-            loading={createMutation.isPending || isSubmitting}
-            disabled={createMutation.isPending || isSubmitting || (hasRequirements && !requirementsComplete)}
-            onPress={() => {
-              void handleSubmit();
-            }}
-            style={styles.fullWidthAction}
-          />
+          <View style={styles.actionStack}>
+            <Button
+              title={isSubmitting && submissionStage ? submissionStage : "Submit Schedule Request"}
+              accessibilityLabel="Submit Schedule Request"
+              variant="primary"
+              size="lg"
+              icon="checkmark-circle-outline"
+              loading={createMutation.isPending || isSubmitting}
+              disabled={createMutation.isPending || isSubmitting || isSavingDraft || (hasRequirements && !requirementsComplete)}
+              onPress={() => {
+                void handleSubmit();
+              }}
+              style={styles.fullWidthAction}
+            />
+            <Button
+              title={isSavingDraft ? submissionStage || "Saving Draft..." : "Save Draft"}
+              accessibilityLabel="Save Draft"
+              variant="outline"
+              size="md"
+              icon="bookmark-outline"
+              loading={isSavingDraft}
+              disabled={!selectedParishId || !selectedEventType || isSavingDraft || isSubmitting}
+              onPress={() => {
+                void handleSaveDraft();
+              }}
+              style={styles.fullWidthAction}
+            />
+          </View>
         ) : null}
       </SafeBottomActionBar>
+
+      {viewerFile ? (
+        <SecureFileViewerModal
+          visible={Boolean(viewerFile)}
+          endpointPath={viewerFile?.path || null}
+          fileName={viewerFile?.fileName || "attachment"}
+          mimeType={viewerFile?.mimeType}
+          title={viewerFile?.title}
+          onClose={() => setViewerFile(null)}
+        />
+      ) : null}
     </Screen>
   );
 };
@@ -1545,6 +2018,56 @@ const styles = StyleSheet.create({
   },
   fullWidthAction: {
     width: "100%",
+  },
+  actionStack: {
+    width: "100%",
+    gap: spacing.xs,
+  },
+  savedAttachmentCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  savedAttachmentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  savedAttachmentInfo: {
+    flex: 1,
+  },
+  savedAttachmentTitle: {
+    ...fontStyles.captionMedium,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  savedAttachmentName: {
+    ...fontStyles.caption,
+    color: colors.textSecondary,
+  },
+  savedAttachmentActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xxs,
+  },
+  savedAttachmentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  savedAttachmentBtnText: {
+    ...fontStyles.caption,
+    color: colors.primary,
+    fontWeight: "600",
   },
   parishSearchInput: {
     borderWidth: 1,

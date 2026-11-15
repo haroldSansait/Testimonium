@@ -3,10 +3,11 @@ import type {
   EligiblePriest,
   ISchedulerProvider,
   RecommendationRequestPayload,
+  ScheduleDraftPayload,
   ScheduleRecommendationsResponse,
   SchedulingConfiguration,
 } from "../types";
-import type { Appointment } from "../../types";
+import type { Appointment, ScheduleDraft } from "../../types";
 import { client } from "../../api/client";
 import { resolveDisplayTitle } from "../../shared/EventTypeCatalog";
 import { auth } from "../../firebaseConfig";
@@ -162,6 +163,43 @@ const mapAppointment = (s: any): Appointment => {
   };
 };
 
+const mapScheduleDraft = (d: any): ScheduleDraft => {
+  if (!d) return d;
+  const serviceName = d.effectiveDisplayTitle || resolveDisplayTitle(d.eventType, d.displayTitle) || d.eventType;
+  const parishName = d.parish?.parishName || d.parishName || undefined;
+  const requestedDateStr = d.requestedDate
+    ? String(d.requestedDate).split("T")[0]
+    : d.date
+      ? String(d.date).split("T")[0]
+      : null;
+  const preferredDateStr = d.preferredDate ? String(d.preferredDate).split("T")[0] : null;
+  const requestedPriestId = d.requestedPriestId ?? d.requestedPriest?.id ?? null;
+  const requestedPriestName = d.requestedPriest?.name || d.requestedPriest?.fullName || null;
+
+  return {
+    id: String(d.id),
+    parishId: String(d.parishId),
+    parishName,
+    serviceName,
+    rawEventType: d.eventType,
+    displayTitle: d.displayTitle || serviceName,
+    preferredDate: preferredDateStr,
+    requestedDate: requestedDateStr,
+    date: requestedDateStr,
+    timeSlot: d.timeSlot || null,
+    requestedPriestId: requestedPriestId !== null && requestedPriestId !== undefined ? Number(requestedPriestId) : null,
+    requestedPriestName,
+    location: d.location || null,
+    remarks: d.remarks || null,
+    isDraft: true,
+    status: "DRAFT",
+    attachments: Array.isArray(d.attachments) ? d.attachments : [],
+    requirements: Array.isArray(d.requirements) ? d.requirements : [],
+    createdAt: d.createdAt || new Date().toISOString(),
+    updatedAt: d.updatedAt || d.createdAt || new Date().toISOString(),
+  };
+};
+
 export class ApiSchedulerProvider implements ISchedulerProvider {
   async getAppointments(): Promise<Appointment[]> {
     const response = await client.get<any>("/schedule-requests");
@@ -169,6 +207,148 @@ export class ApiSchedulerProvider implements ISchedulerProvider {
       ? response
       : response?.data || response?.items || [];
     return list.map(mapAppointment);
+  }
+
+  async getDrafts(): Promise<ScheduleDraft[]> {
+    const response = await client.get<any>("/schedule-requests/drafts");
+    const list = Array.isArray(response) ? response : response?.data || [];
+    return list.map(mapScheduleDraft);
+  }
+
+  async getDraftById(id: string): Promise<ScheduleDraft> {
+    const response = await client.get<any>(`/schedule-requests/drafts/${id}`);
+    const item = response?.data !== undefined ? response.data : response;
+    return mapScheduleDraft(item);
+  }
+
+  async createDraft(draft: ScheduleDraftPayload, idempotencyKey?: string): Promise<ScheduleDraft> {
+    const payload: Record<string, any> = {
+      parishId: Number(draft.parishId),
+      eventType: draft.eventType,
+      displayTitle: draft.displayTitle || null,
+      preferredDate: draft.preferredDate || null,
+      date: draft.date || draft.requestedDate || null,
+      requestedDate: draft.requestedDate || draft.date || null,
+      timeSlot: draft.timeSlot || null,
+      location: draft.location?.trim() || null,
+      remarks: draft.remarks?.trim() || null,
+      requestedPriestId:
+        draft.requestedPriestId !== undefined && draft.requestedPriestId !== null
+          ? Number(draft.requestedPriestId)
+          : null,
+    };
+    const response = await client.post<any>(
+      "/schedule-requests/drafts",
+      payload,
+      idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : undefined
+    );
+    const item = response?.data !== undefined ? response.data : response;
+    return mapScheduleDraft(item);
+  }
+
+  async updateDraft(id: string, draft: Partial<ScheduleDraftPayload>): Promise<ScheduleDraft> {
+    const payload: Record<string, any> = {};
+    if (draft.parishId !== undefined) payload.parishId = Number(draft.parishId);
+    if (draft.eventType !== undefined) payload.eventType = draft.eventType;
+    if (draft.displayTitle !== undefined) payload.displayTitle = draft.displayTitle || null;
+    if (draft.preferredDate !== undefined) payload.preferredDate = draft.preferredDate || null;
+    if (draft.date !== undefined || draft.requestedDate !== undefined) {
+      const dateVal = draft.requestedDate !== undefined ? draft.requestedDate : draft.date;
+      payload.date = dateVal || null;
+      payload.requestedDate = dateVal || null;
+    }
+    if (draft.timeSlot !== undefined) payload.timeSlot = draft.timeSlot || null;
+    if (draft.location !== undefined) payload.location = draft.location?.trim() || null;
+    if (draft.remarks !== undefined) payload.remarks = draft.remarks?.trim() || null;
+    if (draft.requestedPriestId !== undefined) {
+      payload.requestedPriestId = draft.requestedPriestId !== null ? Number(draft.requestedPriestId) : null;
+    }
+    const response = await client.patch<any>(`/schedule-requests/drafts/${id}`, payload);
+    const item = response?.data !== undefined ? response.data : response;
+    return mapScheduleDraft(item);
+  }
+
+  async deleteDraft(id: string): Promise<{ id: string; deleted: boolean; cleanupQueued: boolean }> {
+    const response = await client.delete<any>(`/schedule-requests/drafts/${id}`);
+    const item = response?.data !== undefined ? response.data : response;
+    return {
+      id: String(item?.id ?? id),
+      deleted: Boolean(item?.deleted ?? true),
+      cleanupQueued: Boolean(item?.cleanupQueued),
+    };
+  }
+
+  async submitDraft(
+    id: string,
+    appointment?: Partial<ScheduleDraftPayload> & { requirementFiles?: Record<string, File> }
+  ): Promise<Appointment> {
+    const bookingPayload: Record<string, any> = {};
+    if (appointment?.parishId !== undefined) bookingPayload.parishId = Number(appointment.parishId);
+    if (appointment?.eventType !== undefined) bookingPayload.eventType = appointment.eventType;
+    if (appointment?.displayTitle !== undefined) bookingPayload.displayTitle = appointment.displayTitle;
+    if (appointment?.preferredDate !== undefined) bookingPayload.preferredDate = appointment.preferredDate || null;
+    if (appointment?.date !== undefined || appointment?.requestedDate !== undefined) {
+      const dVal = appointment.date || appointment.requestedDate || null;
+      bookingPayload.date = dVal;
+      bookingPayload.requestedDate = dVal;
+    }
+    if (appointment?.timeSlot !== undefined) bookingPayload.timeSlot = appointment.timeSlot || null;
+    if (appointment?.location !== undefined) bookingPayload.location = appointment.location?.trim() || null;
+    if (appointment?.remarks !== undefined) bookingPayload.remarks = appointment.remarks?.trim() || null;
+    if (appointment?.requestedPriestId !== undefined) {
+      bookingPayload.requestedPriestId =
+        appointment.requestedPriestId !== null ? Number(appointment.requestedPriestId) : null;
+    }
+
+    const entries = Object.entries(appointment?.requirementFiles || {}).sort(([a], [b]) => a.localeCompare(b));
+    const uploadSignature = JSON.stringify(
+      await Promise.all(
+        entries.map(async ([reqId, file]) => {
+          const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+          const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+          return [reqId, hash];
+        })
+      )
+    );
+    const idempotencyKey = getOrGenerateWebIdempotencyKey({
+      parishId: bookingPayload.parishId || 0,
+      eventType: bookingPayload.eventType || "",
+      date: bookingPayload.date || "",
+      timeSlot: bookingPayload.timeSlot || "",
+      remarks: bookingPayload.remarks || "",
+      requestedPriestId: bookingPayload.requestedPriestId ?? null,
+      uploadSignature: `${id}:${uploadSignature}`,
+    });
+
+    if (entries.length > 0) {
+      const body = new FormData();
+      body.append("booking", JSON.stringify(bookingPayload));
+      body.append("requirementIds", JSON.stringify(entries.map(([reqId]) => reqId)));
+      entries.forEach(([, file]) => {
+        const mimeByExtension: Record<string, string> = {
+          pdf: "application/pdf",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          png: "image/png",
+          webp: "image/webp",
+        };
+        const uploadFile = file.type
+          ? file
+          : new Blob([file], { type: mimeByExtension[file.name.split(".").pop()?.toLowerCase() || ""] });
+        body.append("files", uploadFile, file.name);
+      });
+      const data = await client.post<any>(`/schedule-requests/drafts/${id}/submit`, body, {
+        headers: { "Idempotency-Key": idempotencyKey },
+      });
+      const item = data?.data !== undefined ? data.data : data;
+      return mapAppointment(item);
+    }
+
+    const data = await client.post<any>(`/schedule-requests/drafts/${id}/submit`, bookingPayload, {
+      headers: { "Idempotency-Key": idempotencyKey },
+    });
+    const item = data?.data !== undefined ? data.data : data;
+    return mapAppointment(item);
   }
 
   async getSchedulingConfiguration(parishId: string): Promise<SchedulingConfiguration> {

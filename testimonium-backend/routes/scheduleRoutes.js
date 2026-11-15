@@ -20,12 +20,23 @@ import {
   assignLayMinister,
   respondPriestAssignment,
   emergencyReschedule,
+  createDraft,
+  updateDraft,
+  listDrafts,
+  getDraftById,
+  deleteDraft,
+  uploadDraftAttachment,
+  listDraftAttachments,
+  downloadDraftAttachment,
+  submitDraft,
 } from "../controllers/ScheduleController.js";
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
 import {
   createScheduleSchema,
+  createScheduleDraftSchema,
+  updateScheduleDraftSchema,
   updateScheduleStatusSchema,
   proposeRescheduleSchema,
   respondRescheduleSchema,
@@ -35,7 +46,11 @@ import {
   emergencyRescheduleSchema,
 } from "../validators/scheduleSchemas.js";
 import { scheduleRecommendationsSchema } from "../validators/recommendationSchemas.js";
-import { scheduleWebUpload } from "../middlewares/scheduleUploadMiddleware.js";
+import {
+  scheduleWebUpload,
+  scheduleDraftAttachmentUpload,
+  scheduleDraftSubmitUpload,
+} from "../middlewares/scheduleUploadMiddleware.js";
 import {
   listAlternativeProposals,
   submitAlternativeProposal,
@@ -66,6 +81,17 @@ router.get("/eligible-priests", getEligiblePriests);
 router.post("/recommendations", validateBody(scheduleRecommendationsSchema), getRecommendations);
 router.post("/", validateBody(createScheduleSchema), create);
 router.post("/web", checkRole(["PARISHIONER"]), scheduleWebUpload, createWeb);
+
+router.get("/drafts", checkRole(["PARISHIONER"]), listDrafts);
+router.post("/drafts", checkRole(["PARISHIONER"]), validateBody(createScheduleDraftSchema), createDraft);
+router.get("/drafts/:id", checkRole(["PARISHIONER"]), getDraftById);
+router.patch("/drafts/:id", checkRole(["PARISHIONER"]), validateBody(updateScheduleDraftSchema), updateDraft);
+router.delete("/drafts/:id", checkRole(["PARISHIONER"]), deleteDraft);
+router.get("/drafts/:id/attachments", checkRole(["PARISHIONER"]), listDraftAttachments);
+router.post("/drafts/:id/attachments", checkRole(["PARISHIONER"]), scheduleDraftAttachmentUpload, uploadDraftAttachment);
+router.get("/drafts/:id/attachments/:attachmentId/file", checkRole(["PARISHIONER"]), downloadDraftAttachment);
+router.post("/drafts/:id/submit", checkRole(["PARISHIONER"]), scheduleDraftSubmitUpload, submitDraft);
+
 router.get("/:id/attachments", listAttachments);
 router.get("/:id/attachments/:attachmentId/file", downloadAttachment);
 
