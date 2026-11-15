@@ -1,5 +1,5 @@
 import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import {
@@ -12,8 +12,6 @@ import {
   MapPin,
   User,
   CheckCircle,
-  Download,
-  ExternalLink,
   Check,
   AlertCircle,
   Building2,
@@ -33,7 +31,6 @@ import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { cn } from '@/utils/cn';
 import { Tooltip } from '@/components/ui/Tooltip';
 
-import { downloadIcsFile, buildGoogleCalendarUrl, getUpcomingEvent } from '@/utils/calendarExport';
 import { ParishManagementService } from '@/services/ParishManagementService';
 import { to24Hour, to12Hour, isValidTimeRange } from '@/utils/date';
 import type { CalendarEvent, ManagedUser, Parish } from '@/types';
@@ -69,100 +66,6 @@ function Toast({
     >
       {variant === 'success' ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
       {message}
-    </div>
-  );
-}
-
-// ─── Export Menu ──────────────────────────────────────────────────────────────
-
-function ExportMenu({
-  events,
-  year,
-  month,
-  onSuccess,
-  onError,
-}: {
-  events: CalendarEvent[];
-  year: number;
-  month: number;
-  onSuccess: (msg: string) => void;
-  onError: (msg: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const monthName = MONTH_NAMES[month];
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleDownloadIcs = () => {
-    setOpen(false);
-    const result = downloadIcsFile(events, year, month);
-    if (result) {
-      onSuccess(`${monthName} ${year} calendar downloaded as .ics file.`);
-    } else {
-      onError('No events found for this month to export.');
-    }
-  };
-
-  const handleGoogleCalendar = () => {
-    setOpen(false);
-    const upcoming = getUpcomingEvent(events, year, month);
-    if (!upcoming) {
-      onError('No events found for this month to sync.');
-      return;
-    }
-    const url = buildGoogleCalendarUrl(upcoming);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    onSuccess('Opening event in Google Calendar...');
-  };
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
-        id="calendar-export-btn"
-      >
-        <Download className="w-3.5 h-3.5" />
-        Export Calendar
-        <span className="ml-0.5 text-gray-400">▾</span>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
-          <button
-            onClick={handleDownloadIcs}
-            className="w-full flex items-center gap-3 px-4 py-3 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            id="calendar-export-ics"
-          >
-            <Download className="w-3.5 h-3.5 text-gray-400" />
-            <div className="text-left">
-              <div className="font-semibold">Download .ics File</div>
-              <div className="text-[10px] text-gray-400">{monthName} {year} — all events</div>
-            </div>
-          </button>
-          <div className="h-px bg-gray-100" />
-          <button
-            onClick={handleGoogleCalendar}
-            className="w-full flex items-center gap-3 px-4 py-3 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            id="calendar-export-google"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
-            <div className="text-left">
-              <div className="font-semibold">Open in Google Calendar</div>
-              <div className="text-[10px] text-gray-400">Next upcoming event</div>
-            </div>
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1044,15 +947,8 @@ export function CalendarPage() {
           </p>
         </div>
 
-        {/* Action Buttons: Export, Priest Colors, Create Event */}
+        {/* Action Buttons: Priest Colors, Create Event */}
         <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
-          <ExportMenu
-            events={events}
-            year={year}
-            month={month}
-            onSuccess={(msg) => showToast(msg, 'success')}
-            onError={(msg) => showToast(msg, 'error')}
-          />
           {effectiveParishId && (
             <button
               onClick={() => setShowPriestSettings(true)}

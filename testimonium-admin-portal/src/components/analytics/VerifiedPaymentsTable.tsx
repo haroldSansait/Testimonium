@@ -15,6 +15,8 @@ interface VerifiedPaymentsTableProps {
   refreshTrigger?: number;
 }
 
+const PAGE_SIZE = 10;
+
 function formatAmount(amount: string | null | undefined): string {
   if (amount === null || amount === undefined || amount === '') return '—';
   return `₱${amount}`;
@@ -167,7 +169,7 @@ export function VerifiedPaymentsTable({
           documentType: documentType || undefined,
           search: debouncedSearch || undefined,
           page,
-          limit: 20,
+          limit: PAGE_SIZE,
         },
         { signal: controller.signal }
       );
@@ -323,34 +325,70 @@ export function VerifiedPaymentsTable({
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-left text-xs">
+              {/* Desktop & Laptop Table View */}
+              <div className="hidden lg:block w-full">
+                <table className="w-full table-fixed divide-y divide-gray-200 text-left text-xs">
                   <thead className="bg-gray-50/75 text-gray-600 font-semibold">
                     <tr>
-                      <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 align-bottom leading-tight ${
+                          showParishColumn ? 'w-[12%]' : 'w-[14%]'
+                        }`}
+                      >
                         Request Reference
                       </th>
-                      <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 align-bottom leading-tight ${
+                          showParishColumn ? 'w-[13%]' : 'w-[15%]'
+                        }`}
+                      >
                         Payment Reference
                       </th>
-                      <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 align-bottom leading-tight ${
+                          showParishColumn ? 'w-[13%]' : 'w-[16%]'
+                        }`}
+                      >
                         Parishioner
                       </th>
-                      <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 align-bottom leading-tight ${
+                          showParishColumn ? 'w-[12%]' : 'w-[14%]'
+                        }`}
+                      >
                         Document Type
                       </th>
                       {showParishColumn && (
-                        <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                        <th scope="col" className="w-[13%] px-2.5 py-2.5 xl:px-3 align-bottom leading-tight">
                           Parish
                         </th>
                       )}
-                      <th scope="col" className="px-4 py-3 text-right whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 text-right align-bottom leading-tight ${
+                          showParishColumn ? 'w-[9%]' : 'w-[10%]'
+                        }`}
+                      >
                         Amount
                       </th>
-                      <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 align-bottom leading-tight ${
+                          showParishColumn ? 'w-[13%]' : 'w-[14%]'
+                        }`}
+                      >
                         Payment Submitted
                       </th>
-                      <th scope="col" className="px-4 py-3 whitespace-nowrap">
+                      <th
+                        scope="col"
+                        className={`px-2.5 py-2.5 xl:px-3 align-bottom leading-tight ${
+                          showParishColumn ? 'w-[15%]' : 'w-[17%]'
+                        }`}
+                      >
                         Verified At / Verifier
                       </th>
                     </tr>
@@ -359,49 +397,49 @@ export function VerifiedPaymentsTable({
                     {data.map((row) => (
                       <tr key={row.id} className="transition-colors hover:bg-gray-50/60">
                         {/* Request Reference */}
-                        <td className="px-4 py-3 font-mono font-medium text-gray-900 whitespace-nowrap">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top font-mono text-[11px] font-medium text-gray-900 break-all">
                           {row.requestReference || '—'}
                         </td>
 
                         {/* Payment Reference */}
-                        <td className="px-4 py-3 font-mono text-gray-700 whitespace-nowrap">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top font-mono text-[11px] text-gray-700 break-all">
                           {row.paymentReference || '—'}
                         </td>
 
                         {/* Parishioner */}
-                        <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top font-medium text-gray-900 break-words">
                           {row.parishioner.name || '—'}
                         </td>
 
                         {/* Document Type */}
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap capitalize">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top text-gray-600 capitalize break-words">
                           {row.documentType ? row.documentType.replaceAll('_', ' ').toLowerCase() : '—'}
                         </td>
 
                         {/* Parish (Coordinator diocese-wide only) */}
                         {showParishColumn && (
-                          <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          <td className="px-2.5 py-2.5 xl:px-3 align-top text-gray-700 break-words">
                             {row.parish.name || '—'}
                           </td>
                         )}
 
                         {/* Amount */}
-                        <td className="px-4 py-3 text-right font-bold text-gray-900 whitespace-nowrap">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top text-right font-bold text-gray-900 tabular-nums whitespace-nowrap">
                           {formatAmount(row.amount)}
                         </td>
 
                         {/* Payment Submitted */}
-                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top text-[11px] leading-snug text-gray-500 break-words">
                           {formatManilaDateTime(row.paymentSubmittedAt)}
                         </td>
 
                         {/* Verified At + Verifier */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="font-medium text-gray-900">
+                        <td className="px-2.5 py-2.5 xl:px-3 align-top break-words">
+                          <div className="text-[11px] leading-snug font-medium text-gray-900">
                             {formatManilaDateTime(row.verifiedAt)}
                           </div>
                           {row.verifiedBy && (
-                            <div className="text-[11px] text-gray-500">
+                            <div className="mt-0.5 text-[11px] leading-snug text-gray-500 break-words">
                               by {row.verifiedBy.name}
                             </div>
                           )}
@@ -412,14 +450,68 @@ export function VerifiedPaymentsTable({
                 </table>
               </div>
 
-              {/* Pagination Guard: do NOT render when total === 0; render only when totalPages > 1 */}
-              {pagination && pagination.totalPages > 1 && pagination.total > 0 && (
+              {/* Narrow-Screen Stacked Record View */}
+              <div className="divide-y divide-gray-100 lg:hidden">
+                {data.map((row) => (
+                  <div key={row.id} className="space-y-2.5 p-3.5 text-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-[11px] font-semibold text-gray-900 break-all">
+                          {row.requestReference || '—'}
+                        </div>
+                        <div className="mt-0.5 font-medium text-gray-900 break-words">
+                          {row.parishioner.name || '—'}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right font-bold text-gray-900 tabular-nums">
+                        {formatAmount(row.amount)}
+                      </div>
+                    </div>
+
+                    <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-[11px] sm:grid-cols-2">
+                      <div>
+                        <dt className="font-medium text-gray-500">Payment Reference</dt>
+                        <dd className="font-mono text-gray-800 break-all">{row.paymentReference || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium text-gray-500">Document Type</dt>
+                        <dd className="capitalize text-gray-700 break-words">
+                          {row.documentType ? row.documentType.replaceAll('_', ' ').toLowerCase() : '—'}
+                        </dd>
+                      </div>
+                      {showParishColumn && (
+                        <div>
+                          <dt className="font-medium text-gray-500">Parish</dt>
+                          <dd className="text-gray-700 break-words">{row.parish.name || '—'}</dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt className="font-medium text-gray-500">Payment Submitted</dt>
+                        <dd className="text-gray-600">{formatManilaDateTime(row.paymentSubmittedAt)}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="font-medium text-gray-500">Verified At / Verifier</dt>
+                        <dd className="text-gray-800">
+                          <span className="font-medium">{formatManilaDateTime(row.verifiedAt)}</span>
+                          {row.verifiedBy && (
+                            <span className="text-gray-500"> · by {row.verifiedBy.name}</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination Footer: render whenever verified payment records exist */}
+              {pagination && pagination.total > 0 && (
                 <Pagination
                   currentPage={page}
                   totalPages={pagination.totalPages}
                   total={pagination.total}
                   pageSize={pagination.limit}
                   onPageChange={setPage}
+                  className="flex-wrap gap-2"
                 />
               )}
             </>
