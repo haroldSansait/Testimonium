@@ -4,6 +4,33 @@ import { client } from "../../api/client";
 import { getParishImage, getParishGallery } from "../../utils/parishImages";
 import { collectAllActiveParishes } from "./parishPagination";
 
+const normalizeImageUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const buildParishGallery = (
+  p: any,
+  lookupData: { id: string; name: string; address: string; city: string }
+): string[] => {
+  const coverUrl = normalizeImageUrl(p.coverImage);
+  const logoUrl = normalizeImageUrl(p.logoImage);
+  const existingGallery = Array.isArray(p.gallery)
+    ? p.gallery.map(normalizeImageUrl).filter((url: string | null): url is string => url !== null)
+    : [];
+
+  const candidates = [
+    ...(coverUrl ? [coverUrl] : getParishGallery(lookupData)),
+    ...(logoUrl ? [logoUrl] : []),
+    ...existingGallery,
+  ]
+    .map(normalizeImageUrl)
+    .filter((url: string | null): url is string => url !== null);
+
+  return Array.from(new Set(candidates));
+};
+
 const mapParish = (p: any): Parish => {
   if (!p) return p;
   const lat = p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : null;
@@ -16,8 +43,9 @@ const mapParish = (p: any): Parish => {
     city: p.city || p.municipalityCity || "",
   };
 
-  const mappedCover = p.coverImage || getParishImage(lookupData);
-  const mappedGallery = p.coverImage ? [p.coverImage] : getParishGallery(lookupData);
+  const mappedCover = normalizeImageUrl(p.coverImage) || getParishImage(lookupData);
+  const mappedGallery = buildParishGallery(p, lookupData);
+  const mappedLogo = normalizeImageUrl(p.logoImage) || "";
 
   return {
     id: String(p.id),
@@ -41,7 +69,7 @@ const mapParish = (p: any): Parish => {
     massSchedules: p.massSchedules || [],
     upcomingEvents: p.upcomingEvents || [],
     services: p.services || [],
-    logoImage: p.logoImage || "",
+    logoImage: mappedLogo,
     pinColor: p.pinColor || "#7B1C2A",
     showLabel: p.showLabel ?? true,
     directoryDescription: p.directoryDescription || "",

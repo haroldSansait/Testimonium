@@ -289,19 +289,27 @@ export const ParishDrawer: React.FC<ParishDrawerProps> = ({
                   Parish Gallery
                 </h4>
                 <div className="grid grid-cols-3 gap-2">
-                  {effectiveParish.gallery.slice(0, 3).map((imgUrl, idx) => (
-                    <div key={idx} className="h-16 rounded-lg overflow-hidden border border-border bg-neutral-100">
-                      <img
-                        src={imgUrl}
-                        alt={`${parish.name} view ${idx + 1}`}
-                        loading="lazy"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  ))}
+                  {effectiveParish.gallery.map((imgUrl, idx) => {
+                    const isLogo = Boolean(effectiveParish.logoImage && imgUrl === effectiveParish.logoImage);
+                    return (
+                      <div
+                        key={`${imgUrl}-${idx}`}
+                        className={`h-16 rounded-lg overflow-hidden border border-border ${
+                          isLogo ? 'bg-white' : 'bg-neutral-100'
+                        }`}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={isLogo ? `${effectiveParish.name} logo` : `${parish.name} view ${idx + 1}`}
+                          loading="lazy"
+                          className={`w-full h-full ${isLogo ? 'object-contain p-1' : 'object-cover'}`}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

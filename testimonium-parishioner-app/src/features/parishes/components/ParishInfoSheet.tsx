@@ -269,14 +269,21 @@ export const ParishInfoSheet: React.FC<ParishInfoSheetProps> = ({
     };
   });
 
-  // Unique gallery images with cover image fallback
+  const isValidHttpUrl = (url: unknown): url is string =>
+    typeof url === "string" && url.trim().length > 0 && /^https?:\/\//i.test(url.trim());
+
+  const normalizedLogoUrl = isValidHttpUrl(p.logoImage) ? p.logoImage.trim() : null;
+
+  // Unique gallery images including cover image, uploaded logo, and existing gallery
   const galleryImages = (() => {
-    const raw = Array.isArray(p.gallery) && p.gallery.length > 0
-      ? p.gallery
-      : (p.coverImage && p.coverImage.startsWith("http") ? [p.coverImage] : []);
-    const valid = raw.filter(
-      (url) => typeof url === "string" && url.trim().length > 0 && url.startsWith("http")
-    );
+    const candidates: unknown[] = [
+      p.coverImage,
+      p.logoImage,
+      ...(Array.isArray(p.gallery) ? p.gallery : []),
+    ];
+    const valid = candidates
+      .filter(isValidHttpUrl)
+      .map((url) => url.trim());
     return Array.from(new Set(valid));
   })();
 
@@ -597,16 +604,17 @@ export const ParishInfoSheet: React.FC<ParishInfoSheetProps> = ({
               >
                 {galleryImages.map((imgUrl, idx) => {
                   if (failedGalleryUrls.has(imgUrl)) return null;
+                  const isLogo = Boolean(normalizedLogoUrl && imgUrl === normalizedLogoUrl);
                   return (
                     <View key={`${imgUrl}-${idx}`} style={styles.galleryThumbWrapper}>
                       <Image
                         source={{ uri: imgUrl }}
                         style={styles.galleryThumb}
-                        resizeMode="cover"
+                        resizeMode={isLogo ? "contain" : "cover"}
                         onError={() => {
                           setFailedGalleryUrls((prev) => new Set(prev).add(imgUrl));
                         }}
-                        accessibilityLabel={`${p.name} gallery image ${idx + 1}`}
+                        accessibilityLabel={isLogo ? `${p.name} logo` : `${p.name} gallery image ${idx + 1}`}
                       />
                     </View>
                   );
