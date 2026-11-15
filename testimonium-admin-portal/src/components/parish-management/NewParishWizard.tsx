@@ -494,7 +494,7 @@ function StaffSection({
             />
           </FormField>
           <p className="text-xs text-gray-500">
-            An onboarding email and password setup link will be automatically generated for this account.
+            A staff account will be created using this email address. The Diocese Coordinator can set its password through User Management.
           </p>
         </div>
       )}

@@ -11,7 +11,7 @@ import {
 import { authenticateFirebaseToken } from "../middlewares/authMiddleware.js";
 import { checkRole } from "../middlewares/roleMiddleware.js";
 import { validateBody } from "../middlewares/validateRequest.js";
-import { createUserSchema, updateUserSchema } from "../validators/userSchemas.js";
+import { createUserSchema, updateUserSchema, resetPasswordSchema } from "../validators/userSchemas.js";
 import { userCreationRateLimiter, passwordResetRateLimiter } from "../middlewares/rateLimit.js";
 
 import { defaultGovernmentIdVerificationController } from "../controllers/GovernmentIdVerificationController.js";
@@ -41,7 +41,13 @@ router.put("/:id/color", checkRole(["DIOCESE_COORDINATOR", "SECRETARY"]), update
 router.put("/:id", checkRole(["DIOCESE_COORDINATOR"]), validateBody(updateUserSchema), update);
 router.post("/:id/disable", checkRole(["DIOCESE_COORDINATOR"]), disable);
 router.post("/:id/enable", checkRole(["DIOCESE_COORDINATOR"]), enable);
-router.post("/:id/reset-password", passwordResetRateLimiter, checkRole(["DIOCESE_COORDINATOR"]), resetPassword);
+router.post(
+  "/:id/reset-password",
+  passwordResetRateLimiter,
+  checkRole(["DIOCESE_COORDINATOR"]),
+  validateBody(resetPasswordSchema),
+  resetPassword
+);
 
 // Coordinator Government ID verification inspection routes
 router.get("/:id/identity/status", checkRole(["DIOCESE_COORDINATOR"]), defaultGovernmentIdVerificationController.getCoordinatorUserStatus);

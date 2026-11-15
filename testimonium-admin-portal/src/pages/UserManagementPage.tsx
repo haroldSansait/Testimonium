@@ -14,6 +14,7 @@ import {
   Users,
   Shield,
   Eye,
+  EyeOff,
   Lock,
   Calendar,
   Phone,
@@ -996,7 +997,7 @@ function EnableConfirmModal({
   );
 }
 
-// ─── Reset Password Confirmation Modal ────────────────────────────────────────
+// ─── Set New Password Modal ───────────────────────────────────────────────────
 
 function ResetPasswordModal({
   user,
@@ -1005,43 +1006,188 @@ function ResetPasswordModal({
   isSaving,
 }: {
   user: ManagedUser;
-  onConfirm: () => Promise<void>;
+  onConfirm: (newPassword: string, confirmPassword: string) => Promise<void>;
   onClose: () => void;
   isSaving: boolean;
 }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const resetFieldsAndClose = () => {
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setValidationError(null);
+    onClose();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSaving) return;
+
+    if (!newPassword || !confirmPassword) {
+      setValidationError('Both New Password and Confirm Password are required.');
+      return;
+    }
+
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      setValidationError('Password must be between 8 and 128 characters long.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setValidationError('Passwords do not match.');
+      return;
+    }
+
+    setValidationError(null);
+    try {
+      await onConfirm(newPassword, confirmPassword);
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+    } catch {
+      // Parent displays error toast
+    }
+  };
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSaving) {
+          resetFieldsAndClose();
+        }
+      }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-        <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-          <KeyRound className="w-6 h-6 text-blue-600" />
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="set-password-title"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+            <KeyRound className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h3
+              id="set-password-title"
+              className="text-base font-bold text-gray-900"
+              style={{ fontFamily: 'Playfair Display, serif' }}
+            >
+              Set New Password
+            </h3>
+            <p className="text-xs text-gray-500">
+              Account: <span className="font-medium text-gray-800">{user.name}</span> ({user.email})
+            </p>
+          </div>
         </div>
-        <h3 className="text-base font-bold text-gray-900 mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
-          Reset Password?
-        </h3>
-        <p className="text-sm text-gray-500 mb-6">
-          A password reset link will be sent to{' '}
-          <span className="font-medium text-gray-800">{user.email}</span>.
-        </p>
-        <div className="flex gap-3 justify-center">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-            id="reset-pwd-cancel"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void onConfirm()}
-            disabled={isSaving}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            id="reset-pwd-confirm"
-          >
-            {isSaving ? 'Sending…' : 'Send Reset Link'}
-          </button>
-        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="space-y-4">
+          <div>
+            <label
+              htmlFor="reset-pwd-new"
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              New Password
+            </label>
+            <div className="relative">
+              <input
+                id="reset-pwd-new"
+                type={showNewPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  if (validationError) setValidationError(null);
+                }}
+                disabled={isSaving}
+                placeholder="Enter 8–128 characters"
+                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 disabled:bg-gray-50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword((v) => !v)}
+                disabled={isSaving}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                id="toggle-reset-pwd-new"
+              >
+                {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="reset-pwd-confirm-input"
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              Confirm Password
+            </label>
+            <div className="relative">
+              <input
+                id="reset-pwd-confirm-input"
+                type={showConfirmPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (validationError) setValidationError(null);
+                }}
+                disabled={isSaving}
+                placeholder="Re-enter new password"
+                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 disabled:bg-gray-50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                disabled={isSaving}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                id="toggle-reset-pwd-confirm"
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {validationError && (
+            <p
+              id="reset-pwd-error"
+              role="alert"
+              className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+            >
+              {validationError}
+            </p>
+          )}
+
+          <div className="flex gap-3 justify-end pt-2">
+            <button
+              type="button"
+              onClick={resetFieldsAndClose}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 disabled:opacity-50 transition-colors"
+              id="reset-pwd-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              id="reset-pwd-confirm"
+            >
+              {isSaving ? 'Saving…' : 'Save New Password'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>,
     document.body
@@ -1085,11 +1231,11 @@ function LinkSuccessModal({
           <Check className="w-6 h-6 text-emerald-600" />
         </div>
         <h3 className="text-lg font-bold text-gray-900 mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
-          {isNewUser ? 'Account Provisioned' : 'Password Reset Link'}
+          {isNewUser ? 'Staff Account Created' : 'Password Reset Link'}
         </h3>
         <p className="text-xs text-gray-400 mb-4">
           {isNewUser
-            ? 'The account has been created in both PostgreSQL and Firebase Auth. Send the setup link below to the user.'
+            ? 'The staff account has been successfully created using the registered email address. You may share the password setup link below with the staff member, or set their password through User Management.'
             : 'A new password reset link has been generated. Send the link below to the user.'}
         </p>
 
@@ -1103,7 +1249,7 @@ function LinkSuccessModal({
         {/* Link container */}
         <div className="text-left mb-6">
           <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
-            Setup / Reset Link
+            Password Setup Link
           </label>
           <div className="relative">
             <textarea
@@ -1332,27 +1478,17 @@ export function UserManagementPage() {
     }
   };
 
-  // ── Reset Password ─────────────────────────────────────────────────────────
+  // ── Set Password ───────────────────────────────────────────────────────────
 
-  const handleResetConfirm = async (userId: string) => {
+  const handleResetConfirm = async (userId: string, newPassword: string, confirmPassword: string) => {
     setIsSaving(true);
     try {
-      const resetLink = await UserManagementService.resetPassword(userId);
-      const user = users.find((u) => u.id === userId);
+      await UserManagementService.resetPassword(userId, newPassword, confirmPassword);
       setModal({ type: 'none' });
-      if (resetLink && user) {
-        setModal({
-          type: 'linkSuccess',
-          name: user.name,
-          email: user.email,
-          link: resetLink,
-          isNewUser: false,
-        });
-      } else {
-        showToast('Password reset link sent.');
-      }
-    } catch {
-      showToast('Failed to send reset link.', 'error');
+      showToast('Password updated successfully.');
+    } catch (err) {
+      showToast('Failed to update password.', 'error');
+      throw err;
     } finally {
       setIsSaving(false);
     }
@@ -1605,10 +1741,10 @@ export function UserManagementPage() {
                                 id={`reset-pwd-${user.id}`}
                                 onClick={() => setModal({ type: 'resetPwd', user })}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
-                                aria-label={`Reset password for ${user.name}`}
+                                aria-label={`Set password for ${user.name}`}
                               >
                                 <KeyRound className="w-3.5 h-3.5" />
-                                Reset Pwd
+                                Set Password
                               </button>
                             </div>
                           </td>
@@ -1682,7 +1818,9 @@ export function UserManagementPage() {
       {modal.type === 'resetPwd' && (
         <ResetPasswordModal
           user={modal.user}
-          onConfirm={() => handleResetConfirm(modal.user.id)}
+          onConfirm={(newPassword, confirmPassword) =>
+            handleResetConfirm(modal.user.id, newPassword, confirmPassword)
+          }
           onClose={() => setModal({ type: 'none' })}
           isSaving={isSaving}
         />

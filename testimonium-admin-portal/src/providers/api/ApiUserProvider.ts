@@ -29,9 +29,11 @@ export const ApiUserProvider: UserProvider = {
     await api.post(`/users/${id}/enable`);
   },
 
-  async resetPassword(id: string): Promise<string> {
-    const response = await api.post<ApiResponseEnvelope<{ resetLink: string }>>(`/users/${id}/reset-password`);
-    return response.data.data.resetLink;
+  async resetPassword(id: string, newPassword: string, confirmPassword?: string): Promise<void> {
+    await api.post(`/users/${id}/reset-password`, {
+      newPassword,
+      ...(confirmPassword !== undefined ? { confirmPassword } : {}),
+    });
   },
 
   async updateUserColor(id: string, color: string | null): Promise<ManagedUser> {

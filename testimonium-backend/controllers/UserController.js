@@ -76,11 +76,11 @@ export const enable = async (req, res, next) => {
 export const resetPassword = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const resetLink = await userService.resetPassword(id, req.user?.id);
+    const { newPassword } = req.body;
+    await userService.resetPassword(id, newPassword, req.user?.id);
     return res.status(200).json({
       success: true,
-      message: "Password reset link generated successfully.",
-      data: { resetLink },
+      message: "Password updated successfully.",
     });
   } catch (err) {
     return next(err);

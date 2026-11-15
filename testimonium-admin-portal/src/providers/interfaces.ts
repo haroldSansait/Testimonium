@@ -312,7 +312,7 @@ export interface UserProvider {
   editUser(id: string, data: Partial<ManagedUser>): Promise<ManagedUser>;
   disableUser(id: string): Promise<void>;
   enableUser(id: string): Promise<void>;
-  resetPassword(id: string): Promise<string>;
+  resetPassword(id: string, newPassword: string, confirmPassword?: string): Promise<void>;
   updateUserColor(id: string, color: string | null): Promise<ManagedUser>;
 }
 

@@ -37,8 +37,8 @@ export const UserManagementService = {
     return providerFactory.getUserProvider().enableUser(id);
   },
 
-  async resetPassword(id: string): Promise<string> {
-    return providerFactory.getUserProvider().resetPassword(id);
+  async resetPassword(id: string, newPassword: string, confirmPassword?: string): Promise<void> {
+    return providerFactory.getUserProvider().resetPassword(id, newPassword, confirmPassword);
   },
 
   async updateUserColor(id: string, color: string | null): Promise<ManagedUser> {

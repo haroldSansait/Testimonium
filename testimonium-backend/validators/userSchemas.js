@@ -14,3 +14,21 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = createUserSchema.partial();
+
+export const resetPasswordSchema = z
+  .object({
+    newPassword: z
+      .string({
+        required_error: "New password is required",
+      })
+      .min(8, "Password must be at least 8 characters long")
+      .max(128, "Password must be at most 128 characters long"),
+    confirmPassword: z.string().optional(),
+  })
+  .refine(
+    (data) => data.confirmPassword === undefined || data.newPassword === data.confirmPassword,
+    {
+      message: "Passwords do not match",
+      path: ["confirmPassword"],
+    }
+  );

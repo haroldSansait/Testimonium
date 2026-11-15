@@ -528,15 +528,22 @@ export class UserService {
   }
 
   /**
-   * Triggers password reset link generation in Firebase.
+   * Directly updates a user's Firebase Authentication password.
    * @param {string|number} id
+   * @param {string} newPassword
    * @param {number} actorId
-   * @returns {Promise<string>} Reset link URL
+   * @returns {Promise<void>}
    */
-  async resetPassword(id, actorId) {
+  async resetPassword(id, newPassword, actorId) {
     const numericId = parseInt(id, 10);
     if (isNaN(numericId)) {
       const err = new Error("Invalid user ID format.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 8 || newPassword.length > 128) {
+      const err = new Error("Password must be between 8 and 128 characters long.");
       err.statusCode = 400;
       throw err;
     }
@@ -548,13 +555,20 @@ export class UserService {
       throw err;
     }
 
-    const resetLink = await this.firebaseAdminService.generatePasswordResetLink(user.email);
-    logger.info({ email: user.email }, "[TESTIMONIUM] Generated password reset link.");
+    if (!user.firebaseUid) {
+      const err = new Error("User does not have a linked Firebase account.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await this.firebaseAdminService.updatePassword(user.firebaseUid, newPassword);
+    await this.firebaseAdminService.revokeRefreshTokens(user.firebaseUid);
+
+    logger.info({ userId: user.id }, "[TESTIMONIUM] Updated user password.");
     await AuditLogService.log(actorId, "Password Reset", null, false, {
       affectedTable: "users",
       affectedRecordId: user.id,
     });
-    return resetLink;
   }
 
   /**
